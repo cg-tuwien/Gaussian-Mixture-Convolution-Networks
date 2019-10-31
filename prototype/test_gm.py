@@ -1,54 +1,81 @@
 import unittest
-import gm
 import torch
 import numpy as np
 import numpy.linalg as npla
 import numpy.random as nprnd
 
-class TestGM(unittest.TestCase):
-    
-    def test_xAx_3d(self):
-        A = np.array(([[3., 1., 8.],
-                       [1., 2., 3.],
-                       [8., 3., 4.]]))
-        B = np.array(([[5., 4., 2.],
-                       [4., 7., 1.],
-                       [2., 1., 6.]]))
+import gm
 
-        M = np.array([A[np.triu_indices(3)],
-                      B[np.triu_indices(3)]]).transpose()
-        M: torch.Tensor = torch.tensor(M)
-        
-        xes = nprnd.rand(3, 5)
-        xesAxes = gm._xAx_withTriangleA(M[:][0])
-        xesBxes = gm._xAx_withTriangleA(M[:][1])
-        
-        
-        self.assertEqual(xesAxes.size().item(), 5)
-        self.assertEqual(xesBxes.size().item(), 5)
-        
-        for i in range(5):
-            
-        
-        self.assertAlmostEqual(npla.det(A), dets[0].item())
-        self.assertAlmostEqual(npla.det(B), dets[1].item())
+from torch import Tensor
+
+
+def _triangle_mat_data(dims: int) -> (np.array, np.array, Tensor):
+    assert dims == 2 or dims == 3
+    A = np.array(([[3., 1., 8.],
+                   [1., 2., 3.],
+                   [8., 3., 4.]]))
+    B = np.array(([[5., 4., 2.],
+                   [4., 7., 1.],
+                   [2., 1., 6.]]))
+
+    if dims == 2:
+        A = A[0:2, 0:2]
+        B = B[0:2, 0:2]
+
+    M = np.array([A[np.triu_indices(dims)],
+                  B[np.triu_indices(dims)]]).transpose()
+    M = torch.tensor(M)
+
+    return (A, B, M)
+
+
+class TestGM(unittest.TestCase):
+    def test_gm_eval(self):
+        for dims in range(2, 4):
+            factors = nprnd.rand(2) - 0.5
+            positions = nprnd.rand(dims, 2)
+            (A, B, covs_torch) = _triangle_mat_data(dims)
+            covs = (A, B)
+
+            mixture = gm.Mixture(torch.tensor(factors), torch.tensor(positions), covs_torch)
+
+            np_result = 0
+            eval_positions = nprnd.rand(dims, 20)
+            values_gm = mixture.evaluate(eval_positions).numpy()
+
+            for i in range(20):
+                np_result = 0
+                for j in range(0, 2):
+                    xmp = eval_positions[:, i] - positions[j]
+                    np_result += factors[j] * np.exp(xmp @ covs[j] @ xmp)
+
+    def test_xAx(self):
+        for dims in range(2, 4):
+            (A, B, M) = _triangle_mat_data(dims)
+
+            xes = nprnd.rand(dims, 5)
+            xesAxes = gm._xAx_withTriangleA(M[:, 0], torch.tensor(xes))
+            xesBxes = gm._xAx_withTriangleA(M[:, 1], torch.tensor(xes))
+
+            self.assertEqual(xesAxes.size()[0], 5)
+            self.assertEqual(xesBxes.size()[0], 5)
+
+            for i in range(5):
+                np_result_a = xes[:, i] @ A @ xes[:, i]
+                self.assertAlmostEqual(np_result_a, xesAxes[i].item())
+
+                np_result_b = xes[:, i] @ B @ xes[:, i]
+                self.assertAlmostEqual(np_result_b, xesBxes[i].item())
+
     
     def test_det(self):
-        A = np.array(([[3., 1., 8.],
-                       [1., 2., 3.],
-                       [8., 3., 4.]]))
-        B = np.array(([[5., 4., 2.],
-                       [4., 7., 1.],
-                       [2., 1., 6.]]))
-
-        M = np.array([A[np.triu_indices(3)],
-                      B[np.triu_indices(3)]]).transpose()
-        M: torch.Tensor = torch.tensor(M)
+        for dims in range(2, 4):
+            (A, B, M) = _triangle_mat_data(dims)
                 
-        dets = gm._determinants(M)
-        self.assertEqual(dets.size().item(), 2)
-        self.assertAlmostEqual(npla.det(A), dets[0].item())
-        self.assertAlmostEqual(npla.det(B), dets[1].item())
+            dets = gm._determinants(M)
+            self.assertEqual(dets.size()[0], 2)
+            self.assertAlmostEqual(npla.det(A), dets[0].item())
+            self.assertAlmostEqual(npla.det(B), dets[1].item())
     
     def test_polynomMulRepeat(self):
         A: torch.Tensor = torch.tensor([[1, 2, 3, 4],

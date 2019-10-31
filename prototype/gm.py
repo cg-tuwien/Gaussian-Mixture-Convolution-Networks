@@ -28,16 +28,17 @@ class Mixture:
         values = torch.zeros(xes.size()[1])
         for i in range(self.number_of_components()):
             xmb = xes - self.positions[:][i]
+
+        return values
             
     def debug_show(self, width: int, height: int) -> None:
         ...
 
 
 def _xAx_withTriangleA(A: Tensor, xes: Tensor) -> Tensor:
-    assert A[0].size()[0] == 1
-    assert (xes.size()[0] == 2 and A.size()[0] == 3) or (xes.size() == 3 and A.size()[0] == 6)
+    assert (xes.size()[0] == 2 and A.size()[0] == 3) or (xes.size()[0] == 3 and A.size()[0] == 6)
     if xes.size()[0] == 2:
-        return A[0] * xes[0] * xes[0] + 2 * A[1] * xes[0] * xes[1] + A[3] * xes[1] * xes[1]
+        return A[0] * xes[0] * xes[0] + 2 * A[1] * xes[0] * xes[1] + A[2] * xes[1] * xes[1]
     return (A[0] * xes[0] * xes[0]
             + 2 * A[1] * xes[0] * xes[1]
             + 2 * A[2] * xes[0] * xes[2]
@@ -49,6 +50,8 @@ def _xAx_withTriangleA(A: Tensor, xes: Tensor) -> Tensor:
 def _determinants(A: Tensor) -> Tensor:
     n_triangle_elements = A.size()[0]
     assert n_triangle_elements == 3 or n_triangle_elements == 6
+    if n_triangle_elements == 3:
+        return A[0] * A[2] - A[1] * A[1]
     return A[0]*A[3]*A[5] + 2 * A[1] * A[4] * A[2] - A[2] * A[2] * A[3] - A[1] * A[1] * A[5] - A[0] * A[4] * A[4]
 
 
