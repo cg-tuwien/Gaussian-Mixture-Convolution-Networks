@@ -41,13 +41,14 @@ class TestGM(unittest.TestCase):
 
             np_result = 0
             eval_positions = nprnd.rand(dims, 20)
-            values_gm = mixture.evaluate(eval_positions).numpy()
+            values_gm = mixture.evaluate(torch.tensor(eval_positions)).numpy()
 
             for i in range(20):
                 np_result = 0
                 for j in range(0, 2):
                     xmp = eval_positions[:, i] - positions[j]
                     np_result += factors[j] * np.exp(xmp @ covs[j] @ xmp)
+                self.assertAlmostEqual(np_result, values_gm[i].item())
 
     def test_xAx(self):
         for dims in range(2, 4):

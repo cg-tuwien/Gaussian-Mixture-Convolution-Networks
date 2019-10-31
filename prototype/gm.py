@@ -27,7 +27,8 @@ class Mixture:
     def evaluate(self, xes: Tensor) -> Tensor:
         values = torch.zeros(xes.size()[1])
         for i in range(self.number_of_components()):
-            xmb = xes - self.positions[:][i]
+            xmb = xes - self.positions[:, i].view(-1, 1).expand_as(xes)
+
 
         return values
             
