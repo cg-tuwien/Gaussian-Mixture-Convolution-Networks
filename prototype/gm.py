@@ -23,13 +23,25 @@ class Mixture:
 
     def number_of_components(self):
         return self.factors.size()[0]
+
+    def _mat_from_tri(self, m: Tensor) -> Tensor:
+        if m.size()[0] == 3:
+            return torch.tensor([[m[0], m[1]],
+                                 [m[1], m[2]]])
+        return torch.tensor([[m[0], m[1], m[2]],
+                             [m[1], m[3], m[4]],
+                             [m[2], m[4], m[5]]])
     
     def evaluate(self, xes: Tensor) -> Tensor:
         values = torch.zeros(xes.size()[1])
         for i in range(self.number_of_components()):
-            xmb = xes - self.positions[:, i].view(-1, 1).expand_as(xes)
-
-
+            v = xes - self.positions[:, i].view(-1, 1).expand_as(xes)
+            cov_tri = self.covariances[:, i]
+            cov = self._mat_from_tri(cov_tri)
+            cov_i = cov.cholesky().cholesky_inverse()
+            # v.t() @ cov_i @ v, but with more than one column vector
+            v = -0.5 * (v * (cov_i @ v)).sum(dim=0)
+            values += self.factors[i] * torch.exp(v)
         return values
             
     def debug_show(self, width: int, height: int) -> None:

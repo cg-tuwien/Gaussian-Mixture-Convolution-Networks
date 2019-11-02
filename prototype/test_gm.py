@@ -11,9 +11,9 @@ from torch import Tensor
 
 def _triangle_mat_data(dims: int) -> (np.array, np.array, Tensor):
     assert dims == 2 or dims == 3
-    A = np.array(([[3., 1., 8.],
-                   [1., 2., 3.],
-                   [8., 3., 4.]]))
+    A = np.array(([[3., 1., 2.],
+                   [1., 8., 3.],
+                   [2., 3., 4.]]))
     B = np.array(([[5., 4., 2.],
                    [4., 7., 1.],
                    [2., 1., 6.]]))
@@ -32,8 +32,8 @@ def _triangle_mat_data(dims: int) -> (np.array, np.array, Tensor):
 class TestGM(unittest.TestCase):
     def test_gm_eval(self):
         for dims in range(2, 4):
-            factors = nprnd.rand(2) - 0.5
-            positions = nprnd.rand(dims, 2)
+            factors = nprnd.rand(2) * 2 - 1.0
+            positions = nprnd.rand(dims, 2) * 10 - 5.0
             (A, B, covs_torch) = _triangle_mat_data(dims)
             covs = (A, B)
 
@@ -46,8 +46,12 @@ class TestGM(unittest.TestCase):
             for i in range(20):
                 np_result = 0
                 for j in range(0, 2):
-                    xmp = eval_positions[:, i] - positions[j]
-                    np_result += factors[j] * np.exp(xmp @ covs[j] @ xmp)
+                    x = eval_positions[:, i]
+                    pos = positions[:, j]
+                    xmp = x - pos
+                    cov_i = npla.inv(covs[j])
+                    exponent = -0.5 * (xmp @ cov_i @ xmp)
+                    np_result += factors[j] * np.exp(exponent)
                 self.assertAlmostEqual(np_result, values_gm[i].item())
 
     def test_xAx(self):
