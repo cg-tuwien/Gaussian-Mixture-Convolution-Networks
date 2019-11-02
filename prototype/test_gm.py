@@ -8,7 +8,6 @@ import gm
 
 from torch import Tensor
 
-
 def _triangle_mat_data(dims: int) -> (np.array, np.array, Tensor):
     assert dims == 2 or dims == 3
     A = np.array(([[3., 1., 2.],
@@ -75,6 +74,7 @@ class TestGM(unittest.TestCase):
     
     def test_det(self):
         for dims in range(2, 4):
+            # do not use gm.gen* here!
             (A, B, M) = _triangle_mat_data(dims)
                 
             dets = gm._determinants(M)
@@ -110,8 +110,13 @@ class TestGM(unittest.TestCase):
         sorted = AtimesB.sort().values
         self.assertAlmostEqual(torch.sum(torch.abs(sorted[0]-sorted[2]), 0).item(), 0)
         self.assertAlmostEqual(torch.sum(torch.abs(sorted[3]-sorted[2]), 0).item(), 0)
-        
 
+    def test_gen_cov(self):
+        covs = gm._gen_random_covs(100, 2)
+        self.assertTrue(torch.all(gm._determinants(covs) > 0))
+
+        covs = gm._gen_random_covs(100, 3)
+        self.assertTrue(torch.all(gm._determinants(covs) > 0))
 
 if __name__ == '__main__':
     unittest.main()

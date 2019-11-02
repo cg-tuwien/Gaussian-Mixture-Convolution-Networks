@@ -1,5 +1,6 @@
 import torch
 from torch import Tensor
+import numpy as np
 import matplotlib.pyplot as plt
 
 
@@ -10,6 +11,7 @@ class Mixture:
         self.dimensions = positions.size()[0]
         assert nComponents == positions.size()[1]
         assert nComponents == covariances.size()[1]
+        assert torch.all(_determinants(covariances) > 0)
         if self.dimensions == 2:
             # upper triangle of a 2x2 matrix has 3 elements
             assert covariances.size()[0] == 3
@@ -44,9 +46,40 @@ class Mixture:
             values += self.factors[i] * torch.exp(v)
         return values
             
-    def debug_show(self, width: int, height: int) -> None:
-        ...
+    def debug_show(self, width: int, height: int) -> Tensor:
+        xv, yv = torch.meshgrid([torch.arange(-22, 22, 0.1), torch.arange(-22, 22, 0.1)])
+        xes = torch.cat((xv.reshape(1, -1), yv.reshape(1, -1)), 0)
+        values = self.evaluate(xes)
+        image = values.view(xv.size()[0], xv.size()[1]).numpy()
+        plt.imshow(image)
+        plt.show()
+        return image
 
+#todo seems like the covs are corellated. when plotting, they are all tl-br and few or none are tr-bl
+def _gen_random_covs(n: int, dims: int) -> Tensor:
+    assert dims == 2 or dims == 3
+    retval = torch.zeros(3 if dims == 2 else 6, n)
+    for i in range(n):
+        A = torch.rand(dims, dims) * 4
+        A = A @ A.t() + torch.eye(dims) * 0.04
+        if dims == 2:
+            retval[0:2, i] = A[0, :]
+            retval[2, i] = A[1, 1]
+        else:
+            retval[0:3, i] = A[0, :]
+            retval[3:5, i] = A[1, 1:]
+            retval[5, i] = A[2, 2]
+    return retval
+
+#todo: will need more work on seeding / distribution
+def generate_random_mixtures(n: int, dims: int) -> Mixture:
+    assert dims == 2 or dims == 3
+    assert n > 0
+
+    factors = torch.rand(n) * 2 - 1
+    positions = torch.rand(dims, n) * 20 - 10
+    covs = _gen_random_covs(n, dims)
+    return Mixture(factors, positions, covs)
 
 def _xAx_withTriangleA(A: Tensor, xes: Tensor) -> Tensor:
     assert (xes.size()[0] == 2 and A.size()[0] == 3) or (xes.size()[0] == 3 and A.size()[0] == 6)
