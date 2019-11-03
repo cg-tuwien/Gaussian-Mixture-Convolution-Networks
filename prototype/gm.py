@@ -1,3 +1,5 @@
+import math
+
 import torch
 from torch import Tensor
 import numpy as np
@@ -11,7 +13,7 @@ class Mixture:
         self.dimensions = positions.size()[0]
         assert nComponents == positions.size()[1]
         assert nComponents == covariances.size()[1]
-        assert torch.all(_determinants(covariances) > 0)
+        assert torch.all(_triangle_determinants(covariances) > 0)
         if self.dimensions == 2:
             # upper triangle of a 2x2 matrix has 3 elements
             assert covariances.size()[0] == 3
@@ -93,23 +95,53 @@ def _xAx_withTriangleA(A: Tensor, xes: Tensor) -> Tensor:
             + A[5] * xes[2] * xes[2])
 
 
-def _determinants(A: Tensor) -> Tensor:
+def _triangle_determinants(A: Tensor) -> Tensor:
     n_triangle_elements = A.size()[0]
     assert n_triangle_elements == 3 or n_triangle_elements == 6
     if n_triangle_elements == 3:
         return A[0] * A[2] - A[1] * A[1]
     return A[0]*A[3]*A[5] + 2 * A[1] * A[4] * A[2] - A[2] * A[2] * A[3] - A[1] * A[1] * A[5] - A[0] * A[4] * A[4]
 
+def _triangle_matmul(A: Tensor, B: Tensor) -> Tensor:
+    n_triangle_elements = A.size()[0]
+    assert n_triangle_elements == 3 or n_triangle_elements == 6
+    assert  A.size() == B.size()
+    result = torch.empty(n_triangle_elements, A.size()[1])
+    if n_triangle_elements == 3:
+        result[0] = A[0] * B[0] + A[1] * B[1]
+        result[1] = A[0] * B[1] + A[1] * B[2]
+        result[2] = A[1] * B[1] + A[2] * B[2]
+    else:
+        result[0] = A[0] * B[0] + A[1] * B[1] + A[2] * B[2]
+        result[1] = A[0] * B[1] + A[1] * B[3] + A[2] * B[4]
+        result[2] = A[0] * B[2] + A[1] * B[4] + A[2] * B[5]
+
+        result[2] = A[1] * B[1] + A[3] * B[3] + A[4] * B[4]
+        result[2] = A[1] * B[2] + A[3] * B[4] + A[4] * B[5]
+
+        result[2] = A[2] * B[2] + A[4] * B[4] + A[5] * B[5]
+    return result
 
 def _polynomMulRepeat(A: Tensor, B: Tensor) -> (Tensor, Tensor):
-    assert A.size()[0] == B.size()[0]
-    A_n = A.size()[1]
-    B_n = B.size()[1]
-    return (A.repeat(1, B_n), B.repeat_interleave(A_n, 1))
-
+    if len(A.size()) == 2:
+        assert A.size()[0] == B.size()[0]
+        A_n = A.size()[1]
+        B_n = B.size()[1]
+        return (A.repeat(1, B_n), B.repeat_interleave(A_n, 1))
+    else:
+        A_n = A.size()[0]
+        B_n = B.size()[0]
+        return (A.repeat(B_n), B.repeat_interleave(A_n))
 
 def convolve(m1: Mixture, m2: Mixture) -> Mixture:
     assert m1.dimensions == m2.dimensions
-    nComponents = m1.number_of_components() * m2.number_of_components()
-    
-    
+    m1_f, m2_f = _polynomMulRepeat(m1.factors, m2.factors)
+    m1_p, m2_p = _polynomMulRepeat(m1.positions, m2.positions)
+    m1_c, m2_c = _polynomMulRepeat(m1.covariances, m2.covariances)
+
+    positions = m1_p + m2_p
+    covariances = m1_c + m2_c
+    detc1tc2 = _triangle_determinants(m1_c) * _triangle_determinants(m2_c)
+    detc1pc2 = _triangle_determinants(covariances)
+    factors = math.pow(math.sqrt(2 * math.pi), m1.dimensions) * m1_f * m2_f * torch.sqrt(detc1tc2) / torch.sqrt(detc1pc2)
+    return Mixture(factors, positions, covariances)

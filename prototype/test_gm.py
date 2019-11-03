@@ -53,7 +53,7 @@ class TestGM(unittest.TestCase):
                     np_result += factors[j] * np.exp(exponent)
                 self.assertAlmostEqual(np_result, values_gm[i].item())
 
-    def test_xAx(self):
+    def test_triangle_xAx(self):
         for dims in range(2, 4):
             (A, B, M) = _triangle_mat_data(dims)
 
@@ -72,15 +72,36 @@ class TestGM(unittest.TestCase):
                 self.assertAlmostEqual(np_result_b, xesBxes[i].item())
 
     
-    def test_det(self):
+    def test_triangle_det(self):
         for dims in range(2, 4):
             # do not use gm.gen* here!
             (A, B, M) = _triangle_mat_data(dims)
                 
-            dets = gm._determinants(M)
+            dets = gm._triangle_determinants(M)
             self.assertEqual(dets.size()[0], 2)
             self.assertAlmostEqual(npla.det(A), dets[0].item())
             self.assertAlmostEqual(npla.det(B), dets[1].item())
+
+        def test_triangle_matmul(self):
+            for dims in range(2, 4):
+                # do not use gm.gen* here!
+                (A, B, M) = _triangle_mat_data(dims)
+
+                result = gm._triangle_matmul(M[:, 0].view(-1, 1), M[:, 1].view(-1, 1))
+                self.assertEqual(result.size()[1], 1)
+                np_result = A @ B
+                if dims == 2:
+                    self.assertAlmostEqual(np_result[0, 0], result[0])
+                    self.assertAlmostEqual(np_result[0, 1], result[1])
+                    self.assertAlmostEqual(np_result[1, 1], result[2])
+                else:
+                    self.assertAlmostEqual(np_result[0, 0], result[0])
+                    self.assertAlmostEqual(np_result[0, 1], result[1])
+                    self.assertAlmostEqual(np_result[0, 2], result[2])
+                    self.assertAlmostEqual(np_result[1, 1], result[3])
+                    self.assertAlmostEqual(np_result[1, 2], result[4])
+                    self.assertAlmostEqual(np_result[2, 2], result[5])
+
     
     def test_polynomMulRepeat(self):
         A: torch.Tensor = torch.tensor([[1, 2, 3, 4],
@@ -113,10 +134,10 @@ class TestGM(unittest.TestCase):
 
     def test_gen_cov(self):
         covs = gm._gen_random_covs(100, 2)
-        self.assertTrue(torch.all(gm._determinants(covs) > 0))
+        self.assertTrue(torch.all(gm._triangle_determinants(covs) > 0))
 
         covs = gm._gen_random_covs(100, 3)
-        self.assertTrue(torch.all(gm._determinants(covs) > 0))
+        self.assertTrue(torch.all(gm._triangle_determinants(covs) > 0))
 
 if __name__ == '__main__':
     unittest.main()
