@@ -57,13 +57,12 @@ class Mixture:
         plt.show()
         return image
 
-#todo seems like the covs are corellated. when plotting, they are all tl-br and few or none are tr-bl
 def _gen_random_covs(n: int, dims: int) -> Tensor:
     assert dims == 2 or dims == 3
     retval = torch.zeros(3 if dims == 2 else 6, n)
     for i in range(n):
-        A = torch.rand(dims, dims) * 4
-        A = A @ A.t() + torch.eye(dims) * 0.04
+        A = torch.rand(dims, dims) * 2 - 1
+        A = A @ A.t() + torch.eye(dims) * 0.01
         if dims == 2:
             retval[0:2, i] = A[0, :]
             retval[2, i] = A[1, 1]
@@ -73,14 +72,20 @@ def _gen_random_covs(n: int, dims: int) -> Tensor:
             retval[5, i] = A[2, 2]
     return retval
 
-#todo: will need more work on seeding / distribution
-def generate_random_mixtures(n: int, dims: int) -> Mixture:
+
+# we will need to work on the initialisation. it's unlikely this simple one will work.
+def generate_random_mixtures(n: int, dims: int,
+                             pos_radius: float = 10,
+                             cov_radius: float = 10,
+                             factor_min: float = -1,
+                             factor_max: float = 1) -> Mixture:
     assert dims == 2 or dims == 3
+    assert factor_min < factor_max
     assert n > 0
 
-    factors = torch.rand(n) * 2 - 1
-    positions = torch.rand(dims, n) * 20 - 10
-    covs = _gen_random_covs(n, dims)
+    factors = torch.rand(n) * (factor_max - factor_min) + factor_min
+    positions = torch.rand(dims, n) * 2 * pos_radius - pos_radius
+    covs = _gen_random_covs(n, dims) * cov_radius
     return Mixture(factors, positions, covs)
 
 def _xAx_withTriangleA(A: Tensor, xes: Tensor) -> Tensor:
