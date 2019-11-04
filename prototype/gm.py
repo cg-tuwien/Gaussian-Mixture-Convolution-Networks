@@ -48,8 +48,8 @@ class Mixture:
             values += self.factors[i] * torch.exp(v)
         return values
             
-    def debug_show(self, width: int, height: int) -> Tensor:
-        xv, yv = torch.meshgrid([torch.arange(-22, 22, 0.1), torch.arange(-22, 22, 0.1)])
+    def debug_show(self, x_low: float = -22, y_low: float = -22, x_high: float = 22, y_high: float = 22, step: float = 0.1) -> Tensor:
+        xv, yv = torch.meshgrid([torch.arange(x_low, x_high, step), torch.arange(y_low, y_high, step)])
         xes = torch.cat((xv.reshape(1, -1), yv.reshape(1, -1)), 0)
         values = self.evaluate(xes)
         image = values.view(xv.size()[0], xv.size()[1]).numpy()
