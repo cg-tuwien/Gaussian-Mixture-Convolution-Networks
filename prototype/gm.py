@@ -36,20 +36,35 @@ class Mixture:
                              [m[1], m[3], m[4]],
                              [m[2], m[4], m[5]]])
     
+    def evaluate_component(self, xes: Tensor, component: int) -> Tensor:
+        v = xes - self.positions[:, component].view(-1, 1).expand_as(xes)
+        cov_tri = self.covariances[:, component]
+        cov = self._mat_from_tri(cov_tri)
+        cov_i = cov.cholesky().cholesky_inverse()
+        # v.t() @ cov_i @ v, but with more than one column vector
+        v = -0.5 * (v * (cov_i @ v)).sum(dim=0)
+        v = self.factors[component] * torch.exp(v)
+        return v
+    
     def evaluate(self, xes: Tensor) -> Tensor:
         values = torch.zeros(xes.size()[1])
         for i in range(self.number_of_components()):
-            v = xes - self.positions[:, i].view(-1, 1).expand_as(xes)
-            cov_tri = self.covariances[:, i]
-            cov = self._mat_from_tri(cov_tri)
-            cov_i = cov.cholesky().cholesky_inverse()
-            # v.t() @ cov_i @ v, but with more than one column vector
-            v = -0.5 * (v * (cov_i @ v)).sum(dim=0)
-            values += self.factors[i] * torch.exp(v)
+            values += self.evaluate_component(xes, i)
         return values
+    
+    def max_component(self, xes: Tensor) -> Tensor:
+        selected = torch.zeros(xes.size()[1], dtype=torch.int)
+        values = self.evaluate_component(xes, 0)
+        for i in range(self.number_of_components()):
+            component_values = self.evaluate_component(xes, i)
+            mask = component_values > values
+            selected[mask] = i
+            values[mask] = component_values[mask]
+        
+        return selected
             
     def debug_show(self, x_low: float = -22, y_low: float = -22, x_high: float = 22, y_high: float = 22, step: float = 0.1) -> Tensor:
-        xv, yv = torch.meshgrid([torch.arange(x_low, x_high, step), torch.arange(y_low, y_high, step)])
+        xv, yv = torch.meshgrid([torch.arange(x_low, x_high, step, dtype=torch.float), torch.arange(y_low, y_high, step, dtype=torch.float)])
         xes = torch.cat((xv.reshape(1, -1), yv.reshape(1, -1)), 0)
         values = self.evaluate(xes)
         image = values.view(xv.size()[0], xv.size()[1]).numpy()
@@ -72,6 +87,21 @@ def _gen_random_covs(n: int, dims: int) -> Tensor:
             retval[5, i] = A[2, 2]
     return retval
 
+def _gen_null_covs(n: int, dims: int) -> Tensor:
+    assert dims == 2 or dims == 3
+    return torch.zeros(3 if dims == 2 else 6, n)
+
+def _gen_identity_covs(n: int, dims: int) -> Tensor:
+    assert dims == 2 or dims == 3
+    covs = torch.zeros(3 if dims == 2 else 6, n)
+    if dims == 2:
+        covs[0, :] = 1
+        covs[2, :] = 1
+    else:
+        covs[0, :] = 1
+        covs[3, :] = 1
+        covs[5, :] = 1
+    return covs
 
 # we will need to work on the initialisation. it's unlikely this simple one will work.
 def generate_random_mixtures(n: int, dims: int,
@@ -86,7 +116,20 @@ def generate_random_mixtures(n: int, dims: int,
     factors = torch.rand(n) * (factor_max - factor_min) + factor_min
     positions = torch.rand(dims, n) * 2 * pos_radius - pos_radius
     covs = _gen_random_covs(n, dims) * cov_radius
+
     return Mixture(factors, positions, covs)
+
+# todo: this function is a mess
+def generate_null_mixture(n: int, dims: int) -> Mixture:
+    assert dims == 2 or dims == 3
+    assert n > 0
+
+    factors = torch.zeros(n)
+    positions = torch.zeros(dims, n)
+    covs = _gen_identity_covs(n, dims)
+    m = Mixture(factors, positions, covs)
+    m.covariances = _gen_null_covs(n, dims)
+    return m
 
 def _xAx_withTriangleA(A: Tensor, xes: Tensor) -> Tensor:
     assert (xes.size()[0] == 2 and A.size()[0] == 3) or (xes.size()[0] == 3 and A.size()[0] == 6)
