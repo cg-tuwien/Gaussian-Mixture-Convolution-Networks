@@ -41,7 +41,41 @@ def to_image(image: Tensor, n_components: int) -> Mixture:
     return mixture
 
 
-image:np.ndarray = plt.imread("/home/madam/cloud/Photos/_20160325_234800.JPG.jpg")
-image = image.mean(axis = 2) / 255
-mixture = to_image(torch.tensor(image), 100)
-mixture.debug_show(0 - 100, 0 - 100, image.shape[1] + 100, image.shape[0] + 100, 4)
+# https://en.wikipedia.org/w/index.php?title=Algorithms_for_calculating_variance&oldid=922055093#Online
+# https://stats.stackexchange.com/questions/61225/correct-equation-for-weighted-unbiased-sample-covariance
+# essentially, there are two weighting schemes. one of them adds up to 1, the other is int (repeats / frequency).
+# i don't know whether it's possible to handle float weights that don't add up to 1 in an online algorithm
+# this method returns the same as np.cov(xes, fweights=w)
+def my_funs(data: np.ndarray, weights: np.ndarray, dims: int):
+    w_sum = 0
+    mean = np.zeros(dims)
+    cov = np.zeros((dims, dims))
+    for i in range(data.shape[1]):
+        w = weights[i]
+        w_sum += w
+        x = data[:, i]
+        dx = x - mean
+        mean += w/w_sum * dx
+        dx.shape = (dims, 1)
+        # update scheme in wikipedia uses a different w_sum for x and y. the term (1-w/wsum) corrects that
+        cov += w * (1 - w/w_sum) * dx @ dx.T
+    cov /= (w_sum - 1)
+    
+    print(f"mean = {mean}, \ncov=\n{cov}")
+
+
+dims = 4
+xes = nprnd.rand(dims, 20)
+w = (nprnd.rand(20)*20).astype(int)
+#w = np.ones(20)
+print(f"numpy mean = {np.average(xes, axis=1, weights=w)}, \n numpy cov=\n{np.cov(xes, fweights=w)}")
+my_funs(xes, w, dims)
+
+
+#image: np.ndarray = plt.imread("/home/madam/cloud/Photos/toy_small.jpg")
+#image = image.mean(axis = 2) / 255
+#mixture = to_image(torch.tensor(image), 100)
+##mixture.debug_show(0 - 100, 0 - 100, image.shape[1] + 100, image.shape[0] + 100, 4)
+#mixture.debug_show(0, 0, image.shape[1], image.shape[0], 1)
+
+a = 3
