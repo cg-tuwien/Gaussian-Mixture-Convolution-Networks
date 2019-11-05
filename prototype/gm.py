@@ -5,6 +5,7 @@ from torch import Tensor
 import numpy as np
 import matplotlib.pyplot as plt
 
+import mat_tools
 
 class Mixture:
     def __init__(self, factors: Tensor, positions: Tensor, covariances: Tensor) -> None:
@@ -13,7 +14,7 @@ class Mixture:
         self.dimensions = positions.size()[0]
         assert nComponents == positions.size()[1]
         assert nComponents == covariances.size()[1]
-        assert torch.all(_triangle_determinants(covariances) > 0)
+        assert torch.all(mat_tools.triangle_det(covariances) > 0)
         if self.dimensions == 2:
             # upper triangle of a 2x2 matrix has 3 elements
             assert covariances.size()[0] == 3
@@ -53,7 +54,7 @@ class Mixture:
         return values
     
     def max_component(self, xes: Tensor) -> Tensor:
-        selected = torch.zeros(xes.size()[1], dtype=torch.int)
+        selected = torch.zeros(xes.size()[1], dtype=torch.long)
         values = self.evaluate_component(xes, 0)
         for i in range(self.number_of_components()):
             component_values = self.evaluate_component(xes, i)
@@ -72,36 +73,7 @@ class Mixture:
         plt.show()
         return image
 
-def _gen_random_covs(n: int, dims: int) -> Tensor:
-    assert dims == 2 or dims == 3
-    retval = torch.zeros(3 if dims == 2 else 6, n)
-    for i in range(n):
-        A = torch.rand(dims, dims) * 2 - 1
-        A = A @ A.t() + torch.eye(dims) * 0.01
-        if dims == 2:
-            retval[0:2, i] = A[0, :]
-            retval[2, i] = A[1, 1]
-        else:
-            retval[0:3, i] = A[0, :]
-            retval[3:5, i] = A[1, 1:]
-            retval[5, i] = A[2, 2]
-    return retval
 
-def _gen_null_covs(n: int, dims: int) -> Tensor:
-    assert dims == 2 or dims == 3
-    return torch.zeros(3 if dims == 2 else 6, n)
-
-def _gen_identity_covs(n: int, dims: int) -> Tensor:
-    assert dims == 2 or dims == 3
-    covs = torch.zeros(3 if dims == 2 else 6, n)
-    if dims == 2:
-        covs[0, :] = 1
-        covs[2, :] = 1
-    else:
-        covs[0, :] = 1
-        covs[3, :] = 1
-        covs[5, :] = 1
-    return covs
 
 # we will need to work on the initialisation. it's unlikely this simple one will work.
 def generate_random_mixtures(n: int, dims: int,
@@ -115,60 +87,23 @@ def generate_random_mixtures(n: int, dims: int,
 
     factors = torch.rand(n) * (factor_max - factor_min) + factor_min
     positions = torch.rand(dims, n) * 2 * pos_radius - pos_radius
-    covs = _gen_random_covs(n, dims) * cov_radius
+    covs = mat_tools.gen_random_positive_definite_triangle(n, dims) * cov_radius
 
     return Mixture(factors, positions, covs)
+
 
 # todo: this function is a mess
 def generate_null_mixture(n: int, dims: int) -> Mixture:
     assert dims == 2 or dims == 3
     assert n > 0
 
-    factors = torch.zeros(n)
-    positions = torch.zeros(dims, n)
-    covs = _gen_identity_covs(n, dims)
+    factors = torch.zeros(n, dtype=torch.float)
+    positions = torch.zeros(dims, n, dtype=torch.float)
+    covs = mat_tools.gen_identity_triangle(n, dims)
     m = Mixture(factors, positions, covs)
-    m.covariances = _gen_null_covs(n, dims)
+    m.covariances = mat_tools.gen_null_triangle(n, dims)
     return m
 
-def _xAx_withTriangleA(A: Tensor, xes: Tensor) -> Tensor:
-    assert (xes.size()[0] == 2 and A.size()[0] == 3) or (xes.size()[0] == 3 and A.size()[0] == 6)
-    if xes.size()[0] == 2:
-        return A[0] * xes[0] * xes[0] + 2 * A[1] * xes[0] * xes[1] + A[2] * xes[1] * xes[1]
-    return (A[0] * xes[0] * xes[0]
-            + 2 * A[1] * xes[0] * xes[1]
-            + 2 * A[2] * xes[0] * xes[2]
-            + A[3] * xes[1] * xes[1]
-            + 2 * A[4] * xes[1] * xes[2]
-            + A[5] * xes[2] * xes[2])
-
-
-def _triangle_determinants(A: Tensor) -> Tensor:
-    n_triangle_elements = A.size()[0]
-    assert n_triangle_elements == 3 or n_triangle_elements == 6
-    if n_triangle_elements == 3:
-        return A[0] * A[2] - A[1] * A[1]
-    return A[0]*A[3]*A[5] + 2 * A[1] * A[4] * A[2] - A[2] * A[2] * A[3] - A[1] * A[1] * A[5] - A[0] * A[4] * A[4]
-
-def _triangle_matmul(A: Tensor, B: Tensor) -> Tensor:
-    n_triangle_elements = A.size()[0]
-    assert n_triangle_elements == 3 or n_triangle_elements == 6
-    assert  A.size() == B.size()
-    result = torch.empty(n_triangle_elements, A.size()[1])
-    if n_triangle_elements == 3:
-        result[0] = A[0] * B[0] + A[1] * B[1]
-        result[1] = A[0] * B[1] + A[1] * B[2]
-        result[2] = A[1] * B[1] + A[2] * B[2]
-    else:
-        result[0] = A[0] * B[0] + A[1] * B[1] + A[2] * B[2]
-        result[1] = A[0] * B[1] + A[1] * B[3] + A[2] * B[4]
-        result[2] = A[0] * B[2] + A[1] * B[4] + A[2] * B[5]
-
-        result[2] = A[1] * B[1] + A[3] * B[3] + A[4] * B[4]
-        result[2] = A[1] * B[2] + A[3] * B[4] + A[4] * B[5]
-
-        result[2] = A[2] * B[2] + A[4] * B[4] + A[5] * B[5]
-    return result
 
 def _polynomMulRepeat(A: Tensor, B: Tensor) -> (Tensor, Tensor):
     if len(A.size()) == 2:
@@ -181,6 +116,7 @@ def _polynomMulRepeat(A: Tensor, B: Tensor) -> (Tensor, Tensor):
         B_n = B.size()[0]
         return (A.repeat(B_n), B.repeat_interleave(A_n))
 
+
 def convolve(m1: Mixture, m2: Mixture) -> Mixture:
     assert m1.dimensions == m2.dimensions
     m1_f, m2_f = _polynomMulRepeat(m1.factors, m2.factors)
@@ -189,7 +125,7 @@ def convolve(m1: Mixture, m2: Mixture) -> Mixture:
 
     positions = m1_p + m2_p
     covariances = m1_c + m2_c
-    detc1tc2 = _triangle_determinants(m1_c) * _triangle_determinants(m2_c)
-    detc1pc2 = _triangle_determinants(covariances)
+    detc1tc2 = mat_tools.triangle_det(m1_c) * mat_tools.triangle_det(m2_c)
+    detc1pc2 = mat_tools.triangle_det(covariances)
     factors = math.pow(math.sqrt(2 * math.pi), m1.dimensions) * m1_f * m2_f * torch.sqrt(detc1tc2) / torch.sqrt(detc1pc2)
     return Mixture(factors, positions, covariances)
