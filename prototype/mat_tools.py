@@ -86,8 +86,75 @@ def triangle_matmul(A: Tensor, B: Tensor) -> Tensor:
         result[1] = A[0] * B[1] + A[1] * B[3] + A[2] * B[4]
         result[2] = A[0] * B[2] + A[1] * B[4] + A[2] * B[5]
 
-        result[2] = A[1] * B[1] + A[3] * B[3] + A[4] * B[4]
-        result[2] = A[1] * B[2] + A[3] * B[4] + A[4] * B[5]
+        result[3] = A[1] * B[1] + A[3] * B[3] + A[4] * B[4]
+        result[4] = A[1] * B[2] + A[3] * B[4] + A[4] * B[5]
 
-        result[2] = A[2] * B[2] + A[4] * B[4] + A[5] * B[5]
+        result[5] = A[2] * B[2] + A[4] * B[4] + A[5] * B[5]
     return result
+
+
+def triangle_invert(tris: Tensor) -> Tensor:
+    mats = triangle_to_normal(tris)
+    for i in range(mats.size()[2]):
+        mats[:, :, i] = mats[:, :, i].cholesky().cholesky_inverse()
+
+    return normal_to_triangle(mats)
+
+
+# takes triangle_vals x n, returns rows x columns x n
+def triangle_to_normal(A: Tensor) -> Tensor:
+    a_single_one = False
+    if len(A.size()) == 1:
+        a_single_one = True
+        A = A.view(-1, 1)
+    dims = int(A.size()[0] // 3 + 1)
+    O = torch.empty(dims, dims, A.size()[1], device=A.device)
+    if dims == 2:
+        O[0, 0, :] = A[0, :]
+        O[0, 1, :] = A[1, :]
+        O[1, 0, :] = A[1, :]
+        O[1, 1, :] = A[2, :]
+    elif dims == 3:
+        O[0, 0, :] = A[0, :]
+        O[0, 1, :] = A[1, :]
+        O[0, 2, :] = A[2, :]
+        O[1, 0, :] = A[1, :]
+        O[1, 1, :] = A[3, :]
+        O[1, 2, :] = A[4, :]
+        O[2, 0, :] = A[2, :]
+        O[2, 1, :] = A[4, :]
+        O[2, 2, :] = A[5, :]
+    else:
+        assert False
+    if a_single_one:
+        return O.view(dims, dims)
+    else:
+        return O
+
+# takes rows x columns x n, returns triangle_vals x n
+def normal_to_triangle(A: Tensor) -> Tensor:
+    dims = A.size()[0]
+    a_single_one = False
+    if len(A.size()) == 2:
+        a_single_one = True
+        A = A.view(dims, dims, 1)
+
+    O = torch.empty(int((dims-1) * 3), A.size()[2], device=A.device)
+    if dims == 2:
+        O[0, :] = A[0, 0, :]
+        O[1, :] = A[0, 1, :]
+        O[2, :] = A[1, 1, :]
+    elif dims == 3:
+        O[0, :] = A[0, 0, :]
+        O[1, :] = A[0, 1, :]
+        O[2, :] = A[0, 2, :]
+        O[3, :] = A[1, 1, :]
+        O[4, :] = A[1, 2, :]
+        O[5, :] = A[2, 2, :]
+    else:
+        assert False
+    if a_single_one:
+        return O[:]
+    else:
+        return O
+

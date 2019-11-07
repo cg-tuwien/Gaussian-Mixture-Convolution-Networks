@@ -25,35 +25,40 @@ class Mixture:
         self.factors = factors
         self.positions = positions
         self.covariances = covariances
+        self.inverted_covariances = mat_tools.triangle_invert(covariances)
 
     def number_of_components(self):
         return self.factors.size()[0]
 
-    def _mat_from_tri(self, m: Tensor) -> Tensor:
-        if m.size()[0] == 3:
-            return torch.tensor([[m[0], m[1]],
-                                 [m[1], m[2]]])
-        return torch.tensor([[m[0], m[1], m[2]],
-                             [m[1], m[3], m[4]],
-                             [m[2], m[4], m[5]]])
-    
     def evaluate_component(self, xes: Tensor, component: int) -> Tensor:
         v = xes - self.positions[:, component].view(-1, 1).expand_as(xes)
-        cov_tri = self.covariances[:, component]
-        cov = self._mat_from_tri(cov_tri)
-        cov_i = cov.cholesky().cholesky_inverse()
+        cov_i = mat_tools.triangle_to_normal(self.inverted_covariances[:, component])
         # v.t() @ cov_i @ v, but with more than one column vector
         v = -0.5 * (v * (cov_i @ v)).sum(dim=0)
         v = self.factors[component] * torch.exp(v)
         return v
-    
-    def evaluate(self, xes: Tensor) -> Tensor:
-        values = torch.zeros(xes.size()[1])
+
+    def evaluate_few_xes_component_wise(self, xes: Tensor) -> Tensor:
+        n_xes = xes.size()[1]
+        # xes in cols, comps in rows
+        values = torch.zeros(self.number_of_components(), n_xes, dtype=torch.float32)
+        for i in range(n_xes):
+            vs = xes[:, i].view(-1, 1).expand_as(self.positions) - self.positions
+            vs = -0.5 * mat_tools.triangle_xAx(self.inverted_covariances, vs)
+            vs = self.factors * torch.exp(vs)
+            values[:, i] = vs
+        return values
+
+    def evaluate_few_xes(self, xes: Tensor) -> Tensor:
+        return self.evaluate_few_xes_component_wise(xes).sum(0)
+
+    def evaluate_many_xes(self, xes: Tensor) -> Tensor:
+        values = torch.zeros(xes.size()[1], dtype=torch.float32, device=xes.device)
         for i in range(self.number_of_components()):
             values += self.evaluate_component(xes, i)
         return values
     
-    def max_component(self, xes: Tensor) -> Tensor:
+    def max_component_many_xes(self, xes: Tensor) -> Tensor:
         selected = torch.zeros(xes.size()[1], dtype=torch.long)
         values = self.evaluate_component(xes, 0)
         for i in range(self.number_of_components()):
@@ -65,14 +70,29 @@ class Mixture:
         return selected
             
     def debug_show(self, x_low: float = -22, y_low: float = -22, x_high: float = 22, y_high: float = 22, step: float = 0.1) -> Tensor:
-        xv, yv = torch.meshgrid([torch.arange(x_low, x_high, step, dtype=torch.float), torch.arange(y_low, y_high, step, dtype=torch.float)])
+        xv, yv = torch.meshgrid([torch.arange(x_low, x_high, step, dtype=torch.float, device=self.factors.device),
+                                 torch.arange(y_low, y_high, step, dtype=torch.float, device=self.factors.device)])
         xes = torch.cat((xv.reshape(1, -1), yv.reshape(1, -1)), 0)
-        values = self.evaluate(xes)
-        image = values.view(xv.size()[0], xv.size()[1]).numpy()
+        values = self.evaluate_many_xes(xes).detach()
+        image = values.view(xv.size()[0], xv.size()[1]).cpu().numpy()
         plt.imshow(image)
         plt.show()
         return image
 
+    def show_after_activation(self, x_low: float = -22, y_low: float = -22, x_high: float = 22, y_high: float = 22, step: float = 0.1) -> Tensor:
+        xv, yv = torch.meshgrid([torch.arange(x_low, x_high, step, dtype=torch.float, device=self.factors.device),
+                                 torch.arange(y_low, y_high, step, dtype=torch.float, device=self.factors.device)])
+        xes = torch.cat((xv.reshape(1, -1), yv.reshape(1, -1)), 0)
+        values = self.evaluate_many_xes(xes)
+        image = values.view(xv.size()[0], xv.size()[1]).detach().cpu().numpy()
+        image -= 20
+        image[image < 0] = 0
+        plt.imshow(image)
+        plt.show()
+        return image
+
+    def cuda(self):
+        return Mixture(self.factors.cuda(), self.positions.cuda(), self.covariances.cuda())
 
 
 # we will need to work on the initialisation. it's unlikely this simple one will work.
@@ -107,7 +127,6 @@ def generate_null_mixture(n: int, dims: int) -> Mixture:
 
 def _polynomMulRepeat(A: Tensor, B: Tensor) -> (Tensor, Tensor):
     if len(A.size()) == 2:
-        assert A.size()[0] == B.size()[0]
         A_n = A.size()[1]
         B_n = B.size()[1]
         return (A.repeat(1, B_n), B.repeat_interleave(A_n, 1))

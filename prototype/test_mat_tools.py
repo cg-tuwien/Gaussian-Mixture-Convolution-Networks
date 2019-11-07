@@ -1,5 +1,5 @@
 import unittest
-
+import timeit
 import torch
 import numpy as np
 import numpy.linalg as npla
@@ -30,6 +30,21 @@ def _triangle_mat_data(dims: int) -> (np.array, np.array, Tensor):
 
 
 class MatToolsTest(unittest.TestCase):
+    def test_triangle_conv(self):
+        for dims in range(2, 4):
+            Atri = mat_tools.gen_random_positive_definite_triangle(20, dims)
+            Amats = mat_tools.triangle_to_normal(Atri)
+            Atri_p = mat_tools.normal_to_triangle(Amats)
+            self.assertTrue(torch.all(Atri == Atri_p))
+
+            Bmats = torch.rand((dims, dims, 20)) * 2 - 1
+            Bmats += Bmats.transpose(0, 1).contiguous()
+            # Bmats is symmetric now, but not necessarily positive definite
+            Btri = mat_tools.normal_to_triangle(Bmats)
+            Bmats_p = mat_tools.triangle_to_normal(Btri)
+            self.assertTrue(torch.all(Bmats == Bmats_p))
+
+
     def test_triangle_xAx(self):
         for dims in range(2, 4):
             (A, B, M) = _triangle_mat_data(dims)
@@ -48,15 +63,50 @@ class MatToolsTest(unittest.TestCase):
                 np_result_b = xes[:, i] @ B @ xes[:, i]
                 self.assertAlmostEqual(np_result_b, xesBxes[i].item())
 
+    def test_triangle_xAx2(self):
+        n_tests = 50
+        for dims in range(2, 4):
+            M = mat_tools.gen_random_positive_definite_triangle(n_tests, dims)
+            M_mats = mat_tools.triangle_to_normal(M)
+
+            xes = nprnd.rand(dims)
+            xesMxes = mat_tools.triangle_xAx(M, torch.tensor(xes))
+            self.assertEqual(n_tests, xesMxes.size()[0])
+
+            for i in range(M.size()[1]):
+                np_result = xes @ M_mats[:, :, i].numpy() @ xes
+                self.assertAlmostEqual(np_result, xesMxes[i].item(), 5)
+
     def test_triangle_det(self):
         for dims in range(2, 4):
-            # do not use gm.gen* here!
+            # do not use mat_tools.gen* here!
             (A, B, M) = _triangle_mat_data(dims)
 
             dets = mat_tools.triangle_det(M)
             self.assertEqual(dets.size()[0], 2)
             self.assertAlmostEqual(npla.det(A), dets[0].item())
             self.assertAlmostEqual(npla.det(B), dets[1].item())
+
+    def test_triangle_invert(self):
+        for dims in range(2, 4):
+            a_matri = mat_tools.gen_random_positive_definite_triangle(20, dims)
+
+            ainv_matri = mat_tools.triangle_invert(a_matri)
+
+            ainv_mat = mat_tools.triangle_to_normal(ainv_matri)
+            a_mat = mat_tools.triangle_to_normal(a_matri)
+            for i in range(a_mat.size()[2]):
+                a = a_mat[:, :, i].numpy()
+                good_inv = npla.inv(a)
+                quest_inv = ainv_mat[:, :, i].numpy()
+                self.assertAlmostEqual(((good_inv - quest_inv)**2).sum(), 0, 5)
+
+            for n_components in (100, 1000, 10000):
+                b_matri = mat_tools.gen_random_positive_definite_triangle(n_components, dims)
+
+                def bench():
+                    mat_tools.triangle_invert(b_matri)
+                print(f"benchmark_triangle_invert ({dims} dims, {n_components} components): {timeit.timeit(bench, number = 5) / 5}")
 
     def test_triangle_matmul(self):
         for dims in range(2, 4):
@@ -78,6 +128,12 @@ class MatToolsTest(unittest.TestCase):
                 self.assertAlmostEqual(np_result[1, 2], result[4].item())
                 self.assertAlmostEqual(np_result[2, 2], result[5].item())
 
+    def test_gen_random_pd_triangle(self):
+        covs = mat_tools.gen_random_positive_definite_triangle(100, 2)
+        self.assertTrue(torch.all(mat_tools.triangle_det(covs) > 0))
+
+        covs = mat_tools.gen_random_positive_definite_triangle(100, 3)
+        self.assertTrue(torch.all(mat_tools.triangle_det(covs) > 0))
 
 if __name__ == '__main__':
     unittest.main()

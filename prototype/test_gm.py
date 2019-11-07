@@ -1,6 +1,8 @@
 import unittest
 import torch
 import numpy as np
+import numpy.random as nprnd
+import numpy.linalg as npla
 
 import gm
 
@@ -22,26 +24,27 @@ def _triangle_mat_data(dims: int) -> (np.array, np.array, Tensor):
 
     M = np.array([A[np.triu_indices(dims)],
                   B[np.triu_indices(dims)]]).transpose()
-    M = torch.tensor(M)
+    M = torch.tensor(M, dtype=torch.float32)
 
     return A, B, M
 
 
 class TestGM(unittest.TestCase):
     def test_gm_eval(self):
-        for dims in range(2, 4):
+        n_eval_positions = 50
+        for dims in range(2, 3):
             factors = nprnd.rand(2) * 2 - 1.0
             positions = nprnd.rand(dims, 2) * 10 - 5.0
             (A, B, covs_torch) = _triangle_mat_data(dims)
             covs = (A, B)
 
-            mixture = gm.Mixture(torch.tensor(factors), torch.tensor(positions), covs_torch)
+            mixture = gm.Mixture(torch.tensor(factors, dtype=torch.float32), torch.tensor(positions, dtype=torch.float32), covs_torch)
 
-            np_result = 0
-            eval_positions = nprnd.rand(dims, 20)
-            values_gm = mixture.evaluate(torch.tensor(eval_positions)).numpy()
+            eval_positions = nprnd.rand(dims, n_eval_positions)
+            values_gm = mixture.evaluate_many_xes(torch.tensor(eval_positions, dtype=torch.float32)).numpy()
+            values_gm2 = mixture.evaluate_few_xes(torch.tensor(eval_positions, dtype=torch.float32)).numpy()
 
-            for i in range(20):
+            for i in range(n_eval_positions):
                 np_result = 0
                 for j in range(0, 2):
                     x = eval_positions[:, i]
@@ -50,7 +53,8 @@ class TestGM(unittest.TestCase):
                     cov_i = npla.inv(covs[j])
                     exponent = -0.5 * (xmp @ cov_i @ xmp)
                     np_result += factors[j] * np.exp(exponent)
-                self.assertAlmostEqual(np_result, values_gm[i].item())
+                self.assertAlmostEqual(np_result, values_gm[i].item(), 5)
+                self.assertAlmostEqual(np_result, values_gm2[i].item(), 5)
 
     def test_polynomMulRepeat(self):
         A: torch.Tensor = torch.tensor([[1, 2, 3, 4],
@@ -80,13 +84,6 @@ class TestGM(unittest.TestCase):
         sorted = AtimesB.sort().values
         self.assertAlmostEqual(torch.sum(torch.abs(sorted[0]-sorted[2]), 0).item(), 0)
         self.assertAlmostEqual(torch.sum(torch.abs(sorted[3]-sorted[2]), 0).item(), 0)
-
-    def test_gen_cov(self):
-        covs = gm._gen_random_covs(100, 2)
-        self.assertTrue(torch.all(gm._triangle_determinants(covs) > 0))
-
-        covs = gm._gen_random_covs(100, 3)
-        self.assertTrue(torch.all(gm._triangle_determinants(covs) > 0))
 
 
 if __name__ == '__main__':
