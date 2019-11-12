@@ -3,12 +3,12 @@ import torch
 from torch import Tensor
 
 
-def gen_random_positive_definite_triangle(n: int, dims: int) -> Tensor:
+def gen_random_positive_definite_triangle(n: int, dims: int, device: torch.device = 'cpu') -> Tensor:
     assert dims == 2 or dims == 3
-    retval = torch.zeros(3 if dims == 2 else 6, n)
+    retval = torch.zeros(3 if dims == 2 else 6, n, dtype=torch.float32, device=device)
     for i in range(n):
-        A = torch.rand(dims, dims) * 2 - 1
-        A = A @ A.t() + torch.eye(dims) * 0.01
+        A = torch.rand(dims, dims, dtype=torch.float32, device=device) * 2 - 1
+        A = A @ A.t() + torch.eye(dims, dtype=torch.float32, device=device) * 0.01
         if dims == 2:
             retval[0:2, i] = A[0, :]
             retval[2, i] = A[1, 1]
@@ -19,14 +19,14 @@ def gen_random_positive_definite_triangle(n: int, dims: int) -> Tensor:
     return retval
 
 
-def gen_null_triangle(n: int, dims: int) -> Tensor:
+def gen_null_triangle(n: int, dims: int, device: torch.device = 'cpu') -> Tensor:
     assert dims == 2 or dims == 3
-    return torch.zeros(3 if dims == 2 else 6, n, dtype=torch.float)
+    return torch.zeros(3 if dims == 2 else 6, n, dtype=torch.float, device=device)
 
 
-def gen_identity_triangle(n: int, dims: int) -> Tensor:
+def gen_identity_triangle(n: int, dims: int, device: torch.device = 'cpu') -> Tensor:
     assert dims == 2 or dims == 3
-    covs = torch.zeros(3 if dims == 2 else 6, n, dtype=torch.float)
+    covs = torch.zeros(3 if dims == 2 else 6, n, dtype=torch.float, device=device)
     if dims == 2:
         covs[0, :] = 1
         covs[2, :] = 1
@@ -41,20 +41,22 @@ def triangle_outer_product(a: Tensor) -> Tensor:
     if a.numel() == 2:
         return torch.tensor([a[0] * a[0],
                              a[0] * a[1],
-                             a[1] * a[1]])
+                             a[1] * a[1]], dtype=torch.float32, device=a.device)
     else:
         return torch.tensor([a[0] * a[0],
                              a[0] * a[1],
                              a[0] * a[2],
                              a[1] * a[1],
                              a[1] * a[2],
-                             a[2] * a[2]]);
+                             a[2] * a[2]], dtype=torch.float32, device=a.device);
 
 
 def triangle_xAx(A: Tensor, xes: Tensor) -> Tensor:
     assert (xes.size()[0] == 2 and A.size()[0] == 3) or (xes.size()[0] == 3 and A.size()[0] == 6)
     if xes.size()[0] == 2:
-        return A[0] * xes[0] * xes[0] + 2 * A[1] * xes[0] * xes[1] + A[2] * xes[1] * xes[1]
+        xes_squared = xes ** 2
+        xes_cross = xes[0] * xes[1]
+        return A[0] * xes_squared[0] + (2 * A[1]) * xes_cross + A[2] * xes_squared[1]
     return (A[0] * xes[0] * xes[0]
             + 2 * A[1] * xes[0] * xes[1]
             + 2 * A[2] * xes[0] * xes[2]
@@ -65,7 +67,7 @@ def triangle_xAx(A: Tensor, xes: Tensor) -> Tensor:
 
 def triangle_det(A: Tensor) -> Tensor:
     n_triangle_elements = A.size()[0]
-    assert n_triangle_elements == 3 or n_triangle_elements == 6
+    # assert n_triangle_elements == 3 or n_triangle_elements == 6
     if n_triangle_elements == 3:
         return A[0] * A[2] - A[1] * A[1]
     return A[0] * A[3] * A[5] + 2 * A[1] * A[4] * A[2] - A[2] * A[2] * A[3] - A[1] * A[1] * A[5] - A[0] * A[4] * A[

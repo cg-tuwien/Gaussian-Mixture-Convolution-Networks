@@ -1,6 +1,7 @@
 import math
 
 import torch
+from pygments.lexer import include
 from torch import Tensor
 import numpy as np
 import matplotlib.pyplot as plt
@@ -27,15 +28,27 @@ class Mixture:
         self.covariances = covariances
         self.inverted_covariances = mat_tools.triangle_invert(covariances)
 
+    def device(self):
+        return self.factors.device
+
     def number_of_components(self):
         return self.factors.size()[0]
 
-    def evaluate_component(self, xes: Tensor, component: int) -> Tensor:
-        v = xes - self.positions[:, component].view(-1, 1).expand_as(xes)
-        cov_i = mat_tools.triangle_to_normal(self.inverted_covariances[:, component])
-        # v.t() @ cov_i @ v, but with more than one column vector
-        v = -0.5 * (v * (cov_i @ v)).sum(dim=0)
-        v = self.factors[component] * torch.exp(v)
+    def evaluate_component_many_xes(self, xes: Tensor, component: int) -> Tensor:
+        factors = self.factors[component]#.detach()
+        position = self.positions[:, component].view(-1, 1)
+        cov_i_trimat = self.inverted_covariances[:, component]
+        assert (mat_tools.triangle_det(cov_i_trimat) > 0).all()
+        v = xes - position.expand_as(xes)
+        # cov_i = mat_tools.triangle_to_normal(cov_i_trimat)
+
+        ## v.t() @ cov_i @ v, but with more than one column vector
+        # v = -0.5 * (v * (cov_i @ v)).sum(dim=0)
+        v = -0.5 * mat_tools.triangle_xAx(cov_i_trimat, v)
+
+        v = factors * torch.exp(v)
+        assert not torch.isnan(v).any()
+        assert not torch.isinf(v).any()
         return v
 
     def evaluate_few_xes_component_wise(self, xes: Tensor) -> Tensor:
@@ -55,14 +68,14 @@ class Mixture:
     def evaluate_many_xes(self, xes: Tensor) -> Tensor:
         values = torch.zeros(xes.size()[1], dtype=torch.float32, device=xes.device)
         for i in range(self.number_of_components()):
-            values += self.evaluate_component(xes, i)
+            values += self.evaluate_component_many_xes(xes, i)
         return values
     
     def max_component_many_xes(self, xes: Tensor) -> Tensor:
         selected = torch.zeros(xes.size()[1], dtype=torch.long)
-        values = self.evaluate_component(xes, 0)
+        values = self.evaluate_component_many_xes(xes, 0)
         for i in range(self.number_of_components()):
-            component_values = self.evaluate_component(xes, i)
+            component_values = self.evaluate_component_many_xes(xes, i)
             mask = component_values > values
             selected[mask] = i
             values[mask] = component_values[mask]
@@ -85,7 +98,7 @@ class Mixture:
         xes = torch.cat((xv.reshape(1, -1), yv.reshape(1, -1)), 0)
         values = self.evaluate_many_xes(xes)
         image = values.view(xv.size()[0], xv.size()[1]).detach().cpu().numpy()
-        image -= 20
+        image -= 0.2
         image[image < 0] = 0
         plt.imshow(image)
         plt.show()
@@ -94,34 +107,44 @@ class Mixture:
     def cuda(self):
         return Mixture(self.factors.cuda(), self.positions.cuda(), self.covariances.cuda())
 
+    def cpu(self):
+        return Mixture(self.factors.cpu(), self.positions.cpu(), self.covariances.cpu())
+
+    def detach(self):
+        self.factors = self.factors.detach()
+        self.positions = self.positions.detach()
+        self.covariances = self.covariances.detach()
+        self.inverted_covariances = self.inverted_covariances.detach()
+
 
 # we will need to work on the initialisation. it's unlikely this simple one will work.
 def generate_random_mixtures(n: int, dims: int,
                              pos_radius: float = 10,
                              cov_radius: float = 10,
                              factor_min: float = -1,
-                             factor_max: float = 1) -> Mixture:
+                             factor_max: float = 1,
+                             device: torch.device = 'cpu') -> Mixture:
     assert dims == 2 or dims == 3
     assert factor_min < factor_max
     assert n > 0
 
-    factors = torch.rand(n) * (factor_max - factor_min) + factor_min
-    positions = torch.rand(dims, n) * 2 * pos_radius - pos_radius
-    covs = mat_tools.gen_random_positive_definite_triangle(n, dims) * cov_radius
+    factors = torch.rand(n, dtype=torch.float32, device=device) * (factor_max - factor_min) + factor_min
+    positions = torch.rand(dims, n, dtype=torch.float32, device=device) * 2 * pos_radius - pos_radius
+    covs = mat_tools.gen_random_positive_definite_triangle(n, dims, device=device) * cov_radius
 
     return Mixture(factors, positions, covs)
 
 
 # todo: this function is a mess
-def generate_null_mixture(n: int, dims: int) -> Mixture:
+def generate_null_mixture(n: int, dims: int, device: torch.device = 'cpu') -> Mixture:
     assert dims == 2 or dims == 3
     assert n > 0
 
-    factors = torch.zeros(n, dtype=torch.float)
-    positions = torch.zeros(dims, n, dtype=torch.float)
-    covs = mat_tools.gen_identity_triangle(n, dims)
+    factors = torch.zeros(n, dtype=torch.float, device=device)
+    positions = torch.zeros(dims, n, dtype=torch.float, device=device)
+    covs = mat_tools.gen_identity_triangle(n, dims, device=device)
     m = Mixture(factors, positions, covs)
-    m.covariances = mat_tools.gen_null_triangle(n, dims)
+    m.covariances = mat_tools.gen_null_triangle(n, dims, device=device)
     return m
 
 
