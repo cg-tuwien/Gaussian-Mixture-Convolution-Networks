@@ -218,7 +218,7 @@ def test():
     image: np.ndarray = plt.imread("/home/madam/cloud/Photos/fire_small.jpg")
     image = image.mean(axis=2)
     # m1 = em_algorithm(torch.tensor(image, dtype=torch.float32), n_components=2500, n_iterations=5, device='cpu')
-    m1 = ad_algorithm(torch.tensor(image, dtype=torch.float32), n_components=2500, n_iterations=1500, device='cuda')
+    m1 = ad_algorithm(torch.tensor(image, dtype=torch.float32), n_components=800, n_iterations=1500, device='cuda')
     m1.save("fire_small_mixture")
 
     m1 = m1.cpu()

@@ -40,7 +40,6 @@ class Mixture:
         factors = self.factors[component]
         position = self.positions[:, component].view(-1, 1)
         cov_i_trimat = self.inverted_covariances[:, component]
-        assert (mat_tools.triangle_det(cov_i_trimat) > 0).all()
         v = xes - position.expand_as(xes)
         # cov_i = mat_tools.triangle_to_normal(cov_i_trimat)
 
@@ -68,8 +67,10 @@ class Mixture:
         return self.evaluate_few_xes_component_wise(xes).sum(0)
 
     def evaluate_many_xes(self, xes: Tensor) -> Tensor:
+        assert (mat_tools.triangle_det(self.inverted_covariances) > 0).all()
         values = torch.zeros(xes.size()[1], dtype=torch.float32, device=xes.device)
         for i in range(self.number_of_components()):
+            # todo: adding many components like this probably makes the gradient graph and therefore memory explode
             values += self.evaluate_component_many_xes(xes, i)
         return values
     
@@ -128,12 +129,13 @@ class Mixture:
 
 class ConvolutionLayer:
     def __init__(self, mixture: Mixture, bias: Tensor):
+        assert bias > 0
         self.mixture = mixture
         self.bias = bias
 
     def evaluate_few_xes(self, positions: Tensor):
-        values = self.evaluate_few_xes(positions) - self.bias
-        return torch.max(values, torch.zeros(dtype=torch.float32, device=self.mixture.device()))
+        values = self.mixture.evaluate_few_xes(positions) - self.bias
+        return torch.max(values, torch.tensor([0.0001], dtype=torch.float32, device=self.mixture.device()))
 
     def debug_show(self, x_low: float = -22, y_low: float = -22, x_high: float = 22, y_high: float = 22, step: float = 0.1) -> Tensor:
         m = self.mixture.detach()
@@ -147,6 +149,9 @@ class ConvolutionLayer:
         plt.imshow(image)
         plt.show()
         return image
+
+    def device(self):
+        return self.mixture.device()
 
 # we will need to work on the initialisation. it's unlikely this simple one will work.
 def generate_random_mixtures(n: int, dims: int,
