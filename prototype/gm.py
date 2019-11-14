@@ -8,7 +8,9 @@ import matplotlib.pyplot as plt
 
 import mat_tools
 
+
 class Mixture:
+    # maybe it's faster if we put everything into one matrix (data more local).
     def __init__(self, factors: Tensor, positions: Tensor, covariances: Tensor) -> None:
         assert len(factors.size()) == 1
         nComponents = factors.size()[0]
@@ -35,7 +37,7 @@ class Mixture:
         return self.factors.size()[0]
 
     def evaluate_component_many_xes(self, xes: Tensor, component: int) -> Tensor:
-        factors = self.factors[component]#.detach()
+        factors = self.factors[component]
         position = self.positions[:, component].view(-1, 1)
         cov_i_trimat = self.inverted_covariances[:, component]
         assert (mat_tools.triangle_det(cov_i_trimat) > 0).all()
@@ -92,18 +94,6 @@ class Mixture:
         plt.show()
         return image
 
-    def show_after_activation(self, x_low: float = -22, y_low: float = -22, x_high: float = 22, y_high: float = 22, step: float = 0.1) -> Tensor:
-        xv, yv = torch.meshgrid([torch.arange(x_low, x_high, step, dtype=torch.float, device=self.factors.device),
-                                 torch.arange(y_low, y_high, step, dtype=torch.float, device=self.factors.device)])
-        xes = torch.cat((xv.reshape(1, -1), yv.reshape(1, -1)), 0)
-        values = self.evaluate_many_xes(xes)
-        image = values.view(xv.size()[0], xv.size()[1]).detach().cpu().numpy()
-        image -= 0.2
-        image[image < 0] = 0
-        plt.imshow(image)
-        plt.show()
-        return image
-
     def cuda(self):
         return Mixture(self.factors.cuda(), self.positions.cuda(), self.covariances.cuda())
 
@@ -111,11 +101,34 @@ class Mixture:
         return Mixture(self.factors.cpu(), self.positions.cpu(), self.covariances.cpu())
 
     def detach(self):
-        self.factors = self.factors.detach()
-        self.positions = self.positions.detach()
-        self.covariances = self.covariances.detach()
-        self.inverted_covariances = self.inverted_covariances.detach()
+        detached_mixture = generate_null_mixture(1, self.dimensions, device=self.device())
+        detached_mixture.factors = self.factors.detach()
+        detached_mixture.positions = self.positions.detach()
+        detached_mixture.covariances = self.covariances.detach()
+        detached_mixture.inverted_covariances = self.inverted_covariances.detach()
+        return detached_mixture
 
+class ConvolutionLayer:
+    def __init__(self, mixture: Mixture, bias: Tensor):
+        self.mixture = mixture
+        self.bias = bias
+
+    def evaluate_few_xes(self, positions: Tensor):
+        values = self.evaluate_few_xes(positions) - self.bias
+        return torch.max(values, torch.zeros(dtype=torch.float32, device=self.mixture.device()))
+
+    def debug_show(self, x_low: float = -22, y_low: float = -22, x_high: float = 22, y_high: float = 22, step: float = 0.1) -> Tensor:
+        m = self.mixture.detach()
+        xv, yv = torch.meshgrid([torch.arange(x_low, x_high, step, dtype=torch.float, device=m.device()),
+                                 torch.arange(y_low, y_high, step, dtype=torch.float, device=m.device())])
+        xes = torch.cat((xv.reshape(1, -1), yv.reshape(1, -1)), 0)
+        values = m.evaluate_many_xes(xes)
+        values -= self.bias.detach()
+        values[values < 0] = 0
+        image = values.view(xv.size()[0], xv.size()[1]).cpu().numpy()
+        plt.imshow(image)
+        plt.show()
+        return image
 
 # we will need to work on the initialisation. it's unlikely this simple one will work.
 def generate_random_mixtures(n: int, dims: int,

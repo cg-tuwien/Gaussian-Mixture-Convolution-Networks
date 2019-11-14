@@ -14,7 +14,7 @@ from gm import Mixture
 from torch import Tensor
 
 
-def em_image(image: Tensor, n_components: int, n_iterations: int, device: torch.device = 'cpu') -> Mixture:
+def em_algorithm(image: Tensor, n_components: int, n_iterations: int, device: torch.device = 'cpu') -> Mixture:
     assert len(image.size()) == 2
     assert n_components > 0
     width = image.size()[1]
@@ -104,13 +104,13 @@ def em_image(image: Tensor, n_components: int, n_iterations: int, device: torch.
 # print(f"numpy mean = {np.average(xes, axis=1, weights=w)}, \n numpy cov=\n{np.cov(xes, fweights=w)}")
 # my_funs(xes, w, dims)
 
-def ad_image(image: Tensor, n_components: int, n_iterations: int = 8, device: torch.device = 'cpu') -> Mixture:
+def ad_algorithm(image: Tensor, n_components: int, n_iterations: int = 8, device: torch.device = 'cpu') -> Mixture:
     assert len(image.size()) == 2
     assert n_components > 0
     width = image.size()[1]
     height = image.size()[0]
 
-    mixture = em_image(image, n_components, 5, device='cpu')
+    mixture = em_algorithm(image, n_components, 5, device='cpu')
     if device == 'cuda':
         mixture = mixture.cuda()
 
@@ -206,46 +206,20 @@ def ad_image(image: Tensor, n_components: int, n_iterations: int = 8, device: to
 
     fitting_end = time.time()
     print(f"fitting time: {fitting_end - fitting_start}")
-    mixture.detach()
+    mixture = mixture.detach()
     mixture.covariances = mat_tools.triangle_invert(mixture.inverted_covariances)
     return mixture
 
 
-image: np.ndarray = plt.imread("/home/madam/cloud/Photos/fire_small.jpg")
-image = image.mean(axis=2)
-m1 = em_image(torch.tensor(image, dtype=torch.float32), n_components=2500, n_iterations=5, device='cuda')
-# m1 = ad_image(torch.tensor(image, dtype=torch.float32), n_components=2500, n_iterations=1500, device='cuda')
+def test():
+    image: np.ndarray = plt.imread("/home/madam/cloud/Photos/fire_small.jpg")
+    image = image.mean(axis=2)
+    m1 = em_algorithm(torch.tensor(image, dtype=torch.float32), n_components=2500, n_iterations=5, device='cpu')
+    # m1 = ad_algorithm(torch.tensor(image, dtype=torch.float32), n_components=2500, n_iterations=1500, device='cuda')
 
-m1 = m1.cpu()
+    m1 = m1.cpu()
 
-m1.debug_show(0, 0, image.shape[1], image.shape[0], 1)
+    m1.debug_show(0, 0, image.shape[1], image.shape[0], 1)
 
-k1 = gm.generate_null_mixture(9, 2, device=m1.device())
-k1.factors[0] = -1
-k1.factors[1] = 1
-k1.positions[:, 0] = torch.tensor([0, -5], dtype=torch.float32, device=m1.device())
-k1.positions[:, 1] = torch.tensor([0, 5], dtype=torch.float32, device=m1.device())
-k1.covariances[:, 0] = torch.tensor([5, 0, 5], dtype=torch.float32, device=m1.device())
-k1.covariances[:, 1] = torch.tensor([5, 0, 5], dtype=torch.float32, device=m1.device())
-k1.debug_show(-128, -128, 128, 128, 1)
 
-k2 = gm.generate_random_mixtures(9, 2, device=m1.device())
-k2.debug_show(-128, -128, 128, 128, 1)
-
-k3 = gm.generate_random_mixtures(9, 2, device=m1.device())
-k3.debug_show(-128, -128, 128, 128, 1)
-
-conv_start = time.time()
-conved1 = gm.convolve(m1, k1)
-conved2 = gm.convolve(m1, k2)
-conved3 = gm.convolve(m1, k3)
-conv_end = time.time()
-print(f"convolution time: {conv_end - conv_start}")
-
-conved1.debug_show(0, 0, image.shape[1], image.shape[0], 1)
-conved1.show_after_activation(0, 0, image.shape[1], image.shape[0], 1)
-conved2.debug_show(0, 0, image.shape[1], image.shape[0], 1)
-conved2.show_after_activation(0, 0, image.shape[1], image.shape[0], 1)
-conved3.debug_show(0, 0, image.shape[1], image.shape[0], 1)
-conved3.show_after_activation(0, 0, image.shape[1], image.shape[0], 1)
-
+# test()
