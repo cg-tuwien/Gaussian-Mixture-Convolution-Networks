@@ -199,9 +199,12 @@ def ad_algorithm(image: Tensor, n_components: int, n_iterations: int = 8, device
         mixture.inverted_covariances.detach()[:, :] = mat_tools.normal_to_triangle(icovs.transpose(0, 2))
         # print(mixture.inverted_covariances.detach())
 
-        if k % 50 == 0:
+        if k % 10 == 0:
             print(f"iterations {k}: loss = {loss.item()}, min det = {torch.min(mat_tools.triangle_det(mixture.inverted_covariances.detach()))}")#, regularisation_1 = {regularisation_1.item()}, "
                   # f"regularisation_2 = {regularisation_2.item()}, regularisation_3 = {regularisation_3.item()}")
+            mixture.covariances = mat_tools.triangle_invert(mixture.inverted_covariances)
+            md = mixture.detach().cpu()
+            md.save("fire_small_mixture")
             mixture.debug_show(0, 0, image.shape[1], image.shape[0], 1)
 
     fitting_end = time.time()
@@ -214,8 +217,9 @@ def ad_algorithm(image: Tensor, n_components: int, n_iterations: int = 8, device
 def test():
     image: np.ndarray = plt.imread("/home/madam/cloud/Photos/fire_small.jpg")
     image = image.mean(axis=2)
-    m1 = em_algorithm(torch.tensor(image, dtype=torch.float32), n_components=2500, n_iterations=5, device='cpu')
-    # m1 = ad_algorithm(torch.tensor(image, dtype=torch.float32), n_components=2500, n_iterations=1500, device='cuda')
+    # m1 = em_algorithm(torch.tensor(image, dtype=torch.float32), n_components=2500, n_iterations=5, device='cpu')
+    m1 = ad_algorithm(torch.tensor(image, dtype=torch.float32), n_components=2500, n_iterations=1500, device='cuda')
+    m1.save("fire_small_mixture")
 
     m1 = m1.cpu()
 

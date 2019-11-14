@@ -108,6 +108,24 @@ class Mixture:
         detached_mixture.inverted_covariances = self.inverted_covariances.detach()
         return detached_mixture
 
+    def save(self, file_name: str):
+        dict = {
+            "type": "gm.Mixture",
+            "version": 1,
+            "weights": self.factors,
+            "positions": self.positions,
+            "covariances": self.covariances
+        }
+        torch.save(dict, "/home/madam/temp/prototype/" + file_name)
+
+    @classmethod
+    def load(cls, file_name: str):
+        dict = torch.load("/home/madam/temp/prototype/" + file_name)
+        assert dict["type"] == "gm.Mixture"
+        assert dict["version"] == 1
+        return Mixture(dict["weights"], dict["positions"], dict["covariances"])
+
+
 class ConvolutionLayer:
     def __init__(self, mixture: Mixture, bias: Tensor):
         self.mixture = mixture
