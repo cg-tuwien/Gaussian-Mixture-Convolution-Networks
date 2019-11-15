@@ -2,10 +2,12 @@ import torch
 
 from torch import Tensor
 
+def trimat_size(dims: int) -> int:
+    return 3 if dims == 2 else 6
 
 def gen_random_positive_definite_triangle(n: int, dims: int, device: torch.device = 'cpu') -> Tensor:
     assert dims == 2 or dims == 3
-    retval = torch.zeros(3 if dims == 2 else 6, n, dtype=torch.float32, device=device)
+    retval = torch.zeros(trimat_size(dims), n, dtype=torch.float32, device=device)
     for i in range(n):
         A = torch.rand(dims, dims, dtype=torch.float32, device=device) * 2 - 1
         A = A @ A.t() + torch.eye(dims, dtype=torch.float32, device=device) * 0.01
@@ -26,7 +28,7 @@ def gen_null_triangle(n: int, dims: int, device: torch.device = 'cpu') -> Tensor
 
 def gen_identity_triangle(n: int, dims: int, device: torch.device = 'cpu') -> Tensor:
     assert dims == 2 or dims == 3
-    covs = torch.zeros(3 if dims == 2 else 6, n, dtype=torch.float, device=device)
+    covs = torch.zeros(trimat_size(dims), n, dtype=torch.float, device=device)
     if dims == 2:
         covs[0, :] = 1
         covs[2, :] = 1
@@ -69,7 +71,7 @@ def triangle_det(A: Tensor) -> Tensor:
     n_triangle_elements = A.size()[0]
     # assert n_triangle_elements == 3 or n_triangle_elements == 6
     if n_triangle_elements == 3:
-        return A[0] * A[2] - A[1] * A[1]
+        return A[0] * A[2] - A[1] ** 2
     return A[0] * A[3] * A[5] + 2 * A[1] * A[4] * A[2] - A[2] * A[2] * A[3] - A[1] * A[1] * A[5] - A[0] * A[4] * A[
         4]
 
