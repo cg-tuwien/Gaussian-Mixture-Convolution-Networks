@@ -138,6 +138,8 @@ def triangle_to_normal(A: Tensor) -> Tensor:
 # takes rows x columns x n, returns triangle_vals x n
 def normal_to_triangle(A: Tensor) -> Tensor:
     dims = A.size()[0]
+    assert A.size()[1] == dims
+
     a_single_one = False
     if len(A.size()) == 2:
         a_single_one = True

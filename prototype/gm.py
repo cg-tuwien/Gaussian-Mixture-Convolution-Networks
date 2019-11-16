@@ -55,7 +55,7 @@ class Mixture:
     def evaluate_few_xes_component_wise(self, xes: Tensor) -> Tensor:
         n_xes = xes.size()[1]
         # xes in cols, comps in rows
-        values = torch.zeros(self.number_of_components(), n_xes, dtype=torch.float32)
+        values = torch.zeros(self.number_of_components(), n_xes, dtype=torch.float32, device=xes.device)
         for i in range(n_xes):
             vs = xes[:, i].view(-1, 1).expand_as(self.positions) - self.positions
             vs = -0.5 * mat_tools.triangle_xAx(self.inverted_covariances, vs)

@@ -3,6 +3,7 @@ import torch.distributions.categorical
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+import time
 
 import mat_tools
 import gm
@@ -38,7 +39,6 @@ def _fit_covariances(layer: ConvolutionLayer, positions: Tensor) -> Tensor:
         covariances[:, i] += weighted_covariances.sum(dim=1)
 
     return covariances
-
 
 
 def test_manual_heuristic():
@@ -85,12 +85,16 @@ def test_manual_heuristic():
     mc = gm.Mixture(weights, positions, covariances)
     mc.debug_show(-10, -10, 266, 266, 1)
 
+
 def test_dl_fitting():
+    torch.manual_seed(0)
     DIMS = 2
     N_SAMPLES = 100 * 100
     N_INPUT_GAUSSIANS = 100
     N_OUTPUT_GAUSSIANS = 10
     COVARIANCE_MIN = 0.01
+
+    N_INNER_GRADIENT_STEPS = 10
 
     assert DIMS == 2 or DIMS == 3
     assert N_SAMPLES > 0
@@ -98,18 +102,21 @@ def test_dl_fitting():
     assert COVARIANCE_MIN > 0
 
     class Net(nn.Module):
-
         def __init__(self):
             super(Net, self).__init__()
             # n * (1 for weights, DIMS for positions, trimat_size(DIMS) for the triangle cov matrix) +1 for the bias
             n_inputs = N_INPUT_GAUSSIANS * (1 + DIMS + mat_tools.trimat_size(DIMS)) + 1
-            n_outputs = N_OUTPUT_GAUSSIANS * (1 + DIMS + mat_tools.trimat_size(DIMS))
+            # and we want to output A, so that C = A @ A.T() + 0.01 * identity() is the cov matrix
+            n_outputs = N_OUTPUT_GAUSSIANS * (1 + DIMS + DIMS * DIMS)
 
             self.fc1 = nn.Linear(n_inputs, n_inputs)
-            self.fc2 = nn.Linear(n_inputs, n_inputs // 4)
-            self.fc3 = nn.Linear(n_inputs // 4, n_inputs // 4)
+            self.fc2 = nn.Linear(n_inputs, n_inputs // 2)
+            self.fc3 = nn.Linear(n_inputs // 2, n_inputs // 4)
             self.fc4 = nn.Linear(n_inputs // 4, n_inputs // 4)
-            self.fc5 = nn.Linear(n_outputs, n_outputs)
+            self.fc5 = nn.Linear(n_inputs // 4, n_outputs)
+
+        def device(self):
+            return self.fc1.bias.device
 
         def forward(self, convolution_layer: gm.ConvolutionLayer, learning: bool = True) -> gm.Mixture:
             x = torch.cat((convolution_layer.bias,
@@ -122,29 +129,81 @@ def test_dl_fitting():
             x = F.relu(self.fc4(x))
             x = self.fc5(x)
 
-            weights = x[0:N_OUTPUT_GAUSSIANS]
-            positions = x[N_OUTPUT_GAUSSIANS:3*N_OUTPUT_GAUSSIANS].view(DIMS, -1)
-            covariances = x[3*N_OUTPUT_GAUSSIANS:-1].view(mat_tools.trimat_size(DIMS), -1)
-
-            covariance_badness = -1
-            if learning:
-                if DIMS == 2:
-                    indices = (0, 2)
-                else:
-                    indices = (0, 3, 5)
-
-                bad_variance_indices = covariances[indices, :] < 0
-                variance_badness = (covariances[bad_variance_indices] ** 2).sum()
-                covariances[bad_variance_indices] = torch.tensor(COVARIANCE_MIN, dtype=torch.float32, device=convolution_layer.device())
-
-                dets = mat_tools.triangle_det(covariances)
-                det_badness = ((-dets[dets < COVARIANCE_MIN] + COVARIANCE_MIN) ** 2).sum()
-
-                # todo: how to change cov by adding ids so that the det becomes positive?
+            weights = x[0:N_OUTPUT_GAUSSIANS] * 10
+            positions = x[N_OUTPUT_GAUSSIANS:3*N_OUTPUT_GAUSSIANS].view(DIMS, -1) * 10
+            # we are learning A, so that C = A @ A.T() + 0.01 * identity() is the resulting cov matrix
+            A = x[3*N_OUTPUT_GAUSSIANS:].view(-1, DIMS, DIMS)
+            C = A @ A.transpose(1, 2) + torch.eye(DIMS, DIMS).view(-1, DIMS, DIMS) * COVARIANCE_MIN
+            covariances = mat_tools.normal_to_triangle(C.transpose(0, 2)) * 25
+            #
+            # covariance_badness = -1
+            # if learning:
+            #     if DIMS == 2:
+            #         indices = (0, 2)
+            #     else:
+            #         indices = (0, 3, 5)
+            #
+            #     bad_variance_indices = covariances[indices, :] < 0
+            #     variance_badness = (covariances[bad_variance_indices] ** 2).sum()
+            #     covariances[bad_variance_indices] = torch.tensor(COVARIANCE_MIN, dtype=torch.float32, device=convolution_layer.device())
+            #
+            #     dets = mat_tools.triangle_det(covariances)
+            #     det_badness = ((-dets[dets < COVARIANCE_MIN] + COVARIANCE_MIN) ** 2).sum()
+            #
+            #     # todo: how to change cov by adding ids so that the det becomes positive?
                 # todo: write the rest of the learning code (gen random ConvolutionLayers, eval for N_SAMPLE positions,
                 #  eval the resulting GMs at the same positions, compute square difference, use it together with covariance_badness
                 #  for learning
 
-                covariance_badness == variance_badness + det_badness
+            #     covariance_badness == variance_badness + det_badness
 
-            return gm.Mixture(weights, positions, covariances, device=convolution_layer.device()), covariance_badness
+            return gm.Mixture(weights, positions, covariances)
+
+    net = Net().cuda()
+    for parameter in net.parameters():
+        print(f"parameter: {parameter.shape}")
+
+    criterion = nn.MSELoss()
+    optimiser = optim.Adam(net.parameters(), lr=0.001)
+    print(net)
+
+    for i in range(2000):
+        assert N_INPUT_GAUSSIANS == 100
+        iteration_start_time = time.time()
+        random_m = gm.generate_random_mixtures(10, DIMS, pos_radius=1, cov_radius=0.25, factor_min=0, factor_max=10, device=net.device())
+        random_kernel = gm.generate_random_mixtures(10, DIMS, pos_radius=0.08, cov_radius=0.04, device=net.device())
+        # todo: print and check factors of convolved gm
+        input_gm_after_activation = gm.ConvolutionLayer(gm.convolve(random_m, random_kernel),
+                                                        torch.rand(1, dtype=torch.float32, device=net.device())*1)
+
+        sampling_positions = torch.rand((2, N_SAMPLES), dtype=torch.float32, device=net.device()) * 3 - 1.5
+        target_sampling_values = input_gm_after_activation.evaluate_few_xes(sampling_positions)
+        # input_gm_after_activation.mixture.debug_show(-1.5, -1.5, 1.5, 1.5, 0.05)
+        input_gm_after_activation.debug_show(-1.5, -1.5, 1.5, 1.5, 0.05)
+
+        begin_loss = 0
+        for j in range(N_INNER_GRADIENT_STEPS):
+            inner_start_time = time.time()
+            optimiser.zero_grad()
+            output_gm: gm.Mixture = net(input_gm_after_activation)
+            inner_network_time = time.time()
+            output_gm_sampling_values = output_gm.evaluate_few_xes(sampling_positions)
+
+            loss = criterion(output_gm_sampling_values, target_sampling_values)
+            loss.backward()
+            optimiser.step()
+            if j == 0:
+                begin_loss = loss
+                output_gm.debug_show(-1.5, -1.5, 1.5, 1.5, 0.05)
+            print(f"j = {j}: time: {time.time() - inner_start_time}s, of which network: {inner_network_time - inner_start_time}, loss: {loss}")
+
+        # output_gm.debug_show(-1.5, -1.5, 1.5, 1.5, 0.05)
+        print(f"iteration i = {i}: time = {time.time() - iteration_start_time},  loss_0 {begin_loss},  loss_{N_INNER_GRADIENT_STEPS} {loss}")
+
+    target, input_ = draw_random_samples(10, WIDTH, HEIGHT)
+    output = net(input_)
+    print(f"target={target}")
+    print(f"output={output}")
+    print(f"diff={output - target}")
+
+test_dl_fitting()
