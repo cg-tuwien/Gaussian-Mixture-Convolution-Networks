@@ -92,6 +92,7 @@ class Mixture:
         values = self.evaluate_many_xes(xes).detach()
         image = values.view(xv.size()[0], xv.size()[1]).cpu().numpy()
         plt.imshow(image)
+        plt.colorbar()
         plt.show()
         return image
 
@@ -129,7 +130,7 @@ class Mixture:
 
 class ConvolutionLayer:
     def __init__(self, mixture: Mixture, bias: Tensor):
-        assert bias > 0
+        assert bias >= 0
         self.mixture = mixture
         self.bias = bias
 
@@ -147,6 +148,7 @@ class ConvolutionLayer:
         values[values < 0] = 0
         image = values.view(xv.size()[0], xv.size()[1]).cpu().numpy()
         plt.imshow(image)
+        plt.colorbar()
         plt.show()
         return image
 
