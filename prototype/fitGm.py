@@ -96,7 +96,7 @@ def test_dl_fitting(layer_sizes: typing.List, use_cuda: bool = False):
     N_INPUT_GAUSSIANS = 10
     N_OUTPUT_GAUSSIANS = 2
     COVARIANCE_MIN = 0.01
-    TESTING_MODE = False
+    TESTING_MODE = True
 
     BATCH_SIZE = 60
     LEARNING_RATE = 0.001 / BATCH_SIZE
@@ -150,7 +150,8 @@ def test_dl_fitting(layer_sizes: typing.List, use_cuda: bool = False):
 
             i = 0
             for layer in self.inner_layers:
-                x = F.relu(layer(x))
+                x = layer(x)
+                x = F.relu(x)
                 # x = self.batch_norms[i](x.view(-1, 1))
                 i += 1
 
@@ -209,13 +210,15 @@ def test_dl_fitting(layer_sizes: typing.List, use_cuda: bool = False):
             sampling_positions = torch.rand((2, N_SAMPLES), dtype=torch.float32, device=net.device()) * 3 - 1.5
             target_sampling_values = input_gm_after_activation.evaluate_few_xes(sampling_positions)
             # input_gm_after_activation.mixture.debug_show(-1.5, -1.5, 1.5, 1.5, 0.05)
-            # input_gm_after_activation.debug_show(-2, -2, 2, 2, 0.05)
+            if TESTING_MODE:
+                input_gm_after_activation.debug_show(-2, -2, 2, 2, 0.05)
 
             network_start_time = time.time()
             output_gm: gm.Mixture = net(input_gm_after_activation)
             batch_net_time_sum += time.time() - network_start_time
 
-            # output_gm.debug_show(-2, -2, 2, 2, 0.05)
+            if TESTING_MODE:
+                output_gm.debug_show(-2, -2, 2, 2, 0.05)
             output_gm_sampling_values = output_gm.evaluate_few_xes(sampling_positions)
 
             loss = criterion(output_gm_sampling_values, target_sampling_values)
@@ -270,3 +273,4 @@ def test_dl_fitting(layer_sizes: typing.List, use_cuda: bool = False):
 # test_dl_fitting([120, 120, 60, 60, 30, 14])
 # test_dl_fitting([600, 600, 400, 200, 100, 30])
 # test_dl_fitting([100, 100, 100, 100, 100, 30])
+test_dl_fitting([100, 100, 100, 100, 100, 30])
