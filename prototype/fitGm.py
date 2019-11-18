@@ -96,7 +96,7 @@ def test_dl_fitting(layer_sizes: typing.List, use_cuda: bool = False):
     N_INPUT_GAUSSIANS = 10
     N_OUTPUT_GAUSSIANS = 2
     COVARIANCE_MIN = 0.01
-    TESTING_MODE = True
+    TESTING_MODE = False
 
     BATCH_SIZE = 60
     LEARNING_RATE = 0.001 / BATCH_SIZE
@@ -111,15 +111,22 @@ def test_dl_fitting(layer_sizes: typing.List, use_cuda: bool = False):
         def __init__(self, layer_sizes: typing.List):
             super(Net, self).__init__()
             # n * (1 for weights, DIMS for positions, trimat_size(DIMS) for the triangle cov matrix) +1 for the bias
-            n_inputs = N_INPUT_GAUSSIANS * (1 + DIMS + mat_tools.trimat_size(DIMS)) + 1
+            # n_inputs = N_INPUT_GAUSSIANS * (1 + DIMS + mat_tools.trimat_size(DIMS)) + 1
             # and we want to output A, so that C = A @ A.T() + 0.01 * identity() is the cov matrix
             n_outputs = N_OUTPUT_GAUSSIANS * (1 + DIMS + DIMS * DIMS)
 
-            self.inner_layers = nn.ModuleList()
+            self.per_g_layers = nn.ModuleList()
+            self.per_g_layers.append(nn.Conv1d(6, 128, kernel_size=1, stride=1, groups=1))
+            self.per_g_layers.append(nn.Conv1d(128, 128, kernel_size=1, stride=1, groups=1))
+            self.per_g_layers.append(nn.Conv1d(128, 128, kernel_size=1, stride=1, groups=1))
+            self.per_g_layers.append(nn.Conv1d(128, 128, kernel_size=1, stride=1, groups=1))
+            self.per_g_layers.append(nn.Conv1d(128, 128, kernel_size=1, stride=1, groups=1))
+
+            self.fully_layers = nn.ModuleList()
             # self.batch_norms = nn.ModuleList()
-            last_layer_size = n_inputs
+            last_layer_size = 129
             for s in layer_sizes:
-                self.inner_layers.append(nn.Linear(last_layer_size, s))
+                self.fully_layers.append(nn.Linear(last_layer_size, s))
                 # self.batch_norms.append(nn.BatchNorm1d(s))
                 last_layer_size = s
             self.output_layer = nn.Linear(last_layer_size, n_outputs)
@@ -143,13 +150,22 @@ def test_dl_fitting(layer_sizes: typing.List, use_cuda: bool = False):
             return self.output_layer.bias.device
 
         def forward(self, convolution_layer: gm.ConvolutionLayer, learning: bool = True) -> gm.Mixture:
-            x = torch.cat((convolution_layer.bias,
-                           convolution_layer.mixture.factors,
-                           convolution_layer.mixture.positions.view(-1),
-                           convolution_layer.mixture.covariances.view(-1)))
+            # todo batching
+            batch_size = 1
+            x = torch.cat((convolution_layer.mixture.factors.view(1, -1),
+                           convolution_layer.mixture.positions,
+                           convolution_layer.mixture.covariances), dim=0)
+            x = x.reshape(1, 6, -1)
+
+            for layer in self.per_g_layers:
+                x = layer(x)
+                x = F.relu(x)
+
+            x = torch.sum(x, dim=2)
+            x = torch.cat((convolution_layer.bias.view(1, -1), x), dim=1)
 
             i = 0
-            for layer in self.inner_layers:
+            for layer in self.fully_layers:
                 x = layer(x)
                 x = F.relu(x)
                 # x = self.batch_norms[i](x.view(-1, 1))
@@ -157,15 +173,17 @@ def test_dl_fitting(layer_sizes: typing.List, use_cuda: bool = False):
 
             x = self.output_layer(x)
 
+            # todo: batching, first dimension is the batch (batch_size)
             # todo: those magic constants take care of scaling. think of something generic, normalisation layer? input normalisation?
-            weights = x[0:N_OUTPUT_GAUSSIANS] * 1
-            positions = x[N_OUTPUT_GAUSSIANS:3 * N_OUTPUT_GAUSSIANS].view(DIMS, -1) * 1
+            weights = x[:, 0:N_OUTPUT_GAUSSIANS] * 1
+            positions = x[:, N_OUTPUT_GAUSSIANS:3 * N_OUTPUT_GAUSSIANS].view(batch_size, DIMS, -1) * 1
             # we are learning A, so that C = A @ A.T() + 0.01 * identity() is the resulting cov matrix
-            A = x[3 * N_OUTPUT_GAUSSIANS:].view(-1, DIMS, DIMS)
-            C = A @ A.transpose(1, 2) + torch.eye(DIMS, DIMS, dtype=torch.float32, device=self.device()).view(-1, DIMS, DIMS) * COVARIANCE_MIN
-            covariances = mat_tools.normal_to_triangle(C.transpose(0, 2)) * 10
+            A = x[:, 3 * N_OUTPUT_GAUSSIANS:].view(batch_size, -1, DIMS, DIMS)
+            C = A @ A.transpose(2, 3) + torch.eye(DIMS, DIMS, dtype=torch.float32, device=self.device()).view(1, 1, DIMS, DIMS) * COVARIANCE_MIN
+            # todo: batching, here 0 is the batch id
+            covariances = mat_tools.normal_to_triangle(C[0, :, :, :].transpose(0, 2)) * 10
 
-            return gm.Mixture(weights, positions, covariances)
+            return gm.Mixture(weights.view(-1), positions.view(2, -1), covariances)
 
     def generate_random_activation_data():
         if N_INPUT_GAUSSIANS == 100:
@@ -273,4 +291,4 @@ def test_dl_fitting(layer_sizes: typing.List, use_cuda: bool = False):
 # test_dl_fitting([120, 120, 60, 60, 30, 14])
 # test_dl_fitting([600, 600, 400, 200, 100, 30])
 # test_dl_fitting([100, 100, 100, 100, 100, 30])
-test_dl_fitting([100, 100, 100, 100, 100, 30])
+test_dl_fitting([129, 129, 40])
