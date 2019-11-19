@@ -89,14 +89,14 @@ def test_manual_heuristic():
     mc.debug_show(-10, -10, 266, 266, 1)
 
 
-def test_dl_fitting(layer_sizes: typing.List, use_cuda: bool = False):
+def test_dl_fitting(g_layer_sizes: typing.List, fully_layer_sizes: typing.List, use_cuda: bool = False):
     torch.manual_seed(0)
     DIMS = 2
     N_SAMPLES = 50 * 50
     N_INPUT_GAUSSIANS = 10
     N_OUTPUT_GAUSSIANS = 2
     COVARIANCE_MIN = 0.01
-    TESTING_MODE = False
+    TESTING_MODE = True
 
     BATCH_SIZE = 60
     LEARNING_RATE = 0.001 / BATCH_SIZE
@@ -108,31 +108,34 @@ def test_dl_fitting(layer_sizes: typing.List, use_cuda: bool = False):
     assert COVARIANCE_MIN > 0
 
     class Net(nn.Module):
-        def __init__(self, layer_sizes: typing.List):
+        def __init__(self, g_layer_sizes: typing.List, fully_layer_sizes: typing.List):
             super(Net, self).__init__()
             # n * (1 for weights, DIMS for positions, trimat_size(DIMS) for the triangle cov matrix) +1 for the bias
             # n_inputs = N_INPUT_GAUSSIANS * (1 + DIMS + mat_tools.trimat_size(DIMS)) + 1
             # and we want to output A, so that C = A @ A.T() + 0.01 * identity() is the cov matrix
             n_outputs = N_OUTPUT_GAUSSIANS * (1 + DIMS + DIMS * DIMS)
 
+            last_layer_size = 6
             self.per_g_layers = nn.ModuleList()
-            self.per_g_layers.append(nn.Conv1d(6, 128, kernel_size=1, stride=1, groups=1))
-            self.per_g_layers.append(nn.Conv1d(128, 128, kernel_size=1, stride=1, groups=1))
-            self.per_g_layers.append(nn.Conv1d(128, 128, kernel_size=1, stride=1, groups=1))
-            self.per_g_layers.append(nn.Conv1d(128, 128, kernel_size=1, stride=1, groups=1))
-            self.per_g_layers.append(nn.Conv1d(128, 128, kernel_size=1, stride=1, groups=1))
+            for s in g_layer_sizes:
+                self.per_g_layers.append(nn.Conv1d(last_layer_size, s, kernel_size=1, stride=1, groups=1))
+                last_layer_size = s
 
             self.fully_layers = nn.ModuleList()
+            # todo batching
             # self.batch_norms = nn.ModuleList()
-            last_layer_size = 129
-            for s in layer_sizes:
+            last_layer_size = last_layer_size + 1
+            for s in fully_layer_sizes:
                 self.fully_layers.append(nn.Linear(last_layer_size, s))
                 # self.batch_norms.append(nn.BatchNorm1d(s))
                 last_layer_size = s
             self.output_layer = nn.Linear(last_layer_size, n_outputs)
 
-            self.name = "fit_gm_net"
-            for s in layer_sizes:
+            self.name = "fit_gm_net__g"
+            for s in fully_layer_sizes:
+                self.name += f"_{s}"
+            self.name += "__f"
+            for s in fully_layer_sizes:
                 self.name += f"_{s}"
 
         def save(self):
@@ -199,7 +202,7 @@ def test_dl_fitting(layer_sizes: typing.List, use_cuda: bool = False):
                                                             torch.zeros(1, dtype=torch.float32, device=net.device()))
         return input_gm_after_activation
 
-    net = Net(layer_sizes)
+    net = Net(g_layer_sizes, fully_layer_sizes)
     if TESTING_MODE:
         net.load()
 
@@ -291,4 +294,6 @@ def test_dl_fitting(layer_sizes: typing.List, use_cuda: bool = False):
 # test_dl_fitting([120, 120, 60, 60, 30, 14])
 # test_dl_fitting([600, 600, 400, 200, 100, 30])
 # test_dl_fitting([100, 100, 100, 100, 100, 30])
-test_dl_fitting([129, 129, 40])
+
+# test_dl_fitting([128, 128], [129, 129, 40])
+test_dl_fitting([1024, 1024, 1024], [1024, 256, 64])
