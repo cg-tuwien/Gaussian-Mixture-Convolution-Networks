@@ -11,9 +11,9 @@ import mat_tools
 
 class Mixture:
     # maybe it's faster if we put everything into one matrix (data more local).
-    def __init__(self, factors: Tensor, positions: Tensor, covariances: Tensor) -> None:
-        assert len(factors.size()) == 1
-        nComponents = factors.size()[0]
+    def __init__(self, weights: Tensor, positions: Tensor, covariances: Tensor) -> None:
+        assert len(weights.size()) == 1
+        nComponents = weights.size()[0]
         self.dimensions = positions.size()[0]
         assert nComponents == positions.size()[1]
         assert nComponents == covariances.size()[1]
@@ -25,19 +25,19 @@ class Mixture:
             # upper triangle of a 3x3 matrix has 6 elements
             assert covariances.size()[0] == 6
         
-        self.factors = factors
+        self.weights = weights
         self.positions = positions
         self.covariances = covariances
         self.inverted_covariances = mat_tools.triangle_invert(covariances)
 
     def device(self):
-        return self.factors.device
+        return self.weights.device
 
     def number_of_components(self):
-        return self.factors.size()[0]
+        return self.weights.size()[0]
 
     def evaluate_component_many_xes(self, xes: Tensor, component: int) -> Tensor:
-        factors = self.factors[component]
+        factors = self.weights[component]
         position = self.positions[:, component].view(-1, 1)
         cov_i_trimat = self.inverted_covariances[:, component]
         v = xes - position.expand_as(xes)
@@ -59,7 +59,7 @@ class Mixture:
         for i in range(n_xes):
             vs = xes[:, i].view(-1, 1).expand_as(self.positions) - self.positions
             vs = -0.5 * mat_tools.triangle_xAx(self.inverted_covariances, vs)
-            vs = self.factors * torch.exp(vs)
+            vs = self.weights * torch.exp(vs)
             values[:, i] = vs
         return values
 
@@ -86,8 +86,8 @@ class Mixture:
         return selected
             
     def debug_show(self, x_low: float = -22, y_low: float = -22, x_high: float = 22, y_high: float = 22, step: float = 0.1) -> Tensor:
-        xv, yv = torch.meshgrid([torch.arange(x_low, x_high, step, dtype=torch.float, device=self.factors.device),
-                                 torch.arange(y_low, y_high, step, dtype=torch.float, device=self.factors.device)])
+        xv, yv = torch.meshgrid([torch.arange(x_low, x_high, step, dtype=torch.float, device=self.weights.device),
+                                 torch.arange(y_low, y_high, step, dtype=torch.float, device=self.weights.device)])
         xes = torch.cat((xv.reshape(1, -1), yv.reshape(1, -1)), 0)
         values = self.evaluate_many_xes(xes).detach()
         image = values.view(xv.size()[0], xv.size()[1]).cpu().numpy()
@@ -97,14 +97,14 @@ class Mixture:
         return image
 
     def cuda(self):
-        return Mixture(self.factors.cuda(), self.positions.cuda(), self.covariances.cuda())
+        return Mixture(self.weights.cuda(), self.positions.cuda(), self.covariances.cuda())
 
     def cpu(self):
-        return Mixture(self.factors.cpu(), self.positions.cpu(), self.covariances.cpu())
+        return Mixture(self.weights.cpu(), self.positions.cpu(), self.covariances.cpu())
 
     def detach(self):
         detached_mixture = generate_null_mixture(1, self.dimensions, device=self.device())
-        detached_mixture.factors = self.factors.detach()
+        detached_mixture.weights = self.weights.detach()
         detached_mixture.positions = self.positions.detach()
         detached_mixture.covariances = self.covariances.detach()
         detached_mixture.inverted_covariances = self.inverted_covariances.detach()
@@ -114,7 +114,7 @@ class Mixture:
         dict = {
             "type": "gm.Mixture",
             "version": 1,
-            "weights": self.factors,
+            "weights": self.weights,
             "positions": self.positions,
             "covariances": self.covariances
         }
@@ -199,7 +199,7 @@ def _polynomMulRepeat(A: Tensor, B: Tensor) -> (Tensor, Tensor):
 
 def convolve(m1: Mixture, m2: Mixture) -> Mixture:
     assert m1.dimensions == m2.dimensions
-    m1_f, m2_f = _polynomMulRepeat(m1.factors, m2.factors)
+    m1_f, m2_f = _polynomMulRepeat(m1.weights, m2.weights)
     m1_p, m2_p = _polynomMulRepeat(m1.positions, m2.positions)
     m1_c, m2_c = _polynomMulRepeat(m1.covariances, m2.covariances)
 

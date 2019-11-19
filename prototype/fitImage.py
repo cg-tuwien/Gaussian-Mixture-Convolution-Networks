@@ -49,16 +49,16 @@ def em_algorithm(image: Tensor, n_components: int, n_iterations: int, device: to
             x = xes[:, i]
             c = selected_components[i]
             n_pixels[c] += 1
-            new_mixture.factors[c] += w.float()
+            new_mixture.weights[c] += w.float()
             dx = x - new_mixture.positions[:, c]
-            new_mixture.positions[:, c] += w / new_mixture.factors[c] * dx
-            new_mixture.covariances[:, c] += w * (1 - w / new_mixture.factors[c]) * mat_tools.triangle_outer_product(dx)
+            new_mixture.positions[:, c] += w / new_mixture.weights[c] * dx
+            new_mixture.covariances[:, c] += w * (1 - w / new_mixture.weights[c]) * mat_tools.triangle_outer_product(dx)
 
         for j in range(new_mixture.number_of_components()):
-            if new_mixture.factors[j] > 1:
-                new_mixture.covariances[:, j] /= new_mixture.factors[j] - 1
+            if new_mixture.weights[j] > 1:
+                new_mixture.covariances[:, j] /= new_mixture.weights[j] - 1
             if n_pixels[j] > 0:
-                new_mixture.factors[j] /= n_pixels[j]
+                new_mixture.weights[j] /= n_pixels[j]
 
             # minimum variance
             new_mixture.covariances[:, j] += mat_tools.gen_identity_triangle(1, new_mixture.dimensions, device=new_mixture.device()).view(-1) * 0.1
@@ -125,10 +125,10 @@ def ad_algorithm(image: Tensor, n_components: int, n_iterations: int = 8, device
     else:
         values = image.view(-1) / 255.0
 
-    mixture.factors /= 255.0
+    mixture.weights /= 255.0
 
     mixture = mixture
-    mixture.factors.requires_grad = True;
+    mixture.weights.requires_grad = True;
     mixture.positions.requires_grad = True;
     mixture.inverted_covariances.requires_grad = True;
 
@@ -151,7 +151,7 @@ def ad_algorithm(image: Tensor, n_components: int, n_iterations: int = 8, device
     # mixture.inverted_covariances.data -= mixture.inverted_covariances.grad
     # print(mixture.inverted_covariances)
     # print(mat_tools.triangle_det(mixture.inverted_covariances))
-    optimiser = optim.Adam([mixture.factors, mixture.positions, mixture.inverted_covariances], lr=0.005)
+    optimiser = optim.Adam([mixture.weights, mixture.positions, mixture.inverted_covariances], lr=0.005)
 
     print("starting gradient descent")
     # mixture.debug_show(0, 0, image.shape[1], image.shape[0], 1)

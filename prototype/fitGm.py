@@ -50,8 +50,8 @@ def test_manual_heuristic():
     # m1.debug_show(-10, -10, 266, 266, 1)
 
     k1 = gm.generate_null_mixture(9, 2, device=m1.device())
-    k1.factors[0] = -1
-    k1.factors[1] = 1
+    k1.weights[0] = -1
+    k1.weights[1] = 1
     k1.positions[:, 0] = torch.tensor([0, -5], dtype=torch.float32, device=m1.device())
     k1.positions[:, 1] = torch.tensor([0, 5], dtype=torch.float32, device=m1.device())
     k1.covariances[:, 0] = torch.tensor([5, 0, 5], dtype=torch.float32, device=m1.device())
