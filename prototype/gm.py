@@ -53,15 +53,17 @@ class Mixture:
         return v
 
     def evaluate_few_xes_component_wise(self, xes: Tensor) -> Tensor:
-        n_xes = xes.size()[1]
-        # xes in cols, comps in rows
-        values = torch.zeros(self.number_of_components(), n_xes, dtype=torch.float32, device=xes.device)
-        for i in range(n_xes):
-            vs = xes[:, i].view(-1, 1).expand_as(self.positions) - self.positions
-            vs = -0.5 * mat_tools.triangle_xAx(self.inverted_covariances, vs)
-            vs = self.weights * torch.exp(vs)
-            values[:, i] = vs
-        return values
+        # xes: first dim: vector comps, second dim; sampling positions
+        # first dim: components, second dim: sampling positions, third dim +: vector / matrix components
+        values = xes.transpose(0, 1).view(1, -1, self.dimensions) - self.positions.transpose(0, 1).view(-1, 1, self.dimensions)
+        inverted_mat = mat_tools.triangle_to_normal(self.inverted_covariances).transpose(0, 2)
+        # inverted_mat: first dim: components, second and third: matrix
+        x_t = values.view(self.number_of_components(), -1, 1, self.dimensions)
+        x = values.view(self.number_of_components(), -1, self.dimensions, 1)
+        S = inverted_mat.reshape(-1, 1, self.dimensions, self.dimensions)
+        values = (x_t @ S @ x).view(self.number_of_components(), -1, 1)
+        values = self.weights.view(-1, 1, 1) * torch.exp(-0.5 * values)
+        return values.view(self.number_of_components(), -1)     # value is a batched scalar (vector of size 1), we can kill the last dimension
 
     def evaluate_few_xes(self, xes: Tensor) -> Tensor:
         return self.evaluate_few_xes_component_wise(xes).sum(0)

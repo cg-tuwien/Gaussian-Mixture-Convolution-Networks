@@ -99,8 +99,9 @@ def triangle_matmul(A: Tensor, B: Tensor) -> Tensor:
 
 def triangle_invert(tris: Tensor) -> Tensor:
     mats = triangle_to_normal(tris)
-    for i in range(mats.size()[2]):
-        mats[:, :, i] = mats[:, :, i].cholesky().cholesky_inverse()
+    mats = mats.transpose(0, 2).inverse().transpose(0, 2)
+    ## cholesky would be quicker, but batchwise cholesky_inverse is not implemented as of pytorch 1.3
+    # mats = mats.transpose(0, 2).cholesky().cholesky_inverse().transpose(0, 2)
 
     return normal_to_triangle(mats)
 

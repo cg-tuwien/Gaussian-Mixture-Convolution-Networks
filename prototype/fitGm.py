@@ -89,7 +89,7 @@ def test_manual_heuristic():
     mc.debug_show(-10, -10, 266, 266, 1)
 
 
-def test_dl_fitting(g_layer_sizes: typing.List, fully_layer_sizes: typing.List, use_cuda: bool = False):
+def test_dl_fitting(g_layer_sizes: typing.List, fully_layer_sizes: typing.List, use_cuda: bool = True):
     torch.manual_seed(0)
     DIMS = 2
     N_SAMPLES = 50 * 50
@@ -98,7 +98,7 @@ def test_dl_fitting(g_layer_sizes: typing.List, fully_layer_sizes: typing.List, 
     COVARIANCE_MIN = 0.01
     TESTING_MODE = False
 
-    BATCH_SIZE = 60
+    BATCH_SIZE = 200
     LEARNING_RATE = 0.001 / BATCH_SIZE
     N_BATCHES = 5000
 
