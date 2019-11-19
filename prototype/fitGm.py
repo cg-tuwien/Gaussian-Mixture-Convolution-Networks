@@ -96,7 +96,7 @@ def test_dl_fitting(g_layer_sizes: typing.List, fully_layer_sizes: typing.List, 
     N_INPUT_GAUSSIANS = 10
     N_OUTPUT_GAUSSIANS = 2
     COVARIANCE_MIN = 0.01
-    TESTING_MODE = True
+    TESTING_MODE = False
 
     BATCH_SIZE = 60
     LEARNING_RATE = 0.001 / BATCH_SIZE
@@ -155,7 +155,7 @@ def test_dl_fitting(g_layer_sizes: typing.List, fully_layer_sizes: typing.List, 
         def forward(self, convolution_layer: gm.ConvolutionLayer, learning: bool = True) -> gm.Mixture:
             # todo batching
             batch_size = 1
-            x = torch.cat((convolution_layer.mixture.factors.view(1, -1),
+            x = torch.cat((convolution_layer.mixture.weights.view(1, -1),
                            convolution_layer.mixture.positions,
                            convolution_layer.mixture.covariances), dim=0)
             x = x.reshape(1, 6, -1)
