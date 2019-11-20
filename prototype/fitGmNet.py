@@ -18,6 +18,7 @@ class Net(nn.Module):
                  fully_layer_sizes: typing.List,
                  n_input_gaussians: int,
                  n_output_gaussians: int,
+                 name: str,
                  n_dims: int = 2,
                  cov_decomposition=False):
         super(Net, self).__init__()
@@ -51,7 +52,8 @@ class Net(nn.Module):
 
         self.output_layer = nn.Conv1d(last_layer_size, n_outputs_per_gaussian, kernel_size=1, stride=1, groups=1)
 
-        self.name = "fit_gm_net_eigenVecs__g" if self.cov_decomposition else "fit_gm_net__g"
+        self.name = "fit_gm_net_eigenVecs_" if self.cov_decomposition else "fit_gm_net_"
+        self.name += name + "_g"
         for s in g_layer_sizes:
             self.name += f"_{s}"
         self.name += "__f"

@@ -8,7 +8,7 @@ import torch.nn as nn
 from torch import Tensor
 
 import gm
-from fitGmNet import Net as FitGmNet
+import fitGmNet
 
 DIMS = 2
 N_SAMPLES = 50 * 50
@@ -19,7 +19,6 @@ COV_DECOMPOSITION = True
 
 BATCH_SIZE = 200
 LEARNING_RATE = 0.001
-N_BATCHES = 5000000
 
 assert DIMS == 2 or DIMS == 3
 assert N_SAMPLES > 0
@@ -27,7 +26,7 @@ assert N_INPUT_GAUSSIANS >= N_OUTPUT_GAUSSIANS
 assert COVARIANCE_MIN > 0
 
 
-def generate_random_ReLUandBias(device: torch.device = 'cpu'):
+def generate_random_ReLUandBias(bias_mul: float, weight_min: float, device: torch.device = 'cpu'):
     # if N_INPUT_GAUSSIANS == 100:
     #     random_m = gm.generate_random_mixtures(10, DIMS, pos_radius=1, cov_radius=0.25, factor_min=0, factor_max=10, device=net.device())
     #     random_kernel = gm.generate_random_mixtures(10, DIMS, pos_radius=0.08, cov_radius=0.04, device=net.device())
@@ -37,8 +36,8 @@ def generate_random_ReLUandBias(device: torch.device = 'cpu'):
     # else:
     input_gm_after_activation = gm.MixtureReLUandBias(gm.generate_random_mixtures(BATCH_SIZE, N_INPUT_GAUSSIANS, DIMS,
                                                                                   pos_radius=1, cov_radius=0.25,
-                                                                                  factor_min=0, factor_max=1, device=device),
-                                                      torch.zeros(BATCH_SIZE, dtype=torch.float32, device=device))
+                                                                                  factor_min=weight_min, factor_max=1, device=device),
+                                                      torch.rand(BATCH_SIZE, dtype=torch.float32, device=device) * bias_mul)
     # distribution = torch.distributions.categorical.Categorical(torch.ones(N_INPUT_GAUSSIANS, device=device))
     # # zero some input gaussians so we can learn a one to one mapping
     # good_indices = distribution.sample(torch.Size([N_BATCHES, N_OUTPUT_GAUSSIANS]))
@@ -52,8 +51,17 @@ def test_dl_fitting(g_layer_sizes: typing.List,
                     fully_layer_sizes: typing.List,
                     use_cuda: bool = True,
                     cov_decomposition: bool = True,
-                    testing_mode: bool = True):
-    net = FitGmNet(g_layer_sizes, fully_layer_sizes, N_INPUT_GAUSSIANS, N_OUTPUT_GAUSSIANS, DIMS, cov_decomposition=cov_decomposition)
+                    testing_mode: bool = True,
+                    n_iterations: int = 50000,
+                    bias_mul: float = 1,
+                    weight_min: float = -1):
+    net = fitGmNet.Net(g_layer_sizes,
+                       fully_layer_sizes,
+                       N_INPUT_GAUSSIANS,
+                       N_OUTPUT_GAUSSIANS,
+                       name=f"__biasmul{bias_mul}_minweight{weight_min}",
+                       n_dims=DIMS,
+                       cov_decomposition=cov_decomposition)
     net.load()
 
     if use_cuda:
@@ -69,11 +77,11 @@ def test_dl_fitting(g_layer_sizes: typing.List,
     print(net)
 
     running_loss_avg = 0
-    for i in range(1 if testing_mode else N_BATCHES):
+    for i in range(1 if testing_mode else n_iterations):
         batch_start_time = time.perf_counter()
         optimiser.zero_grad()
 
-        input_relu_of_gm_p_bias = generate_random_ReLUandBias(device=net.device())
+        input_relu_of_gm_p_bias = generate_random_ReLUandBias(bias_mul=bias_mul, weight_min=weight_min, device=net.device())
         sampling_positions = torch.rand((BATCH_SIZE, N_SAMPLES, DIMS), dtype=torch.float32, device=net.device()) * 3 - 1.5
         target_sampling_values = input_relu_of_gm_p_bias.evaluate_few_xes(sampling_positions)
 
@@ -130,8 +138,28 @@ def test_dl_fitting(g_layer_sizes: typing.List,
     # print(f"diff={output - target}")
 
 
+# test_dl_fitting(g_layer_sizes=[64, 128, 128, 512, 512 * N_OUTPUT_GAUSSIANS], fully_layer_sizes=[512, 256, 128, 64, 32],
+#                 use_cuda=True, cov_decomposition=False, testing_mode=False, bias_mul=0, weight_min=0)
+#
+# test_dl_fitting(g_layer_sizes=[64, 64, 128, 128, 512, 512 * N_OUTPUT_GAUSSIANS], fully_layer_sizes=[512, 256, 128, 64, 32],
+#                 use_cuda=True, cov_decomposition=False, testing_mode=False, bias_mul=0, weight_min=0)
+#
+# test_dl_fitting(g_layer_sizes=[64, 64, 128, 128, 512, 1024 * N_OUTPUT_GAUSSIANS], fully_layer_sizes=[512, 256, 128, 64, 32],
+#                 use_cuda=True, cov_decomposition=False, testing_mode=False, bias_mul=0, weight_min=0)
+#
+# test_dl_fitting(g_layer_sizes=[64, 128, 128, 512, 512 * N_OUTPUT_GAUSSIANS], fully_layer_sizes=[512, 256, 128, 64, 32],
+#                 use_cuda=True, cov_decomposition=False, testing_mode=False, bias_mul=1, weight_min=-1)
+#
+# test_dl_fitting(g_layer_sizes=[64, 64, 128, 128, 512, 1024 * N_OUTPUT_GAUSSIANS], fully_layer_sizes=[512, 256, 128, 64, 32],
+#                 use_cuda=True, cov_decomposition=False, testing_mode=False, bias_mul=1, weight_min=-1)
 
-
-test_dl_fitting(g_layer_sizes=[64, 128, 128, 512, 512 * N_OUTPUT_GAUSSIANS], fully_layer_sizes=[512, 256, 128, 64, 32],
-                use_cuda=False, cov_decomposition=False)
+# def test_dl_fitting(g_layer_sizes: typing.List,
+#                     fully_layer_sizes: typing.List,
+#                     use_cuda: bool = True,
+#                     cov_decomposition: bool = True,
+#                     testing_mode: bool = True,
+#                     n_iterations: int = 50000,
+#                     bias_mul: float = 1,
+#                     weight_min: float = -1):
+#     pass
 # test_dl_fitting(g_layer_sizes=[64, 128, 128, 512, 512 * N_OUTPUT_GAUSSIANS], fully_layer_sizes=[512, 256, 128, 64, 32])
