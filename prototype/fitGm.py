@@ -91,13 +91,12 @@ def test_manual_heuristic():
 
 
 def test_dl_fitting(g_layer_sizes: typing.List, fully_layer_sizes: typing.List, use_cuda: bool = True):
-    torch.manual_seed(0)
     DIMS = 2
     N_SAMPLES = 50 * 50
     N_INPUT_GAUSSIANS = 10
     N_OUTPUT_GAUSSIANS = 2
     COVARIANCE_MIN = 0.01
-    TESTING_MODE = True
+    TESTING_MODE = False
 
     BATCH_SIZE = 200
     LEARNING_RATE = 0.001 / BATCH_SIZE
@@ -159,7 +158,7 @@ def test_dl_fitting(g_layer_sizes: typing.List, fully_layer_sizes: typing.List, 
             return self.output_layer.bias.device
 
         def forward(self, convolution_layer: gm.ConvolutionLayer, learning: bool = True) -> gm.Mixture:
-            # todo batching
+            # todo batching, it'll even help for performance when applied only here (and not in the error function)
             batch_size = 1
             x = torch.cat((convolution_layer.mixture.weights.view(1, -1),
                            convolution_layer.mixture.positions,
@@ -208,6 +207,12 @@ def test_dl_fitting(g_layer_sizes: typing.List, fully_layer_sizes: typing.List, 
                                                                                         pos_radius=1, cov_radius=0.25,
                                                                                         factor_min=0, factor_max=1, device=net.device()),
                                                             torch.zeros(1, dtype=torch.float32, device=net.device()))
+            distribution = torch.distributions.categorical.Categorical(torch.ones(N_INPUT_GAUSSIANS, device=net.device()))
+            # zero some input gaussians so we can learn a one to one mapping
+            good_indices = distribution.sample(torch.Size([N_OUTPUT_GAUSSIANS]))
+            bool_vector = torch.ones_like(input_gm_after_activation.mixture.weights, dtype=torch.bool)
+            bool_vector[good_indices] = False
+            input_gm_after_activation.mixture.weights[bool_vector] = 0
         return input_gm_after_activation
 
     net = Net(g_layer_sizes, fully_layer_sizes)
