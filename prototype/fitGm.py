@@ -97,9 +97,10 @@ def test_dl_fitting(g_layer_sizes: typing.List, fully_layer_sizes: typing.List, 
     N_OUTPUT_GAUSSIANS = 2
     COVARIANCE_MIN = 0.01
     TESTING_MODE = False
+    COV_DECOMPOSITION = True
 
     BATCH_SIZE = 200
-    LEARNING_RATE = 0.001 / BATCH_SIZE
+    LEARNING_RATE = 0.005 / BATCH_SIZE
     N_BATCHES = 5000000
 
     assert DIMS == 2 or DIMS == 3
@@ -111,12 +112,13 @@ def test_dl_fitting(g_layer_sizes: typing.List, fully_layer_sizes: typing.List, 
         def __init__(self, g_layer_sizes: typing.List, fully_layer_sizes: typing.List):
             super(Net, self).__init__()
             # n * (1 for weights, DIMS for positions, trimat_size(DIMS) for the triangle cov matrix) +1 for the bias
+            n_inputs_per_gaussian = 1 + DIMS + DIMS * DIMS if COV_DECOMPOSITION else 1 + DIMS + (DIMS - 1) * 3
             # n_inputs = N_INPUT_GAUSSIANS * (1 + DIMS + mat_tools.trimat_size(DIMS)) + 1
             # and we want to output A, so that C = A @ A.T() + 0.01 * identity() is the cov matrix
             n_outputs_per_gaussian = 1 + DIMS + DIMS * DIMS
             # n_outputs = N_OUTPUT_GAUSSIANS * n_outputs_per_gaussian
 
-            last_layer_size = 6
+            last_layer_size = n_inputs_per_gaussian
             self.per_g_layers = nn.ModuleList()
             for s in g_layer_sizes:
                 self.per_g_layers.append(nn.Conv1d(last_layer_size, s, kernel_size=1, stride=1, groups=1))
@@ -133,8 +135,9 @@ def test_dl_fitting(g_layer_sizes: typing.List, fully_layer_sizes: typing.List, 
                 # self.batch_norms.append(nn.BatchNorm1d(s))
                 last_layer_size = s
 
-            self.name = "fit_gm_net__g"
             self.output_layer = nn.Conv1d(last_layer_size, n_outputs_per_gaussian, kernel_size=1, stride=1, groups=1)
+
+            self.name = "fit_gm_net_eigenVecs__g" if COV_DECOMPOSITION else "fit_gm_net__g"
             for s in fully_layer_sizes:
                 self.name += f"_{s}"
             self.name += "__f"
@@ -160,10 +163,17 @@ def test_dl_fitting(g_layer_sizes: typing.List, fully_layer_sizes: typing.List, 
         def forward(self, convolution_layer: gm.ConvolutionLayer, learning: bool = True) -> gm.Mixture:
             # todo batching, it'll even help for performance when applied only here (and not in the error function)
             batch_size = 1
+            if COV_DECOMPOSITION:
+                C = mat_tools.triangle_to_normal(convolution_layer.mixture.covariances).transpose(0, 2)
+                eigen_vals, eigen_vectors = C.symeig(eigenvectors=True)
+                cov_data = eigen_vectors @ torch.sqrt(eigen_vals).diag_embed()
+                cov_data = cov_data.view(-1, DIMS * DIMS).transpose(0, 1)
+            else:
+                cov_data = convolution_layer.mixture.covariances
             x = torch.cat((convolution_layer.mixture.weights.view(1, -1),
                            convolution_layer.mixture.positions,
-                           convolution_layer.mixture.covariances), dim=0)
-            x = x.reshape(1, 6, -1)
+                           cov_data), dim=0)
+            x = x.reshape(1, -1, convolution_layer.mixture.number_of_components())
 
             for layer in self.per_g_layers:
                 x = layer(x)
