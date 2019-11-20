@@ -54,7 +54,7 @@ def em_algorithm(image: Tensor, n_components: int, n_iterations: int, device: to
             new_mixture.positions[:, c] += w / new_mixture.weights[c] * dx
             new_mixture.covariances[:, c] += w * (1 - w / new_mixture.weights[c]) * mat_tools.triangle_outer_product(dx)
 
-        for j in range(new_mixture.number_of_components()):
+        for j in range(new_mixture.n_components()):
             if new_mixture.weights[j] > 1:
                 new_mixture.covariances[:, j] /= new_mixture.weights[j] - 1
             if n_pixels[j] > 0:

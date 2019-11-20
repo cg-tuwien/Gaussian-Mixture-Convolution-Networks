@@ -45,19 +45,39 @@ class Mixture:
         n_batches = self.n_batches()
         n_dims = self.n_dimensions()
         n_comps = self.n_components()
+        n_xes = xes.size()[1]
+        assert xes.size()[0] == n_batches
         # xes: first dim: list, second dim; x/y
 
-        # 1. dim: batches (from mixture), 2. component, 3. xes, 4.+: vector / matrix components
-        xes = xes.view(1, 1, -1, n_dims)
-        positions = self.positions.view(n_batches, n_comps, 1, n_dims)
-        values = xes - positions
+        if n_batches * n_comps * n_xes < 100 * 1024 * 1024:
+            # 1. dim: batches (from mixture), 2. component, 3. xes, 4.+: vector / matrix components
+            xes = xes.view(n_batches, 1, -1, n_dims)
+            positions = self.positions.view(n_batches, n_comps, 1, n_dims)
+            values = xes - positions
 
-        # x^t A x -> quadratic form
-        x_t = values.view(n_batches, n_comps, -1, 1, n_dims)
-        x = values.view(n_batches, n_comps, -1, n_dims, 1)
-        A = self.inverted_covariances.view(n_batches, n_comps, 1, n_dims, n_dims)
-        values = -0.5 * x_t @ A @ x
-        values = values.view(n_batches, n_comps, -1)
+            # x^t A x -> quadratic form
+            x_t = values.view(n_batches, n_comps, -1, 1, n_dims)
+            x = values.view(n_batches, n_comps, -1, n_dims, 1)
+            A = self.inverted_covariances.view(n_batches, n_comps, 1, n_dims, n_dims)
+            values = -0.5 * x_t @ A @ x
+            values = values.view(n_batches, n_comps, -1)
+        else:
+            # todo: select min of n_batches and n_components or something?
+            # todo: test
+            batched_values = torch.zeros(n_batches, n_comps, n_xes)
+            for i in range(n_batches):
+                xes = xes.view(1, -1, n_dims)
+                positions = self.positions[i, :, :].view(n_comps, 1, n_dims)
+                values = xes - positions
+
+                # x^t A x -> quadratic form
+                x_t = values.view(n_comps, -1, 1, n_dims)
+                x = values.view(n_comps, -1, n_dims, 1)
+                A = self.inverted_covariances[i, :, :, :].view(n_comps, 1, n_dims, n_dims)
+                values = -0.5 * x_t @ A @ x
+                batched_values[i, :, :] = values.view(n_comps, -1)
+            values = batched_values
+
         values = self.weights.view(n_batches, n_comps, 1) * torch.exp(values)
         return values.view(n_batches, n_comps, -1)
 
@@ -89,10 +109,10 @@ class Mixture:
     def evaluate_many_xes(self, xes: Tensor) -> Tensor:
         #todo: implement batched
         assert self.n_batches() == 1
-        values = torch.zeros(xes.size()[0], dtype=torch.float32, device=xes.device)
+        values = torch.zeros(self.n_batches(), xes.size()[0], dtype=torch.float32, device=xes.device)
         for i in range(self.n_components()):
             # todo: adding many components like this probably makes the gradient graph and therefore memory explode
-            values += self.evaluate_component_many_xes(xes, i).view(-1)
+            values += self.evaluate_component_many_xes(xes, i).view(self.n_batches(), -1)
         return values
     
     def max_component_many_xes(self, xes: Tensor) -> Tensor:
@@ -108,13 +128,15 @@ class Mixture:
         
         return selected
             
-    def debug_show(self, x_low: float = -22, y_low: float = -22, x_high: float = 22, y_high: float = 22, step: float = 0.1) -> Tensor:
-        #todo: implement batched
-        assert self.n_batches() == 1
+    def debug_show(self, batch_i: int = 0, x_low: float = -22, y_low: float = -22, x_high: float = 22, y_high: float = 22, step: float = 0.1) -> Tensor:
+        assert batch_i < self.n_batches()
+        m = self.detach().batch(batch_i)
+
         xv, yv = torch.meshgrid([torch.arange(x_low, x_high, step, dtype=torch.float, device=self.weights.device),
                                  torch.arange(y_low, y_high, step, dtype=torch.float, device=self.weights.device)])
-        xes = torch.cat((xv.reshape(1, -1), yv.reshape(1, -1)), 0)
-        values = self.evaluate_many_xes(xes).detach()
+        xes = torch.cat((xv.reshape(-1, 1), yv.reshape(-1, 1)), 1)
+
+        values = m.evaluate_many_xes(xes).detach()
         image = values.view(xv.size()[0], xv.size()[1]).cpu().numpy()
         plt.imshow(image)
         plt.colorbar()
@@ -131,10 +153,10 @@ class Mixture:
         n_dims = self.n_dimensions()
         return Mixture(self.weights[batch_id, :].view(1, -1),
                        self.positions[batch_id, :, :].view(1, -1, n_dims),
-                       self.positions[batch_id, :, :, :].view(1, -1, n_dims, n_dims))
+                       self.covariances[batch_id, :, :, :].view(1, -1, n_dims, n_dims))
 
     def detach(self):
-        detached_mixture = generate_null_mixture(1, self.dimensions, device=self.device())
+        detached_mixture = generate_null_mixture(1, 1, self.n_dimensions(), device=self.device())
         detached_mixture.weights = self.weights.detach()
         detached_mixture.positions = self.positions.detach()
         detached_mixture.covariances = self.covariances.detach()
@@ -159,24 +181,25 @@ class Mixture:
         return Mixture(dict["weights"], dict["positions"], dict["covariances"])
 
 
-class ReLUandBias:
-    # todo batched
+class MixtureReLUandBias:
     def __init__(self, mixture: Mixture, bias: Tensor):
-        assert bias >= 0
+        assert (bias >= 0).all()
+        assert bias.size()[0] == mixture.n_batches()
         self.mixture = mixture
         self.bias = bias
 
     def evaluate_few_xes(self, positions: Tensor):
-        values = self.mixture.evaluate_few_xes(positions) - self.bias
+        values = self.mixture.evaluate_few_xes(positions) - self.bias.view(-1, 1)
         return torch.max(values, torch.tensor([0.0001], dtype=torch.float32, device=self.mixture.device()))
 
-    def debug_show(self, x_low: float = -22, y_low: float = -22, x_high: float = 22, y_high: float = 22, step: float = 0.1) -> Tensor:
-        m = self.mixture.detach()
+    def debug_show(self, batch_i: int = 0, x_low: float = -22, y_low: float = -22, x_high: float = 22, y_high: float = 22, step: float = 0.1) -> Tensor:
+        assert batch_i < self.mixture.n_batches()
+        m = self.mixture.detach().batch(batch_i)
         xv, yv = torch.meshgrid([torch.arange(x_low, x_high, step, dtype=torch.float, device=m.device()),
                                  torch.arange(y_low, y_high, step, dtype=torch.float, device=m.device())])
-        xes = torch.cat((xv.reshape(1, -1), yv.reshape(1, -1)), 0)
+        xes = torch.cat((xv.reshape(-1, 1), yv.reshape(-1, 1)), 1)
         values = m.evaluate_many_xes(xes)
-        values -= self.bias.detach()
+        values -= self.bias.detach()[batch_i]
         values[values < 0] = 0
         image = values.view(xv.size()[0], xv.size()[1]).cpu().numpy()
         plt.imshow(image)

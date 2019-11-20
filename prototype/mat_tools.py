@@ -8,10 +8,10 @@ def trimat_size(dims: int) -> int:
     return 3 if dims == 2 else 6
 
 
-def gen_random_positive_definite(dims: typing.List, epsilon: float, device: torch.device = 'cpu') -> Tensor:
+def gen_random_positive_definite(dims: typing.List, epsilon: float = 0.01, device: torch.device = 'cpu') -> Tensor:
     assert dims[-1] == dims[-2]
-    A = torch.rand(dims, device=device)
-    return A @ A.transpose(-1, -2) + torch.eye(dims[-1]) * epsilon
+    A = torch.rand(dims, dtype=torch.float32, device=device)
+    return A @ A.transpose(-1, -2) + torch.eye(dims[-1], dtype=torch.float32, device=device) * epsilon
 
 
 def gen_random_positive_definite_triangle(n: int, dims: int, device: torch.device = 'cpu') -> Tensor:
