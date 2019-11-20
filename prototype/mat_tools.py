@@ -2,9 +2,12 @@ import torch
 
 from torch import Tensor
 
+
 def trimat_size(dims: int) -> int:
     return 3 if dims == 2 else 6
 
+
+# todo: performance++ possible by removing the for loop. takes about 15% of the computation
 def gen_random_positive_definite_triangle(n: int, dims: int, device: torch.device = 'cpu') -> Tensor:
     assert dims == 2 or dims == 3
     retval = torch.zeros(trimat_size(dims), n, dtype=torch.float32, device=device)

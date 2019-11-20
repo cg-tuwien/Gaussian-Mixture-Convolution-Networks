@@ -1,5 +1,6 @@
 import typing
 import time
+import pathlib
 
 import torch
 import torch.distributions.categorical
@@ -100,7 +101,7 @@ def test_dl_fitting(g_layer_sizes: typing.List, fully_layer_sizes: typing.List, 
 
     BATCH_SIZE = 200
     LEARNING_RATE = 0.001 / BATCH_SIZE
-    N_BATCHES = 5000
+    N_BATCHES = 5000000
 
     assert DIMS == 2 or DIMS == 3
     assert N_SAMPLES > 0
@@ -138,16 +139,18 @@ def test_dl_fitting(g_layer_sizes: typing.List, fully_layer_sizes: typing.List, 
             for s in fully_layer_sizes:
                 self.name += f"_{s}"
 
+            self.storage_path = "/home/madam/temp/prototype/" + self.name
+
         def save(self):
             assert not TESTING_MODE
-            torch.save(self.state_dict(), "/home/madam/temp/prototype/" + self.name)
+            torch.save(self.state_dict(), self.storage_path)
 
         def load(self):
-            assert TESTING_MODE
-            state_dict = torch.load("/home/madam/temp/prototype/" + self.name)
-            missing_keys, unexpected_keys = self.load_state_dict(state_dict)
-            assert len(missing_keys) == 0
-            assert len(unexpected_keys) == 0
+            if pathlib.Path(self.storage_path).is_file():
+                state_dict = torch.load(self.storage_path)
+                missing_keys, unexpected_keys = self.load_state_dict(state_dict)
+                assert len(missing_keys) == 0
+                assert len(unexpected_keys) == 0
 
         def device(self):
             return self.output_layer.bias.device
@@ -203,8 +206,7 @@ def test_dl_fitting(g_layer_sizes: typing.List, fully_layer_sizes: typing.List, 
         return input_gm_after_activation
 
     net = Net(g_layer_sizes, fully_layer_sizes)
-    if TESTING_MODE:
-        net.load()
+    net.load()
 
     if use_cuda:
         net = net.cuda()
@@ -261,12 +263,16 @@ def test_dl_fitting(g_layer_sizes: typing.List, fully_layer_sizes: typing.List, 
             grad_norm_sum += grad_norm
             grad_norm_cnt += 1
 
-        print(f"iteration i = {i}: "
-              f"batch time = {time.time() - iteration_start_time}s (net avg: {batch_net_time_sum / BATCH_SIZE}s,  "
-              f"batch loss avg {batch_loss_sum / BATCH_SIZE} (avg10: {running_loss_avg / BATCH_SIZE}, "
-              f"grad_norm: {grad_norm_min}/{grad_norm_sum/grad_norm_cnt}/{grad_norm_max}")
-        if not TESTING_MODE:
+        info = (f"iteration i = {i}: "
+                f"batch time = {time.time() - iteration_start_time}s (net avg: {batch_net_time_sum / BATCH_SIZE}s,  "
+                f"batch loss avg {batch_loss_sum / BATCH_SIZE} (avg10: {running_loss_avg / BATCH_SIZE}, "
+                f"grad_norm: {grad_norm_min}/{grad_norm_sum / grad_norm_cnt}/{grad_norm_max}")
+        print(info)
+        if not TESTING_MODE and i % 10 == 0:
             net.save()
+            f = open("/home/madam/temp/prototype/" + net.name + "_loss", "w")
+            f.write(info)
+            f.close()
 
     # target, input_ = draw_random_samples(10, WIDTH, HEIGHT)
     # output = net(input_)

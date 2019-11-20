@@ -30,6 +30,8 @@ def _triangle_mat_data(dims: int) -> (np.array, np.array, Tensor):
 
 
 class TestGM(unittest.TestCase):
+    # todo: test convolution by covolving discretised versions of GMs
+
     def test_gm_eval(self):
         n_eval_positions = 50
         for dims in range(2, 3):
