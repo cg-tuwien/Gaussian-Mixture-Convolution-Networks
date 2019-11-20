@@ -10,18 +10,9 @@ def trimat_size(dims: int) -> int:
 # todo: performance++ possible by removing the for loop. takes about 15% of the computation
 def gen_random_positive_definite_triangle(n: int, dims: int, device: torch.device = 'cpu') -> Tensor:
     assert dims == 2 or dims == 3
-    retval = torch.zeros(trimat_size(dims), n, dtype=torch.float32, device=device)
-    for i in range(n):
-        A = torch.rand(dims, dims, dtype=torch.float32, device=device) * 2 - 1
-        A = A @ A.t() + torch.eye(dims, dtype=torch.float32, device=device) * 0.01
-        if dims == 2:
-            retval[0:2, i] = A[0, :]
-            retval[2, i] = A[1, 1]
-        else:
-            retval[0:3, i] = A[0, :]
-            retval[3:5, i] = A[1, 1:]
-            retval[5, i] = A[2, 2]
-    return retval
+    retval = torch.rand(n, dims, dims, dtype=torch.float32, device=device) * 2 - 1
+    retval = retval.transpose(1, 2) @ retval + torch.eye(dims, dtype=torch.float32, device=device) * 0.01
+    return normal_to_triangle(retval.transpose(0, 2))
 
 
 def gen_null_triangle(n: int, dims: int, device: torch.device = 'cpu') -> Tensor:
