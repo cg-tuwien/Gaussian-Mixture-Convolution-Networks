@@ -22,11 +22,7 @@ def _triangle_mat_data(dims: int) -> (np.array, np.array, Tensor):
         A = A[0:2, 0:2]
         B = B[0:2, 0:2]
 
-    M = np.array([A[np.triu_indices(dims)],
-                  B[np.triu_indices(dims)]]).transpose()
-    M = torch.tensor(M, dtype=torch.float32)
-
-    return A, B, M
+    return A, B
 
 
 class TestGM(unittest.TestCase):
@@ -35,16 +31,16 @@ class TestGM(unittest.TestCase):
     def test_gm_eval(self):
         n_eval_positions = 50
         for dims in range(2, 3):
-            factors = nprnd.rand(2) * 2 - 1.0
+            weights = nprnd.rand(2) * 2 - 1.0
             positions = nprnd.rand(dims, 2) * 10 - 5.0
-            (A, B, covs_torch) = _triangle_mat_data(dims)
+            (A, B) = _triangle_mat_data(dims)
             covs = (A, B)
 
-            mixture = gm.Mixture(torch.tensor(factors, dtype=torch.float32), torch.tensor(positions, dtype=torch.float32), covs_torch)
+            mixture = gm.single_batch_mixture(torch.tensor(weights, dtype=torch.float32), torch.tensor(positions, dtype=torch.float32).t(), torch.tensor(covs, dtype=torch.float32))
 
             eval_positions = nprnd.rand(dims, n_eval_positions)
-            values_gm = mixture.evaluate_many_xes(torch.tensor(eval_positions, dtype=torch.float32)).numpy()
-            values_gm2 = mixture.evaluate_few_xes(torch.tensor(eval_positions, dtype=torch.float32)).numpy()
+            values_gm = mixture.evaluate_many_xes(torch.tensor(eval_positions, dtype=torch.float32).t()).numpy()
+            values_gm2 = mixture.evaluate_few_xes(torch.tensor(eval_positions, dtype=torch.float32).t()).view(-1).numpy()   # already supports batcehs
 
             for i in range(n_eval_positions):
                 np_result = 0
@@ -54,7 +50,7 @@ class TestGM(unittest.TestCase):
                     xmp = x - pos
                     cov_i = npla.inv(covs[j])
                     exponent = -0.5 * (xmp @ cov_i @ xmp)
-                    np_result += factors[j] * np.exp(exponent)
+                    np_result += weights[j] * np.exp(exponent)
                 self.assertAlmostEqual(np_result, values_gm[i].item(), 5)
                 self.assertAlmostEqual(np_result, values_gm2[i].item(), 5)
 

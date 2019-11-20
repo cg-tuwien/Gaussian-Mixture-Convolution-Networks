@@ -1,4 +1,5 @@
 import torch
+import typing
 
 from torch import Tensor
 
@@ -7,7 +8,12 @@ def trimat_size(dims: int) -> int:
     return 3 if dims == 2 else 6
 
 
-# todo: performance++ possible by removing the for loop. takes about 15% of the computation
+def gen_random_positive_definite(dims: typing.List, epsilon: float, device: torch.device = 'cpu') -> Tensor:
+    assert dims[-1] == dims[-2]
+    A = torch.rand(dims, device=device)
+    return A @ A.transpose(-1, -2) + torch.eye(dims[-1]) * epsilon
+
+
 def gen_random_positive_definite_triangle(n: int, dims: int, device: torch.device = 'cpu') -> Tensor:
     assert dims == 2 or dims == 3
     retval = torch.rand(n, dims, dims, dtype=torch.float32, device=device) * 2 - 1
