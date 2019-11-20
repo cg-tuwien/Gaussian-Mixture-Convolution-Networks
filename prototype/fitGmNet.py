@@ -61,7 +61,6 @@ class Net(nn.Module):
         self.storage_path = "/home/madam/temp/prototype/" + self.name
 
     def save(self):
-        pass
         torch.save(self.state_dict(), self.storage_path)
 
     def load(self):
