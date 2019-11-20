@@ -97,7 +97,7 @@ def test_dl_fitting(g_layer_sizes: typing.List, fully_layer_sizes: typing.List, 
     N_INPUT_GAUSSIANS = 10
     N_OUTPUT_GAUSSIANS = 2
     COVARIANCE_MIN = 0.01
-    TESTING_MODE = False
+    TESTING_MODE = True
 
     BATCH_SIZE = 200
     LEARNING_RATE = 0.001 / BATCH_SIZE
@@ -242,6 +242,7 @@ def test_dl_fitting(g_layer_sizes: typing.List, fully_layer_sizes: typing.List, 
 
             if TESTING_MODE:
                 output_gm.debug_show(-2, -2, 2, 2, 0.05)
+                input("Press enter to continue")
             output_gm_sampling_values = output_gm.evaluate_few_xes(sampling_positions)
 
             loss = criterion(output_gm_sampling_values, target_sampling_values)
@@ -302,4 +303,4 @@ def test_dl_fitting(g_layer_sizes: typing.List, fully_layer_sizes: typing.List, 
 # test_dl_fitting([100, 100, 100, 100, 100, 30])
 
 # test_dl_fitting([128, 128], [129, 129, 40])
-test_dl_fitting([1024, 1024, 1024], [1024, 256, 64])
+test_dl_fitting([256, 256, 256], [128, 128, 32])
