@@ -9,7 +9,7 @@ import gm
 from gm import MixtureReLUandBias
 from gm import Mixture
 
-COVARIANCE_MIN = 0.01
+COVARIANCE_MIN = 0.001
 
 
 class Net(nn.Module):
@@ -52,7 +52,7 @@ class Net(nn.Module):
         self.output_layer = nn.Conv1d(last_layer_size, n_outputs_per_gaussian, kernel_size=1, stride=1, groups=1)
 
         self.name = "fit_gm_net_eigenVecs__g" if self.cov_decomposition else "fit_gm_net__g"
-        for s in fully_layer_sizes:
+        for s in g_layer_sizes:
             self.name += f"_{s}"
         self.name += "__f"
         for s in fully_layer_sizes:
@@ -62,7 +62,7 @@ class Net(nn.Module):
 
     def save(self):
         pass
-        # torch.save(self.state_dict(), self.storage_path)
+        torch.save(self.state_dict(), self.storage_path)
 
     def load(self):
         if pathlib.Path(self.storage_path).is_file():

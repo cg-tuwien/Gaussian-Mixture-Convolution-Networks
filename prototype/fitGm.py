@@ -12,10 +12,9 @@ from fitGmNet import Net as FitGmNet
 
 DIMS = 2
 N_SAMPLES = 50 * 50
-N_INPUT_GAUSSIANS = 2
-N_OUTPUT_GAUSSIANS = 2
+N_INPUT_GAUSSIANS = 10
+N_OUTPUT_GAUSSIANS = 10
 COVARIANCE_MIN = 0.01
-TESTING_MODE = False
 COV_DECOMPOSITION = True
 
 BATCH_SIZE = 200
@@ -49,8 +48,12 @@ def generate_random_ReLUandBias(device: torch.device = 'cpu'):
     return input_gm_after_activation
 
 
-def test_dl_fitting(g_layer_sizes: typing.List, fully_layer_sizes: typing.List, use_cuda: bool = True):
-    net = FitGmNet(g_layer_sizes, fully_layer_sizes, N_INPUT_GAUSSIANS, N_OUTPUT_GAUSSIANS, DIMS, cov_decomposition=True)
+def test_dl_fitting(g_layer_sizes: typing.List,
+                    fully_layer_sizes: typing.List,
+                    use_cuda: bool = True,
+                    cov_decomposition: bool = True,
+                    testing_mode: bool = True):
+    net = FitGmNet(g_layer_sizes, fully_layer_sizes, N_INPUT_GAUSSIANS, N_OUTPUT_GAUSSIANS, DIMS, cov_decomposition=cov_decomposition)
     net.load()
 
     if use_cuda:
@@ -66,7 +69,7 @@ def test_dl_fitting(g_layer_sizes: typing.List, fully_layer_sizes: typing.List, 
     print(net)
 
     running_loss_avg = 0
-    for i in range(1 if TESTING_MODE else N_BATCHES):
+    for i in range(1 if testing_mode else N_BATCHES):
         batch_start_time = time.perf_counter()
         optimiser.zero_grad()
 
@@ -87,19 +90,19 @@ def test_dl_fitting(g_layer_sizes: typing.List, fully_layer_sizes: typing.List, 
         loss.backward()
         backward_time = time.perf_counter() - backward_start_time
 
-        if TESTING_MODE:
+        if testing_mode:
             for j in range(BATCH_SIZE):
                 input_relu_of_gm_p_bias.debug_show(j, -2, -2, 2, 2, 0.05)
                 output_gm.debug_show(j, -2, -2, 2, 2, 0.05)
                 input("Press enter to continue")
-        if not TESTING_MODE:
+        if not testing_mode:
             optimiser.step()
 
         grad_norm_min = 1100000
         grad_norm_sum = 0
         grad_norm_max = 0
         grad_norm_cnt = 0
-        running_loss_avg = running_loss_avg * 0.9 + loss * 0.1
+        running_loss_avg = running_loss_avg * 0.98 + loss * 0.02
         for p in list(filter(lambda p: p.grad is not None, net.parameters())):
             grad_norm = p.grad.data.norm(2).item()
             grad_norm_min = grad_norm if grad_norm < grad_norm_min else grad_norm_min
@@ -108,13 +111,13 @@ def test_dl_fitting(g_layer_sizes: typing.List, fully_layer_sizes: typing.List, 
             grad_norm_cnt += 1
 
         info = (f"iteration i = {i}: "
-                f"batch time = {time.perf_counter() - batch_start_time}s, "
+                f"batch loss {loss:.4f} (avg50: {running_loss_avg:.5f}), "
+                f"batch time = {time.perf_counter() - batch_start_time :.2f}s, "
                 f"size = {BATCH_SIZE}, "
-                f"(forward: {network_time}s ({network_time / BATCH_SIZE}s), eval: {eval_time}s, backward: {backward_time}s) "
-                f"batch loss {loss} (avg10: {running_loss_avg}), "
-                f"grad_norm: {grad_norm_min}/{grad_norm_sum / grad_norm_cnt}/{grad_norm_max}")
+                f"(forward: {network_time :.2f}s ({network_time / BATCH_SIZE :.4f}s), eval: {eval_time :.3f}s, backward: {backward_time :.4f}s) "
+                f"grad_norm: {grad_norm_min :.6f}/{grad_norm_sum / grad_norm_cnt :.6f}/{grad_norm_max :.6f}")
         print(info)
-        if not TESTING_MODE and i % 10 == 0:
+        if not testing_mode and i % 50 == 0:
             net.save()
             f = open("/home/madam/temp/prototype/" + net.name + "_loss", "w")
             f.write(info)
@@ -127,26 +130,8 @@ def test_dl_fitting(g_layer_sizes: typing.List, fully_layer_sizes: typing.List, 
     # print(f"diff={output - target}")
 
 
-# test_dl_fitting([1200]) ## all over the place
-# test_dl_fitting([601]) ## all over the place
-# test_dl_fitting([200]) ## all over the place
-
-# test_dl_fitting([600, 400]) # averages over all gms? seems to be a blob in the middle very often
-# test_dl_fitting([400, 200])
-
-# test_dl_fitting([400, 200, 100]) # there might be some correlation with the height
-# test_dl_fitting([600, 400, 200]) # also looks like blob in the middle
-#
-# test_dl_fitting([600, 400, 200, 100])
-#
-# test_dl_fitting([600, 200, 200, 200, 100], use_cuda=True)
 
 
-# test_dl_fitting([61, 61, 61, 30, 30, 14])
-# test_dl_fitting([61, 30, 14])
-# test_dl_fitting([120, 120, 60, 60, 30, 14])
-# test_dl_fitting([600, 600, 400, 200, 100, 30])
-# test_dl_fitting([100, 100, 100, 100, 100, 30])
-
-# test_dl_fitting([128, 128], [129, 129, 40])
-test_dl_fitting(g_layer_sizes=[256, 256, 256], fully_layer_sizes=[128, 128, 32])
+test_dl_fitting(g_layer_sizes=[64, 128, 128, 512, 512 * N_OUTPUT_GAUSSIANS], fully_layer_sizes=[512, 256, 128, 64, 32],
+                use_cuda=False, cov_decomposition=False)
+# test_dl_fitting(g_layer_sizes=[64, 128, 128, 512, 512 * N_OUTPUT_GAUSSIANS], fully_layer_sizes=[512, 256, 128, 64, 32])
