@@ -114,7 +114,8 @@ def test_dl_fitting(g_layer_sizes: typing.List, fully_layer_sizes: typing.List, 
             # n * (1 for weights, DIMS for positions, trimat_size(DIMS) for the triangle cov matrix) +1 for the bias
             # n_inputs = N_INPUT_GAUSSIANS * (1 + DIMS + mat_tools.trimat_size(DIMS)) + 1
             # and we want to output A, so that C = A @ A.T() + 0.01 * identity() is the cov matrix
-            n_outputs = N_OUTPUT_GAUSSIANS * (1 + DIMS + DIMS * DIMS)
+            n_outputs_per_gaussian = 1 + DIMS + DIMS * DIMS
+            # n_outputs = N_OUTPUT_GAUSSIANS * n_outputs_per_gaussian
 
             last_layer_size = 6
             self.per_g_layers = nn.ModuleList()
@@ -125,14 +126,16 @@ def test_dl_fitting(g_layer_sizes: typing.List, fully_layer_sizes: typing.List, 
             self.fully_layers = nn.ModuleList()
             # todo batching
             # self.batch_norms = nn.ModuleList()
-            last_layer_size = last_layer_size + 1
+
+            assert last_layer_size % N_OUTPUT_GAUSSIANS == 0
+            last_layer_size = last_layer_size // N_OUTPUT_GAUSSIANS + 1
             for s in fully_layer_sizes:
-                self.fully_layers.append(nn.Linear(last_layer_size, s))
+                self.fully_layers.append(nn.Conv1d(last_layer_size, s, kernel_size=1, stride=1, groups=1))
                 # self.batch_norms.append(nn.BatchNorm1d(s))
                 last_layer_size = s
-            self.output_layer = nn.Linear(last_layer_size, n_outputs)
 
             self.name = "fit_gm_net__g"
+            self.output_layer = nn.Conv1d(last_layer_size, n_outputs_per_gaussian, kernel_size=1, stride=1, groups=1)
             for s in fully_layer_sizes:
                 self.name += f"_{s}"
             self.name += "__f"
@@ -168,7 +171,9 @@ def test_dl_fitting(g_layer_sizes: typing.List, fully_layer_sizes: typing.List, 
                 x = F.relu(x)
 
             x = torch.sum(x, dim=2)
-            x = torch.cat((convolution_layer.bias.view(1, -1), x), dim=1)
+            # x is batch size x final g layer size now
+            x = x.view(batch_size, -1, N_OUTPUT_GAUSSIANS)
+            x = torch.cat((convolution_layer.bias.expand(batch_size, 1, N_OUTPUT_GAUSSIANS), x), dim=1)
 
             i = 0
             for layer in self.fully_layers:
@@ -181,10 +186,10 @@ def test_dl_fitting(g_layer_sizes: typing.List, fully_layer_sizes: typing.List, 
 
             # todo: batching, first dimension is the batch (batch_size)
             # todo: those magic constants take care of scaling. think of something generic, normalisation layer? input normalisation?
-            weights = x[:, 0:N_OUTPUT_GAUSSIANS] * 1
-            positions = x[:, N_OUTPUT_GAUSSIANS:3 * N_OUTPUT_GAUSSIANS].view(batch_size, DIMS, -1) * 1
+            weights = x[:, 0, :] * 1
+            positions = x[:, 1:(DIMS + 1), :] * 1
             # we are learning A, so that C = A @ A.T() + 0.01 * identity() is the resulting cov matrix
-            A = x[:, 3 * N_OUTPUT_GAUSSIANS:].view(batch_size, -1, DIMS, DIMS)
+            A = x[:, (DIMS + 1):, :].transpose(1, 2).view(batch_size, -1, DIMS, DIMS)
             C = A @ A.transpose(2, 3) + torch.eye(DIMS, DIMS, dtype=torch.float32, device=self.device()).view(1, 1, DIMS, DIMS) * COVARIANCE_MIN
             # todo: batching, here 0 is the batch id
             covariances = mat_tools.normal_to_triangle(C[0, :, :, :].transpose(0, 2)) * 10
@@ -215,7 +220,6 @@ def test_dl_fitting(g_layer_sizes: typing.List, fully_layer_sizes: typing.List, 
 
     for parameter in net.parameters():
         print(f"parameter: {parameter.shape}")
-
 
     criterion = nn.MSELoss()
     optimiser = optim.Adam(net.parameters(), lr=LEARNING_RATE)
@@ -281,6 +285,7 @@ def test_dl_fitting(g_layer_sizes: typing.List, fully_layer_sizes: typing.List, 
     # print(f"output={output}")
     # print(f"diff={output - target}")
 
+
 # test_dl_fitting([1200]) ## all over the place
 # test_dl_fitting([601]) ## all over the place
 # test_dl_fitting([200]) ## all over the place
@@ -303,4 +308,4 @@ def test_dl_fitting(g_layer_sizes: typing.List, fully_layer_sizes: typing.List, 
 # test_dl_fitting([100, 100, 100, 100, 100, 30])
 
 # test_dl_fitting([128, 128], [129, 129, 40])
-test_dl_fitting([256, 256, 256], [128, 128, 32])
+test_dl_fitting(g_layer_sizes=[256, 256, 256], fully_layer_sizes=[128, 128, 32])
