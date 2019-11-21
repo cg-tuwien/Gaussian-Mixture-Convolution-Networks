@@ -110,7 +110,7 @@ def test_dl_fitting(g_layer_sizes: typing.List,
         grad_norm_sum = 0
         grad_norm_max = 0
         grad_norm_cnt = 0
-        running_loss_avg = running_loss_avg * 0.98 + loss * 0.02
+        running_loss_avg = running_loss_avg * 0.98 + loss.item() * 0.02
         for p in list(filter(lambda p: p.grad is not None, net.parameters())):
             grad_norm = p.grad.data.norm(2).item()
             grad_norm_min = grad_norm if grad_norm < grad_norm_min else grad_norm_min

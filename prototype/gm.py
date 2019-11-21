@@ -259,7 +259,7 @@ def _polynomMulRepeat(A: Tensor, B: Tensor) -> (Tensor, Tensor):
 
 def convolve(m1: Mixture, m2: Mixture) -> Mixture:
     # todo: port to batched
-    assert m1.dimensions == m2.dimensions
+    assert m1.n_dimensions() == m2.n_dimensions()
     m1_f, m2_f = _polynomMulRepeat(m1.weights, m2.weights)
     m1_p, m2_p = _polynomMulRepeat(m1.positions, m2.positions)
     m1_c, m2_c = _polynomMulRepeat(m1.covariances, m2.covariances)
@@ -268,5 +268,5 @@ def convolve(m1: Mixture, m2: Mixture) -> Mixture:
     covariances = m1_c + m2_c
     detc1tc2 = mat_tools.triangle_det(m1_c) * mat_tools.triangle_det(m2_c)
     detc1pc2 = mat_tools.triangle_det(covariances)
-    factors = math.pow(math.sqrt(2 * math.pi), m1.dimensions) * m1_f * m2_f * torch.sqrt(detc1tc2) / torch.sqrt(detc1pc2)
+    factors = math.pow(math.sqrt(2 * math.pi), m1.n_dimensions()) * m1_f * m2_f * torch.sqrt(detc1tc2) / torch.sqrt(detc1pc2)
     return Mixture(factors, positions, covariances)
