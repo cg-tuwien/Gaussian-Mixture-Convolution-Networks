@@ -133,11 +133,12 @@ class Mixture:
 
     def debug_show(self, batch_i: int = 0, x_low: float = -22, y_low: float = -22, x_high: float = 22, y_high: float = 22, step: float = 0.1) -> Tensor:
         assert batch_i < self.n_batches()
+        assert self.n_dimensions() == 2
         m = self.detach().batch(batch_i)
 
         xv, yv = torch.meshgrid([torch.arange(x_low, x_high, step, dtype=torch.float, device=self.weights.device),
                                  torch.arange(y_low, y_high, step, dtype=torch.float, device=self.weights.device)])
-        xes = torch.cat((xv.reshape(-1, 1), yv.reshape(-1, 1)), 1)
+        xes = torch.cat((xv.reshape(-1, 1), yv.reshape(-1, 1)), 1).view(1, -1, 2)
 
         values = m.evaluate_many_xes(xes).detach()
         image = values.view(xv.size()[0], xv.size()[1]).cpu().numpy()
@@ -196,11 +197,12 @@ class MixtureReLUandBias:
         return torch.max(values, torch.tensor([0.0001], dtype=torch.float32, device=self.mixture.device()))
 
     def debug_show(self, batch_i: int = 0, x_low: float = -22, y_low: float = -22, x_high: float = 22, y_high: float = 22, step: float = 0.1) -> Tensor:
+        assert self.mixture.n_dimensions() == 2
         assert batch_i < self.mixture.n_batches()
         m = self.mixture.detach().batch(batch_i)
         xv, yv = torch.meshgrid([torch.arange(x_low, x_high, step, dtype=torch.float, device=m.device()),
                                  torch.arange(y_low, y_high, step, dtype=torch.float, device=m.device())])
-        xes = torch.cat((xv.reshape(-1, 1), yv.reshape(-1, 1)), 1)
+        xes = torch.cat((xv.reshape(-1, 1), yv.reshape(-1, 1)), 1).view(1, -1, 2)
         values = m.evaluate_many_xes(xes)
         values -= self.bias.detach()[batch_i]
         values[values < 0] = 0

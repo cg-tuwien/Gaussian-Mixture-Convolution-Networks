@@ -9,7 +9,7 @@ import gm
 from gm import MixtureReLUandBias
 from gm import Mixture
 
-COVARIANCE_MIN = 0.001
+COVARIANCE_MIN = 0.0001
 
 
 class Net(nn.Module):
@@ -18,7 +18,7 @@ class Net(nn.Module):
                  fully_layer_sizes: typing.List,
                  n_input_gaussians: int,
                  n_output_gaussians: int,
-                 name: str,
+                 name: str = "",
                  n_dims: int = 2,
                  cov_decomposition=False):
         super(Net, self).__init__()
@@ -63,14 +63,19 @@ class Net(nn.Module):
         self.storage_path = "/home/madam/temp/prototype/" + self.name
 
     def save(self):
+        print(f"fitGmNet: saving to {self.storage_path}")
         torch.save(self.state_dict(), self.storage_path)
 
     def load(self):
+        print(f"fitGmNet: trying to load {self.storage_path}")
         if pathlib.Path(self.storage_path).is_file():
             state_dict = torch.load(self.storage_path)
             missing_keys, unexpected_keys = self.load_state_dict(state_dict)
             assert len(missing_keys) == 0
             assert len(unexpected_keys) == 0
+            print("fitGmNet: loaded")
+        else:
+            print("fitGmNet: not found")
 
     def device(self):
         return self.output_layer.bias.device
