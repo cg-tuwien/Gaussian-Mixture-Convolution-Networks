@@ -249,30 +249,24 @@ def generate_null_mixture(n_batch: int, n_components: int, n_dims: int, device: 
 
 
 def _polynomMulRepeat(A: Tensor, B: Tensor) -> (Tensor, Tensor):
-    # todo: port to batched
-    # if len(A.size()) == 2:
-    A_n = A.size()[-1]
-    B_n = B.size()[-1]
+    A_n = A.size()[1]
+    B_n = B.size()[1]
     A_repeats = [1] * len(A.size())
-    A_repeats[-1] = B_n
-    return (A.repeat(A_repeats), B.repeat_interleave(A_n, dim=-1))
-    # else:
-    #     A_n = A.size()[0]
-    #     B_n = B.size()[0]
-    #     return (A.repeat(B_n), B.repeat_interleave(A_n))
+    A_repeats[1] = B_n
+    return (A.repeat(A_repeats), B.repeat_interleave(A_n, dim=1))
 
 
 def convolve(m1: Mixture, m2: Mixture) -> Mixture:
-    # todo: port to batched
     n_batches = m1.n_batches()
     n_dims = m1.n_dimensions()
     assert n_batches == m2.n_batches()
     assert n_dims == m2.n_dimensions()
     m1_f, m2_f = _polynomMulRepeat(m1.weights, m2.weights)
     m1_p, m2_p = _polynomMulRepeat(m1.positions, m2.positions)
-    m1_c, m2_c = _polynomMulRepeat(m1.covariances.view(n_batches, m1.n_components(), n_dims * n_dims), m2.covariances.view(n_batches, m2.n_components(), n_dims * n_dims))
-    m1_c = m1_c.view(n_batches, -1, n_dims, n_dims)
-    m2_c = m2_c.view(n_batches, -1, n_dims, n_dims)
+    # m1_c, m2_c = _polynomMulRepeat(m1.covariances.view(n_batches, m1.n_components(), n_dims * n_dims), m2.covariances.view(n_batches, m2.n_components(), n_dims * n_dims))
+    m1_c, m2_c = _polynomMulRepeat(m1.covariances, m2.covariances)
+    m1_c = m1_c
+    m2_c = m2_c
 
     positions = m1_p + m2_p
     covariances = m1_c + m2_c
