@@ -39,8 +39,8 @@ class TestGM(unittest.TestCase):
             mixture = gm.single_batch_mixture(torch.tensor(weights, dtype=torch.float32), torch.tensor(positions, dtype=torch.float32).t(), torch.tensor(covs, dtype=torch.float32))
 
             eval_positions = nprnd.rand(dims, n_eval_positions)
-            values_gm = mixture.evaluate_many_xes(torch.tensor(eval_positions, dtype=torch.float32).t()).numpy()
-            values_gm2 = mixture.evaluate_few_xes(torch.tensor(eval_positions, dtype=torch.float32).t()).view(-1).numpy()   # already supports batcehs
+            values_gm = mixture.evaluate_many_xes(torch.tensor(eval_positions, dtype=torch.float32).t().reshape(1, n_eval_positions, dims)).view(-1).numpy()
+            values_gm2 = mixture.evaluate_few_xes(torch.tensor(eval_positions, dtype=torch.float32).t().reshape(1, n_eval_positions, dims)).view(-1).numpy()
 
             for i in range(n_eval_positions):
                 np_result = 0
@@ -55,35 +55,48 @@ class TestGM(unittest.TestCase):
                 self.assertAlmostEqual(np_result, values_gm2[i].item(), 5)
 
     def test_polynomMulRepeat(self):
-        A: torch.Tensor = torch.tensor([[1, 2, 3, 4],
-                                        [1, 1, 1, 1],
-                                        [4, 2, 3, 1],
-                                        [4, 2, 3, 1]], dtype=torch.float32)    # testing with col# = 3 is not propper.
+        A: torch.Tensor = torch.tensor([[[1, 2, 3, 4],
+                                         [1, 1, 1, 1],
+                                         [4, 2, 3, 1],
+                                         [4, 2, 3, 1]],
+                                        [[10, 20, 30, 40],
+                                         [10, 10, 10, 10],
+                                         [40, 20, 30, 10],
+                                         [40, 20, 30, 10]]], dtype=torch.float32)  # testing with col# = 3 is not propper.
 
-        B: torch.Tensor = torch.tensor([[1, 2],
-                                        [3, 6],
-                                        [2, 1],
-                                        [1, 2]], dtype=torch.float32)
+        B: torch.Tensor = torch.tensor([[[1, 2],
+                                         [3, 6],
+                                         [2, 1],
+                                         [1, 2]],
+                                        [[10, 20],
+                                         [30, 60],
+                                         [20, 10],
+                                         [10, 20]]], dtype=torch.float32)
 
         (Ap, Bp) = gm._polynomMulRepeat(A, B)
 
-        self.assertEqual(Ap.size()[0], 4)
-        self.assertEqual(Bp.size()[0], 4)
-        self.assertEqual(Ap.size()[1], 8)
-        self.assertEqual(Bp.size()[1], 8)
+        self.assertEqual(Ap.size()[0], 2)
+        self.assertEqual(Bp.size()[0], 2)
+        self.assertEqual(Ap.size()[1], 4)
+        self.assertEqual(Bp.size()[1], 4)
+        self.assertEqual(Ap.size()[2], 8)
+        self.assertEqual(Bp.size()[2], 8)
 
         AtimesB = Ap * Bp
-        R = torch.sum(AtimesB, 1)
-        
-        self.assertAlmostEqual(R[0].item(), 30.)
-        self.assertAlmostEqual(R[1].item(), 4*3 + 4*6)
-        self.assertAlmostEqual(R[2].item(), 30.)
-        self.assertAlmostEqual(R[3].item(), 30.)
+        R = torch.sum(AtimesB, 2)
+
+        self.assertAlmostEqual(R[0, 0].item(), 30.)
+        self.assertAlmostEqual(R[0, 1].item(), 4 * 3 + 4 * 6)
+        self.assertAlmostEqual(R[0, 2].item(), 30.)
+        self.assertAlmostEqual(R[0, 3].item(), 30.)
+        self.assertAlmostEqual(R[1, 0].item(), 3000.)
+        self.assertAlmostEqual(R[1, 1].item(), 100*(4 * 3 + 4 * 6))
+        self.assertAlmostEqual(R[1, 2].item(), 3000.)
+        self.assertAlmostEqual(R[1, 3].item(), 3000.)
         sorted = AtimesB.sort().values
-        self.assertAlmostEqual(torch.sum(torch.abs(sorted[0]-sorted[2]), 0).item(), 0)
-        self.assertAlmostEqual(torch.sum(torch.abs(sorted[3]-sorted[2]), 0).item(), 0)
+        self.assertAlmostEqual(((sorted[:, 0, :] - sorted[:, 2, :])**2).sum().item(), 0)
+        self.assertAlmostEqual(((sorted[:, 3, :] - sorted[:, 2, :])**2).sum().item(), 0)
 
 
 if __name__ == '__main__':
     unittest.main()
-

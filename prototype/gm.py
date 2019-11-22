@@ -87,7 +87,9 @@ class Mixture:
     def evaluate_component_many_xes(self, xes: Tensor, component: int) -> Tensor:
         n_batches = self.n_batches()
         n_dims = self.n_dimensions()
-        assert xes.size()[1] == n_dims
+        n_xes = xes.size()[1]
+        assert xes.size()[0] == n_batches
+        assert xes.size()[2] == n_dims
         assert component < self.n_components()
 
         weights = self.weights[:, component].view(-1, 1)
@@ -95,28 +97,29 @@ class Mixture:
         inverted_covs = self.inverted_covariances[:, component, :, :]
 
         # first dimension: batch (from mixture), second: sampling (xes), third: data
-        v = xes.view(1, -1, n_dims) - positions.view(-1, 1, n_dims)
+        v = xes - positions.view(n_batches, 1, n_dims)
         # first dimension: batch (from mixture), second: sampling (xes), third and fourth: matrix data
-        inverted_covs = inverted_covs.view(-1, 1, n_dims, n_dims)
+        inverted_covs = inverted_covs.view(n_batches, 1, n_dims, n_dims)
 
-        v = -0.5 * v.view(n_batches, -1, 1, n_dims) @ inverted_covs @ v.view(n_batches, -1, n_dims, 1)
-        v = v.view(n_batches, -1)
+        v = -0.5 * v.view(n_batches, n_xes, 1, n_dims) @ inverted_covs @ v.view(n_batches, n_xes, n_dims, 1)
+        v = v.view(n_batches, n_xes)
         v = weights * torch.exp(v)
         assert not torch.isnan(v).any()
         assert not torch.isinf(v).any()
         return v
 
     def evaluate_many_xes(self, xes: Tensor) -> Tensor:
-        #todo: implement batched
-        assert self.n_batches() == 1
-        values = torch.zeros(self.n_batches(), xes.size()[0], dtype=torch.float32, device=xes.device)
+        n_xes = xes.size()[1]
+        n_batches = self.n_batches()
+        assert n_batches == xes.size()[0]
+        assert self.n_dimensions() == xes.size()[2]
+        values = torch.zeros(n_batches, n_xes, dtype=torch.float32, device=xes.device)
         for i in range(self.n_components()):
             # todo: adding many components like this probably makes the gradient graph and therefore memory explode
-            values += self.evaluate_component_many_xes(xes, i).view(self.n_batches(), -1)
+            values += self.evaluate_component_many_xes(xes, i)
         return values
-    
+
     def max_component_many_xes(self, xes: Tensor) -> Tensor:
-        #todo: implement batched
         assert self.n_batches() == 1
         selected = torch.zeros(xes.size()[1], dtype=torch.long)
         values = self.evaluate_component_many_xes(xes, 0)
@@ -125,9 +128,9 @@ class Mixture:
             mask = component_values > values
             selected[mask] = i
             values[mask] = component_values[mask]
-        
+
         return selected
-            
+
     def debug_show(self, batch_i: int = 0, x_low: float = -22, y_low: float = -22, x_high: float = 22, y_high: float = 22, step: float = 0.1) -> Tensor:
         assert batch_i < self.n_batches()
         m = self.detach().batch(batch_i)
@@ -247,26 +250,33 @@ def generate_null_mixture(n_batch: int, n_components: int, n_dims: int, device: 
 
 def _polynomMulRepeat(A: Tensor, B: Tensor) -> (Tensor, Tensor):
     # todo: port to batched
-    if len(A.size()) == 2:
-        A_n = A.size()[1]
-        B_n = B.size()[1]
-        return (A.repeat(1, B_n), B.repeat_interleave(A_n, 1))
-    else:
-        A_n = A.size()[0]
-        B_n = B.size()[0]
-        return (A.repeat(B_n), B.repeat_interleave(A_n))
+    # if len(A.size()) == 2:
+    A_n = A.size()[-1]
+    B_n = B.size()[-1]
+    A_repeats = [1] * len(A.size())
+    A_repeats[-1] = B_n
+    return (A.repeat(A_repeats), B.repeat_interleave(A_n, dim=-1))
+    # else:
+    #     A_n = A.size()[0]
+    #     B_n = B.size()[0]
+    #     return (A.repeat(B_n), B.repeat_interleave(A_n))
 
 
 def convolve(m1: Mixture, m2: Mixture) -> Mixture:
     # todo: port to batched
-    assert m1.n_dimensions() == m2.n_dimensions()
+    n_batches = m1.n_batches()
+    n_dims = m1.n_dimensions()
+    assert n_batches == m2.n_batches()
+    assert n_dims == m2.n_dimensions()
     m1_f, m2_f = _polynomMulRepeat(m1.weights, m2.weights)
     m1_p, m2_p = _polynomMulRepeat(m1.positions, m2.positions)
-    m1_c, m2_c = _polynomMulRepeat(m1.covariances, m2.covariances)
+    m1_c, m2_c = _polynomMulRepeat(m1.covariances.view(n_batches, m1.n_components(), n_dims * n_dims), m2.covariances.view(n_batches, m2.n_components(), n_dims * n_dims))
+    m1_c = m1_c.view(n_batches, -1, n_dims, n_dims)
+    m2_c = m2_c.view(n_batches, -1, n_dims, n_dims)
 
     positions = m1_p + m2_p
     covariances = m1_c + m2_c
-    detc1tc2 = mat_tools.triangle_det(m1_c) * mat_tools.triangle_det(m2_c)
-    detc1pc2 = mat_tools.triangle_det(covariances)
-    factors = math.pow(math.sqrt(2 * math.pi), m1.n_dimensions()) * m1_f * m2_f * torch.sqrt(detc1tc2) / torch.sqrt(detc1pc2)
-    return Mixture(factors, positions, covariances)
+    detc1tc2 = torch.det(m1_c) * torch.det(m2_c)
+    detc1pc2 = torch.det(covariances)
+    weights = math.pow(math.sqrt(2 * math.pi), m1.n_dimensions()) * m1_f * m2_f * torch.sqrt(detc1tc2) / torch.sqrt(detc1pc2)
+    return Mixture(weights, positions, covariances)
