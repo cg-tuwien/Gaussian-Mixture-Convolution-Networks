@@ -117,21 +117,27 @@ def ad_algorithm(image: Tensor, n_components: int, n_iterations: int = 8, device
 
     fitting_start = time.time()
 
-    xv, yv = torch.meshgrid([torch.arange(0, width, 1, dtype=torch.float, device=device),
-                             torch.arange(0, height, 1, dtype=torch.float, device=device)])
-    xes = torch.cat((xv.reshape(-1, 1), yv.reshape(-1, 1)), 1).view(1, -1, 2)
+    # xv, yv = torch.meshgrid([torch.arange(0, width, 1, dtype=torch.float, device=device),
+    #                          torch.arange(0, height, 1, dtype=torch.float, device=device)])
+    # xes = torch.cat((xv.reshape(-1, 1), yv.reshape(-1, 1)), 1).view(1, -1, 2)
 
     if device == 'cuda':
-        values = image.view(-1).cuda() / 255.0
+        target = image.view(-1).cuda() / 255.0
     else:
-        values = image.view(-1) / 255.0
+        target = image.view(-1) / 255.0
 
     mixture.weights /= 255.0
 
     mixture = mixture
     mixture.weights.requires_grad = True;
     mixture.positions.requires_grad = True;
-    mixture.inverted_covariances.requires_grad = True;
+
+    mixture.debug_show(0, 0, 0, width, height, 1)
+    (eigvals, eigvecs) = torch.symeig(mixture.inverted_covariances, eigenvectors=True)
+    eigvals = torch.max(eigvals, torch.tensor([0.01], dtype=torch.float, device=device))
+    icov_factor = torch.matmul(eigvecs, eigvals.sqrt().diag_embed())
+    icov_factor.requires_grad = True
+    # mixture.inverted_covariances = torch.eye(2, 2, device=mixture.device()).view(1, 1, 2, 2).expand_as(mixture.inverted_covariances)
 
     # def trim_icov_gradient_function(grad: Tensor) -> Tensor:
     #     print(f"original icov gradient: \n{grad}")
@@ -152,16 +158,21 @@ def ad_algorithm(image: Tensor, n_components: int, n_iterations: int = 8, device
     # mixture.inverted_covariances.data -= mixture.inverted_covariances.grad
     # print(mixture.inverted_covariances)
     # print(mat_tools.triangle_det(mixture.inverted_covariances))
-    optimiser = optim.Adam([mixture.weights, mixture.positions, mixture.inverted_covariances], lr=0.005)
+    optimiser = optim.Adam([mixture.weights, mixture.positions, icov_factor], lr=0.01)
 
     print("starting gradient descent")
     # mixture.debug_show(0, 0, 0, image.shape[1], image.shape[0], 1)
     for k in range(n_iterations):
         optimiser.zero_grad()
-        output = mixture.evaluate_many_xes(xes)
+        xes = torch.rand(1, 50*50, 2, device=device, dtype=torch.float32) * torch.tensor([[[width, height]]], device=device, dtype=torch.float32)
+        xes = xes.floor() + 0.5
+        xes_indices = xes.type(torch.long).view(-1, 2)
+        mixture.inverted_covariances = icov_factor @ icov_factor.transpose(-2, -1) + torch.eye(2, 2, device=mixture.device()) * 0.005
+        output = mixture.evaluate_few_xes(xes)
         # assert not torch.isnan(mixture.inverted_covariances).any()
         # assert not torch.isinf(mixture.inverted_covariances).any()
-        loss = torch.mean(torch.abs(output - values))
+        xes_indices = xes_indices[:, 0] * int(height) + xes_indices[:, 1]
+        loss = torch.mean(torch.abs(output - target[xes_indices]))
 
         # regularisation_1 = 0.1 * torch.mean(torch.max(torch.ones(1, dtype=torch.float, device=device) * (-math.log(0.01)),
         #                                               -torch.log((mat_tools.triangle_det(mixture.inverted_covariances)).abs())))
@@ -188,25 +199,25 @@ def ad_algorithm(image: Tensor, n_components: int, n_iterations: int = 8, device
         # mixture.inverted_covariances.detach()[2] += dets * sq_sign
 
         # print(mixture.inverted_covariances.detach())
-        icovs = mixture.inverted_covariances.detach()
+        # icovs = mixture.inverted_covariances.detach()
         # print(icovs)
-        (eigvals, eigvecs) = torch.symeig(icovs, eigenvectors=True)
-        eigvals = torch.max(eigvals, torch.tensor([0.01], dtype=torch.float, device=device))
-        icovs = torch.matmul(eigvecs, torch.matmul(eigvals.diag_embed(), eigvecs)) # V Lambda V, no need for a transpose because of symmetry
+        # (eigvals, eigvecs) = torch.symeig(icovs, eigenvectors=True)
+        # eigvals = torch.max(eigvals, torch.tensor([0.01], dtype=torch.float, device=device))
+        # icovs = torch.matmul(eigvecs, torch.matmul(eigvals.diag_embed(), eigvecs)) # V Lambda V, no need for a transpose because of symmetry
         # print(eigvals)
         # print(eigvecs)
         #
         # print(icovs)
-        mixture.inverted_covariances.detach()[0, :, :] = icovs
+        # mixture.inverted_covariances.detach()[0, :, :] = icovs
         # print(mixture.inverted_covariances.detach())
 
-        if k % 10 == 0:
+        if k % 100 == 0:
             print(f"iterations {k}: loss = {loss.item()}, min det = {torch.min(torch.det(mixture.inverted_covariances.detach()))}")#, regularisation_1 = {regularisation_1.item()}, "
                   # f"regularisation_2 = {regularisation_2.item()}, regularisation_3 = {regularisation_3.item()}")
             mixture.covariances = torch.inverse(mixture.inverted_covariances)
             md = mixture.detach().cpu()
             md.save("fire_small_mixture")
-            mixture.debug_show(0, 0, 0, image.shape[1], image.shape[0], 1)
+            mixture.debug_show(0, 0, 0, image.shape[1], image.shape[0], min(image.shape[0], image.shape[1]) / 100)
 
     fitting_end = time.time()
     print(f"fitting time: {fitting_end - fitting_start}")
@@ -224,7 +235,7 @@ def test():
 
     m1 = m1.cpu()
 
-    m1.debug_show(0, 0, 0, image.shape[1], image.shape[0], 1)
+    m1.debug_show(0, 0, 0, image.shape[1], image.shape[0], min(image.shape[0], image.shape[1]) / 100)
 
 
 test()
