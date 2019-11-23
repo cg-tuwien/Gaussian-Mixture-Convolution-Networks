@@ -34,6 +34,8 @@ def em_algorithm(image: Tensor, n_components: int, n_iterations: int, device: to
     else:
         values = image.view(-1)
 
+    values = torch.max(values, torch.ones(1, dtype=values.dtype, device=values.device))
+
     print("starting expectation maximisation")
     for k in range(n_iterations):
         print(f"classifying..")
@@ -107,8 +109,14 @@ def ad_algorithm(image: Tensor, n_components: int, n_iterations: int = 8, device
     width = image.size()[1]
     height = image.size()[0]
 
-    mixture = em_algorithm(image, n_components, 0, device='cpu')
-    mixture.debug_show(0, 0, 0, width, height, 1)
+    mixture = em_algorithm(image, n_components, 5, device='cpu')
+    # mixture = gm.generate_random_mixtures(n_batch=1, n_components=n_components, n_dims=2,
+    #                                       pos_radius=0.5, cov_radius=5 * min(width, height) / math.sqrt(n_components),
+    #                                       factor_min=0, factor_max=1, device=device)
+    # mixture.positions += 0.5
+    # mixture.positions *= torch.tensor([[[width, height]]], dtype=torch.float, device=device)
+
+    mixture.debug_show(0, 0, 0, width, height, min(width, height) / 100)
     if device == 'cuda':
         mixture = mixture.cuda()
 
@@ -164,11 +172,13 @@ def ad_algorithm(image: Tensor, n_components: int, n_iterations: int = 8, device
 
 
 def test():
-    image: np.ndarray = plt.imread("/home/madam/cloud/Photos/fire_small.jpg")
-    image = image.mean(axis=2)
+    # image: np.ndarray = plt.imread("/home/madam/cloud/Photos/fire_small.jpg")
+    image = plt.imread("/home/madam/Downloads/mnist_png/training/8/17.png")
+    if len(image.shape) == 3:
+        image = image.mean(axis=2)
     # m1 = em_algorithm(torch.tensor(image, dtype=torch.float32), n_components=2500, n_iterations=5, device='cpu')
-    m1 = ad_algorithm(torch.tensor(image, dtype=torch.float32), n_components=800, n_iterations=10, device='cuda')
-    m1.save("fire_small_mixture")
+    m1 = ad_algorithm(torch.tensor(image, dtype=torch.float32), n_components=50, n_iterations=1000, device='cuda')
+    m1.save("mnist_8")
 
     m1 = m1.cpu()
 
