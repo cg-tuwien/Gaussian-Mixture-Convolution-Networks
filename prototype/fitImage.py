@@ -3,11 +3,8 @@ import math
 import matplotlib.pyplot as plt
 import numpy as np
 import time
-import torch.nn as nn
 import torch.optim as optim
-import numpy.random as nprnd
 
-import mat_tools
 import gm
 
 from gm import Mixture
@@ -117,10 +114,6 @@ def ad_algorithm(image: Tensor, n_components: int, n_iterations: int = 8, device
 
     fitting_start = time.time()
 
-    # xv, yv = torch.meshgrid([torch.arange(0, width, 1, dtype=torch.float, device=device),
-    #                          torch.arange(0, height, 1, dtype=torch.float, device=device)])
-    # xes = torch.cat((xv.reshape(-1, 1), yv.reshape(-1, 1)), 1).view(1, -1, 2)
-
     if device == 'cuda':
         target = image.view(-1).cuda() / 255.0
     else:
@@ -128,7 +121,6 @@ def ad_algorithm(image: Tensor, n_components: int, n_iterations: int = 8, device
 
     mixture.weights /= 255.0
 
-    mixture = mixture
     mixture.weights.requires_grad = True;
     mixture.positions.requires_grad = True;
 
@@ -137,31 +129,10 @@ def ad_algorithm(image: Tensor, n_components: int, n_iterations: int = 8, device
     eigvals = torch.max(eigvals, torch.tensor([0.01], dtype=torch.float, device=device))
     icov_factor = torch.matmul(eigvecs, eigvals.sqrt().diag_embed())
     icov_factor.requires_grad = True
-    # mixture.inverted_covariances = torch.eye(2, 2, device=mixture.device()).view(1, 1, 2, 2).expand_as(mixture.inverted_covariances)
 
-    # def trim_icov_gradient_function(grad: Tensor) -> Tensor:
-    #     print(f"original icov gradient: \n{grad}")
-    #     dets = (mat_tools.triangle_det(mixture.inverted_covariances - grad) - 0.5)
-    #     grad_copy = grad.clone()
-    #     correction = torch.cat((0.25 * dets.view(1, -1), -0.5 * dets.view(1, -1), 0.25 * dets.view(1, -1)), dim=0)
-    #     correction[:, dets > 0] = torch.zeros(1, dtype=torch.float32, device=mixture.device())
-    #     grad_copy += correction
-    #
-    #     print(f"new icov gradient: \n{grad_copy}\n\n")
-    #     return grad_copy
-
-
-    # trim_icov_gradient_hook = mixture.inverted_covariances.register_hook(trim_icov_gradient_function)
-    # print(mixture.inverted_covariances)
-    # print(mat_tools.triangle_det(mixture.inverted_covariances))
-    # mixture.inverted_covariances.backward(-mixture.inverted_covariances.clone())
-    # mixture.inverted_covariances.data -= mixture.inverted_covariances.grad
-    # print(mixture.inverted_covariances)
-    # print(mat_tools.triangle_det(mixture.inverted_covariances))
     optimiser = optim.Adam([mixture.weights, mixture.positions, icov_factor], lr=0.01)
 
     print("starting gradient descent")
-    # mixture.debug_show(0, 0, 0, image.shape[1], image.shape[0], 1)
     for k in range(n_iterations):
         optimiser.zero_grad()
         xes = torch.rand(1, 50*50, 2, device=device, dtype=torch.float32) * torch.tensor([[[width, height]]], device=device, dtype=torch.float32)
@@ -169,47 +140,13 @@ def ad_algorithm(image: Tensor, n_components: int, n_iterations: int = 8, device
         xes_indices = xes.type(torch.long).view(-1, 2)
         mixture.inverted_covariances = icov_factor @ icov_factor.transpose(-2, -1) + torch.eye(2, 2, device=mixture.device()) * 0.005
         output = mixture.evaluate_few_xes(xes)
-        # assert not torch.isnan(mixture.inverted_covariances).any()
-        # assert not torch.isinf(mixture.inverted_covariances).any()
+        assert not torch.isnan(mixture.inverted_covariances).any()
+        assert not torch.isinf(mixture.inverted_covariances).any()
         xes_indices = xes_indices[:, 0] * int(height) + xes_indices[:, 1]
         loss = torch.mean(torch.abs(output - target[xes_indices]))
 
-        # regularisation_1 = 0.1 * torch.mean(torch.max(torch.ones(1, dtype=torch.float, device=device) * (-math.log(0.01)),
-        #                                               -torch.log((mat_tools.triangle_det(mixture.inverted_covariances)).abs())))
-        #
-        # regularisation_1 = 0.1 * torch.mean(torch.max(torch.ones(1, dtype=torch.float, device=device),
-        #                                               (torch.ones(1, dtype=torch.float, device=device) * 0.05)/mat_tools.triangle_det(mixture.inverted_covariances).abs()))
-        #
-        # regularisation_2 = 0.005 * mixture.inverted_covariances.mean()
-        #
-        # regularisation_3 = 0.005 * torch.mean(torch.max(torch.zeros(1, dtype=torch.float, device=device),
-        #                                                -torch.log(mixture.inverted_covariances.abs().mean(dim=0)[0]))**2)
-        # (loss + regularisation_1 + regularisation_2 + regularisation_3).backward()
-        # (loss + regularisation_1).backward()
         loss.backward()
         optimiser.step()
-
-        # dets = mat_tools.triangle_det(mixture.inverted_covariances.detach())
-        # dets -= 0.01
-        # dets[dets > 0] = 0
-        # dets = -dets / 4
-        # sq_sign = torch.sign(mixture.inverted_covariances.detach()[0] * mixture.inverted_covariances.detach()[2])
-        # mixture.inverted_covariances.detach()[0] += dets * sq_sign
-        # mixture.inverted_covariances.detach()[1] -= 2 * dets * torch.sign(mixture.inverted_covariances.detach()[1])
-        # mixture.inverted_covariances.detach()[2] += dets * sq_sign
-
-        # print(mixture.inverted_covariances.detach())
-        # icovs = mixture.inverted_covariances.detach()
-        # print(icovs)
-        # (eigvals, eigvecs) = torch.symeig(icovs, eigenvectors=True)
-        # eigvals = torch.max(eigvals, torch.tensor([0.01], dtype=torch.float, device=device))
-        # icovs = torch.matmul(eigvecs, torch.matmul(eigvals.diag_embed(), eigvecs)) # V Lambda V, no need for a transpose because of symmetry
-        # print(eigvals)
-        # print(eigvecs)
-        #
-        # print(icovs)
-        # mixture.inverted_covariances.detach()[0, :, :] = icovs
-        # print(mixture.inverted_covariances.detach())
 
         if k % 100 == 0:
             print(f"iterations {k}: loss = {loss.item()}, min det = {torch.min(torch.det(mixture.inverted_covariances.detach()))}")#, regularisation_1 = {regularisation_1.item()}, "
