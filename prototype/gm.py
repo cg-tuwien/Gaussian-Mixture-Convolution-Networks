@@ -155,9 +155,12 @@ class Mixture:
 
     def batch(self, batch_id: int):
         n_dims = self.n_dimensions()
-        return Mixture(self.weights[batch_id, :].view(1, -1),
-                       self.positions[batch_id, :, :].view(1, -1, n_dims),
-                       self.covariances[batch_id, :, :, :].view(1, -1, n_dims, n_dims))
+        ret_mixture = generate_null_mixture(1, 1, n_dims, device=self.device())
+        ret_mixture.weights = self.weights[batch_id, :].view(1, -1)
+        ret_mixture.positions = self.positions[batch_id, :, :].view(1, -1, n_dims)
+        ret_mixture.covariances = self.covariances[batch_id, :, :, :].view(1, -1, n_dims, n_dims)
+        ret_mixture.inverted_covariances = self.inverted_covariances[batch_id, :, :, :].view(1, -1, n_dims, n_dims)
+        return ret_mixture
 
     def detach(self):
         detached_mixture = generate_null_mixture(1, 1, self.n_dimensions(), device=self.device())
