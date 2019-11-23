@@ -122,7 +122,7 @@ class Mixture:
     def max_component_many_xes(self, xes: Tensor) -> Tensor:
         assert self.n_batches() == 1
         selected = torch.zeros(xes.size()[1], dtype=torch.long)
-        values = self.evaluate_component_many_xes(xes, 0)
+        values = self.evaluate_component_many_xes(xes, 0).view(-1)
         for i in range(self.n_components()):
             component_values = self.evaluate_component_many_xes(xes, i).view(-1)
             mask = component_values > values
