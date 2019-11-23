@@ -27,7 +27,9 @@ assert COVARIANCE_MIN > 0
 
 def generate_random_ReLUandBias(bias_mul: float, weight_min: float, weight_max: float, device: torch.device = 'cpu'):
     random_m = gm.generate_random_mixtures(BATCH_SIZE, 10, DIMS, pos_radius=1, cov_radius=0.25, factor_min=weight_min, factor_max=weight_max, device=device)
-    random_kernel = gm.generate_random_mixtures(BATCH_SIZE, 10, DIMS, pos_radius=0.08, cov_radius=0.04, device=device)
+    random_kernel = gm.generate_random_mixtures(BATCH_SIZE, 10, DIMS, pos_radius=0.2, cov_radius=0.04, device=device)
+    random_kernel.weights -= random_kernel.weights.mean(dim=1).view(-1, 1)
+    random_kernel.weights += 0.1
     # todo: print and check factors of convolved gm
     input_gm_after_activation = gm.MixtureReLUandBias(gm.convolve(random_m, random_kernel),
                                                       torch.rand(BATCH_SIZE, dtype=torch.float32, device=device) * bias_mul)
@@ -42,6 +44,12 @@ def generate_random_ReLUandBias(bias_mul: float, weight_min: float, weight_max: 
     # bool_vector = torch.ones_like(input_gm_after_activation.mixture.weights, dtype=torch.bool)
     # bool_vector[good_indices] = False
     # input_gm_after_activation.mixture.weights[bool_vector] = 0
+    # for j in range(input_gm_after_activation.mixture.n_batches()):
+        # random_m.debug_show(j, -2, -2, 2, 2, 0.05)
+        # random_kernel.debug_show(j, -2, -2, 2, 2, 0.05)
+        # input_gm_after_activation.mixture.debug_show(j, -2, -2, 2, 2, 0.05)
+        # input_gm_after_activation.debug_show(j, -2, -2, 2, 2, 0.05)
+        # print(" ")
     return input_gm_after_activation
 
 
@@ -50,7 +58,7 @@ def test_dl_fitting(g_layer_sizes: typing.List,
                     use_cuda: bool = True,
                     cov_decomposition: bool = True,
                     testing_mode: bool = True,
-                    n_iterations: int = 50000,
+                    n_iterations: int = 50001,
                     bias_mul: float = 1,
                     weight_min: float = -1,
                     weight_max: float = 1):
@@ -149,7 +157,7 @@ def test_dl_fitting(g_layer_sizes: typing.List,
 #
 
 test_dl_fitting(g_layer_sizes=[64, 128, 128, 512, 512 * N_OUTPUT_GAUSSIANS], fully_layer_sizes=[512, 256, 128, 64, 32],
-                use_cuda=True, cov_decomposition=False, testing_mode=False, bias_mul=1, weight_min=0, weight_max=15)
+                use_cuda=True, cov_decomposition=False, testing_mode=True, bias_mul=0.65, weight_min=0, weight_max=15)
 
 # test_dl_fitting(g_layer_sizes=[64, 64, 128, 128, 512, 1024 * N_OUTPUT_GAUSSIANS], fully_layer_sizes=[512, 256, 128, 64, 32],
 #                 use_cuda=True, cov_decomposition=False, testing_mode=False, bias_mul=1, weight_min=-1)
