@@ -171,13 +171,14 @@ class Mixture:
         detached_mixture.inverted_covariances = self.inverted_covariances.detach()
         return detached_mixture
 
-    def save(self, file_name: str):
+    def save(self, file_name: str, meta_info = None):
         dict = {
             "type": "gm.Mixture",
-            "version": 2,
-            "weights": self.weights,
-            "positions": self.positions,
-            "covariances": self.covariances
+            "version": 3,
+            "weights": self.weights.detach().cpu(),
+            "positions": self.positions.detach().cpu(),
+            "covariances": self.covariances.detach().cpu(),
+            "meta_info": meta_info
         }
         torch.save(dict, "/home/madam/temp/prototype/" + file_name)
 
@@ -185,8 +186,8 @@ class Mixture:
     def load(cls, file_name: str):
         dict = torch.load("/home/madam/temp/prototype/" + file_name)
         assert dict["type"] == "gm.Mixture"
-        assert dict["version"] == 2
-        return Mixture(dict["weights"], dict["positions"], dict["covariances"])
+        assert dict["version"] == 3
+        return Mixture(dict["weights"], dict["positions"], dict["covariances"]), dict["meta_info"]
 
 
 class MixtureReLUandBias:

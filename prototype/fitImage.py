@@ -180,7 +180,7 @@ def ad_algorithm(image: Tensor, n_components: int, n_iterations: int = 8, device
         loss.backward()
         optimiser.step()
 
-        if k % 100 == 0:
+        if k % 40 == 0:
             print(f"iterations {k}: loss = {loss.item()}, min det = {torch.min(torch.det(mixture.inverted_covariances.detach()))}")#, regularisation_1 = {regularisation_1.item()}, "
                   # f"regularisation_2 = {regularisation_2.item()}, regularisation_3 = {regularisation_3.item()}")
             # mixture.covariances = torch.inverse(mixture.inverted_covariances)
@@ -219,25 +219,35 @@ def test_mnist():
     #                        transforms.Normalize((0.1307,), (0.3081,))
     #                    ])),
 
+    mnist_test = torchvision.datasets.MNIST("/home/madam/temp/mnist/", train=False, transform=torchvision.transforms.ToTensor(),
+                                                target_transform=None, download=True)
+    data_generator = torch.utils.data.DataLoader(mnist_test,
+                                                 batch_size=batch_size,
+                                                 shuffle=False,
+                                                 num_workers=16)
+    for i, (local_batch, local_labels) in enumerate(data_generator):
+        assert local_batch.size()[1] == 1
+        gms = ad_algorithm(local_batch.view(batch_size, height, width), 25, 121, device='cuda')
+        gms.save(f"mnist/test_{i}", local_labels)
+
     mnist_training = torchvision.datasets.MNIST("/home/madam/temp/mnist/", train=True, transform=torchvision.transforms.ToTensor(),
                                                 target_transform=None, download=True)
     data_generator = torch.utils.data.DataLoader(mnist_training,
-                                              batch_size=100,
-                                              shuffle=True)
-    for local_batch, local_labels in data_generator:
-        print(local_batch.size())
+                                                 batch_size=batch_size,
+                                                 shuffle=False,
+                                                 num_workers=16)
+    for i, (local_batch, local_labels) in enumerate(data_generator):
         assert local_batch.size()[1] == 1
-        gms = ad_algorithm(local_batch.view(batch_size, height, width), 25, 120, device='cpu')
+        gms = ad_algorithm(local_batch.view(batch_size, height, width), 25, 121, device='cuda')
+        gms.save(f"mnist/train_{i}", local_labels)
 
-        for i in range(20):
-            fit = gms.debug_show(i, 0, 0, width, height, width / 200, imshow=False)
-            target = local_batch[i, 0, :, :]
-            fig, (ax1, ax2) = plt.subplots(1, 2)
-            fig.suptitle(f"{local_labels[i]}")
-            ax1.imshow(fit)
-            ax2.imshow(target)
-            plt.show()
-
-        print(gms.weights.size())
+        # for i in range(20):
+        #     fit = gms.debug_show(i, 0, 0, width, height, width / 200, imshow=False)
+        #     target = local_batch[i, 0, :, :]
+        #     fig, (ax1, ax2) = plt.subplots(1, 2)
+        #     fig.suptitle(f"{local_labels[i]}")
+        #     ax1.imshow(fit)
+        #     ax2.imshow(target)
+        #     plt.show()
 
 test_mnist()
