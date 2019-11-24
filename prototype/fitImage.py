@@ -4,8 +4,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 import time
 import torch.optim as optim
+import torchvision.datasets
+import torchvision.transforms
+import torch.utils.data
 
 import gm
+import mat_tools
 
 from gm import Mixture
 from torch import Tensor
@@ -103,49 +107,51 @@ def em_algorithm(image: Tensor, n_components: int, n_iterations: int, device: to
 # print(f"numpy mean = {np.average(xes, axis=1, weights=w)}, \n numpy cov=\n{np.cov(xes, fweights=w)}")
 # my_funs(xes, w, dims)
 
+# todo: test for width != height!
 def ad_algorithm(image: Tensor, n_components: int, n_iterations: int = 8, device: torch.device = 'cpu') -> Mixture:
-    assert len(image.size()) == 2
+    assert len(image.shape) == 3
     assert n_components > 0
+    batch_size = image.size()[0]
     width = image.size()[1]
-    height = image.size()[0]
+    height = image.size()[2]
+
+    target = image.to(device)
+    target = target / torch.max(target)
 
     if width == 28 and height == 28:
         # mnist
-        xv, yv = torch.meshgrid([torch.arange(0, width, 1, dtype=torch.float32, device=device),
-                                 torch.arange(0, height, 1, dtype=torch.float32, device=device)])
-        xes = torch.cat((xv.reshape(-1, 1), yv.reshape(-1, 1)), 1)
+        xv, yv = torch.meshgrid([torch.arange(0, height, 1, dtype=torch.float32, device=device),
+                                 torch.arange(0, width, 1, dtype=torch.float32, device=device)])
+        xes = torch.cat((xv.reshape(-1, 1), yv.reshape(-1, 1)), 1).view(1, -1, 2).repeat((batch_size, 1, 1))
         xes += 0.5
         xes += torch.rand_like(xes) - 0.5
-        randperm = torch.randperm(width * height)   # torch.sort might be stable, but we want to be random.
-        xes = xes[randperm, :]
-        values = image.view(-1)[randperm]
-        indices = torch.argsort(values, descending=True)
-        indices = indices[0:n_components]
+        randperm = torch.randperm(width * height, device=device)   # torch.sort might be stable, but we want to be random. I don't think it matters that all images are permuted the same way.
+        xes = xes[:, randperm, :]
+        values = target.view(batch_size, -1)[:, randperm]
+        indices = torch.argsort(values, dim=1, descending=True)
+        indices = indices[:, 0:n_components]
 
-        weights = torch.rand(1, n_components, dtype=torch.float32, device=device) * 0.1 + 0.9
-        positions = xes[indices, :].view(1, -1, 2)
-        covariances = (torch.tensor([[32/height, 0], [0, 32/width]], dtype=torch.float32, device=device)).view(1, 1, 2, 2).expand((1, n_components, 2, 2))
+        weights = torch.rand(batch_size, n_components, dtype=torch.float32, device=device) * 0.1 + 0.9
+        positions = mat_tools.batched_index_select(xes, 1, indices).view(batch_size, -1, 2)
+        covariances = (torch.tensor([[32/height, 0], [0, 32/width]], dtype=torch.float32, device=device)).view(1, 1, 2, 2).expand((batch_size, n_components, 2, 2))
         mixture = Mixture(weights, positions, covariances)
     else:
-        mixture = em_algorithm(image, n_components, 5, device='cpu')
-    # mixture = gm.generate_random_mixtures(n_batch=1, n_components=n_components, n_dims=2,
-    #                                       pos_radius=0.5, cov_radius=5 * min(width, height) / math.sqrt(n_components),
-    #                                       factor_min=0, factor_max=1, device=device)
-    # mixture.positions += 0.5
-    # mixture.positions *= torch.tensor([[[width, height]]], dtype=torch.float, device=device)
+        # the mnist initialisation might not be ideal for larger or more complex images.
+        # todo: implement batching for em
+        # assert False
+        # mixture = em_algorithm(image * 255, n_components, 5, device='cpu')
+        # if device == 'cuda':
+        #     mixture = mixture.cuda()
+        # mixture.weights /= 255.0
+        mixture = gm.generate_random_mixtures(n_batch=batch_size, n_components=n_components, n_dims=2,
+                                              pos_radius=0.5, cov_radius=5 * min(width, height) / math.sqrt(n_components),
+                                              factor_min=0, factor_max=1, device=device)
+        mixture.positions += 0.5
+        mixture.positions *= torch.tensor([[[width, height]]], dtype=torch.float, device=device)
 
     # mixture.debug_show(0, 0, 0, width, height, min(width, height) / 100)
-    if device == 'cuda':
-        mixture = mixture.cuda()
 
     fitting_start = time.time()
-
-    if device == 'cuda':
-        target = image.view(-1).cuda() / 255.0
-    else:
-        target = image.view(-1) / 255.0
-
-    mixture.weights /= 255.0
 
     mixture.weights.requires_grad = True;
     mixture.positions.requires_grad = True;
@@ -161,15 +167,15 @@ def ad_algorithm(image: Tensor, n_components: int, n_iterations: int = 8, device
     for k in range(n_iterations):
         optimiser.zero_grad()
 
-        xes = torch.rand(1, 50*50, 2, device=device, dtype=torch.float32) * torch.tensor([[[width, height]]], device=device, dtype=torch.float32)
-        xes_indices = xes.type(torch.long).view(-1, 2)
-        xes_indices = xes_indices[:, 0] * int(height) + xes_indices[:, 1]
+        xes = torch.rand(batch_size, 50*50, 2, device=device, dtype=torch.float32) * torch.tensor([[[width, height]]], device=device, dtype=torch.float32)
+        xes_indices = xes.type(torch.long).view(batch_size, -1, 2)
+        xes_indices = xes_indices[:, :, 0] * int(height) + xes_indices[:, :, 1]
 
         mixture.inverted_covariances = icov_factor @ icov_factor.transpose(-2, -1) + torch.eye(2, 2, device=mixture.device()) * 0.005
         output = mixture.evaluate_few_xes(xes)
         assert not torch.isnan(mixture.inverted_covariances).any()
         assert not torch.isinf(mixture.inverted_covariances).any()
-        loss = torch.mean(torch.abs(output - target[xes_indices]))
+        loss = torch.mean(torch.abs(output - mat_tools.batched_index_select(target.view(batch_size, -1), dim=1, index=xes_indices)))
 
         loss.backward()
         optimiser.step()
@@ -177,9 +183,9 @@ def ad_algorithm(image: Tensor, n_components: int, n_iterations: int = 8, device
         if k % 100 == 0:
             print(f"iterations {k}: loss = {loss.item()}, min det = {torch.min(torch.det(mixture.inverted_covariances.detach()))}")#, regularisation_1 = {regularisation_1.item()}, "
                   # f"regularisation_2 = {regularisation_2.item()}, regularisation_3 = {regularisation_3.item()}")
-            mixture.covariances = torch.inverse(mixture.inverted_covariances)
-            md = mixture.detach().cpu()
-            md.save("fire_small_mixture")
+            # mixture.covariances = torch.inverse(mixture.inverted_covariances)
+            # md = mixture.detach().cpu()
+            # md.save("fire_small_mixture")
             # mixture.debug_show(0, 0, 0, image.shape[1], image.shape[0], min(image.shape[0], image.shape[1]) / 100)
 
     fitting_end = time.time()
@@ -202,5 +208,36 @@ def test():
 
     m1.debug_show(0, 0, 0, image.shape[1], image.shape[0], min(image.shape[0], image.shape[1]) / 200)
 
+def test_mnist():
+    batch_size=100
+    width = 28
+    height = 28
+    # train_loader = torch.utils.data.DataLoader(
+    #     datasets.MNIST('../data', train=True, download=True,
+    #                    transform=transforms.Compose([
+    #                        transforms.ToTensor(),
+    #                        transforms.Normalize((0.1307,), (0.3081,))
+    #                    ])),
 
-test()
+    mnist_training = torchvision.datasets.MNIST("/home/madam/temp/mnist/", train=True, transform=torchvision.transforms.ToTensor(),
+                                                target_transform=None, download=True)
+    data_generator = torch.utils.data.DataLoader(mnist_training,
+                                              batch_size=100,
+                                              shuffle=True)
+    for local_batch, local_labels in data_generator:
+        print(local_batch.size())
+        assert local_batch.size()[1] == 1
+        gms = ad_algorithm(local_batch.view(batch_size, height, width), 25, 120, device='cpu')
+
+        for i in range(20):
+            fit = gms.debug_show(i, 0, 0, width, height, width / 200, imshow=False)
+            target = local_batch[i, 0, :, :]
+            fig, (ax1, ax2) = plt.subplots(1, 2)
+            fig.suptitle(f"{local_labels[i]}")
+            ax1.imshow(fit)
+            ax2.imshow(target)
+            plt.show()
+
+        print(gms.weights.size())
+
+test_mnist()

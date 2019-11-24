@@ -30,6 +30,24 @@ def _triangle_mat_data(dims: int) -> (np.array, np.array, Tensor):
 
 
 class MatToolsTest(unittest.TestCase):
+    def test_batched_index_select(self):
+        a = torch.tensor([[[1, 1337], [2, 1337], [3, 1337]], [[4, 1337], [5, 1337], [6, 1337]], [[7, 1337], [8, 1337], [9, 1337]]])
+        i = torch.tensor([[0, 1], [0, 2], [1, 2]])
+        b = mat_tools.batched_index_select(a, 1, i)
+        self.assertEqual(len(b.shape), 3)
+        self.assertEqual(b.shape[0], a.shape[0])
+        self.assertEqual(b.shape[1], i.shape[1])
+        self.assertEqual(b.shape[2], a.shape[2])
+
+        target = torch.tensor([[[1, 1337],
+                                [2, 1337]],
+                               [[4, 1337],
+                                [6, 1337]],
+                               [[8, 1337],
+                                [9, 1337]]])
+
+        self.assertAlmostEqual((b - target).abs().sum().item(), 0)
+
     def test_triangle_conv(self):
         for dims in range(2, 4):
             Atri = mat_tools.gen_random_positive_definite_triangle(20, dims)

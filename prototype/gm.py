@@ -131,7 +131,7 @@ class Mixture:
 
         return selected
 
-    def debug_show(self, batch_i: int = 0, x_low: float = -22, y_low: float = -22, x_high: float = 22, y_high: float = 22, step: float = 0.1) -> Tensor:
+    def debug_show(self, batch_i: int = 0, x_low: float = -22, y_low: float = -22, x_high: float = 22, y_high: float = 22, step: float = 0.1, imshow=True) -> Tensor:
         assert batch_i < self.n_batches()
         assert self.n_dimensions() == 2
         m = self.detach().batch(batch_i)
@@ -142,9 +142,10 @@ class Mixture:
 
         values = m.evaluate_many_xes(xes).detach()
         image = values.view(xv.size()[0], xv.size()[1]).cpu().numpy()
-        plt.imshow(image)
-        plt.colorbar()
-        plt.show()
+        if imshow:
+            plt.imshow(image)
+            plt.colorbar()
+            plt.show()
         return image
 
     def cuda(self):
