@@ -109,14 +109,32 @@ def ad_algorithm(image: Tensor, n_components: int, n_iterations: int = 8, device
     width = image.size()[1]
     height = image.size()[0]
 
-    mixture = em_algorithm(image, n_components, 5, device='cpu')
+    if width == 28 and height == 28:
+        # mnist
+        xv, yv = torch.meshgrid([torch.arange(0, width, 1, dtype=torch.float32, device=device),
+                                 torch.arange(0, height, 1, dtype=torch.float32, device=device)])
+        xes = torch.cat((xv.reshape(-1, 1), yv.reshape(-1, 1)), 1)
+        xes += 0.5
+        xes += torch.rand_like(xes) - 0.5
+        randperm = torch.randperm(width * height)   # torch.sort might be stable, but we want to be random.
+        xes = xes[randperm, :]
+        values = image.view(-1)[randperm]
+        indices = torch.argsort(values, descending=True)
+        indices = indices[0:n_components]
+
+        weights = torch.rand(1, n_components, dtype=torch.float32, device=device) * 0.1 + 0.9
+        positions = xes[indices, :].view(1, -1, 2)
+        covariances = (torch.tensor([[32/height, 0], [0, 32/width]], dtype=torch.float32, device=device)).view(1, 1, 2, 2).expand((1, n_components, 2, 2))
+        mixture = Mixture(weights, positions, covariances)
+    else:
+        mixture = em_algorithm(image, n_components, 5, device='cpu')
     # mixture = gm.generate_random_mixtures(n_batch=1, n_components=n_components, n_dims=2,
     #                                       pos_radius=0.5, cov_radius=5 * min(width, height) / math.sqrt(n_components),
     #                                       factor_min=0, factor_max=1, device=device)
     # mixture.positions += 0.5
     # mixture.positions *= torch.tensor([[[width, height]]], dtype=torch.float, device=device)
 
-    mixture.debug_show(0, 0, 0, width, height, min(width, height) / 100)
+    # mixture.debug_show(0, 0, 0, width, height, min(width, height) / 100)
     if device == 'cuda':
         mixture = mixture.cuda()
 
@@ -132,25 +150,25 @@ def ad_algorithm(image: Tensor, n_components: int, n_iterations: int = 8, device
     mixture.weights.requires_grad = True;
     mixture.positions.requires_grad = True;
 
-    mixture.debug_show(0, 0, 0, width, height, 1)
     (eigvals, eigvecs) = torch.symeig(mixture.inverted_covariances, eigenvectors=True)
     eigvals = torch.max(eigvals, torch.tensor([0.01], dtype=torch.float, device=device))
     icov_factor = torch.matmul(eigvecs, eigvals.sqrt().diag_embed())
     icov_factor.requires_grad = True
 
-    optimiser = optim.Adam([mixture.weights, mixture.positions, icov_factor], lr=0.01)
+    optimiser = optim.Adam([mixture.weights, mixture.positions, icov_factor], lr=0.05)
 
     print("starting gradient descent")
     for k in range(n_iterations):
         optimiser.zero_grad()
+
         xes = torch.rand(1, 50*50, 2, device=device, dtype=torch.float32) * torch.tensor([[[width, height]]], device=device, dtype=torch.float32)
-        xes = xes.floor() + 0.5
         xes_indices = xes.type(torch.long).view(-1, 2)
+        xes_indices = xes_indices[:, 0] * int(height) + xes_indices[:, 1]
+
         mixture.inverted_covariances = icov_factor @ icov_factor.transpose(-2, -1) + torch.eye(2, 2, device=mixture.device()) * 0.005
         output = mixture.evaluate_few_xes(xes)
         assert not torch.isnan(mixture.inverted_covariances).any()
         assert not torch.isinf(mixture.inverted_covariances).any()
-        xes_indices = xes_indices[:, 0] * int(height) + xes_indices[:, 1]
         loss = torch.mean(torch.abs(output - target[xes_indices]))
 
         loss.backward()
@@ -162,7 +180,7 @@ def ad_algorithm(image: Tensor, n_components: int, n_iterations: int = 8, device
             mixture.covariances = torch.inverse(mixture.inverted_covariances)
             md = mixture.detach().cpu()
             md.save("fire_small_mixture")
-            mixture.debug_show(0, 0, 0, image.shape[1], image.shape[0], min(image.shape[0], image.shape[1]) / 100)
+            # mixture.debug_show(0, 0, 0, image.shape[1], image.shape[0], min(image.shape[0], image.shape[1]) / 100)
 
     fitting_end = time.time()
     print(f"fitting time: {fitting_end - fitting_start}")
@@ -173,16 +191,16 @@ def ad_algorithm(image: Tensor, n_components: int, n_iterations: int = 8, device
 
 def test():
     # image: np.ndarray = plt.imread("/home/madam/cloud/Photos/fire_small.jpg")
-    image = plt.imread("/home/madam/Downloads/mnist_png/training/8/17.png")
+    image = plt.imread("/home/madam/Downloads/mnist_png/training/8/17.png") * 255
     if len(image.shape) == 3:
         image = image.mean(axis=2)
     # m1 = em_algorithm(torch.tensor(image, dtype=torch.float32), n_components=2500, n_iterations=5, device='cpu')
-    m1 = ad_algorithm(torch.tensor(image, dtype=torch.float32), n_components=50, n_iterations=1000, device='cuda')
+    m1 = ad_algorithm(torch.tensor(image, dtype=torch.float32), n_components=20, n_iterations=80, device='cpu')
     m1.save("mnist_8")
 
     m1 = m1.cpu()
 
-    m1.debug_show(0, 0, 0, image.shape[1], image.shape[0], min(image.shape[0], image.shape[1]) / 100)
+    m1.debug_show(0, 0, 0, image.shape[1], image.shape[0], min(image.shape[0], image.shape[1]) / 200)
 
 
 test()
