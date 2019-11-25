@@ -156,6 +156,8 @@ class Mixture:
     def cpu(self) -> Mixture:
         return Mixture(self.weights.cpu(), self.positions.cpu(), self.covariances.cpu())
 
+    def to(self, device: torch.device) -> Mixture:
+        return Mixture(self.weights.to(device), self.positions.to(device), self.covariances.to(device))
 
     def batch(self, batch_id: int) -> Mixture:
         n_dims = self.n_dimensions()

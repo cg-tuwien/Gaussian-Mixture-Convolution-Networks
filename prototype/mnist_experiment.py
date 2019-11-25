@@ -4,11 +4,27 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+import torch.utils.data
 from torchvision import datasets, transforms
 from torch.optim.lr_scheduler import StepLR
 
+import gm
+
 
 # based on https://github.com/pytorch/examples/blob/master/mnist/main.py
+
+
+class GmMnistDataSet(torch.utils.data.Dataset):
+    def __init__(self, prefix: str, begin: int, end: int):
+        self.prefix = prefix
+        self.begin = begin
+        self.end = end
+
+    def __len__(self):
+        return self.end - self.begin
+
+    def __getitem__(self, index):
+        return gm.Mixture.load(f"{self.prefix}{index}")
 
 
 class Net(nn.Module):
@@ -99,29 +115,17 @@ def main():
 
     device = torch.device("cuda" if use_cuda else "cpu")
 
-    kwargs = {'num_workers': 0, 'pin_memory': True} if use_cuda else {}
-    train_loader = torch.utils.data.DataLoader(
-        datasets.MNIST('/home/madam/temp/mnist_experiment', train=True, download=True,
-                       transform=transforms.Compose([
-                           transforms.ToTensor(),
-                           transforms.Normalize((0.1307,), (0.3081,))
-                       ])),
-        batch_size=args.batch_size, shuffle=True, **kwargs)
-    test_loader = torch.utils.data.DataLoader(
-        datasets.MNIST('/home/madam/temp/mnist_experiment', train=False, transform=transforms.Compose([
-                           transforms.ToTensor(),
-                           transforms.Normalize((0.1307,), (0.3081,))
-                       ])),
-        batch_size=args.test_batch_size, shuffle=True, **kwargs)
+    train_loader = torch.utils.data.DataLoader(GmMnistDataSet('train_', begin=0, end=600), batch_size=None, collate_fn=lambda x: x)
+    test_loader = torch.utils.data.DataLoader(GmMnistDataSet('test_', begin=0, end=100), batch_size=None, collate_fn=lambda x: x)
 
     model = Net().to(device)
     optimizer = optim.Adadelta(model.parameters(), lr=args.lr)
 
-    scheduler = StepLR(optimizer, step_size=1, gamma=args.gamma)
+    # scheduler = StepLR(optimizer, step_size=1, gamma=args.gamma)
     for epoch in range(1, args.epochs + 1):
         train(args, model, device, train_loader, optimizer, epoch)
         test(args, model, device, test_loader)
-        scheduler.step()
+        # scheduler.step()
 
     if args.save_model:
         torch.save(model.state_dict(), "/home/madam/temp/mnist_experiment/mnist_cnn.pt")
