@@ -1,4 +1,6 @@
+from __future__ import annotations
 import math
+import typing
 
 import torch
 from pygments.lexer import include
@@ -29,16 +31,16 @@ class Mixture:
 
         self.inverted_covariances = covariances.inverse()
 
-    def device(self):
+    def device(self) -> torch.device:
         return self.weights.device
 
-    def n_components(self):
+    def n_components(self) -> int:
         return self.weights.size()[1]
 
-    def n_batches(self):
+    def n_batches(self) -> int:
         return self.weights.size()[0]
 
-    def n_dimensions(self):
+    def n_dimensions(self) -> int:
         return self.positions.size()[2]
 
     def evaluate_few_xes_component_wise(self, xes: Tensor) -> Tensor:
@@ -148,13 +150,14 @@ class Mixture:
             plt.show()
         return image
 
-    def cuda(self):
+    def cuda(self) -> Mixture:
         return Mixture(self.weights.cuda(), self.positions.cuda(), self.covariances.cuda())
 
-    def cpu(self):
+    def cpu(self) -> Mixture:
         return Mixture(self.weights.cpu(), self.positions.cpu(), self.covariances.cpu())
 
-    def batch(self, batch_id: int):
+
+    def batch(self, batch_id: int) -> Mixture:
         n_dims = self.n_dimensions()
         ret_mixture = generate_null_mixture(1, 1, n_dims, device=self.device())
         ret_mixture.weights = self.weights[batch_id, :].view(1, -1)
@@ -163,7 +166,7 @@ class Mixture:
         ret_mixture.inverted_covariances = self.inverted_covariances[batch_id, :, :, :].view(1, -1, n_dims, n_dims)
         return ret_mixture
 
-    def detach(self):
+    def detach(self) -> Mixture:
         detached_mixture = generate_null_mixture(1, 1, self.n_dimensions(), device=self.device())
         detached_mixture.weights = self.weights.detach()
         detached_mixture.positions = self.positions.detach()
@@ -171,7 +174,7 @@ class Mixture:
         detached_mixture.inverted_covariances = self.inverted_covariances.detach()
         return detached_mixture
 
-    def save(self, file_name: str, meta_info = None):
+    def save(self, file_name: str, meta_info=None) -> None:
         dict = {
             "type": "gm.Mixture",
             "version": 3,
@@ -183,7 +186,7 @@ class Mixture:
         torch.save(dict, "/home/madam/temp/prototype/" + file_name)
 
     @classmethod
-    def load(cls, file_name: str):
+    def load(cls, file_name: str) -> Mixture:
         dict = torch.load("/home/madam/temp/prototype/" + file_name)
         assert dict["type"] == "gm.Mixture"
         assert dict["version"] == 3
@@ -191,13 +194,13 @@ class Mixture:
 
 
 class MixtureReLUandBias:
-    def __init__(self, mixture: Mixture, bias: Tensor):
+    def __init__(self, mixture: Mixture, bias: Tensor) -> None:
         assert (bias >= 0).all()
         assert bias.size()[0] == mixture.n_batches()
         self.mixture = mixture
         self.bias = bias
 
-    def evaluate_few_xes(self, positions: Tensor):
+    def evaluate_few_xes(self, positions: Tensor) -> Tensor:
         values = self.mixture.evaluate_few_xes(positions) - self.bias.view(-1, 1)
         return torch.max(values, torch.tensor([0.0001], dtype=torch.float32, device=self.mixture.device()))
 
@@ -217,7 +220,7 @@ class MixtureReLUandBias:
         plt.show()
         return image
 
-    def device(self):
+    def device(self) -> torch.device:
         return self.mixture.device()
 
 
