@@ -26,7 +26,7 @@ assert COVARIANCE_MIN > 0
 
 
 def generate_random_ReLUandBias(bias_mul: float, weight_min: float, weight_max: float, device: torch.device = 'cpu'):
-    random_m = gm.generate_random_mixtures(BATCH_SIZE, 10, DIMS, pos_radius=1, cov_radius=0.25, factor_min=weight_min, factor_max=weight_max, device=device)
+    random_m = gm.generate_random_mixtures(BATCH_SIZE, 10, DIMS, pos_radius=1, cov_radius=0.25, weight_min=weight_min, weight_max=weight_max, device=device)
     random_kernel = gm.generate_random_mixtures(BATCH_SIZE, 10, DIMS, pos_radius=0.2, cov_radius=0.04, device=device)
     random_kernel.weights -= random_kernel.weights.mean(dim=1).view(-1, 1)
     random_kernel.weights += 0.1

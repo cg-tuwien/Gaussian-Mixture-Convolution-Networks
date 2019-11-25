@@ -230,15 +230,15 @@ def single_batch_mixture(weights: Tensor, positions: Tensor, covariances: Tensor
 def generate_random_mixtures(n_batch: int, n_components: int, n_dims: int,
                              pos_radius: float = 10,
                              cov_radius: float = 10,
-                             factor_min: float = -1,
-                             factor_max: float = 1,
+                             weight_min: float = -1,
+                             weight_max: float = 1,
                              device: torch.device = 'cpu') -> Mixture:
     assert n_dims == 2 or n_dims == 3
-    assert factor_min < factor_max
+    assert weight_min < weight_max
     assert n_components > 0
     assert n_batch > 0
 
-    weights = torch.rand(n_batch, n_components, dtype=torch.float32, device=device) * (factor_max - factor_min) + factor_min
+    weights = torch.rand(n_batch, n_components, dtype=torch.float32, device=device) * (weight_max - weight_min) + weight_min
     positions = torch.rand(n_batch, n_components, n_dims, dtype=torch.float32, device=device) * 2 * pos_radius - pos_radius
     covs = mat_tools.gen_random_positive_definite((n_batch, n_components, n_dims, n_dims), device=device) * cov_radius
 

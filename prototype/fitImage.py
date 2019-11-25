@@ -145,7 +145,7 @@ def ad_algorithm(image: Tensor, n_components: int, n_iterations: int = 8, device
         # mixture.weights /= 255.0
         mixture = gm.generate_random_mixtures(n_batch=batch_size, n_components=n_components, n_dims=2,
                                               pos_radius=0.5, cov_radius=5 * min(width, height) / math.sqrt(n_components),
-                                              factor_min=0, factor_max=1, device=device)
+                                              weight_min=0, weight_max=1, device=device)
         mixture.positions += 0.5
         mixture.positions *= torch.tensor([[[width, height]]], dtype=torch.float, device=device)
 
