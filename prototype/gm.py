@@ -284,3 +284,19 @@ def convolve(m1: Mixture, m2: Mixture) -> Mixture:
     detc1pc2 = torch.det(covariances)
     weights = math.pow(math.sqrt(2 * math.pi), m1.n_dimensions()) * m1_f * m2_f * torch.sqrt(detc1tc2) / torch.sqrt(detc1pc2)
     return Mixture(weights, positions, covariances)
+
+
+def batch_sum(ms: typing.List[Mixture]) -> Mixture:
+    assert len(ms) > 0
+    weights = []
+    positions = []
+    covariances = []
+    n_dims = ms[0].n_dimensions()
+    for m in ms:
+        weights.append(m.weights.view(1, -1))
+        positions.append(m.positions.view(1, -1, n_dims))
+        covariances.append(m.covariances.view(1, -1, n_dims, n_dims))
+
+    return Mixture(torch.cat(weights, dim=0),
+                   torch.cat(positions, dim=0),
+                   torch.cat(covariances, dim=0))

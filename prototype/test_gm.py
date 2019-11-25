@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import gm
 
 from torch import Tensor
+from gm import Mixture
 
 
 def _triangle_mat_data(dims: int) -> (np.array, np.array, Tensor):
@@ -110,8 +111,8 @@ class TestGM(unittest.TestCase):
         gmc = gm.convolve(gm1, gm2)
         samples_per_unit = 50
 
-        xv, yv = torch.meshgrid([torch.arange(-6, 6, 1/samples_per_unit, dtype=torch.float),
-                                 torch.arange(-6, 6, 1/samples_per_unit, dtype=torch.float)])
+        xv, yv = torch.meshgrid([torch.arange(-6, 6, 1 / samples_per_unit, dtype=torch.float),
+                                 torch.arange(-6, 6, 1 / samples_per_unit, dtype=torch.float)])
         size = xv.size()[0]
         xes = torch.cat((xv.reshape(-1, 1), yv.reshape(-1, 1)), 1).view(1, -1, 2).expand(n_batches, -1, 2)
         gm1_samples = gm1.evaluate_many_xes(xes).view(n_batches, size, size).numpy()
@@ -119,7 +120,7 @@ class TestGM(unittest.TestCase):
         gmc_samples = gmc.evaluate_many_xes(xes).view(n_batches, size, size).numpy()
 
         for i in range(n_batches):
-            reference_solution = scipy.signal.fftconvolve(gm1_samples[i, :, :], gm2_samples[i, :, :], 'same')\
+            reference_solution = scipy.signal.fftconvolve(gm1_samples[i, :, :], gm2_samples[i, :, :], 'same') \
                                  / (samples_per_unit * samples_per_unit)
             our_solution = gmc_samples[i, :, :]
             # plt.imshow(gm1_samples[i, :, :]); plt.colorbar(); plt.show()
@@ -131,6 +132,90 @@ class TestGM(unittest.TestCase):
             # plt.imshow((reference_solution - our_solution)); plt.colorbar(); plt.show();
             assert max_l2_err < 0.001
 
+    def test_batch_sum(self):
+        ms = [Mixture(torch.tensor([[1, 2],
+                                    [3, 4]]),
+
+
+                      torch.tensor([[[1.0, 1.1],
+                                     [2.0, 2.1]],
+
+                                    [[3.0, 3.1],
+                                     [4.0, 4.1]]]),
+
+
+                      torch.tensor([[[[1.9, 1.1],
+                                      [1.1, 1.2]],
+
+                                     [[2.9, 2.1],
+                                      [2.1, 2.2]]],
+
+                                    [[[3.9, 3.1],
+                                      [3.1, 3.2]],
+
+                                     [[4.9, 4.1],
+                                      [4.1, 4.2]]]])),
+
+              Mixture(torch.tensor([[5, 6],
+                                    [7, 8]]),
+
+
+                      torch.tensor([[[5.0, 5.1],
+                                     [6.0, 6.1]],
+
+                                    [[7.0, 7.1],
+                                     [8.0, 8.1]]]),
+
+
+                      torch.tensor([[[[5.9, 5.1],
+                                      [5.1, 5.2]],
+
+                                     [[6.9, 6.1],
+                                      [6.1, 6.2]]],
+
+                                    [[[7.9, 7.1],
+                                      [7.1, 7.2]],
+
+                                     [[8.9, 8.1],
+                                      [8.1, 8.2]]]]))
+              ]
+
+        m = gm.batch_sum(ms)
+
+        self.assertAlmostEqual((m.weights - torch.tensor([[1, 2, 3, 4],
+                                                          [5, 6, 7, 8]])).abs().sum(), 0)
+        self.assertAlmostEqual((m.positions - torch.tensor([[[1.0000, 1.1000],
+                                                             [2.0000, 2.1000],
+                                                             [3.0000, 3.1000],
+                                                             [4.0000, 4.1000]],
+
+                                                            [[5.0000, 5.1000],
+                                                             [6.0000, 6.1000],
+                                                             [7.0000, 7.1000],
+                                                             [8.0000, 8.1000]]])).abs().sum(), 0)
+        self.assertAlmostEqual((m.covariances - torch.tensor([[[[1.9000, 1.1000],
+                                                                [1.1000, 1.2000]],
+
+                                                               [[2.9000, 2.1000],
+                                                                [2.1000, 2.2000]],
+
+                                                               [[3.9000, 3.1000],
+                                                                [3.1000, 3.2000]],
+
+                                                               [[4.9000, 4.1000],
+                                                                [4.1000, 4.2000]]],
+
+                                                              [[[5.9000, 5.1000],
+                                                                [5.1000, 5.2000]],
+
+                                                               [[6.9000, 6.1000],
+                                                                [6.1000, 6.2000]],
+
+                                                               [[7.9000, 7.1000],
+                                                                [7.1000, 7.2000]],
+
+                                                               [[8.9000, 8.1000],
+                                                                [8.1000, 8.2000]]]])).abs().sum(), 0)
 
 
 if __name__ == '__main__':
