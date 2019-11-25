@@ -186,7 +186,7 @@ def ad_algorithm(image: Tensor, n_components: int, n_iterations: int = 8, device
             # mixture.covariances = torch.inverse(mixture.inverted_covariances)
             # md = mixture.detach().cpu()
             # md.save("fire_small_mixture")
-            # mixture.debug_show(0, 0, 0, image.shape[1], image.shape[0], min(image.shape[0], image.shape[1]) / 100)
+            # mixture.debug_show(0, 0, 0, width, height, min(width, height) / 256)
 
     fitting_end = time.time()
     print(f"fitting time: {fitting_end - fitting_start}")
@@ -196,7 +196,7 @@ def ad_algorithm(image: Tensor, n_components: int, n_iterations: int = 8, device
 
 
 def test():
-    # image: np.ndarray = plt.imread("/home/madam/cloud/Photos/fire_small.jpg")
+    # image: np.ndarray = plt.imread("/home/madam/cloud/Photos/fire_small.jpg").view(1, 256, 256)
     image = plt.imread("/home/madam/Downloads/mnist_png/training/8/17.png") * 255
     if len(image.shape) == 3:
         image = image.mean(axis=2)
