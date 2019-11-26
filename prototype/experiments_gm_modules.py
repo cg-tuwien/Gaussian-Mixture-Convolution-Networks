@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import gm_modules
 import gm
 
-m = gm.generate_random_mixtures(n_layers=3, n_components=4, n_dims=2, pos_radius=10, cov_radius=0.25, weight_min=0)
+m = gm.generate_random_mixtures(n_layers=3, n_components=4, n_dims=2, pos_radius=10, cov_radius=2.5, weight_min=0)
 
 gmc1 = gm_modules.GmConvolution(3, 5, n_kernel_components=6)
 relu1 = gm_modules.GmBiasAndRelu(5, 10)
