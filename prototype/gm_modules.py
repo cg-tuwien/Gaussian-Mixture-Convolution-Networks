@@ -50,7 +50,7 @@ class GmBiasAndRelu(torch.nn.modules.Module):
 
         #todo: option to make fitting net have common or seperate weights per module
 
-    def forward(self, x) -> gm.Mixture:
+    def forward(self, x: gm.Mixture) -> gm.Mixture:
         x = gm.MixtureReLUandBias(x, self.bias)
 
 

@@ -76,65 +76,13 @@ def test_dl_fitting(g_layer_sizes: typing.List,
     for parameter in net.parameters():
         print(f"parameter: {parameter.shape}")
 
-    criterion = nn.MSELoss()
-    optimiser = optim.Adam(net.parameters(), lr=LEARNING_RATE)
     print(net)
 
-    running_loss_avg = 0
+    trainer = gm_fitting.Trainer(net, N_SAMPLES, LEARNING_RATE * float(not testing_mode), not testing_mode, testing_mode)
+
     for i in range(1 if testing_mode else n_iterations):
-        batch_start_time = time.perf_counter()
-        optimiser.zero_grad()
-
         input_relu_of_gm_p_bias = generate_random_ReLUandBias(bias_mul=bias_mul, weight_min=weight_min, weight_max=weight_max, device=net.device())
-        sampling_positions = torch.rand((BATCH_SIZE, N_SAMPLES, DIMS), dtype=torch.float32, device=net.device()) * 3 - 1.5
-        target_sampling_values = input_relu_of_gm_p_bias.evaluate_few_xes(sampling_positions)
-
-        network_start_time = time.perf_counter()
-        output_gm: gm.Mixture = net(input_relu_of_gm_p_bias)
-        network_time = time.perf_counter() - network_start_time
-
-        eval_start_time = time.perf_counter()
-        output_gm_sampling_values = output_gm.evaluate_few_xes(sampling_positions)
-        loss = criterion(output_gm_sampling_values, target_sampling_values)
-        eval_time = time.perf_counter() - eval_start_time
-
-        backward_start_time = time.perf_counter()
-        loss.backward()
-        backward_time = time.perf_counter() - backward_start_time
-
-        if testing_mode:
-            for j in range(BATCH_SIZE):
-                input_relu_of_gm_p_bias.mixture.debug_show(j, -2, -2, 2, 2, 0.05)
-                input_relu_of_gm_p_bias.debug_show(j, -2, -2, 2, 2, 0.05)
-                output_gm.debug_show(j, -2, -2, 2, 2, 0.05)
-                input("Press enter to continue")
-        if not testing_mode:
-            optimiser.step()
-
-        grad_norm_min = 1100000
-        grad_norm_sum = 0
-        grad_norm_max = 0
-        grad_norm_cnt = 0
-        running_loss_avg = running_loss_avg * 0.98 + loss.item() * 0.02
-        for p in list(filter(lambda p: p.grad is not None, net.parameters())):
-            grad_norm = p.grad.data.norm(2).item()
-            grad_norm_min = grad_norm if grad_norm < grad_norm_min else grad_norm_min
-            grad_norm_max = grad_norm if grad_norm > grad_norm_max else grad_norm_max
-            grad_norm_sum += grad_norm
-            grad_norm_cnt += 1
-
-        info = (f"iteration i = {i}:"
-                f"batch loss {loss.item():.4f} (avg50: {running_loss_avg:.5f}), "
-                f"batch time = {time.perf_counter() - batch_start_time :.2f}s, "
-                f"size = {BATCH_SIZE}, "
-                f"(forward: {network_time :.2f}s ({network_time / BATCH_SIZE :.4f}s), eval: {eval_time :.3f}s, backward: {backward_time :.4f}s) "
-                f"grad_norm: {grad_norm_min :.6f}/{grad_norm_sum / grad_norm_cnt :.6f}/{grad_norm_max :.6f}")
-        print(info)
-        if not testing_mode and i % 50 == 0:
-            net.save()
-            f = open("/home/madam/temp/prototype/" + net.name + "_loss", "w")
-            f.write(info)
-            f.close()
+        trainer.train_on(input_relu_of_gm_p_bias, i)
 
     # target, input_ = draw_random_samples(10, WIDTH, HEIGHT)
     # output = net(input_)

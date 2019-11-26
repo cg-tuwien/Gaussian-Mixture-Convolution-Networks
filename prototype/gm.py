@@ -202,6 +202,9 @@ class MixtureReLUandBias:
         self.mixture = mixture
         self.bias = bias
 
+    def detach(self):
+        return MixtureReLUandBias(self.mixture.detach(), self.bias.detach())
+
     def evaluate_few_xes(self, positions: Tensor) -> Tensor:
         values = self.mixture.evaluate_few_xes(positions) - self.bias.view(-1, 1)
         return torch.max(values, torch.tensor([0.0001], dtype=torch.float32, device=self.mixture.device()))

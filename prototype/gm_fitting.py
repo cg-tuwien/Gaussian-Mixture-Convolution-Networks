@@ -1,9 +1,11 @@
 import pathlib
 import typing
+import time
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torch.optim as optim
 
 import gm
 from gm import MixtureReLUandBias
@@ -116,3 +118,57 @@ class Net(nn.Module):
         covariances = C * 10
 
         return gm.Mixture(weights, positions, covariances)
+
+
+class Trainer:
+    def __init__(self, net: Net, n_training_samples: int = 50 * 50, learning_rate: float = 0.001, save_weights: bool = False, testing_mode: bool = False):
+        self.net = net
+        self.n_training_samples = n_training_samples
+        self.learning_rate = learning_rate
+        self.save_weights = save_weights
+        self.testing_mode = testing_mode
+        self.criterion = nn.MSELoss()
+        self.optimiser = optim.Adam(net.parameters(), lr=learning_rate)
+
+    def train_on(self, data_in: gm.MixtureReLUandBias, epoch: int):
+        data_in = data_in.detach()
+        batch_size = data_in.mixture.n_batches()
+        batch_start_time = time.perf_counter()
+        self.optimiser.zero_grad()
+
+        sampling_positions = torch.rand((batch_size, self.n_training_samples, data_in.mixture.n_dimensions()), dtype=torch.float32, device=self.net.device()) * 3 - 1.5
+        target_sampling_values = data_in.evaluate_few_xes(sampling_positions)
+
+        network_start_time = time.perf_counter()
+        output_gm: gm.Mixture = self.net(data_in)
+        network_time = time.perf_counter() - network_start_time
+
+        eval_start_time = time.perf_counter()
+        output_gm_sampling_values = output_gm.evaluate_few_xes(sampling_positions)
+        loss = self.criterion(output_gm_sampling_values, target_sampling_values)
+        eval_time = time.perf_counter() - eval_start_time
+
+        backward_start_time = time.perf_counter()
+        loss.backward()
+        backward_time = time.perf_counter() - backward_start_time
+
+        if self.testing_mode:
+            for j in range(batch_size):
+                data_in.mixture.debug_show(j, -2, -2, 2, 2, 0.05)
+                data_in.debug_show(j, -2, -2, 2, 2, 0.05)
+                output_gm.debug_show(j, -2, -2, 2, 2, 0.05)
+                input("Press enter to continue")
+
+        self.optimiser.step()
+
+        info = (f"epoch = {epoch}:"
+                f"batch loss {loss.item():.4f}, "
+                f"batch time = {time.perf_counter() - batch_start_time :.2f}s, "
+                f"size = {batch_size}, "
+                f"(forward: {network_time :.2f}s ({network_time / batch_size :.4f}s), eval: {eval_time :.3f}s, backward: {backward_time :.4f}s) ")
+        print(info)
+        if self.save_weights:
+            self.net.save()
+            f = open("/home/madam/temp/prototype/" + self.net.name + "_loss", "w")
+            f.write(info)
+            f.close()
