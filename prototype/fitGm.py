@@ -56,7 +56,6 @@ def generate_random_ReLUandBias(bias_mul: float, weight_min: float, weight_max: 
 def test_dl_fitting(g_layer_sizes: typing.List,
                     fully_layer_sizes: typing.List,
                     use_cuda: bool = True,
-                    cov_decomposition: bool = True,
                     testing_mode: bool = True,
                     n_iterations: int = 50001,
                     bias_mul: float = 1,
@@ -66,9 +65,7 @@ def test_dl_fitting(g_layer_sizes: typing.List,
                        fully_layer_sizes,
                        N_INPUT_GAUSSIANS,
                        N_OUTPUT_GAUSSIANS,
-                       # name=f"__biasmul{bias_mul}_minweight{weight_min}{f'_maxweight{weight_max}' if weight_max != 1 else ''}",
-                       n_dims=DIMS,
-                       cov_decomposition=cov_decomposition)
+                       n_dims=DIMS)
     net.load()
 
     if use_cuda:
@@ -156,8 +153,7 @@ def test_dl_fitting(g_layer_sizes: typing.List,
 #                 use_cuda=True, cov_decomposition=False, testing_mode=False, bias_mul=0, weight_min=0)
 #
 
-test_dl_fitting(g_layer_sizes=[64, 128, 128, 512, 512 * N_OUTPUT_GAUSSIANS], fully_layer_sizes=[512, 256, 128, 64, 32],
-                use_cuda=True, cov_decomposition=False, testing_mode=True, bias_mul=0.65, weight_min=0, weight_max=15)
+test_dl_fitting(g_layer_sizes=[64, 128, 128, 512, 512 * N_OUTPUT_GAUSSIANS], fully_layer_sizes=[512, 256, 128, 64, 32], testing_mode=True, bias_mul=0.65, weight_min=0, weight_max=15)
 
 # test_dl_fitting(g_layer_sizes=[64, 64, 128, 128, 512, 1024 * N_OUTPUT_GAUSSIANS], fully_layer_sizes=[512, 256, 128, 64, 32],
 #                 use_cuda=True, cov_decomposition=False, testing_mode=False, bias_mul=1, weight_min=-1)

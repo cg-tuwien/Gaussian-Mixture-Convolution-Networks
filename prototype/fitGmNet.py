@@ -19,11 +19,9 @@ class Net(nn.Module):
                  n_input_gaussians: int,
                  n_output_gaussians: int,
                  name: str = "",
-                 n_dims: int = 2,
-                 cov_decomposition=False):
+                 n_dims: int = 2):
         super(Net, self).__init__()
         self.n_dims = n_dims
-        self.cov_decomposition = cov_decomposition
         self.n_input_gaussians = n_input_gaussians
         self.n_output_gaussians = n_output_gaussians
         # n * (1 for weights, DIMS for positions, trimat_size(DIMS) for the triangle cov matrix) +1 for the bias
@@ -52,7 +50,7 @@ class Net(nn.Module):
 
         self.output_layer = nn.Conv1d(last_layer_size, n_outputs_per_gaussian, kernel_size=1, stride=1, groups=1)
 
-        self.name = "fit_gm_net_eigenVecs_" if self.cov_decomposition else "fit_gm_net_"
+        self.name = "fit_gm_net_"
         self.name += name + "_g"
         for s in g_layer_sizes:
             self.name += f"_{s}"
@@ -84,12 +82,7 @@ class Net(nn.Module):
         n_batches = convolution_layer.mixture.n_batches()
         n_input_components = convolution_layer.mixture.n_components()
         n_dims = convolution_layer.mixture.n_dimensions()
-        if self.cov_decomposition:
-            C = convolution_layer.mixture.covariances
-            eigen_vals, eigen_vectors = C.symeig(eigenvectors=True)
-            cov_data = eigen_vectors @ torch.sqrt(eigen_vals).diag_embed()
-        else:
-            cov_data = convolution_layer.mixture.covariances
+        cov_data = convolution_layer.mixture.covariances
         x = torch.cat((convolution_layer.mixture.weights.view(n_batches, n_input_components, 1),
                        convolution_layer.mixture.positions,
                        cov_data.view(n_batches, n_input_components, n_dims * n_dims)), dim=2)
