@@ -40,14 +40,11 @@ class Net(nn.Module):
             last_layer_size = s
 
         self.fully_layers = nn.ModuleList()
-        # todo batching
-        # self.batch_norms = nn.ModuleList()
 
         assert last_layer_size % self.n_output_gaussians == 0
         last_layer_size = last_layer_size // self.n_output_gaussians + 1
         for s in fully_layer_sizes:
             self.fully_layers.append(nn.Conv1d(last_layer_size, s, kernel_size=1, stride=1, groups=1))
-            # self.batch_norms.append(nn.BatchNorm1d(s))
             last_layer_size = s
 
         self.output_layer = nn.Conv1d(last_layer_size, n_outputs_per_gaussian, kernel_size=1, stride=1, groups=1)
@@ -81,16 +78,16 @@ class Net(nn.Module):
         return self.output_layer.bias.device
 
     def forward(self, data_in: MixtureReLUandBias, learning: bool = True) -> Mixture:
-        n_batches = data_in.mixture.n_batches()
+        n_layers = data_in.mixture.n_layers()
         n_input_components = data_in.mixture.n_components()
         n_dims = data_in.mixture.n_dimensions()
 
         data_normalised, normalisation_factors = gm.normalise(data_in)
 
         cov_data = data_normalised.mixture.covariances
-        x = torch.cat((data_normalised.mixture.weights.view(n_batches, n_input_components, 1),
+        x = torch.cat((data_normalised.mixture.weights.view(n_layers, n_input_components, 1),
                        data_normalised.mixture.positions,
-                       cov_data.view(n_batches, n_input_components, n_dims * n_dims)), dim=2)
+                       cov_data.view(n_layers, n_input_components, n_dims * n_dims)), dim=2)
         x = x.transpose(1, 2)
 
         for layer in self.per_g_layers:
@@ -99,8 +96,8 @@ class Net(nn.Module):
 
         x = torch.sum(x, dim=2)
         # x is batch size x final g layer size now
-        x = x.view(n_batches, -1, self.n_output_gaussians)
-        x = torch.cat((data_normalised.bias.view(n_batches, 1, 1).expand(n_batches, 1, self.n_output_gaussians), x), dim=1)
+        x = x.view(n_layers, -1, self.n_output_gaussians)
+        x = torch.cat((data_normalised.bias.view(n_layers, 1, 1).expand(n_layers, 1, self.n_output_gaussians), x), dim=1)
 
         i = 0
         for layer in self.fully_layers:
@@ -116,7 +113,7 @@ class Net(nn.Module):
         weights = x[:, :, 0]
         positions = x[:, :, 1:(self.n_dims + 1)]
         # we are learning A, so that C = A @ A.T() + 0.01 * identity() is the resulting cov matrix
-        A = x[:, :, (self.n_dims + 1):].view(n_batches, -1, self.n_dims, self.n_dims)
+        A = x[:, :, (self.n_dims + 1):].view(n_layers, -1, self.n_dims, self.n_dims)
         C = A @ A.transpose(2, 3) + torch.eye(self.n_dims, self.n_dims, dtype=torch.float32, device=self.device()) * COVARIANCE_MIN
         covariances = C
 
@@ -136,7 +133,7 @@ class Trainer:
 
     def train_on(self, data_in: gm.MixtureReLUandBias, epoch: int):
         data_in = data_in.detach()
-        batch_size = data_in.mixture.n_batches()
+        batch_size = data_in.mixture.n_layers()
         batch_start_time = time.perf_counter()
         self.optimiser.zero_grad()
 
