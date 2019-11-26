@@ -18,13 +18,11 @@ class Net(nn.Module):
     def __init__(self,
                  g_layer_sizes: typing.List,
                  fully_layer_sizes: typing.List,
-                 n_input_gaussians: int,
                  n_output_gaussians: int,
                  name: str = "",
                  n_dims: int = 2):
         super(Net, self).__init__()
         self.n_dims = n_dims
-        self.n_input_gaussians = n_input_gaussians
         self.n_output_gaussians = n_output_gaussians
         # n * (1 for weights, DIMS for positions, trimat_size(DIMS) for the triangle cov matrix) +1 for the bias
         n_inputs_per_gaussian = 1 + n_dims + n_dims * n_dims
@@ -64,7 +62,7 @@ class Net(nn.Module):
         torch.save(self.state_dict(), self.storage_path)
 
     def load(self):
-        print(f"fitGmNet: trying to load {self.storage_path}")
+        print(f"gm_fitting.Net: trying to load {self.storage_path}")
         if pathlib.Path(self.storage_path).is_file():
             state_dict = torch.load(self.storage_path)
             missing_keys, unexpected_keys = self.load_state_dict(state_dict)
@@ -133,6 +131,7 @@ class Trainer:
 
     def train_on(self, data_in: gm.MixtureReLUandBias, epoch: int):
         data_in = data_in.detach()
+        data_in, _ = gm.normalise(data_in)  # we normalise twice, but that shouldn't hurt (but performance). normalisation here is needed due to regularisation
         batch_size = data_in.mixture.n_layers()
         batch_start_time = time.perf_counter()
         self.optimiser.zero_grad()
@@ -146,10 +145,17 @@ class Trainer:
 
         eval_start_time = time.perf_counter()
         output_gm_sampling_values = output_gm.evaluate_few_xes(sampling_positions)
-        loss = self.criterion(output_gm_sampling_values, target_sampling_values)
+        criterion = self.criterion(output_gm_sampling_values, target_sampling_values)
+
+        # the network was moving gaussians out of the sampling radius
+        p = (output_gm.positions.abs() - 1)
+        p = p.where(p > torch.zeros(1, device=p.device), torch.zeros(1, device=p.device))
+        regularisation = p.sum()
+
         eval_time = time.perf_counter() - eval_start_time
 
         backward_start_time = time.perf_counter()
+        loss = criterion + regularisation
         loss.backward()
         backward_time = time.perf_counter() - backward_start_time
 
@@ -163,10 +169,10 @@ class Trainer:
         self.optimiser.step()
 
         info = (f"gm_fitting.Trainer: epoch = {epoch}:"
-                f"batch loss {loss.item():.4f}, "
+                f"batch loss {loss.item():.4f} (crit: {criterion.item()}, reg: {regularisation.item()}), "
                 f"batch time = {time.perf_counter() - batch_start_time :.2f}s, "
                 f"size = {batch_size}, "
-                f"(forward: {network_time :.2f}s ({network_time / batch_size :.4f}s), eval: {eval_time :.3f}s, backward: {backward_time :.4f}s) ")
+                f"(forward: {network_time :.2f}s (per layer: {network_time / batch_size :.4f}s), eval: {eval_time :.3f}s, backward: {backward_time :.4f}s) ")
         print(info)
         if self.save_weights:
             self.net.save()

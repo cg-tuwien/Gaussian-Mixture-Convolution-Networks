@@ -1,5 +1,6 @@
 import typing
 import time
+import random
 
 import torch
 import torch.distributions.categorical
@@ -12,11 +13,11 @@ import gm_fitting
 
 DIMS = 2
 N_SAMPLES = 50 * 50
-N_INPUT_GAUSSIANS = 100
+N_INPUT_GAUSSIANS = 600
 N_OUTPUT_GAUSSIANS = 10
 COVARIANCE_MIN = 0.01
 
-BATCH_SIZE = 200
+BATCH_SIZE = 50
 LEARNING_RATE = 0.001
 
 assert DIMS == 2 or DIMS == 3
@@ -26,7 +27,7 @@ assert COVARIANCE_MIN > 0
 
 
 def generate_random_ReLUandBias(bias_mul: float, weight_min: float, weight_max: float, device: torch.device = 'cpu'):
-    random_m = gm.generate_random_mixtures(BATCH_SIZE, 10, DIMS, pos_radius=1, cov_radius=0.25, weight_min=weight_min, weight_max=weight_max, device=device)
+    random_m = gm.generate_random_mixtures(BATCH_SIZE, random.randint(10, 60), DIMS, pos_radius=1, cov_radius=0.25, weight_min=weight_min, weight_max=weight_max, device=device)
     random_kernel = gm.generate_random_mixtures(BATCH_SIZE, 10, DIMS, pos_radius=0.2, cov_radius=0.04, device=device)
     random_kernel.weights -= random_kernel.weights.mean(dim=1).view(-1, 1)
     random_kernel.weights += 0.1
@@ -63,8 +64,7 @@ def test_dl_fitting(g_layer_sizes: typing.List,
                     weight_max: float = 1):
     net = gm_fitting.Net(g_layer_sizes,
                          fully_layer_sizes,
-                         N_INPUT_GAUSSIANS,
-                         N_OUTPUT_GAUSSIANS,
+                         n_output_gaussians=N_OUTPUT_GAUSSIANS,
                          n_dims=DIMS)
     net.load()
 
@@ -82,7 +82,7 @@ def test_dl_fitting(g_layer_sizes: typing.List,
 
     for i in range(1 if testing_mode else n_iterations):
         input_relu_of_gm_p_bias = generate_random_ReLUandBias(bias_mul=bias_mul, weight_min=weight_min, weight_max=weight_max, device=net.device())
-        trainer.save_weights = i % 50 == 0
+        trainer.save_weights = i % 50 == 0 and False
         trainer.train_on(input_relu_of_gm_p_bias, i)
 
     # target, input_ = draw_random_samples(10, WIDTH, HEIGHT)
@@ -102,7 +102,7 @@ def test_dl_fitting(g_layer_sizes: typing.List,
 #                 use_cuda=True, cov_decomposition=False, testing_mode=False, bias_mul=0, weight_min=0)
 #
 
-test_dl_fitting(g_layer_sizes=[64, 128, 128, 512, 512 * N_OUTPUT_GAUSSIANS], fully_layer_sizes=[512, 256, 128, 64, 32], testing_mode=True, bias_mul=0.65, weight_min=0, weight_max=15)
+test_dl_fitting(g_layer_sizes=[64, 128, 128, 512, 512 * N_OUTPUT_GAUSSIANS], fully_layer_sizes=[512, 256, 128, 64, 32], testing_mode=False, bias_mul=0.65, weight_min=0, weight_max=15)
 
 # test_dl_fitting(g_layer_sizes=[64, 64, 128, 128, 512, 1024 * N_OUTPUT_GAUSSIANS], fully_layer_sizes=[512, 256, 128, 64, 32],
 #                 use_cuda=True, cov_decomposition=False, testing_mode=False, bias_mul=1, weight_min=-1)
