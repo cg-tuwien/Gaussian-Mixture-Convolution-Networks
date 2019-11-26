@@ -23,7 +23,7 @@ def trimat_size(dims: int) -> int:
 
 def gen_random_positive_definite(dims: typing.List, epsilon: float = 0.01, device: torch.device = 'cpu') -> Tensor:
     assert dims[-1] == dims[-2]
-    A = torch.rand(dims, dtype=torch.float32, device=device)
+    A = torch.rand(dims, dtype=torch.float32, device=device) * 2 - 1
     return A @ A.transpose(-1, -2) + torch.eye(dims[-1], dtype=torch.float32, device=device) * epsilon
 
 

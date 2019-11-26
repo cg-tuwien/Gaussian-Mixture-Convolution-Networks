@@ -65,9 +65,6 @@ def em_algorithm(image: Tensor, n_components: int, n_iterations: int, device: to
 
         # minimum variance
         new_mixture.covariances[0, :, :, :] += torch.eye(new_mixture.n_dimensions(), device=new_mixture.device()) * 0.1
-
-        print(f"inverting..")
-        new_mixture.inverted_covariances = torch.inverse(new_mixture.covariances)
         print(f"iterations {k} finished")
 
         # new_mixture.debug_show(0, 0, width, height, 1)
@@ -156,7 +153,7 @@ def ad_algorithm(image: Tensor, n_components: int, n_iterations: int = 8, device
     mixture.weights.requires_grad = True;
     mixture.positions.requires_grad = True;
 
-    (eigvals, eigvecs) = torch.symeig(mixture.inverted_covariances, eigenvectors=True)
+    (eigvals, eigvecs) = torch.symeig(mixture.inverted_covariances(), eigenvectors=True)
     eigvals = torch.max(eigvals, torch.tensor([0.01], dtype=torch.float, device=device))
     icov_factor = torch.matmul(eigvecs, eigvals.sqrt().diag_embed())
     icov_factor.requires_grad = True
@@ -171,17 +168,17 @@ def ad_algorithm(image: Tensor, n_components: int, n_iterations: int = 8, device
         xes_indices = xes.type(torch.long).view(batch_size, -1, 2)
         xes_indices = xes_indices[:, :, 0] * int(height) + xes_indices[:, :, 1]
 
-        mixture.inverted_covariances = icov_factor @ icov_factor.transpose(-2, -1) + torch.eye(2, 2, device=mixture.device()) * 0.005
+        mixture._inverted_covariances = icov_factor @ icov_factor.transpose(-2, -1) + torch.eye(2, 2, device=mixture.device()) * 0.005
         output = mixture.evaluate_few_xes(xes)
-        assert not torch.isnan(mixture.inverted_covariances).any()
-        assert not torch.isinf(mixture.inverted_covariances).any()
+        assert not torch.isnan(mixture.inverted_covariances()).any()
+        assert not torch.isinf(mixture.inverted_covariances()).any()
         loss = torch.mean(torch.abs(output - mat_tools.batched_index_select(target.view(batch_size, -1), dim=1, index=xes_indices)))
 
         loss.backward()
         optimiser.step()
 
         if k % 40 == 0:
-            print(f"iterations {k}: loss = {loss.item()}, min det = {torch.min(torch.det(mixture.inverted_covariances.detach()))}")#, regularisation_1 = {regularisation_1.item()}, "
+            print(f"iterations {k}: loss = {loss.item()}, min det = {torch.min(torch.det(mixture.inverted_covariances().detach()))}")#, regularisation_1 = {regularisation_1.item()}, "
                   # f"regularisation_2 = {regularisation_2.item()}, regularisation_3 = {regularisation_3.item()}")
             # mixture.covariances = torch.inverse(mixture.inverted_covariances)
             # md = mixture.detach().cpu()
@@ -191,7 +188,7 @@ def ad_algorithm(image: Tensor, n_components: int, n_iterations: int = 8, device
     fitting_end = time.time()
     print(f"fitting time: {fitting_end - fitting_start}")
     mixture = mixture.detach()
-    mixture.covariances = torch.inverse(mixture.inverted_covariances)
+    mixture.update_covariance_from_inverted()
     return mixture
 
 

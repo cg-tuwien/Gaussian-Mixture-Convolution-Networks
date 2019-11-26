@@ -63,7 +63,7 @@ class Net(nn.Module):
         self.storage_path = "/home/madam/temp/prototype/" + self.name
 
     def save(self):
-        print(f"fitGmNet: saving to {self.storage_path}")
+        print(f"gm_fitting.Net: saving to {self.storage_path}")
         torch.save(self.state_dict(), self.storage_path)
 
     def load(self):
@@ -73,20 +73,23 @@ class Net(nn.Module):
             missing_keys, unexpected_keys = self.load_state_dict(state_dict)
             assert len(missing_keys) == 0
             assert len(unexpected_keys) == 0
-            print("fitGmNet: loaded")
+            print("gm_fitting.Net: loaded")
         else:
-            print("fitGmNet: not found")
+            print("gm_fitting.Net: not found")
 
     def device(self):
         return self.output_layer.bias.device
 
-    def forward(self, convolution_layer: MixtureReLUandBias, learning: bool = True) -> Mixture:
-        n_batches = convolution_layer.mixture.n_batches()
-        n_input_components = convolution_layer.mixture.n_components()
-        n_dims = convolution_layer.mixture.n_dimensions()
-        cov_data = convolution_layer.mixture.covariances
-        x = torch.cat((convolution_layer.mixture.weights.view(n_batches, n_input_components, 1),
-                       convolution_layer.mixture.positions,
+    def forward(self, data_in: MixtureReLUandBias, learning: bool = True) -> Mixture:
+        n_batches = data_in.mixture.n_batches()
+        n_input_components = data_in.mixture.n_components()
+        n_dims = data_in.mixture.n_dimensions()
+
+        data_normalised, normalisation_factors = gm.normalise(data_in)
+
+        cov_data = data_normalised.mixture.covariances
+        x = torch.cat((data_normalised.mixture.weights.view(n_batches, n_input_components, 1),
+                       data_normalised.mixture.positions,
                        cov_data.view(n_batches, n_input_components, n_dims * n_dims)), dim=2)
         x = x.transpose(1, 2)
 
@@ -97,7 +100,7 @@ class Net(nn.Module):
         x = torch.sum(x, dim=2)
         # x is batch size x final g layer size now
         x = x.view(n_batches, -1, self.n_output_gaussians)
-        x = torch.cat((convolution_layer.bias.view(n_batches, 1, 1).expand(n_batches, 1, self.n_output_gaussians), x), dim=1)
+        x = torch.cat((data_normalised.bias.view(n_batches, 1, 1).expand(n_batches, 1, self.n_output_gaussians), x), dim=1)
 
         i = 0
         for layer in self.fully_layers:
@@ -115,9 +118,10 @@ class Net(nn.Module):
         # we are learning A, so that C = A @ A.T() + 0.01 * identity() is the resulting cov matrix
         A = x[:, :, (self.n_dims + 1):].view(n_batches, -1, self.n_dims, self.n_dims)
         C = A @ A.transpose(2, 3) + torch.eye(self.n_dims, self.n_dims, dtype=torch.float32, device=self.device()) * COVARIANCE_MIN
-        covariances = C * 10
+        covariances = C
 
-        return gm.Mixture(weights, positions, covariances)
+        normalised_out = gm.Mixture(weights, positions, covariances)
+        return gm.de_normalise(normalised_out, normalisation_factors)
 
 
 class Trainer:
@@ -157,11 +161,11 @@ class Trainer:
                 data_in.mixture.debug_show(j, -2, -2, 2, 2, 0.05)
                 data_in.debug_show(j, -2, -2, 2, 2, 0.05)
                 output_gm.debug_show(j, -2, -2, 2, 2, 0.05)
-                input("Press enter to continue")
+                input("gm_fitting.Trainer: Press enter to continue")
 
         self.optimiser.step()
 
-        info = (f"epoch = {epoch}:"
+        info = (f"gm_fitting.Trainer: epoch = {epoch}:"
                 f"batch loss {loss.item():.4f}, "
                 f"batch time = {time.perf_counter() - batch_start_time :.2f}s, "
                 f"size = {batch_size}, "

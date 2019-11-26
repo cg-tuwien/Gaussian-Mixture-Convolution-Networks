@@ -82,6 +82,7 @@ def test_dl_fitting(g_layer_sizes: typing.List,
 
     for i in range(1 if testing_mode else n_iterations):
         input_relu_of_gm_p_bias = generate_random_ReLUandBias(bias_mul=bias_mul, weight_min=weight_min, weight_max=weight_max, device=net.device())
+        trainer.save_weights = i % 50 == 0
         trainer.train_on(input_relu_of_gm_p_bias, i)
 
     # target, input_ = draw_random_samples(10, WIDTH, HEIGHT)

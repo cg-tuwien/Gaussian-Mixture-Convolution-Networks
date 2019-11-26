@@ -217,6 +217,30 @@ class TestGM(unittest.TestCase):
                                                                [[8.9000, 8.1000],
                                                                 [8.1000, 8.2000]]]])).abs().sum(), 0)
 
+    def test_mixture_normalisation(self):
+        data_in = gm.MixtureReLUandBias(gm.generate_random_mixtures(10, 3, 2, pos_radius=3, cov_radius=0.3), torch.rand(10) + 0.2)
+        data_in.mixture.weights[0:4, 0] = 2
+        data_in.mixture.positions[0, 0, 0] = -10
+        data_in.mixture.positions[1, 0, 1] = 10
+        data_in.mixture.covariances[2, 0, 0, 0] = 400
+        data_in.mixture.covariances[3, 0, 1, 1] = 400
+        data_in.mixture.update_inverted_covariance()
+
+        data_normalised, norm_factors = gm.normalise(data_in)
+        data_out = gm.de_normalise(data_normalised.mixture, norm_factors)
+
+        self.assertEqual(data_in.bias.shape, data_normalised.bias.shape)
+        self.assertAlmostEqual((data_in.mixture.weights / data_in.bias.view(-1, 1) - data_normalised.mixture.weights / data_normalised.bias.view(-1, 1)).abs().mean().item(), 0, places=4)
+        self.assertAlmostEqual((data_in.mixture.weights - data_out.weights).abs().mean().item(), 0, places=5)
+        self.assertAlmostEqual((data_in.mixture.positions - data_out.positions).abs().mean().item(), 0, places=5)
+        self.assertAlmostEqual((data_in.mixture.covariances - data_out.covariances).abs().mean().item(), 0, places=5)
+
+        # for i in range(10):
+        #     data_in.mixture.debug_show(i, -10, -10, 10, 10, 0.1)
+        #     data_normalised.mixture.debug_show(i, -1.5, -1.5, 1.5, 1.5, 0.01)
+        #     data_out.debug_show(i, -10, -10, 10, 10, 0.1)
+        #     input("Press enter to continue!")
+
 
 if __name__ == '__main__':
     unittest.main()

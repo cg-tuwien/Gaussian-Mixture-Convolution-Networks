@@ -21,6 +21,7 @@ class Mixture:
         self.weights = weights
         self.positions = positions
         self.covariances = covariances
+        self._inverted_covariances = None
 
         assert self.n_components() == weights.size()[1]
         assert self.n_components() == positions.size()[1]
@@ -29,7 +30,16 @@ class Mixture:
         assert covariances.size()[3] == self.n_dimensions()
         assert torch.all(covariances.det() > 0)
 
-        self.inverted_covariances = covariances.inverse()
+    def inverted_covariances(self):
+        if self._inverted_covariances is None:
+            self.update_inverted_covariance()
+        return self._inverted_covariances
+
+    def update_inverted_covariance(self) -> None:
+        self._inverted_covariances = self.covariances.inverse()
+
+    def update_covariance_from_inverted(self) -> None:
+        self.covariances = self._inverted_covariances.inverse()
 
     def device(self) -> torch.device:
         return self.weights.device
@@ -60,7 +70,7 @@ class Mixture:
             # x^t A x -> quadratic form
             x_t = values.view(n_batches, n_comps, -1, 1, n_dims)
             x = values.view(n_batches, n_comps, -1, n_dims, 1)
-            A = self.inverted_covariances.view(n_batches, n_comps, 1, n_dims, n_dims)
+            A = self.inverted_covariances().view(n_batches, n_comps, 1, n_dims, n_dims)
             values = -0.5 * x_t @ A @ x
             values = values.view(n_batches, n_comps, -1)
         else:
@@ -75,7 +85,7 @@ class Mixture:
                 # x^t A x -> quadratic form
                 x_t = values.view(n_comps, -1, 1, n_dims)
                 x = values.view(n_comps, -1, n_dims, 1)
-                A = self.inverted_covariances[i, :, :, :].view(n_comps, 1, n_dims, n_dims)
+                A = self.inverted_covariances()[i, :, :, :].view(n_comps, 1, n_dims, n_dims)
                 values = -0.5 * x_t @ A @ x
                 batched_values[i, :, :] = values.view(n_comps, -1)
             values = batched_values
@@ -96,7 +106,7 @@ class Mixture:
 
         weights = self.weights[:, component].view(-1, 1)
         positions = self.positions[:, component, :]
-        inverted_covs = self.inverted_covariances[:, component, :, :]
+        inverted_covs = self.inverted_covariances()[:, component, :, :]
 
         # first dimension: batch (from mixture), second: sampling (xes), third: data
         v = xes - positions.view(n_batches, 1, n_dims)
@@ -138,12 +148,12 @@ class Mixture:
         assert self.n_dimensions() == 2
         m = self.detach().batch(batch_i)
 
-        xv, yv = torch.meshgrid([torch.arange(x_low, x_high, step, dtype=torch.float, device=self.weights.device),
-                                 torch.arange(y_low, y_high, step, dtype=torch.float, device=self.weights.device)])
+        xv, yv = torch.meshgrid([torch.arange(x_low, x_high, step, dtype=torch.float, device=self.device()),
+                                 torch.arange(y_low, y_high, step, dtype=torch.float, device=self.device())])
         xes = torch.cat((xv.reshape(-1, 1), yv.reshape(-1, 1)), 1).view(1, -1, 2)
 
         values = m.evaluate_many_xes(xes).detach()
-        image = values.view(xv.size()[0], xv.size()[1]).cpu().numpy()
+        image = values.view(xv.size()[0], xv.size()[1]).cpu().t().numpy()
         if imshow:
             plt.imshow(image)
             plt.colorbar()
@@ -165,7 +175,8 @@ class Mixture:
         ret_mixture.weights = self.weights[batch_id, :].view(1, -1)
         ret_mixture.positions = self.positions[batch_id, :, :].view(1, -1, n_dims)
         ret_mixture.covariances = self.covariances[batch_id, :, :, :].view(1, -1, n_dims, n_dims)
-        ret_mixture.inverted_covariances = self.inverted_covariances[batch_id, :, :, :].view(1, -1, n_dims, n_dims)
+        if self._inverted_covariances is not None:
+            ret_mixture._inverted_covariances = self._inverted_covariances[batch_id, :, :, :].view(1, -1, n_dims, n_dims)
         return ret_mixture
 
     def detach(self) -> Mixture:
@@ -173,7 +184,8 @@ class Mixture:
         detached_mixture.weights = self.weights.detach()
         detached_mixture.positions = self.positions.detach()
         detached_mixture.covariances = self.covariances.detach()
-        detached_mixture.inverted_covariances = self.inverted_covariances.detach()
+        if self._inverted_covariances is not None:
+            detached_mixture._inverted_covariances = self._inverted_covariances.detach()
         return detached_mixture
 
     def save(self, file_name: str, meta_info=None) -> None:
@@ -219,7 +231,7 @@ class MixtureReLUandBias:
         values = m.evaluate_many_xes(xes)
         values -= self.bias.detach()[batch_i]
         values[values < 0] = 0
-        image = values.view(xv.size()[0], xv.size()[1]).cpu().numpy()
+        image = values.view(xv.size()[0], xv.size()[1]).t().cpu().numpy()
         plt.imshow(image)
         plt.colorbar()
         plt.show()
@@ -259,7 +271,6 @@ def generate_null_mixture(n_batch: int, n_components: int, n_dims: int, device: 
     m.weights *= 0
     m.positions *= 0
     m.covariances *= 0
-    m.inverted_covariances *= 0
     return m
 
 
@@ -305,3 +316,51 @@ def batch_sum(ms: typing.List[Mixture]) -> Mixture:
     return Mixture(torch.cat(weights, dim=0),
                    torch.cat(positions, dim=0),
                    torch.cat(covariances, dim=0))
+
+
+class NormalisationFactors:
+    def __init__(self, weight_scaling: Tensor, position_translation: Tensor, position_scaling: Tensor):
+        self.weight_scaling = weight_scaling
+        self.position_translation = position_translation
+        self.position_scaling = position_scaling
+
+
+def normalise(data_in: MixtureReLUandBias) -> (MixtureReLUandBias, NormalisationFactors):
+    n_batches = data_in.mixture.n_batches()
+    n_dims = data_in.mixture.n_dimensions()
+    weight_min, _ = torch.min(data_in.mixture.weights.detach(), dim=1)
+    weight_max, _ = torch.max(data_in.mixture.weights.detach(), dim=1)
+    weight_scaling = torch.max(torch.abs(weight_min), weight_max)
+    weight_scaling = torch.max(weight_scaling, data_in.bias.detach())
+    weight_scaling = weight_scaling.view(n_batches, 1)
+    weight_scaling = (1 / weight_scaling)
+
+    weights_normalised = data_in.mixture.weights * weight_scaling
+    bias_normalised = data_in.bias * weight_scaling.view(-1)
+
+    position_translation = (-torch.mean(data_in.mixture.positions.detach(), dim=1)).view(n_batches, 1, n_dims)
+    positions_normalised = data_in.mixture.positions + position_translation
+    covariance_adjustment =  torch.sqrt(torch.diagonal(data_in.mixture.covariances.detach(), dim1=-2, dim2=-1))
+    position_max, _ = torch.max(positions_normalised.detach() + covariance_adjustment, dim=1)
+    position_min, _ = torch.min(positions_normalised.detach() - covariance_adjustment, dim=1)
+    position_scaling = torch.max(torch.abs(position_min), position_max)
+    position_scaling = position_scaling.view(n_batches, 1, n_dims)
+    position_scaling = 1 / position_scaling
+    positions_normalised *= position_scaling
+
+    covariance_scaling = torch.diag_embed(position_scaling)
+    covariances_normalised = covariance_scaling @ data_in.mixture.covariances @ covariance_scaling
+
+    return MixtureReLUandBias(Mixture(weights_normalised, positions_normalised, covariances_normalised), bias_normalised), \
+           NormalisationFactors(weight_scaling, position_translation, position_scaling)
+
+def de_normalise(m: Mixture, normalisation: NormalisationFactors) -> Mixture:
+    inverted_weight_scaling = 1 / normalisation.weight_scaling
+    inverted_position_translation = - normalisation.position_translation
+    inverted_position_scaling = 1 / normalisation.position_scaling
+    inverted_covariance_scaling = torch.diag_embed(inverted_position_scaling)
+
+    return Mixture(m.weights * inverted_weight_scaling,
+                   m.positions * inverted_position_scaling + inverted_position_translation,
+                   inverted_covariance_scaling @ m.covariances @ inverted_covariance_scaling)
+
