@@ -8,7 +8,7 @@ import torch.nn as nn
 from torch import Tensor
 
 import gm
-import fitGmNet
+import gm_fitting
 
 DIMS = 2
 N_SAMPLES = 50 * 50
@@ -61,11 +61,11 @@ def test_dl_fitting(g_layer_sizes: typing.List,
                     bias_mul: float = 1,
                     weight_min: float = -1,
                     weight_max: float = 1):
-    net = fitGmNet.Net(g_layer_sizes,
-                       fully_layer_sizes,
-                       N_INPUT_GAUSSIANS,
-                       N_OUTPUT_GAUSSIANS,
-                       n_dims=DIMS)
+    net = gm_fitting.Net(g_layer_sizes,
+                         fully_layer_sizes,
+                         N_INPUT_GAUSSIANS,
+                         N_OUTPUT_GAUSSIANS,
+                         n_dims=DIMS)
     net.load()
 
     if use_cuda:
