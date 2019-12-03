@@ -2,6 +2,8 @@ import pathlib
 import typing
 import time
 
+import matplotlib.pyplot as plt
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -20,7 +22,9 @@ class Net(nn.Module):
                  fully_layer_sizes: typing.List,
                  n_output_gaussians: int,
                  name: str = "",
-                 n_dims: int = 2):
+                 n_dims: int = 2,
+                 output_image_width: int = 0,
+                 output_image_height: int = 0):
         super(Net, self).__init__()
         self.n_dims = n_dims
         self.n_output_gaussians = n_output_gaussians
@@ -47,6 +51,13 @@ class Net(nn.Module):
 
         self.output_layer = nn.Conv1d(last_layer_size, n_outputs_per_gaussian, kernel_size=1, stride=1, groups=1)
 
+        self.image_output = True if output_image_width * output_image_height > 0 else False
+        self.output_image_width = output_image_width
+        self.output_image_height = output_image_height
+        self.image_layers = nn.ModuleList()
+        if self.image_output:
+            self.image_layers.append(nn.Linear(self.per_g_layers[-1].out_channels + 1, output_image_width*output_image_height))
+
         self.name = "fit_gm_net_"
         self.name += name + "_g"
         for s in g_layer_sizes:
@@ -65,10 +76,10 @@ class Net(nn.Module):
         print(f"gm_fitting.Net: trying to load {self.storage_path}")
         if pathlib.Path(self.storage_path).is_file():
             state_dict = torch.load(self.storage_path)
-            missing_keys, unexpected_keys = self.load_state_dict(state_dict)
-            assert len(missing_keys) == 0
-            assert len(unexpected_keys) == 0
-            print("gm_fitting.Net: loaded")
+            missing_keys, unexpected_keys = self.load_state_dict(state_dict, strict=False)
+            # assert len(missing_keys) == 0
+            # assert len(unexpected_keys) == 0
+            print(f"gm_fitting.Net: loaded (missing: {missing_keys}, unexpected: {unexpected_keys}")
         else:
             print("gm_fitting.Net: not found")
 
@@ -93,6 +104,15 @@ class Net(nn.Module):
             x = F.relu(x)
 
         x = torch.sum(x, dim=2)
+
+        i = x.view(n_layers, -1)
+        i = torch.cat((data_normalised.bias.view(n_layers, 1), i), dim=1)
+        for layer in self.image_layers:
+            i = layer(i)
+            i = F.leaky_relu(i)
+        image = i.view(n_layers, self.output_image_width, self.output_image_height)
+
+
         # x is batch size x final g layer size now
         x = x.view(n_layers, -1, self.n_output_gaussians)
         x = torch.cat((data_normalised.bias.view(n_layers, 1, 1).expand(n_layers, 1, self.n_output_gaussians), x), dim=1)
@@ -116,7 +136,7 @@ class Net(nn.Module):
         covariances = C
 
         normalised_out = gm.Mixture(weights, positions, covariances)
-        return gm.de_normalise(normalised_out, normalisation_factors)
+        return gm.de_normalise(normalised_out, normalisation_factors), image
 
 
 class Trainer:
@@ -140,12 +160,18 @@ class Trainer:
         target_sampling_values = data_in.evaluate_few_xes(sampling_positions)
 
         network_start_time = time.perf_counter()
-        output_gm: gm.Mixture = self.net(data_in)
+        output_gm, image = self.net(data_in)
         network_time = time.perf_counter() - network_start_time
 
         eval_start_time = time.perf_counter()
         output_gm_sampling_values = output_gm.evaluate_few_xes(sampling_positions)
         criterion = self.criterion(output_gm_sampling_values, target_sampling_values)
+
+        xv, yv = torch.meshgrid([torch.arange(-1.0, 1.0, 2 / 128, dtype=torch.float, device=data_in.device()),
+                                 torch.arange(-1.0, 1.0, 2 / 128, dtype=torch.float, device=data_in.device())])
+        xes = torch.cat((xv.reshape(-1, 1), yv.reshape(-1, 1)), 1).view(1, -1, 2).expand(batch_size, -1, 2)
+        image_target = data_in.evaluate_few_xes(xes).view(-1, 128, 128)
+        image_criterion = nn.MSELoss()(image, image_target)
 
         # the network was moving gaussians out of the sampling radius
         p = (output_gm.positions.abs() - 1)
@@ -155,7 +181,7 @@ class Trainer:
         eval_time = time.perf_counter() - eval_start_time
 
         backward_start_time = time.perf_counter()
-        loss = criterion + regularisation
+        loss = criterion + image_criterion + regularisation
         loss.backward()
         backward_time = time.perf_counter() - backward_start_time
 
@@ -163,13 +189,18 @@ class Trainer:
             for j in range(batch_size):
                 data_in.mixture.debug_show(j, -2, -2, 2, 2, 0.05)
                 data_in.debug_show(j, -2, -2, 2, 2, 0.05)
+                i = image[j, :, :].detach().t().cpu()
+                e = torch.zeros(256, 256)
+                e[64:192, 64:192] = i
+                plt.imshow(e, origin='lower')
+                plt.show()
                 output_gm.debug_show(j, -2, -2, 2, 2, 0.05)
                 input("gm_fitting.Trainer: Press enter to continue")
 
         self.optimiser.step()
 
         info = (f"gm_fitting.Trainer: epoch = {epoch}:"
-                f"batch loss {loss.item():.4f} (crit: {criterion.item()}, reg: {regularisation.item()}), "
+                f"batch loss {loss.item():.4f} (crit: {criterion.item()}, img_crit: {image_criterion.item()}, reg: {regularisation.item()}), "
                 f"batch time = {time.perf_counter() - batch_start_time :.2f}s, "
                 f"size = {batch_size}, "
                 f"(forward: {network_time :.2f}s (per layer: {network_time / batch_size :.4f}s), eval: {eval_time :.3f}s, backward: {backward_time :.4f}s) ")

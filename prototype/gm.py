@@ -76,11 +76,11 @@ class Mixture:
         else:
             # todo: select min of n_layers and n_components or something?
             # todo: test
-            batched_values = torch.zeros(n_layers, n_comps, n_xes)
+            batched_values = torch.zeros(n_layers, n_comps, n_xes, dtype=torch.float32, device=self.device())
             for i in range(n_layers):
-                xes = xes.view(1, -1, n_dims)
+                xes_slice = xes[i, :, :].view(1, -1, n_dims)
                 positions = self.positions[i, :, :].view(n_comps, 1, n_dims)
-                values = xes - positions
+                values = xes_slice - positions
 
                 # x^t A x -> quadratic form
                 x_t = values.view(n_comps, -1, 1, n_dims)
@@ -143,19 +143,20 @@ class Mixture:
 
         return selected
 
-    def debug_show(self, batch_i: int = 0, x_low: float = -22, y_low: float = -22, x_high: float = 22, y_high: float = 22, step: float = 0.1, imshow=True) -> Tensor:
-        assert batch_i < self.n_layers()
+    def debug_show(self, layer_i: int = 0, x_low: float = -22, y_low: float = -22, x_high: float = 22, y_high: float = 22, step: float = 0.1, imshow=True) -> Tensor:
+        assert layer_i < self.n_layers()
         assert self.n_dimensions() == 2
-        m = self.detach().batch(batch_i)
+        m = self.detach().batch(layer_i)
 
         xv, yv = torch.meshgrid([torch.arange(x_low, x_high, step, dtype=torch.float, device=self.device()),
                                  torch.arange(y_low, y_high, step, dtype=torch.float, device=self.device())])
         xes = torch.cat((xv.reshape(-1, 1), yv.reshape(-1, 1)), 1).view(1, -1, 2)
 
         values = m.evaluate_many_xes(xes).detach()
-        image = values.view(xv.size()[0], xv.size()[1]).cpu().t().numpy()
+        image = values.view(xv.size()[0], xv.size()[1]).t().cpu().numpy()
         if imshow:
-            plt.imshow(image)
+            plt.scatter(m.positions[0, :, 0].cpu().numpy(), m.positions[0, :, 1].cpu().numpy(), zorder=1)
+            plt.imshow(image, zorder=0, extent=[x_low, x_high, y_low, y_high], origin='lower')
             plt.colorbar()
             plt.show()
         return image
@@ -221,7 +222,7 @@ class MixtureReLUandBias:
         values = self.mixture.evaluate_few_xes(positions) - self.bias.view(-1, 1)
         return torch.max(values, torch.tensor([0.0001], dtype=torch.float32, device=self.mixture.device()))
 
-    def debug_show(self, batch_i: int = 0, x_low: float = -22, y_low: float = -22, x_high: float = 22, y_high: float = 22, step: float = 0.1) -> Tensor:
+    def debug_show(self, batch_i: int = 0, x_low: float = -22, y_low: float = -22, x_high: float = 22, y_high: float = 22, step: float = 0.1, imshow=True) -> Tensor:
         assert self.mixture.n_dimensions() == 2
         assert batch_i < self.mixture.n_layers()
         m = self.mixture.detach().batch(batch_i)
@@ -231,11 +232,13 @@ class MixtureReLUandBias:
         values = m.evaluate_many_xes(xes)
         values -= self.bias.detach()[batch_i]
         values[values < 0] = 0
-        image = values.view(xv.size()[0], xv.size()[1]).t().cpu().numpy()
-        plt.imshow(image)
-        plt.colorbar()
-        plt.show()
-        return image
+        values = values.view(xv.size()[0], xv.size()[1]).t()
+        if imshow:
+            image = values.cpu().numpy()
+            plt.imshow(image, origin='lower')
+            plt.colorbar()
+            plt.show()
+        return values
 
     def device(self) -> torch.device:
         return self.mixture.device()

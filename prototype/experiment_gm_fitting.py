@@ -27,7 +27,7 @@ assert COVARIANCE_MIN > 0
 
 
 def generate_random_ReLUandBias(bias_mul: float, weight_min: float, weight_max: float, device: torch.device = 'cpu'):
-    random_m = gm.generate_random_mixtures(BATCH_SIZE, random.randint(10, 60), DIMS, pos_radius=1, cov_radius=0.25, weight_min=weight_min, weight_max=weight_max, device=device)
+    random_m = gm.generate_random_mixtures(BATCH_SIZE, random.randint(10, 10), DIMS, pos_radius=1, cov_radius=0.25, weight_min=weight_min, weight_max=weight_max, device=device)
     random_kernel = gm.generate_random_mixtures(BATCH_SIZE, 10, DIMS, pos_radius=0.2, cov_radius=0.04, device=device)
     random_kernel.weights -= random_kernel.weights.mean(dim=1).view(-1, 1)
     random_kernel.weights += 0.1
@@ -65,7 +65,9 @@ def test_dl_fitting(g_layer_sizes: typing.List,
     net = gm_fitting.Net(g_layer_sizes,
                          fully_layer_sizes,
                          n_output_gaussians=N_OUTPUT_GAUSSIANS,
-                         n_dims=DIMS)
+                         n_dims=DIMS,
+                         output_image_width = 128,
+                         output_image_height = 128)
     net.load()
 
     if use_cuda:
