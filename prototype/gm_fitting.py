@@ -108,6 +108,8 @@ class Net(nn.Module):
         i = x.view(n_layers, -1)
         i = torch.cat((data_normalised.bias.view(n_layers, 1), i), dim=1)
         for layer in self.image_layers:
+            # for parameter in layer.parameters():
+            #     print(f"parameter: {parameter.shape}")
             i = layer(i)
             i = F.leaky_relu(i)
         image = i.view(n_layers, self.output_image_width, self.output_image_height)
