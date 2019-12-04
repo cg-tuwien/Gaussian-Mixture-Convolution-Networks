@@ -230,12 +230,13 @@ class Trainer:
         # if not self.tensor_board_graph_written:
         #     self.tensor_board_graph_written = True
         #     self.tensor_board_writer.add_graph(self.net, data_in)
-        self.tensor_board_writer.add_scalar("batch_loss", loss.item(), epoch)
-        self.tensor_board_writer.add_scalar("criterion", criterion.item(), epoch)
-        self.tensor_board_writer.add_scalar("image_criterion", image_criterion.item(), epoch)
-        self.tensor_board_writer.add_scalar("network_time", network_time, epoch)
-        self.tensor_board_writer.add_scalar("eval_time", eval_time, epoch)
-        self.tensor_board_writer.add_scalar("backward_time", backward_time, epoch)
+        self.tensor_board_writer.add_scalar("0. batch_loss", loss.item(), epoch)
+        self.tensor_board_writer.add_scalar("1. criterion", criterion.item(), epoch)
+        self.tensor_board_writer.add_scalar("2. image_criterion", image_criterion.item(), epoch)
+        self.tensor_board_writer.add_scalar("3. whole time", time.perf_counter() - batch_start_time, epoch)
+        self.tensor_board_writer.add_scalar("4. network_time", network_time, epoch)
+        self.tensor_board_writer.add_scalar("5. eval_time", eval_time, epoch)
+        self.tensor_board_writer.add_scalar("6. backward_time", backward_time, epoch)
         if (epoch & (epoch-1) == 0):
             fitted_mixture_image = output_gm.evaluate_few_xes(xes).view(-1, 128, 128)
             for j in range(5):
