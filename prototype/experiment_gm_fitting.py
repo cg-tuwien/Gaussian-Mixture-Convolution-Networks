@@ -104,7 +104,7 @@ def test_dl_fitting(g_layer_sizes: typing.List,
 #                 use_cuda=True, cov_decomposition=False, testing_mode=False, bias_mul=0, weight_min=0)
 #
 
-test_dl_fitting(g_layer_sizes=[64, 128, 256, 512, 1000], fully_layer_sizes=[128, 128, 64, 32], testing_mode=False, bias_mul=0.65, weight_min=0, weight_max=15)
+test_dl_fitting(g_layer_sizes=[64, 128, 256, 512, 5000], fully_layer_sizes=[128, 128, 64, 32], testing_mode=False, bias_mul=0.65, weight_min=0, weight_max=15)
 
 # test_dl_fitting(g_layer_sizes=[64, 64, 128, 128, 512, 1024 * N_OUTPUT_GAUSSIANS], fully_layer_sizes=[512, 256, 128, 64, 32],
 #                 use_cuda=True, cov_decomposition=False, testing_mode=False, bias_mul=1, weight_min=-1)

@@ -1,17 +1,21 @@
 import pathlib
 import typing
 import time
+import datetime
 
+import numpy as np
 import matplotlib.pyplot as plt
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+import torch.utils.tensorboard
 
 import gm
 from gm import MixtureReLUandBias
 from gm import Mixture
+import madam_imagetools
 
 COVARIANCE_MIN = 0.0001
 
@@ -150,6 +154,22 @@ class Trainer:
         self.testing_mode = testing_mode
         self.criterion = nn.MSELoss()
         self.optimiser = optim.Adam(net.parameters(), lr=learning_rate)
+        self.tensor_board_writer = torch.utils.tensorboard.SummaryWriter(f'runs/{self.net.name}_{datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}')
+        self.tensor_board_graph_written = False
+
+    def log_image(self, tag: str, image: typing.Sequence[torch.Tensor], epoch: int, clamp: typing.Sequence[float]):
+        image = image.detach().t().cpu().numpy()
+        image = madam_imagetools.colour_mapped(image, clamp[0], clamp[1])
+        self.tensor_board_writer.add_image(tag, image, epoch, dataformats='HWC')
+
+    def log_images(self, tag: str, images: typing.Sequence[torch.Tensor], epoch: int, clamp: typing.Sequence[float]):
+        for i in range(len(images)):
+            images[i] = images[i].detach().t().cpu().numpy()
+            images[i] = madam_imagetools.colour_mapped(images[i], clamp[0], clamp[1])
+            images[i] = images[i][:, :, 0:3]
+            images[i] = images[i].reshape(1, images[i].shape[0], images[i].shape[1], 3)
+        images = np.concatenate(images, axis=0)
+        self.tensor_board_writer.add_image(tag, images, epoch, dataformats='NHWC')
 
     def train_on(self, data_in: gm.MixtureReLUandBias, epoch: int):
         data_in = data_in.detach()
@@ -206,6 +226,22 @@ class Trainer:
                 f"batch time = {time.perf_counter() - batch_start_time :.2f}s, "
                 f"size = {batch_size}, "
                 f"(forward: {network_time :.2f}s (per layer: {network_time / batch_size :.4f}s), eval: {eval_time :.3f}s, backward: {backward_time :.4f}s) ")
+
+        # if not self.tensor_board_graph_written:
+        #     self.tensor_board_graph_written = True
+        #     self.tensor_board_writer.add_graph(self.net, data_in)
+        self.tensor_board_writer.add_scalar("batch_loss", loss.item(), epoch)
+        self.tensor_board_writer.add_scalar("criterion", criterion.item(), epoch)
+        self.tensor_board_writer.add_scalar("image_criterion", image_criterion.item(), epoch)
+        self.tensor_board_writer.add_scalar("network_time", network_time, epoch)
+        self.tensor_board_writer.add_scalar("eval_time", eval_time, epoch)
+        self.tensor_board_writer.add_scalar("backward_time", backward_time, epoch)
+        if (epoch & (epoch-1) == 0):
+            fitted_mixture_image = output_gm.evaluate_few_xes(xes).view(-1, 128, 128)
+            for j in range(5):
+                self.log_images(f"target_image_mixture_{j}",
+                                [image_target[j], image[j], fitted_mixture_image[j]], epoch, [-0.5, 2])
+
         print(info)
         if self.save_weights:
             self.net.save()
