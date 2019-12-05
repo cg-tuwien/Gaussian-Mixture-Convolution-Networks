@@ -70,7 +70,7 @@ class Net(nn.Module):
         for s in fully_layer_sizes:
             self.name += f"_{s}"
 
-        self.storage_path = "/home/madam/temp/prototype/" + self.name
+        self.storage_path = "/home/madam/temp/prototype/weights/" + self.name
 
     def save(self):
         print(f"gm_fitting.Net: saving to {self.storage_path}")
@@ -154,7 +154,7 @@ class Trainer:
         self.testing_mode = testing_mode
         self.criterion = nn.MSELoss()
         self.optimiser = optim.Adam(net.parameters(), lr=learning_rate)
-        self.tensor_board_writer = torch.utils.tensorboard.SummaryWriter(f'runs/{self.net.name}_{datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}')
+        self.tensor_board_writer = torch.utils.tensorboard.SummaryWriter(f'/home/madam/temp/prototype/tensorboard/{self.net.name}_{datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}')
         self.tensor_board_graph_written = False
 
     def log_image(self, tag: str, image: typing.Sequence[torch.Tensor], epoch: int, clamp: typing.Sequence[float]):
@@ -172,6 +172,7 @@ class Trainer:
         self.tensor_board_writer.add_image(tag, images, epoch, dataformats='NHWC')
 
     def train_on(self, data_in: gm.MixtureReLUandBias, epoch: int):
+        training_image_size = 128
         data_in = data_in.detach()
         data_in, _ = gm.normalise(data_in)  # we normalise twice, but that shouldn't hurt (but performance). normalisation here is needed due to regularisation
         batch_size = data_in.mixture.n_layers()
@@ -187,12 +188,12 @@ class Trainer:
 
         eval_start_time = time.perf_counter()
         output_gm_sampling_values = output_gm.evaluate_few_xes(sampling_positions)
-        criterion = self.criterion(output_gm_sampling_values, target_sampling_values)
+        criterion = self.criterion(output_gm_sampling_values, target_sampling_values) * 2
 
-        xv, yv = torch.meshgrid([torch.arange(-1.0, 1.0, 2 / 128, dtype=torch.float, device=data_in.device()),
-                                 torch.arange(-1.0, 1.0, 2 / 128, dtype=torch.float, device=data_in.device())])
+        xv, yv = torch.meshgrid([torch.arange(-1.0, 1.0, 2 / training_image_size, dtype=torch.float, device=data_in.device()),
+                                 torch.arange(-1.0, 1.0, 2 / training_image_size, dtype=torch.float, device=data_in.device())])
         xes = torch.cat((xv.reshape(-1, 1), yv.reshape(-1, 1)), 1).view(1, -1, 2).expand(batch_size, -1, 2)
-        image_target = data_in.evaluate_few_xes(xes).view(-1, 128, 128)
+        image_target = data_in.evaluate_few_xes(xes).view(-1, training_image_size, training_image_size)
         image_criterion = nn.MSELoss()(image, image_target)
 
         # the network was moving gaussians out of the sampling radius
@@ -238,14 +239,17 @@ class Trainer:
         self.tensor_board_writer.add_scalar("5. eval_time", eval_time, epoch)
         self.tensor_board_writer.add_scalar("6. backward_time", backward_time, epoch)
         if (epoch & (epoch-1) == 0):
-            fitted_mixture_image = output_gm.evaluate_few_xes(xes).view(-1, 128, 128)
-            for j in range(5):
-                self.log_images(f"target_image_mixture_{j}",
-                                [image_target[j], image[j], fitted_mixture_image[j]], epoch, [-0.5, 2])
+            n_shown_images = 10
+            fitted_mixture_image = output_gm.detach().evaluate_few_xes(xes).view(-1, training_image_size, training_image_size)
+            self.log_images(f"target_image_mixture",
+                            [image_target[:n_shown_images, :, :].transpose(0, 1).reshape(training_image_size, -1),
+                             image.detach()[:n_shown_images, :, :].transpose(0, 1).reshape(training_image_size, -1),
+                             fitted_mixture_image[:n_shown_images, :, :].transpose(0, 1).reshape(training_image_size, -1)],
+                            epoch, [-0.5, 2])
 
         print(info)
         if self.save_weights:
             self.net.save()
-            f = open("/home/madam/temp/prototype/" + self.net.name + "_loss", "w")
+            f = open("/home/madam/temp/prototype/weights/" + self.net.name + "_loss", "w")
             f.write(info)
             f.close()
