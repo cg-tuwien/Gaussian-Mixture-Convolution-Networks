@@ -47,7 +47,7 @@ class Net(nn.Module):
 
         self.fully_layers = nn.ModuleList()
 
-        assert last_layer_size % self.n_output_gaussians == 0
+        assert last_layer_size % (self.n_output_gaussians * 3) == 0
         last_layer_size = last_layer_size // self.n_output_gaussians + 1
         for s in fully_layer_sizes:
             self.fully_layers.append(nn.Conv1d(last_layer_size, s, kernel_size=1, stride=1, groups=1))
@@ -60,7 +60,10 @@ class Net(nn.Module):
         self.output_image_height = output_image_height
         self.image_layers = nn.ModuleList()
         if self.image_output:
-            self.image_layers.append(nn.Linear(self.per_g_layers[-1].out_channels + 1, output_image_width*output_image_height))
+            last_image_layer_size = self.per_g_layers[-1].out_channels + 1
+            self.image_layers.append(nn.Linear(last_image_layer_size, last_image_layer_size))
+            self.image_layers.append(nn.Linear(last_image_layer_size, last_image_layer_size))
+            self.image_layers.append(nn.Linear(last_image_layer_size, output_image_width*output_image_height))
 
         self.name = "fit_gm_net_"
         self.name += name + "_g"
@@ -107,7 +110,12 @@ class Net(nn.Module):
             x = layer(x)
             x = F.relu(x)
 
-        x = torch.sum(x, dim=2)
+        n_out = x.shape[1]
+        x_sum = torch.sum(x[:, 0:n_out//3, :], dim=2).view(n_layers, -1, 1)
+        x_prod = torch.prod(x[:, n_out//3:(n_out//3)*2, :], dim=2).view(n_layers, -1, 1)
+        x_var = torch.var(x[:, (n_out//3)*2:, :], dim=2, unbiased=False).view(n_layers, -1, 1)
+        # todo: verify this does what i thing it does (interleaving)
+        x = torch.cat((x_sum, x_prod, x_var), dim=2).reshape(n_layers, -1)
 
         i = x.view(n_layers, -1)
         i = torch.cat((data_normalised.bias.view(n_layers, 1), i), dim=1)
