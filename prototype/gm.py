@@ -28,6 +28,12 @@ class Mixture:
         assert self.n_components() == covariances.size()[1]
         assert covariances.size()[2] == self.n_dimensions()
         assert covariances.size()[3] == self.n_dimensions()
+        if torch.any(covariances.det() <= 0):
+            print("gm.Mixture: warning, torch.any(covariances.det() <= 0)")
+            print(covariances[covariances.det() <= 0])
+        if not torch.all(covariances.det() > 0):
+            print("gm.Mixture: warning, torch.all(covariances.det() > 0)")
+            print(covariances[~(covariances.det() > 0)])
         assert torch.all(covariances.det() > 0)
 
     def inverted_covariances(self):
