@@ -27,10 +27,12 @@ class Net(nn.Module):
                  n_output_gaussians: int,
                  name: str = "",
                  n_dims: int = 2,
+                 n_agrs: int = 4,
                  output_image_width: int = 0,
                  output_image_height: int = 0):
         super(Net, self).__init__()
         self.n_dims = n_dims
+        self.n_agrs = n_agrs
         self.n_output_gaussians = n_output_gaussians
         # n * (1 for weights, DIMS for positions, trimat_size(DIMS) for the triangle cov matrix) +1 for the bias
         n_inputs_per_gaussian = 1 + n_dims + n_dims * n_dims
@@ -41,13 +43,15 @@ class Net(nn.Module):
 
         last_layer_size = n_inputs_per_gaussian
         self.per_g_layers = nn.ModuleList()
-        for s in g_layer_sizes:
+        for s in g_layer_sizes[:-1]:
             self.per_g_layers.append(nn.Conv1d(last_layer_size, s, kernel_size=1, stride=1, groups=1))
             last_layer_size = s
+        self.per_g_output_layer = nn.Conv1d(last_layer_size, g_layer_sizes[-1], kernel_size=1, stride=1, groups=1)
+        last_layer_size = g_layer_sizes[-1]
 
         self.fully_layers = nn.ModuleList()
 
-        assert last_layer_size % (self.n_output_gaussians * 3) == 0
+        assert last_layer_size % (self.n_output_gaussians * self.n_agrs) == 0
         last_layer_size = last_layer_size // self.n_output_gaussians + 1
         for s in fully_layer_sizes:
             self.fully_layers.append(nn.Conv1d(last_layer_size, s, kernel_size=1, stride=1, groups=1))
@@ -60,12 +64,13 @@ class Net(nn.Module):
         self.output_image_height = output_image_height
         self.image_layers = nn.ModuleList()
         if self.image_output:
-            last_image_layer_size = self.per_g_layers[-1].out_channels + 1
+            # last_image_layer_size = self.per_g_layers[-1].out_channels + 1
+            last_image_layer_size = self.per_g_output_layer.out_channels + 1
             self.image_layers.append(nn.Linear(last_image_layer_size, last_image_layer_size))
             self.image_layers.append(nn.Linear(last_image_layer_size, last_image_layer_size))
             self.image_layers.append(nn.Linear(last_image_layer_size, output_image_width*output_image_height))
 
-        self.name = "fit_gm_net_"
+        self.name = f"fit_gm_net_a{self.n_agrs}"
         self.name += name + "_g"
         for s in g_layer_sizes:
             self.name += f"_{s}"
@@ -108,14 +113,32 @@ class Net(nn.Module):
 
         for layer in self.per_g_layers:
             x = layer(x)
-            x = F.relu(x)
+            x = F.leaky_relu(x)
+        x = self.per_g_output_layer(x)
 
+        n_agrs = self.n_agrs
+        agrs_list = []
         n_out = x.shape[1]
-        x_sum = torch.sum(x[:, 0:n_out//3, :], dim=2).view(n_layers, -1, 1)
-        x_prod = torch.prod(x[:, n_out//3:(n_out//3)*2, :], dim=2).view(n_layers, -1, 1)
-        x_var = torch.var(x[:, (n_out//3)*2:, :], dim=2, unbiased=False).view(n_layers, -1, 1)
-        # todo: verify this does what i thing it does (interleaving)
-        x = torch.cat((x_sum, x_prod, x_var), dim=2).reshape(n_layers, -1)
+        x_sum = torch.sum(x[:,                 0:(n_out//n_agrs)*1, :], dim=2).view(n_layers, -1, 1)
+        agrs_list.append(x_sum)
+        if n_agrs >= 2:
+            x_max = torch.max(x[:, (n_out//n_agrs)*1:(n_out//n_agrs)*2, :], dim=2).values.view(n_layers, -1, 1)
+            agrs_list.append(x_max)
+        if n_agrs >= 3:
+            x_var = torch.var(x[:, (n_out//n_agrs)*2:(n_out//n_agrs)*3, :], dim=2, unbiased=False).view(n_layers, -1, 1)
+            agrs_list.append(x_var)
+        if n_agrs >= 4:
+            x_prd = torch.abs(x[:, (n_out//n_agrs)*3:(n_out//n_agrs)*4, :] + 1)
+            x_prd = torch.prod(x_prd, dim=2).view(n_layers, -1, 1)
+            agrs_list.append(x_prd)
+        # if n_agrs >= 4:
+        #     x_prd = torch.abs(x[:, (n_out//n_agrs)*3:(n_out//n_agrs)*4, :])# + 0.1
+        #     x_prd = torch.mean(torch.log(x_prd), dim=2).view(n_layers, -1, 1)
+        #     # x_prd = torch.exp(x_prd)
+        #     agrs_list.append(x_prd)
+
+        x = torch.cat(agrs_list, dim=2).reshape(n_layers, -1)
+        latent_vector = x
 
         i = x.view(n_layers, -1)
         i = torch.cat((data_normalised.bias.view(n_layers, 1), i), dim=1)
@@ -134,14 +157,13 @@ class Net(nn.Module):
         i = 0
         for layer in self.fully_layers:
             x = layer(x)
-            x = F.relu(x)
+            x = F.leaky_relu(x)
             # x = self.batch_norms[i](x.view(-1, 1))
             i += 1
 
         x = self.output_layer(x)
         x = x.transpose(1, 2)
 
-        # todo: those magic constants take care of scaling (important for the start). think of something generic, normalisation layer? input normalisation?
         weights = x[:, :, 0]
         positions = x[:, :, 1:(self.n_dims + 1)]
         # we are learning A, so that C = A @ A.T() + 0.01 * identity() is the resulting cov matrix
@@ -150,7 +172,7 @@ class Net(nn.Module):
         covariances = C
 
         normalised_out = gm.Mixture(weights, positions, covariances)
-        return gm.de_normalise(normalised_out, normalisation_factors), image
+        return gm.de_normalise(normalised_out, normalisation_factors), image, latent_vector
 
 
 class Trainer:
@@ -191,7 +213,7 @@ class Trainer:
         target_sampling_values = data_in.evaluate_few_xes(sampling_positions)
 
         network_start_time = time.perf_counter()
-        output_gm, image = self.net(data_in)
+        output_gm, image, latent_vector = self.net(data_in)
         network_time = time.perf_counter() - network_start_time
 
         eval_start_time = time.perf_counter()
@@ -208,11 +230,15 @@ class Trainer:
         p = (output_gm.positions.abs() - 1)
         p = p.where(p > torch.zeros(1, device=p.device), torch.zeros(1, device=p.device))
         regularisation = p.sum()
+        # regularisation_aggr_prod = latent_vector.view(batch_size, -1, 3)[:, :, 1]
+        # zeropfive = torch.tensor(0.5, dtype=torch.float, device=data_in.device())
+        # eps = torch.tensor(0.0001, dtype=torch.float, device=data_in.device())
+        # regularisation_aggr_prod = (zeropfive / (eps + regularisation_aggr_prod.abs().min(zeropfive))).mean()
 
         eval_time = time.perf_counter() - eval_start_time
 
         backward_start_time = time.perf_counter()
-        loss = criterion + image_criterion + regularisation
+        loss = criterion + image_criterion + regularisation #+ regularisation_aggr_prod
         loss.backward()
         backward_time = time.perf_counter() - backward_start_time
 
@@ -231,7 +257,7 @@ class Trainer:
         self.optimiser.step()
 
         info = (f"gm_fitting.Trainer: epoch = {epoch}:"
-                f"batch loss {loss.item():.4f} (crit: {criterion.item()}, img_crit: {image_criterion.item()}, reg: {regularisation.item()}), "
+                f"batch loss {loss.item():.4f} (crit: {criterion.item()}, img_crit: {image_criterion.item()} (the rest is regularisation)), "
                 f"batch time = {time.perf_counter() - batch_start_time :.2f}s, "
                 f"size = {batch_size}, "
                 f"(forward: {network_time :.2f}s (per layer: {network_time / batch_size :.4f}s), eval: {eval_time :.3f}s, backward: {backward_time :.4f}s) ")
@@ -242,11 +268,13 @@ class Trainer:
         self.tensor_board_writer.add_scalar("0. batch_loss", loss.item(), epoch)
         self.tensor_board_writer.add_scalar("1. criterion", criterion.item(), epoch)
         self.tensor_board_writer.add_scalar("2. image_criterion", image_criterion.item(), epoch)
-        self.tensor_board_writer.add_scalar("3. whole time", time.perf_counter() - batch_start_time, epoch)
-        self.tensor_board_writer.add_scalar("4. network_time", network_time, epoch)
-        self.tensor_board_writer.add_scalar("5. eval_time", eval_time, epoch)
-        self.tensor_board_writer.add_scalar("6. backward_time", backward_time, epoch)
-        if (epoch & (epoch-1) == 0):
+        # self.tensor_board_writer.add_scalar("3. regularisation_aggr_prod", regularisation_aggr_prod.item(), epoch)
+        self.tensor_board_writer.add_scalar("4. whole time", time.perf_counter() - batch_start_time, epoch)
+        self.tensor_board_writer.add_scalar("5. network_time", network_time, epoch)
+        self.tensor_board_writer.add_scalar("6. eval_time", eval_time, epoch)
+        self.tensor_board_writer.add_scalar("7. backward_time", backward_time, epoch)
+
+        if (epoch % 10 == 0 and epoch < 100) or (epoch % 100 == 0 and epoch < 1000) or (epoch % 1000 == 0 and epoch < 10000) or (epoch % 10000 == 0):
             n_shown_images = 10
             fitted_mixture_image = output_gm.detach().evaluate_few_xes(xes).view(-1, training_image_size, training_image_size)
             self.log_images(f"target_image_mixture",
@@ -254,6 +282,7 @@ class Trainer:
                              image.detach()[:n_shown_images, :, :].transpose(0, 1).reshape(training_image_size, -1),
                              fitted_mixture_image[:n_shown_images, :, :].transpose(0, 1).reshape(training_image_size, -1)],
                             epoch, [-0.5, 2])
+            self.log_image("latent_space", latent_vector.detach(), epoch, (-5, 5))
 
         print(info)
         if self.save_weights:

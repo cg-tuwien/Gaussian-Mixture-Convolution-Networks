@@ -17,7 +17,7 @@ N_INPUT_GAUSSIANS = 10
 N_OUTPUT_GAUSSIANS = 10
 COVARIANCE_MIN = 0.01
 
-BATCH_SIZE = 200
+BATCH_SIZE = 100
 LEARNING_RATE = 0.001
 
 assert DIMS == 2 or DIMS == 3
@@ -58,6 +58,7 @@ def test_dl_fitting(g_layer_sizes: typing.List,
                     use_cuda: bool = True,
                     testing_mode: bool = True,
                     n_iterations: int = 16385,
+                    n_agrs: int = 1,
                     bias_mul: float = 1,
                     weight_min: float = -1,
                     weight_max: float = 1):
@@ -65,6 +66,7 @@ def test_dl_fitting(g_layer_sizes: typing.List,
                          fully_layer_sizes,
                          n_output_gaussians=N_OUTPUT_GAUSSIANS,
                          n_dims=DIMS,
+                         n_agrs=n_agrs,
                          output_image_width = 128,
                          output_image_height = 128)
     net.load()
@@ -83,7 +85,7 @@ def test_dl_fitting(g_layer_sizes: typing.List,
 
     for i in range(1 if testing_mode else n_iterations):
         input_relu_of_gm_p_bias = generate_random_ReLUandBias(bias_mul=bias_mul, weight_min=weight_min, weight_max=weight_max, device=net.device())
-        trainer.save_weights = i % 50 == 0
+        trainer.save_weights = i % 1000 == 0
         trainer.train_on(input_relu_of_gm_p_bias, i)
 
     # target, input_ = draw_random_samples(10, WIDTH, HEIGHT)
@@ -92,11 +94,17 @@ def test_dl_fitting(g_layer_sizes: typing.List,
     # print(f"output={output}")
     # print(f"diff={output - target}")
 
-n_iterations = 16385*8
+n_iterations = 50001
 # test_dl_fitting(g_layer_sizes=[64, 128, 256, 512, 100], fully_layer_sizes=[128, 128, 64, 32], testing_mode=False, bias_mul=0.65, weight_min=0, weight_max=15)
 # test_dl_fitting(g_layer_sizes=[64, 128, 256, 512, 500], fully_layer_sizes=[128, 128, 64, 32], testing_mode=False, bias_mul=0.65, weight_min=0, weight_max=15)
 # test_dl_fitting(g_layer_sizes=[64, 128, 256, 512, 1000], fully_layer_sizes=[128, 128, 64, 32], testing_mode=False, bias_mul=0.65, weight_min=0, weight_max=15)
-test_dl_fitting(g_layer_sizes=[64, 128, 256, 512, 1500], fully_layer_sizes=[128, 128, 64, 32], testing_mode=False, bias_mul=0.65, weight_min=0, weight_max=15, n_iterations=n_iterations)
+test_dl_fitting(g_layer_sizes=[64, 128, 256, 250], fully_layer_sizes=[128, 128, 64, 32], n_agrs=1, testing_mode=False, bias_mul=0.65, weight_min=0, weight_max=15, n_iterations=n_iterations)
+test_dl_fitting(g_layer_sizes=[64, 128, 256, 500], fully_layer_sizes=[128, 128, 64, 32], n_agrs=1, testing_mode=False, bias_mul=0.65, weight_min=0, weight_max=15, n_iterations=n_iterations)
+test_dl_fitting(g_layer_sizes=[64, 128, 256, 1000], fully_layer_sizes=[128, 128, 64, 32], n_agrs=1, testing_mode=False, bias_mul=0.65, weight_min=0, weight_max=15, n_iterations=n_iterations)
+
+test_dl_fitting(g_layer_sizes=[64, 128, 256, 1000], fully_layer_sizes=[128, 128, 64, 32], n_agrs=4, testing_mode=False, bias_mul=0.65, weight_min=0, weight_max=15, n_iterations=n_iterations)
+test_dl_fitting(g_layer_sizes=[64, 128, 256, 2000], fully_layer_sizes=[128, 128, 64, 32], n_agrs=4, testing_mode=False, bias_mul=0.65, weight_min=0, weight_max=15, n_iterations=n_iterations)
+test_dl_fitting(g_layer_sizes=[64, 128, 256, 4000], fully_layer_sizes=[128, 128, 64, 32], n_agrs=4, testing_mode=False, bias_mul=0.65, weight_min=0, weight_max=15, n_iterations=n_iterations)
 
 # test_dl_fitting(g_layer_sizes=[64, 128, 500], fully_layer_sizes=[128, 128, 64, 32], testing_mode=False, bias_mul=0.65, weight_min=0, weight_max=15)
 # test_dl_fitting(g_layer_sizes=[64, 128, 256, 500], fully_layer_sizes=[128, 128, 64, 32], testing_mode=False, bias_mul=0.65, weight_min=0, weight_max=15)
