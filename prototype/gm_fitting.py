@@ -121,13 +121,13 @@ class Net(nn.Module):
         n_out = x.shape[1]
         x_sum = torch.sum(x[:,                 0:(n_out//n_agrs)*1, :], dim=2).view(n_layers, -1, 1)
         agrs_list.append(x_sum)
-        if n_agrs >= 2:
+        if n_agrs >= 4:
             x_max = torch.max(x[:, (n_out//n_agrs)*1:(n_out//n_agrs)*2, :], dim=2).values.view(n_layers, -1, 1)
             agrs_list.append(x_max)
         if n_agrs >= 3:
             x_var = torch.var(x[:, (n_out//n_agrs)*2:(n_out//n_agrs)*3, :], dim=2, unbiased=False).view(n_layers, -1, 1)
             agrs_list.append(x_var)
-        if n_agrs >= 4:
+        if n_agrs >= 2:
             x_prd = torch.abs(x[:, (n_out//n_agrs)*3:(n_out//n_agrs)*4, :] + 1)
             x_prd = torch.prod(x_prd, dim=2).view(n_layers, -1, 1)
             agrs_list.append(x_prd)
