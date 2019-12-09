@@ -98,12 +98,12 @@ n_iterations = 50001
 # test_dl_fitting(g_layer_sizes=[64, 128, 256, 512, 100], fully_layer_sizes=[128, 128, 64, 32], testing_mode=False, bias_mul=0.65, weight_min=0, weight_max=15)
 # test_dl_fitting(g_layer_sizes=[64, 128, 256, 512, 500], fully_layer_sizes=[128, 128, 64, 32], testing_mode=False, bias_mul=0.65, weight_min=0, weight_max=15)
 # test_dl_fitting(g_layer_sizes=[64, 128, 256, 512, 1000], fully_layer_sizes=[128, 128, 64, 32], testing_mode=False, bias_mul=0.65, weight_min=0, weight_max=15)
-test_dl_fitting(g_layer_sizes=[64, 128, 256, 500], fully_layer_sizes=[128, 128, 64, 64, 32, 32], n_agrs=1, testing_mode=False, bias_mul=0.65, weight_min=0, weight_max=15, n_iterations=n_iterations)
-test_dl_fitting(g_layer_sizes=[64, 128, 256, 500], fully_layer_sizes=[512, 256, 128, 64, 32], n_agrs=1, testing_mode=False, bias_mul=0.65, weight_min=0, weight_max=15, n_iterations=n_iterations)
-test_dl_fitting(g_layer_sizes=[64, 128, 256, 500], fully_layer_sizes=[64, 64, 64, 64, 64, 64, 32], n_agrs=1, testing_mode=False, bias_mul=0.65, weight_min=0, weight_max=15, n_iterations=n_iterations)
-test_dl_fitting(g_layer_sizes=[64, 128, 256, 500], fully_layer_sizes=[512, 256, 256, 256], n_agrs=1, testing_mode=False, bias_mul=0.65, weight_min=0, weight_max=15, n_iterations=n_iterations)
-
-test_dl_fitting(g_layer_sizes=[64, 128, 256, 10000], fully_layer_sizes=[128, 128, 64, 32], n_agrs=1, testing_mode=False, bias_mul=0.65, weight_min=0, weight_max=15, n_iterations=n_iterations)
+# test_dl_fitting(g_layer_sizes=[64, 128, 256, 500], fully_layer_sizes=[128, 128, 64, 64, 32, 32], n_agrs=1, testing_mode=False, bias_mul=0.65, weight_min=0, weight_max=15, n_iterations=n_iterations)
+# test_dl_fitting(g_layer_sizes=[64, 128, 256, 500], fully_layer_sizes=[512, 256, 128, 64, 32], n_agrs=1, testing_mode=False, bias_mul=0.65, weight_min=0, weight_max=15, n_iterations=n_iterations)
+# test_dl_fitting(g_layer_sizes=[64, 128, 256, 500], fully_layer_sizes=[64, 64, 64, 64, 64, 64, 32], n_agrs=1, testing_mode=False, bias_mul=0.65, weight_min=0, weight_max=15, n_iterations=n_iterations)
+# test_dl_fitting(g_layer_sizes=[64, 128, 256, 500], fully_layer_sizes=[512, 256, 256, 256], n_agrs=1, testing_mode=False, bias_mul=0.65, weight_min=0, weight_max=15, n_iterations=n_iterations)
+#
+# test_dl_fitting(g_layer_sizes=[64, 128, 256, 10000], fully_layer_sizes=[128, 128, 64, 32], n_agrs=1, testing_mode=False, bias_mul=0.65, weight_min=0, weight_max=15, n_iterations=n_iterations)
 
 test_dl_fitting(g_layer_sizes=[64, 128, 256, 500], fully_layer_sizes=[128, 128, 64, 32], n_agrs=2, testing_mode=False, bias_mul=0.65, weight_min=0, weight_max=15, n_iterations=n_iterations)
 test_dl_fitting(g_layer_sizes=[64, 128, 256, 1000], fully_layer_sizes=[128, 128, 64, 32], n_agrs=2, testing_mode=False, bias_mul=0.65, weight_min=0, weight_max=15, n_iterations=n_iterations)
