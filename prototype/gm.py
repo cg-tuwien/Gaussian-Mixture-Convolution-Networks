@@ -9,6 +9,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 import mat_tools
+import config
 
 
 class Mixture:
@@ -204,11 +205,11 @@ class Mixture:
             "covariances": self.covariances.detach().cpu(),
             "meta_info": meta_info
         }
-        torch.save(dict, "/home/madam/temp/prototype/" + file_name)
+        torch.save(dict, config.data_base_path / file_name)
 
     @classmethod
     def load(cls, file_name: str) -> Mixture:
-        dict = torch.load("/home/madam/temp/prototype/" + file_name)
+        dict = torch.load(config.data_base_path / file_name)
         assert dict["type"] == "gm.Mixture"
         assert dict["version"] == 3
         return Mixture(dict["weights"], dict["positions"], dict["covariances"]), dict["meta_info"]

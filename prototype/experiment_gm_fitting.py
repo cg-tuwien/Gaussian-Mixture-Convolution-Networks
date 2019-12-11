@@ -56,7 +56,7 @@ def generate_random_ReLUandBias(convolved: bool, bias_max: float, weight_min: fl
 
 def test_dl_fitting(g_layer_sizes: typing.List,
                     fully_layer_sizes: typing.List,
-                    use_cuda: bool = True,
+                    device: str = "cuda",
                     testing_mode: bool = False,
                     n_iterations: int = 16385,
                     n_agrs: int = 1,
@@ -74,11 +74,7 @@ def test_dl_fitting(g_layer_sizes: typing.List,
                          output_image_width = 128,
                          output_image_height = 128)
     net.load()
-
-    if use_cuda:
-        net = net.cuda()
-    else:
-        net = net.cpu()
+    net.to(device);
 
     for parameter in net.parameters():
         print(f"parameter: {parameter.shape}")

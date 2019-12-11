@@ -17,6 +17,7 @@ import torch.utils.tensorboard
 import gm
 from gm import MixtureReLUandBias
 from gm import Mixture
+import config
 import madam_imagetools
 
 COVARIANCE_MIN = 0.0001
@@ -93,7 +94,7 @@ class Net(nn.Module):
         for s in fully_layer_sizes:
             self.name += f"_{s}"
 
-        self.storage_path = "/home/madam/temp/prototype/weights/" + self.name
+        self.storage_path = config.data_base_path / "weights" / self.name
 
     def save(self):
         print(f"gm_fitting.Net: saving to {self.storage_path}")
@@ -213,7 +214,7 @@ class Trainer:
         self.testing_mode = testing_mode
         self.criterion = nn.MSELoss()
         self.optimiser = optim.Adam(net.parameters(), lr=learning_rate)
-        self.tensor_board_writer = torch.utils.tensorboard.SummaryWriter(f'/home/madam/temp/prototype/tensorboard/{self.net.name}_{datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}')
+        self.tensor_board_writer = torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard' / f'{self.net.name}_{datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}')
         self.tensor_board_graph_written = False
 
     def log_image(self, tag: str, image: typing.Sequence[torch.Tensor], epoch: int, clamp: typing.Sequence[float]):
@@ -316,6 +317,6 @@ class Trainer:
         print(info)
         if self.save_weights:
             self.net.save()
-            f = open("/home/madam/temp/prototype/weights/" + self.net.name + "_loss", "w")
+            f = open(config.data_base_path / "weights" / self.net.name + "_loss", "w")
             f.write(info)
             f.close()
