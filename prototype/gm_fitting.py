@@ -84,7 +84,7 @@ class Net(nn.Module):
             self.image_layers.append(nn.Linear(last_image_layer_size, last_image_layer_size))
             if self.batch_norm:
                 self.image_batch_norms.append(nn.BatchNorm1d(last_image_layer_size))
-            self.image_layers.append(nn.Linear(last_image_layer_size, output_image_width*output_image_height))
+            self.image_output_layer = nn.Linear(last_image_layer_size, output_image_width*output_image_height)
 
         self.name = f"fit_gm_net{'_bn' if self.batch_norm else ''}_a{self.n_agrs}"
         self.name += name + "_g"
@@ -159,21 +159,23 @@ class Net(nn.Module):
         x = torch.cat(agrs_list, dim=2).reshape(n_layers, -1)
         latent_vector = x
 
-        i = x.view(n_layers, -1)
-        i = torch.cat((data_normalised.bias.view(n_layers, 1), i), dim=1)
-        for layer in self.image_layers:
+        im = x.view(n_layers, -1)
+        im = torch.cat((data_normalised.bias.view(n_layers, 1), im), dim=1)
+        for i, layer in enumerate(self.image_layers):
             # for parameter in layer.parameters():
             #     print(f"parameter: {parameter.shape}")
-            i = layer(i)
-            i = F.leaky_relu(i)
-        image = i.view(n_layers, self.output_image_width, self.output_image_height)
+            im = layer(im)
+            if self.batch_norm:
+                im = self.image_batch_norms[i](im)
+            im = F.leaky_relu(im)
+        im = self.image_output_layer(im)
+        image = im.view(n_layers, self.output_image_width, self.output_image_height)
 
 
         # x is batch size x final g layer size now
         x = x.view(n_layers, -1, self.n_output_gaussians)
         x = torch.cat((data_normalised.bias.view(n_layers, 1, 1).expand(n_layers, 1, self.n_output_gaussians), x), dim=1)
 
-        i = 0
         for i, layer in enumerate(self.fully_layers):
             x = layer(x)
             if self.batch_norm:

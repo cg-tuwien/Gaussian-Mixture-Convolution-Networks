@@ -96,13 +96,14 @@ def test_dl_fitting(g_layer_sizes: typing.List,
 
 
 n_iterations_r = 50001
-n_iterations_c = 40001
+n_iterations_c = 50001
 
 ## local
-# test_dl_fitting(g_layer_sizes=[64, 128, 256, 512, 250], fully_layer_sizes=[128, 128, 64, 32], n_agrs=1, batch_norm=True, convolved_input=False, n_iterations=n_iterations_r)
-# test_dl_fitting(g_layer_sizes=[64, 128, 256, 512, 250], fully_layer_sizes=[128, 128, 64, 32], n_agrs=1, batch_norm=True, convolved_input=True, n_iterations=n_iterations_c)
-# test_dl_fitting(g_layer_sizes=[64, 128, 256, 512, 750], fully_layer_sizes=[128, 128, 64, 32], n_agrs=3, batch_norm=True, convolved_input=False, n_iterations=n_iterations_r)
-# test_dl_fitting(g_layer_sizes=[64, 128, 256, 512, 750], fully_layer_sizes=[128, 128, 64, 32], n_agrs=3, batch_norm=True, convolved_input=True, n_iterations=n_iterations_c)
+test_dl_fitting(g_layer_sizes=[64, 128, 256, 512, 250], fully_layer_sizes=[128, 128, 64, 32], n_agrs=1, batch_norm=True, convolved_input=False, n_iterations=n_iterations_r)
+test_dl_fitting(g_layer_sizes=[64, 128, 256, 512, 250], fully_layer_sizes=[128, 128, 64, 32], n_agrs=1, batch_norm=True, convolved_input=True, n_iterations=n_iterations_c)
+test_dl_fitting(g_layer_sizes=[64, 128, 256, 512, 750], fully_layer_sizes=[128, 128, 64, 32], n_agrs=3, batch_norm=True, convolved_input=False, n_iterations=n_iterations_r)
+test_dl_fitting(g_layer_sizes=[64, 128, 256, 512, 750], fully_layer_sizes=[128, 128, 64, 32], n_agrs=3, batch_norm=True, convolved_input=True, n_iterations=n_iterations_c)
+test_dl_fitting(g_layer_sizes=[64, 128, 256, 511, 250], fully_layer_sizes=[128, 128, 64, 32], n_agrs=1, batch_norm=True, convolved_input=True, n_iterations=n_iterations_c)
 
 ## end
 # test_dl_fitting(g_layer_sizes=[64, 128, 256, 500], fully_layer_sizes=[128, 128, 64, 64, 32, 32], n_agrs=1, batch_norm=True, bias_max=0.65, weight_min=0, weight_max=15, n_iterations=n_iterations)
