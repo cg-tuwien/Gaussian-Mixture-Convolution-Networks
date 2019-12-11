@@ -317,6 +317,6 @@ class Trainer:
         print(info)
         if self.save_weights:
             self.net.save()
-            f = open(config.data_base_path / "weights" / self.net.name + "_loss", "w")
+            f = open(config.data_base_path / "weights" / (self.net.name + "_loss"), "w")
             f.write(info)
             f.close()
