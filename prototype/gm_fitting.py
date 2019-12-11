@@ -2,6 +2,8 @@ import pathlib
 import typing
 import time
 import datetime
+import sys
+import traceback
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -28,11 +30,13 @@ class Net(nn.Module):
                  name: str = "",
                  n_dims: int = 2,
                  n_agrs: int = 4,
+                 batch_norm: bool = False,
                  output_image_width: int = 0,
                  output_image_height: int = 0):
         super(Net, self).__init__()
         self.n_dims = n_dims
         self.n_agrs = n_agrs
+        self.batch_norm = batch_norm
         self.n_output_gaussians = n_output_gaussians
         # n * (1 for weights, DIMS for positions, trimat_size(DIMS) for the triangle cov matrix) +1 for the bias
         n_inputs_per_gaussian = 1 + n_dims + n_dims * n_dims
@@ -43,18 +47,24 @@ class Net(nn.Module):
 
         last_layer_size = n_inputs_per_gaussian
         self.per_g_layers = nn.ModuleList()
+        self.per_g_batch_norms = nn.ModuleList()
         for s in g_layer_sizes[:-1]:
             self.per_g_layers.append(nn.Conv1d(last_layer_size, s, kernel_size=1, stride=1, groups=1))
+            if self.batch_norm:
+                self.per_g_batch_norms.append(nn.BatchNorm1d(s))
             last_layer_size = s
         self.per_g_output_layer = nn.Conv1d(last_layer_size, g_layer_sizes[-1], kernel_size=1, stride=1, groups=1)
         last_layer_size = g_layer_sizes[-1]
 
         self.fully_layers = nn.ModuleList()
+        self.fully_batch_norms = nn.ModuleList()
 
         assert last_layer_size % (self.n_output_gaussians * self.n_agrs) == 0
         last_layer_size = last_layer_size // self.n_output_gaussians + 1
         for s in fully_layer_sizes:
             self.fully_layers.append(nn.Conv1d(last_layer_size, s, kernel_size=1, stride=1, groups=1))
+            if self.batch_norm:
+                self.fully_batch_norms.append(nn.BatchNorm1d(s))
             last_layer_size = s
 
         self.output_layer = nn.Conv1d(last_layer_size, n_outputs_per_gaussian, kernel_size=1, stride=1, groups=1)
@@ -63,14 +73,19 @@ class Net(nn.Module):
         self.output_image_width = output_image_width
         self.output_image_height = output_image_height
         self.image_layers = nn.ModuleList()
+        self.image_batch_norms = nn.ModuleList()
         if self.image_output:
             # last_image_layer_size = self.per_g_layers[-1].out_channels + 1
             last_image_layer_size = self.per_g_output_layer.out_channels + 1
             self.image_layers.append(nn.Linear(last_image_layer_size, last_image_layer_size))
+            if self.batch_norm:
+                self.image_batch_norms.append(nn.BatchNorm1d(last_image_layer_size))
             self.image_layers.append(nn.Linear(last_image_layer_size, last_image_layer_size))
+            if self.batch_norm:
+                self.image_batch_norms.append(nn.BatchNorm1d(last_image_layer_size))
             self.image_layers.append(nn.Linear(last_image_layer_size, output_image_width*output_image_height))
 
-        self.name = f"fit_gm_net_a{self.n_agrs}"
+        self.name = f"fit_gm_net{'_bn' if self.batch_norm else ''}_a{self.n_agrs}"
         self.name += name + "_g"
         for s in g_layer_sizes:
             self.name += f"_{s}"
@@ -111,8 +126,10 @@ class Net(nn.Module):
                        cov_data.view(n_layers, n_input_components, n_dims * n_dims)), dim=2)
         x = x.transpose(1, 2)
 
-        for layer in self.per_g_layers:
+        for i, layer in enumerate(self.per_g_layers):
             x = layer(x)
+            if self.batch_norm:
+                x = self.per_g_batch_norms[i](x)
             x = F.leaky_relu(x)
         x = self.per_g_output_layer(x)
 
@@ -129,13 +146,14 @@ class Net(nn.Module):
             agrs_list.append(x_var)
         if n_agrs >= 2:
             x_prd = torch.abs(x[:, (n_out//n_agrs)*1:(n_out//n_agrs)*2, :] + 1)
-            x_prd = torch.prod(x_prd, dim=2).view(n_layers, -1, 1)
+            # old, explods when switchng from n_gaussians=10 to 100
+            # x_prd = torch.prod(x_prd, dim=2).view(n_layers, -1, 1)
+
+            x_prd = torch.max(x_prd, torch.tensor(0.01, dtype=torch.float32, device=x.device))
+            x_prd = torch.mean(torch.log(x_prd), dim=2).view(n_layers, -1, 1)
+            x_prd = torch.min(x_prd, torch.tensor(10, dtype=torch.float32, device=x.device))
+            x_prd = torch.exp(x_prd)
             agrs_list.append(x_prd)
-        # if n_agrs >= 4:
-        #     x_prd = torch.abs(x[:, (n_out//n_agrs)*3:(n_out//n_agrs)*4, :])# + 0.1
-        #     x_prd = torch.mean(torch.log(x_prd), dim=2).view(n_layers, -1, 1)
-        #     # x_prd = torch.exp(x_prd)
-        #     agrs_list.append(x_prd)
 
         x = torch.cat(agrs_list, dim=2).reshape(n_layers, -1)
         latent_vector = x
@@ -155,8 +173,10 @@ class Net(nn.Module):
         x = torch.cat((data_normalised.bias.view(n_layers, 1, 1).expand(n_layers, 1, self.n_output_gaussians), x), dim=1)
 
         i = 0
-        for layer in self.fully_layers:
+        for i, layer in enumerate(self.fully_layers):
             x = layer(x)
+            if self.batch_norm:
+                x = self.fully_batch_norms[i](x)
             x = F.leaky_relu(x)
             # x = self.batch_norms[i](x.view(-1, 1))
             i += 1
@@ -171,7 +191,16 @@ class Net(nn.Module):
         C = A @ A.transpose(2, 3) + torch.eye(self.n_dims, self.n_dims, dtype=torch.float32, device=self.device()) * COVARIANCE_MIN
         covariances = C
 
-        normalised_out = gm.Mixture(weights, positions, covariances)
+        try:
+            normalised_out = gm.Mixture(weights, positions, covariances)
+        except AssertionError:
+            _, _, tb = sys.exc_info()
+            traceback.print_tb(tb) # Fixed format
+            tb_info = traceback.extract_tb(tb)
+            filename, line, func, text = tb_info[-1]
+
+            print('An error occurred on line {} in statement {}'.format(line, text))
+            exit(1)
         return gm.de_normalise(normalised_out, normalisation_factors), image, latent_vector
 
 
