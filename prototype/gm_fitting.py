@@ -78,9 +78,16 @@ class Net(nn.Module):
         if self.image_output:
             # last_image_layer_size = self.per_g_layers[-1].out_channels + 1
             last_image_layer_size = self.per_g_output_layer.out_channels + 1
-            self.image_layers.append(nn.Linear(last_image_layer_size, last_image_layer_size))
+            s = last_image_layer_size * 2
+            self.image_layers.append(nn.Linear(last_image_layer_size, s))
             if self.batch_norm:
-                self.image_batch_norms.append(nn.BatchNorm1d(last_image_layer_size))
+                self.image_batch_norms.append(nn.BatchNorm1d(s))
+            last_image_layer_size = s;
+            s *= 2
+            self.image_layers.append(nn.Linear(last_image_layer_size, s))
+            if self.batch_norm:
+                self.image_batch_norms.append(nn.BatchNorm1d(s))
+            last_image_layer_size = s
             self.image_layers.append(nn.Linear(last_image_layer_size, last_image_layer_size))
             if self.batch_norm:
                 self.image_batch_norms.append(nn.BatchNorm1d(last_image_layer_size))
