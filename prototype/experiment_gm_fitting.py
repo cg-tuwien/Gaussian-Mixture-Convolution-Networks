@@ -70,9 +70,7 @@ def test_dl_fitting(g_layer_sizes: typing.List,
                          n_output_gaussians=N_OUTPUT_GAUSSIANS,
                          n_dims=DIMS,
                          n_agrs=n_agrs,
-                         batch_norm=batch_norm,
-                         output_image_width=128,
-                         output_image_height=128)
+                         batch_norm=batch_norm)
     net.load()
     net.to(device);
 

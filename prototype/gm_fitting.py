@@ -31,9 +31,7 @@ class Net(nn.Module):
                  name: str = "",
                  n_dims: int = 2,
                  n_agrs: int = 4,
-                 batch_norm: bool = False,
-                 output_image_width: int = 0,
-                 output_image_height: int = 0):
+                 batch_norm: bool = False):
         super(Net, self).__init__()
         self.n_dims = n_dims
         self.n_agrs = n_agrs
