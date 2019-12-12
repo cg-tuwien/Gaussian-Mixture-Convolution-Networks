@@ -70,30 +70,7 @@ class Net(nn.Module):
 
         self.output_layer = nn.Conv1d(last_layer_size, n_outputs_per_gaussian, kernel_size=1, stride=1, groups=1)
 
-        self.image_output = True if output_image_width * output_image_height > 0 else False
-        self.output_image_width = output_image_width
-        self.output_image_height = output_image_height
-        self.image_layers = nn.ModuleList()
-        self.image_batch_norms = nn.ModuleList()
-        if self.image_output:
-            # last_image_layer_size = self.per_g_layers[-1].out_channels + 1
-            last_image_layer_size = self.per_g_output_layer.out_channels + 1
-            s = last_image_layer_size * 2
-            self.image_layers.append(nn.Linear(last_image_layer_size, s))
-            if self.batch_norm:
-                self.image_batch_norms.append(nn.BatchNorm1d(s))
-            last_image_layer_size = s;
-            s *= 2
-            self.image_layers.append(nn.Linear(last_image_layer_size, s))
-            if self.batch_norm:
-                self.image_batch_norms.append(nn.BatchNorm1d(s))
-            last_image_layer_size = s
-            self.image_layers.append(nn.Linear(last_image_layer_size, last_image_layer_size))
-            if self.batch_norm:
-                self.image_batch_norms.append(nn.BatchNorm1d(last_image_layer_size))
-            self.image_output_layer = nn.Linear(last_image_layer_size, output_image_width*output_image_height)
-
-        self.name = f"fit_gm_net{'_bn' if self.batch_norm else ''}_a{self.n_agrs}"
+        self.name = f"fit_gm_net_woio{'_bn' if self.batch_norm else ''}_a{self.n_agrs}"
         self.name += name + "_g"
         for s in g_layer_sizes:
             self.name += f"_{s}"
@@ -166,19 +143,6 @@ class Net(nn.Module):
         x = torch.cat(agrs_list, dim=2).reshape(n_layers, -1)
         latent_vector = x
 
-        im = x.view(n_layers, -1)
-        im = torch.cat((data_normalised.bias.view(n_layers, 1), im), dim=1)
-        for i, layer in enumerate(self.image_layers):
-            # for parameter in layer.parameters():
-            #     print(f"parameter: {parameter.shape}")
-            im = layer(im)
-            if self.batch_norm:
-                im = self.image_batch_norms[i](im)
-            im = F.leaky_relu(im)
-        im = self.image_output_layer(im)
-        image = im.view(n_layers, self.output_image_width, self.output_image_height)
-
-
         # x is batch size x final g layer size now
         x = x.view(n_layers, -1, self.n_output_gaussians)
         x = torch.cat((data_normalised.bias.view(n_layers, 1, 1).expand(n_layers, 1, self.n_output_gaussians), x), dim=1)
@@ -211,7 +175,7 @@ class Net(nn.Module):
 
             print('An error occurred on line {} in statement {}'.format(line, text))
             exit(1)
-        return gm.de_normalise(normalised_out, normalisation_factors), image, latent_vector
+        return gm.de_normalise(normalised_out, normalisation_factors), latent_vector
 
 
 class Trainer:
@@ -252,7 +216,7 @@ class Trainer:
         target_sampling_values = data_in.evaluate_few_xes(sampling_positions)
 
         network_start_time = time.perf_counter()
-        output_gm, image, latent_vector = self.net(data_in)
+        output_gm, latent_vector = self.net(data_in)
         network_time = time.perf_counter() - network_start_time
 
         eval_start_time = time.perf_counter()
@@ -262,8 +226,6 @@ class Trainer:
         xv, yv = torch.meshgrid([torch.arange(-1.0, 1.0, 2 / training_image_size, dtype=torch.float, device=data_in.device()),
                                  torch.arange(-1.0, 1.0, 2 / training_image_size, dtype=torch.float, device=data_in.device())])
         xes = torch.cat((xv.reshape(-1, 1), yv.reshape(-1, 1)), 1).view(1, -1, 2).expand(batch_size, -1, 2)
-        image_target = data_in.evaluate_few_xes(xes).view(-1, training_image_size, training_image_size)
-        image_criterion = nn.MSELoss()(image, image_target)
 
         # the network was moving gaussians out of the sampling radius
         p = (output_gm.positions.abs() - 1)
@@ -277,7 +239,7 @@ class Trainer:
         eval_time = time.perf_counter() - eval_start_time
 
         backward_start_time = time.perf_counter()
-        loss = criterion + image_criterion + regularisation #+ regularisation_aggr_prod
+        loss = criterion + regularisation #+ regularisation_aggr_prod
         loss.backward()
         backward_time = time.perf_counter() - backward_start_time
 
@@ -285,18 +247,13 @@ class Trainer:
             for j in range(batch_size):
                 data_in.mixture.debug_show(j, -2, -2, 2, 2, 0.05)
                 data_in.debug_show(j, -2, -2, 2, 2, 0.05)
-                i = image[j, :, :].detach().t().cpu()
-                e = torch.zeros(256, 256)
-                e[64:192, 64:192] = i
-                plt.imshow(e, origin='lower')
-                plt.show()
                 output_gm.debug_show(j, -2, -2, 2, 2, 0.05)
                 input("gm_fitting.Trainer: Press enter to continue")
 
         self.optimiser.step()
 
         info = (f"gm_fitting.Trainer: epoch = {epoch}:"
-                f"batch loss {loss.item():.4f} (crit: {criterion.item()}, img_crit: {image_criterion.item()} (the rest is regularisation)), "
+                f"batch loss {loss.item():.4f} (crit: {criterion.item()} (rest is regularisation)), "
                 f"batch time = {time.perf_counter() - batch_start_time :.2f}s, "
                 f"size = {batch_size}, "
                 f"(forward: {network_time :.2f}s (per layer: {network_time / batch_size :.4f}s), eval: {eval_time :.3f}s, backward: {backward_time :.4f}s) ")
@@ -306,7 +263,6 @@ class Trainer:
         #     self.tensor_board_writer.add_graph(self.net, data_in)
         self.tensor_board_writer.add_scalar("0. batch_loss", loss.item(), epoch)
         self.tensor_board_writer.add_scalar("1. criterion", criterion.item(), epoch)
-        self.tensor_board_writer.add_scalar("2. image_criterion", image_criterion.item(), epoch)
         # self.tensor_board_writer.add_scalar("3. regularisation_aggr_prod", regularisation_aggr_prod.item(), epoch)
         self.tensor_board_writer.add_scalar("4. whole time", time.perf_counter() - batch_start_time, epoch)
         self.tensor_board_writer.add_scalar("5. network_time", network_time, epoch)
@@ -314,11 +270,11 @@ class Trainer:
         self.tensor_board_writer.add_scalar("7. backward_time", backward_time, epoch)
 
         if (epoch % 10 == 0 and epoch < 100) or (epoch % 100 == 0 and epoch < 1000) or (epoch % 1000 == 0 and epoch < 10000) or (epoch % 10000 == 0):
+            image_target = data_in.evaluate_few_xes(xes).view(-1, training_image_size, training_image_size)
             n_shown_images = 10
             fitted_mixture_image = output_gm.detach().evaluate_few_xes(xes).view(-1, training_image_size, training_image_size)
             self.log_images(f"target_image_mixture",
                             [image_target[:n_shown_images, :, :].transpose(0, 1).reshape(training_image_size, -1),
-                             image.detach()[:n_shown_images, :, :].transpose(0, 1).reshape(training_image_size, -1),
                              fitted_mixture_image[:n_shown_images, :, :].transpose(0, 1).reshape(training_image_size, -1)],
                             epoch, [-0.5, 2])
             self.log_image("latent_space", latent_vector.detach(), epoch, (-5, 5))
