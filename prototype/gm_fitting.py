@@ -82,16 +82,18 @@ class Net(nn.Module):
         print(f"gm_fitting.Net: saving to {self.storage_path}")
         torch.save(self.state_dict(), self.storage_path)
 
-    def load(self):
+    def load(self, strict: bool = False):
         print(f"gm_fitting.Net: trying to load {self.storage_path}")
         if pathlib.Path(self.storage_path).is_file():
             state_dict = torch.load(self.storage_path)
-            missing_keys, unexpected_keys = self.load_state_dict(state_dict, strict=False)
+            missing_keys, unexpected_keys = self.load_state_dict(state_dict, strict=strict)
             # assert len(missing_keys) == 0
             # assert len(unexpected_keys) == 0
             print(f"gm_fitting.Net: loaded (missing: {missing_keys}, unexpected: {unexpected_keys}")
+            return True
         else:
             print("gm_fitting.Net: not found")
+            return False
 
     def device(self):
         return self.output_layer.bias.device

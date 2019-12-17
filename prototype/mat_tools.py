@@ -4,6 +4,7 @@ import typing
 from torch import Tensor
 
 
+#
 # from https://discuss.pytorch.org/t/batched-index-select/9115/10
 # I added an unit test, but it's easy to make an error in such code, so.. :)
 def batched_index_select(input, dim, index):

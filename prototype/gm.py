@@ -175,6 +175,18 @@ class Mixture:
     def to(self, device: torch.device) -> Mixture:
         return Mixture(self.weights.to(device), self.positions.to(device), self.covariances.to(device))
 
+    def select_components(self, begin: int, end: int) -> Mixture:
+        assert 0 <= begin < end <= self.n_components()
+        n_components = end - begin
+        n_dims = self.n_dimensions()
+        ret_mixture = generate_null_mixture(1, 1, n_dims, device=self.device())
+        ret_mixture.weights = self.weights[:, begin:end].view(-1, n_components)
+        ret_mixture.positions = self.positions[:, begin:end, :].view(-1, n_components, n_dims)
+        ret_mixture.covariances = self.covariances[:, begin:end, :, :].view(-1, n_components, n_dims, n_dims)
+        if self._inverted_covariances is not None:
+            ret_mixture._inverted_covariances = self._inverted_covariances[:, begin:end, :, :].view(-1, n_components, n_dims, n_dims)
+        return ret_mixture
+
     def batch(self, batch_id: int) -> Mixture:
         n_dims = self.n_dimensions()
         ret_mixture = generate_null_mixture(1, 1, n_dims, device=self.device())
@@ -324,6 +336,23 @@ def batch_sum(ms: typing.List[Mixture]) -> Mixture:
     return Mixture(torch.cat(weights, dim=0),
                    torch.cat(positions, dim=0),
                    torch.cat(covariances, dim=0))
+
+
+def cat(ms: typing.List[Mixture], dim: int) -> Mixture:
+    assert len(ms) > 0
+    assert dim >= 0
+    assert dim <= 1
+    weights = []
+    positions = []
+    covariances = []
+    for m in ms:
+        weights.append(m.weights)
+        positions.append(m.positions)
+        covariances.append(m.covariances)
+
+    return Mixture(torch.cat(weights, dim=dim),
+                   torch.cat(positions, dim=dim),
+                   torch.cat(covariances, dim=dim))
 
 
 class NormalisationFactors:

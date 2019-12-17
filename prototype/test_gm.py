@@ -241,6 +241,26 @@ class TestGM(unittest.TestCase):
         #     data_out.debug_show(i, -10, -10, 10, 10, 0.1)
         #     input("Press enter to continue!")
 
+    def test_component_select(self):
+        n_batches = 10
+        gm_large = gm.generate_random_mixtures(n_batches, n_components=200, n_dims=2)
+        gm_a = gm_large.select_components(0, 100)
+        gm_b = gm_large.select_components(100, gm_large.n_components())
+
+        self.assertEqual(gm_a.n_layers(), n_batches)
+        self.assertEqual(gm_b.n_layers(), n_batches)
+        self.assertEqual(gm_a.n_components(), 100)
+        self.assertEqual(gm_b.n_components(), 100)
+
+        gm_concatenated = gm.cat((gm_a, gm_b), dim=1)
+        self.assertEqual(gm_concatenated.n_layers(), n_batches)
+        self.assertEqual(gm_concatenated.n_components(), gm_large.n_components())
+        self.assertEqual(gm_concatenated.n_dimensions(), gm_large.n_dimensions())
+
+        self.assertTrue(((gm_concatenated.weights - gm_large.weights).abs() < 0.00001).all())
+        self.assertTrue(((gm_concatenated.positions - gm_large.positions).abs() < 0.00001).all())
+        self.assertTrue(((gm_concatenated.covariances - gm_large.covariances).abs() < 0.00001).all())
+
 
 if __name__ == '__main__':
     unittest.main()

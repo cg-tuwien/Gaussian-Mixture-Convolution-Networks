@@ -3,6 +3,7 @@ import torch.nn.modules
 
 import gm
 import gm_fitting
+import mat_tools
 
 
 class GmConvolution(torch.nn.modules.Module):
@@ -52,16 +53,25 @@ class GmBiasAndRelu(torch.nn.modules.Module):
         # use a small bias for the start. i hope it's easier for the net to increase it than to lower it
         self.bias = torch.nn.Parameter(torch.rand(self.n_layers) * 0.2)
 
-        self.net = gm_fitting.Net([64, 128, 128, 512, 512 * n_output_gaussians],
-                                  [512, 256, 128, 64, 32],
+        self.net = gm_fitting.Net([64, 128, 256, 512, 1024, 1024, 750],
+                                  [256, 256, 256, 256, 256, 128],
                                   n_output_gaussians=n_output_gaussians,
-                                  n_dims=n_dimensions)
-        self.net.load()
+                                  n_dims=n_dimensions,
+                                  n_agrs=3, batch_norm=True)
+        if not self.net.load(strict=True):
+            raise Exception(f"Fitting network {self.net.name} not found.")
         # todo: option to make fitting net have common or seperate weights per module
 
-    def forward(self, x: gm.Mixture) -> gm.Mixture:
-        x = gm.MixtureReLUandBias(x, torch.abs(self.bias))
-
+    def forward(self, x: gm.Mixture, division_axis=0) -> gm.Mixture:
         # todo: think of something that would make it possible to do live learning of the fitting network
-
-        return self.net(x)
+        if x.n_components() < 134:
+            x = gm.MixtureReLUandBias(x, torch.abs(self.bias))
+            return self.net(x)[0]
+        else:
+            sorted_indices = torch.argsort(x.positions[:, :, division_axis])
+            sorted_mixture = gm.Mixture(mat_tools.batched_index_select(x.weights, 1, sorted_indices),
+                                        mat_tools.batched_index_select(x.positions, 1, sorted_indices),
+                                        mat_tools.batched_index_select(x.covariances, 1, sorted_indices))
+            fitted_left = self.forward(sorted_mixture.select_components(0, x.n_components() // 2), (division_axis + 1) % x.n_dimensions())
+            fitted_right = self.forward(sorted_mixture.select_components(x.n_components() // 2, x.n_components()), (division_axis + 1) % x.n_dimensions())
+            return gm.cat((fitted_left, fitted_right), dim=1)
