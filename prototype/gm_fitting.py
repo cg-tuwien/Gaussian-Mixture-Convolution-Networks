@@ -99,6 +99,7 @@ class Net(nn.Module):
         return self.output_layer.bias.device
 
     def forward(self, data_in: MixtureReLUandBias, learning: bool = True) -> Mixture:
+        n_batch = data_in.mixture.n_batch()
         n_layers = data_in.mixture.n_layers()
         n_input_components = data_in.mixture.n_components()
         n_dims = data_in.mixture.n_dimensions()
@@ -106,9 +107,11 @@ class Net(nn.Module):
         data_normalised, normalisation_factors = gm.normalise(data_in)
 
         cov_data = data_normalised.mixture.covariances
-        x = torch.cat((data_normalised.mixture.weights.view(n_layers, n_input_components, 1),
-                       data_normalised.mixture.positions,
-                       cov_data.view(n_layers, n_input_components, n_dims * n_dims)), dim=2)
+        # view weights, positions and covariances as one data vector
+        x = torch.cat((data_normalised.mixture.weights.view(n_batch * n_layers, n_input_components, 1),
+                       data_normalised.mixture.positions.view(n_batch * n_layers, n_input_components, 1),
+                       cov_data.view(n_batch * n_layers, n_input_components, n_dims * n_dims)), dim=2)
+        # component should be the last dimension for conv1d to work
         x = x.transpose(1, 2)
 
         for i, layer in enumerate(self.per_g_layers):
@@ -121,13 +124,13 @@ class Net(nn.Module):
         n_agrs = self.n_agrs
         agrs_list = []
         n_out = x.shape[1]
-        x_sum = torch.sum(x[:,                 0:(n_out//n_agrs)*1, :], dim=2).view(n_layers, -1, 1)
+        x_sum = torch.sum(x[:,                 0:(n_out//n_agrs)*1, :], dim=2).view(n_batch * n_layers, -1, 1)
         agrs_list.append(x_sum)
         if n_agrs >= 4:
-            x_max = torch.max(x[:, (n_out//n_agrs)*3:(n_out//n_agrs)*4, :], dim=2).values.view(n_layers, -1, 1)
+            x_max = torch.max(x[:, (n_out//n_agrs)*3:(n_out//n_agrs)*4, :], dim=2).values.view(n_batch * n_layers, -1, 1)
             agrs_list.append(x_max)
         if n_agrs >= 3:
-            x_var = torch.var(x[:, (n_out//n_agrs)*2:(n_out//n_agrs)*3, :], dim=2, unbiased=False).view(n_layers, -1, 1)
+            x_var = torch.var(x[:, (n_out//n_agrs)*2:(n_out//n_agrs)*3, :], dim=2, unbiased=False).view(n_batch * n_layers, -1, 1)
             agrs_list.append(x_var)
         if n_agrs >= 2:
             x_prd = torch.abs(x[:, (n_out//n_agrs)*1:(n_out//n_agrs)*2, :] + 1)
@@ -135,17 +138,17 @@ class Net(nn.Module):
             # x_prd = torch.prod(x_prd, dim=2).view(n_layers, -1, 1)
 
             x_prd = torch.max(x_prd, torch.tensor(0.01, dtype=torch.float32, device=x.device))
-            x_prd = torch.mean(torch.log(x_prd), dim=2).view(n_layers, -1, 1)
+            x_prd = torch.mean(torch.log(x_prd), dim=2).view(n_batch * n_layers, -1, 1)
             x_prd = torch.min(x_prd, torch.tensor(10, dtype=torch.float32, device=x.device))
             x_prd = torch.exp(x_prd)
             agrs_list.append(x_prd)
 
-        x = torch.cat(agrs_list, dim=2).reshape(n_layers, -1)
+        x = torch.cat(agrs_list, dim=2).reshape(n_batch * n_layers, -1)
         latent_vector = x
 
         # x is batch size x final g layer size now
-        x = x.view(n_layers, -1, self.n_output_gaussians)
-        x = torch.cat((data_normalised.bias.view(n_layers, 1, 1).expand(n_layers, 1, self.n_output_gaussians), x), dim=1)
+        x = x.view(n_batch * n_layers, -1, self.n_output_gaussians)
+        x = torch.cat((data_normalised.bias.view(n_batch * n_layers, 1, 1).expand(n_batch * n_layers, 1, self.n_output_gaussians), x), dim=1)
 
         for i, layer in enumerate(self.fully_layers):
             x = layer(x)
@@ -161,12 +164,14 @@ class Net(nn.Module):
         weights = x[:, :, 0]
         positions = x[:, :, 1:(self.n_dims + 1)]
         # we are learning A, so that C = A @ A.T() + 0.01 * identity() is the resulting cov matrix
-        A = x[:, :, (self.n_dims + 1):].view(n_layers, -1, self.n_dims, self.n_dims)
+        A = x[:, :, (self.n_dims + 1):].view(n_batch * n_layers, -1, self.n_dims, self.n_dims)
         C = A @ A.transpose(2, 3) + torch.eye(self.n_dims, self.n_dims, dtype=torch.float32, device=self.device()) * COVARIANCE_MIN
         covariances = C
 
         try:
-            normalised_out = gm.Mixture(weights, positions, covariances)
+            normalised_out = gm.Mixture(weights.view(n_batch, n_layers, n_input_components),
+                                        positions.view(n_batch, n_layers, n_input_components, n_dims),
+                                        covariances.view(n_batch, n_layers, n_input_components, n_dims, n_dims))
         except AssertionError:
             _, _, tb = sys.exc_info()
             traceback.print_tb(tb) # Fixed format
@@ -205,14 +210,14 @@ class Trainer:
         self.tensor_board_writer.add_image(tag, images, epoch, dataformats='NHWC')
 
     def train_on(self, data_in: gm.MixtureReLUandBias, epoch: int):
-        training_image_size = 128
         data_in = data_in.detach()
         data_in, _ = gm.normalise(data_in)  # we normalise twice, but that shouldn't hurt (but performance). normalisation here is needed due to regularisation
-        batch_size = data_in.mixture.n_layers()
+        batch_size = data_in.mixture.n_batch()
+        n_layers = data_in.mixture.n_layers()
         batch_start_time = time.perf_counter()
         self.optimiser.zero_grad()
 
-        sampling_positions = torch.rand((batch_size, self.n_training_samples, data_in.mixture.n_dimensions()), dtype=torch.float32, device=self.net.device()) * 3 - 1.5
+        sampling_positions = torch.rand((1, 1, self.n_training_samples, data_in.mixture.n_dimensions()), dtype=torch.float32, device=self.net.device()) * 3 - 1.5
         target_sampling_values = data_in.evaluate_few_xes(sampling_positions)
 
         network_start_time = time.perf_counter()
@@ -223,32 +228,17 @@ class Trainer:
         output_gm_sampling_values = output_gm.evaluate_few_xes(sampling_positions)
         criterion = self.criterion(output_gm_sampling_values, target_sampling_values) * 2
 
-        xv, yv = torch.meshgrid([torch.arange(-1.0, 1.0, 2 / training_image_size, dtype=torch.float, device=data_in.device()),
-                                 torch.arange(-1.0, 1.0, 2 / training_image_size, dtype=torch.float, device=data_in.device())])
-        xes = torch.cat((xv.reshape(-1, 1), yv.reshape(-1, 1)), 1).view(1, -1, 2).expand(batch_size, -1, 2)
-
         # the network was moving gaussians out of the sampling radius
         p = (output_gm.positions.abs() - 1)
         p = p.where(p > torch.zeros(1, device=p.device), torch.zeros(1, device=p.device))
         regularisation = p.sum()
-        # regularisation_aggr_prod = latent_vector.view(batch_size, -1, 3)[:, :, 1]
-        # zeropfive = torch.tensor(0.5, dtype=torch.float, device=data_in.device())
-        # eps = torch.tensor(0.0001, dtype=torch.float, device=data_in.device())
-        # regularisation_aggr_prod = (zeropfive / (eps + regularisation_aggr_prod.abs().min(zeropfive))).mean()
 
         eval_time = time.perf_counter() - eval_start_time
 
         backward_start_time = time.perf_counter()
-        loss = criterion + regularisation #+ regularisation_aggr_prod
+        loss = criterion + regularisation
         loss.backward()
         backward_time = time.perf_counter() - backward_start_time
-
-        if self.testing_mode:
-            for j in range(batch_size):
-                data_in.mixture.debug_show(j, -2, -2, 2, 2, 0.05)
-                data_in.debug_show(j, -2, -2, 2, 2, 0.05)
-                output_gm.debug_show(j, -2, -2, 2, 2, 0.05)
-                input("gm_fitting.Trainer: Press enter to continue")
 
         self.optimiser.step()
 
@@ -270,12 +260,16 @@ class Trainer:
         self.tensor_board_writer.add_scalar("7. backward_time", backward_time, epoch)
 
         if (epoch % 10 == 0 and epoch < 100) or (epoch % 100 == 0 and epoch < 1000) or (epoch % 1000 == 0 and epoch < 10000) or (epoch % 10000 == 0):
-            image_target = data_in.evaluate_few_xes(xes).view(-1, training_image_size, training_image_size)
+            image_size = 128
+            xv, yv = torch.meshgrid([torch.arange(-1.0, 1.0, 2 / image_size, dtype=torch.float, device=data_in.device()),
+                                     torch.arange(-1.0, 1.0, 2 / image_size, dtype=torch.float, device=data_in.device())])
+            xes = torch.cat((xv.reshape(-1, 1), yv.reshape(-1, 1)), 1).view(1, -1, 2).expand(batch_size, -1, 2)
+            image_target = data_in.evaluate_few_xes(xes).view(-1, image_size, image_size)
             n_shown_images = 10
-            fitted_mixture_image = output_gm.detach().evaluate_few_xes(xes).view(-1, training_image_size, training_image_size)
+            fitted_mixture_image = output_gm.detach().evaluate_few_xes(xes).view(-1, image_size, image_size)
             self.log_images(f"target_image_mixture",
-                            [image_target[:n_shown_images, :, :].transpose(0, 1).reshape(training_image_size, -1),
-                             fitted_mixture_image[:n_shown_images, :, :].transpose(0, 1).reshape(training_image_size, -1)],
+                            [image_target[:n_shown_images, :, :].transpose(0, 1).reshape(image_size, -1),
+                             fitted_mixture_image[:n_shown_images, :, :].transpose(0, 1).reshape(image_size, -1)],
                             epoch, [-0.5, 2])
             self.log_image("latent_space", latent_vector.detach(), epoch, (-5, 5))
 

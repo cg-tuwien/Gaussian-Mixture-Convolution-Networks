@@ -72,13 +72,17 @@ class Mixture:
         n_layers = self.n_layers()
         n_dims = self.n_dimensions()
         n_comps = self.n_components()
-        n_xes = xes.size()[1]
-        assert xes.size()[0] == n_batch
-        # xes: first dim: list, second dim; x/y
+
+        # xes dims: 1. batch (may be 1), 2. layers (may be 1), 3. n_xes, 4. x/y/[z]
+        assert len(xes.shape) == 4
+        assert xes.shape[0] == 1 or xes.shape[0] == n_batch
+        assert xes.shape[1] == 1 or xes.shape[1] == n_layers
+        n_xes = xes.shape[2]
+        assert xes.shape[3] == n_dims
 
         if n_batch * n_layers * n_comps * n_xes < 100 * 1024 * 1024:
-            # 1. dim: batches (from mixture), 2. component, 3. xes, 4.+: vector / matrix components
-            xes = xes.view(n_batch, 1, 1, -1, n_dims)
+            # 1. dim: batches, 2. layers, 3. component, 4. xes, 5.+: vector / matrix components
+            xes = xes.view(xes.shape[0], xes.shape[1], 1, n_xes, n_dims)
             positions = self.positions.view(n_batch, n_layers, n_comps, 1, n_dims)
             values = xes - positions
 
@@ -242,7 +246,7 @@ class MixtureReLUandBias:
         return MixtureReLUandBias(self.mixture.detach(), self.bias.detach())
 
     def evaluate_few_xes(self, positions: Tensor) -> Tensor:
-        values = self.mixture.evaluate_few_xes(positions) - self.bias.view(self.mixture.n_batch(), self.mixture.n_layers(), 1)
+        values = self.mixture.evaluate_few_xes(positions) - self.bias.view(self.bias.shape[0], self.bias.shape[1], 1)
         return torch.max(values, torch.tensor([0.00001], dtype=torch.float32, device=self.mixture.device()))
 
     def debug_show(self, batch_i: int = 0, layer_i: int = 0, x_low: float = -22, y_low: float = -22, x_high: float = 22, y_high: float = 22, step: float = 0.1, imshow=True) -> Tensor:

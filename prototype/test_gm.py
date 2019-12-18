@@ -44,7 +44,7 @@ class TestGM(unittest.TestCase):
                                  torch.tensor(covs, dtype=torch.float32).view(1, 1, -1, dims, dims))
 
             eval_positions = nprnd.rand(dims, n_eval_positions)
-            values_gm = mixture.evaluate_few_xes(torch.tensor(eval_positions, dtype=torch.float32).t().reshape(1, n_eval_positions, dims)).view(-1).numpy()
+            values_gm = mixture.evaluate_few_xes(torch.tensor(eval_positions, dtype=torch.float32).t().reshape(1, 1, n_eval_positions, dims)).view(-1).numpy()
 
             for i in range(n_eval_positions):
                 np_result = 0
@@ -117,7 +117,7 @@ class TestGM(unittest.TestCase):
         xv, yv = torch.meshgrid([torch.arange(-6, 6, 1 / samples_per_unit, dtype=torch.float),
                                  torch.arange(-6, 6, 1 / samples_per_unit, dtype=torch.float)])
         size = xv.size()[0]
-        xes = torch.cat((xv.reshape(-1, 1), yv.reshape(-1, 1)), 1).view(1, -1, 2).expand(n_batches, -1, 2)
+        xes = torch.cat((xv.reshape(-1, 1), yv.reshape(-1, 1)), 1).view(1, -1, 2).expand(n_batches, 1, -1, 2)
         gm1_samples = gm1.evaluate_few_xes(xes).view(n_batches, size, size).numpy()
         gm2_samples = gm2.evaluate_few_xes(xes).view(n_batches, size, size).numpy()
         gmc_samples = gmc.evaluate_few_xes(xes).view(n_batches, size, size).numpy()

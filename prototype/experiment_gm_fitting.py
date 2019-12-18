@@ -27,18 +27,19 @@ assert COVARIANCE_MIN > 0
 
 
 def generate_random_ReLUandBias(convolved: bool, bias_max: float, weight_min: float, weight_max: float, device: torch.device = 'cpu'):
+    # we use the layers for batching so that we can have different biases
     if convolved:
-        random_m = gm.generate_random_mixtures(BATCH_SIZE, random.randint(10, 10), DIMS, pos_radius=1, cov_radius=0.25, weight_min=0, weight_max=weight_max, device=device)
-        random_kernel = gm.generate_random_mixtures(BATCH_SIZE, 10, DIMS, pos_radius=0.2, cov_radius=0.04, device=device)
+        random_m = gm.generate_random_mixtures(1, BATCH_SIZE, random.randint(10, 10), DIMS, pos_radius=1, cov_radius=0.25, weight_min=0, weight_max=weight_max, device=device)
+        random_kernel = gm.generate_random_mixtures(1, BATCH_SIZE, 10, DIMS, pos_radius=0.2, cov_radius=0.04, device=device)
         random_kernel.weights -= random_kernel.weights.mean(dim=1).view(-1, 1)
         random_kernel.weights += 0.1
         input_gm_after_activation = gm.MixtureReLUandBias(gm.convolve(random_m, random_kernel),
-                                                          torch.rand(BATCH_SIZE, dtype=torch.float32, device=device) * bias_max)
+                                                          torch.rand(1, BATCH_SIZE, dtype=torch.float32, device=device) * bias_max)
     else:
-        input_gm_after_activation = gm.MixtureReLUandBias(gm.generate_random_mixtures(BATCH_SIZE, N_INPUT_GAUSSIANS, DIMS,
+        input_gm_after_activation = gm.MixtureReLUandBias(gm.generate_random_mixtures(1, BATCH_SIZE, N_INPUT_GAUSSIANS, DIMS,
                                                                                       pos_radius=1, cov_radius=0.25,
                                                                                       weight_min=weight_min, weight_max=weight_max, device=device),
-                                                          torch.rand(BATCH_SIZE, dtype=torch.float32, device=device) * bias_max)
+                                                          torch.rand(1, BATCH_SIZE, dtype=torch.float32, device=device) * bias_max)
     # distribution = torch.distributions.categorical.Categorical(torch.ones(N_INPUT_GAUSSIANS, device=device))
     # # zero some input gaussians so we can learn a one to one mapping
     # good_indices = distribution.sample(torch.Size([N_BATCHES, N_OUTPUT_GAUSSIANS]))
@@ -83,7 +84,7 @@ def test_dl_fitting(g_layer_sizes: typing.List,
 
     for i in range(1 if testing_mode else n_iterations):
         input_relu_of_gm_p_bias = generate_random_ReLUandBias(convolved=convolved_input, bias_max=bias_max, weight_min=weight_min, weight_max=weight_max, device=net.device())
-        trainer.save_weights = i % 1000 == 0
+        trainer.save_weights = False and i % 1000 == 0
         trainer.train_on(input_relu_of_gm_p_bias, i)
 
     # target, input_ = draw_random_samples(10, WIDTH, HEIGHT)
