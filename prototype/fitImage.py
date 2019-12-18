@@ -43,7 +43,7 @@ def em_algorithm(image: Tensor, n_components: int, n_iterations: int, device: to
     print("starting expectation maximisation")
     for k in range(n_iterations):
         print(f"classifying..")
-        selected_components = mixture.max_component_many_xes(xes)
+        selected_components = mixture.max_component(xes)
         print(f"updating..")
         new_mixture = gm.generate_null_mixture(1, n_components, 2, device=mixture.device())
         n_pixels = torch.zeros(n_components, device=new_mixture.device())

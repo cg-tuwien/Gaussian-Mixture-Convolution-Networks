@@ -24,9 +24,10 @@ class GmConvolution(torch.nn.modules.Module):
         self.kernels = []
 
         for i in range(self.n_layers_out):
-            k = gm.generate_random_mixtures(n_layers_in, n_kernel_components, n_dims, pos_radius=position_range, cov_radius=covariance_range, weight_min=weight_min, weight_max=weight_max)
+            k = gm.generate_random_mixtures(n_batch=1, n_layers=n_layers_in, n_components=n_kernel_components, n_dims=n_dims,
+                                            pos_radius=position_range, cov_radius=covariance_range, weight_min=weight_min, weight_max=weight_max)
             # positive mean produces a rather positive gm. i believe this is a better init
-            k.weights -= k.weights.mean(dim=1).view(-1, 1) - 0.2
+            k.weights -= k.weights.mean(dim=2).view(1, -1, 1) - 0.2
             self.kernels.append(k)
             self.weights.append(torch.nn.Parameter(k.weights))
             self.positions.append(torch.nn.Parameter(k.positions))

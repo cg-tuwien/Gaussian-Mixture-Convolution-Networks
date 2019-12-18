@@ -13,20 +13,26 @@ import config
 class Mixture:
     # data: first dimension: batch, second dimension: component, third and fourth(?) dimension: data
     def __init__(self, weights: Tensor, positions: Tensor, covariances: Tensor) -> None:
-        assert len(weights.size()) == 2
-        assert len(positions.size()) == 3
-        assert len(covariances.size()) == 4
+        assert len(weights.shape) == 3
+        assert len(positions.shape) == 4
+        assert len(covariances.shape) == 5
 
         self.weights = weights
         self.positions = positions
         self.covariances = covariances
         self._inverted_covariances = None
 
-        assert self.n_components() == weights.size()[1]
-        assert self.n_components() == positions.size()[1]
-        assert self.n_components() == covariances.size()[1]
-        assert covariances.size()[2] == self.n_dimensions()
+        assert self.n_batch() == weights.size()[0]
+        assert self.n_batch() == weights.size()[0]
+        assert self.n_batch() == weights.size()[0]
+        assert self.n_layers() == weights.size()[1]
+        assert self.n_layers() == positions.size()[1]
+        assert self.n_layers() == covariances.size()[1]
+        assert self.n_components() == weights.size()[2]
+        assert self.n_components() == positions.size()[2]
+        assert self.n_components() == covariances.size()[2]
         assert covariances.size()[3] == self.n_dimensions()
+        assert covariances.size()[4] == self.n_dimensions()
         if torch.any(covariances.det() <= 0):
             print("gm.Mixture: warning, torch.any(covariances.det() <= 0)")
             print(covariances[covariances.det() <= 0])
@@ -49,115 +55,87 @@ class Mixture:
     def device(self) -> torch.device:
         return self.weights.device
 
-    def n_components(self) -> int:
-        return self.weights.size()[1]
-
-    def n_layers(self) -> int:
+    def n_batch(self) -> int:
         return self.weights.size()[0]
 
+    def n_layers(self) -> int:
+        return self.weights.size()[1]
+
+    def n_components(self) -> int:
+        return self.weights.size()[2]
+
     def n_dimensions(self) -> int:
-        return self.positions.size()[2]
+        return self.positions.size()[3]
 
     def evaluate_few_xes_component_wise(self, xes: Tensor) -> Tensor:
+        n_batch = self.n_batch()
         n_layers = self.n_layers()
         n_dims = self.n_dimensions()
         n_comps = self.n_components()
         n_xes = xes.size()[1]
-        assert xes.size()[0] == n_layers
+        assert xes.size()[0] == n_batch
         # xes: first dim: list, second dim; x/y
 
-        if n_layers * n_comps * n_xes < 100 * 1024 * 1024:
+        if n_batch * n_layers * n_comps * n_xes < 100 * 1024 * 1024:
             # 1. dim: batches (from mixture), 2. component, 3. xes, 4.+: vector / matrix components
-            xes = xes.view(n_layers, 1, -1, n_dims)
-            positions = self.positions.view(n_layers, n_comps, 1, n_dims)
+            xes = xes.view(n_batch, 1, 1, -1, n_dims)
+            positions = self.positions.view(n_batch, n_layers, n_comps, 1, n_dims)
             values = xes - positions
 
             # x^t A x -> quadratic form
-            x_t = values.view(n_layers, n_comps, -1, 1, n_dims)
-            x = values.view(n_layers, n_comps, -1, n_dims, 1)
-            A = self.inverted_covariances().view(n_layers, n_comps, 1, n_dims, n_dims)
+            x_t = values.view(n_batch, n_layers, n_comps, -1, 1, n_dims)
+            x = values.view(n_batch, n_layers, n_comps, -1, n_dims, 1)
+            A = self.inverted_covariances().view(n_batch, n_layers, n_comps, 1, n_dims, n_dims)
             values = -0.5 * x_t @ A @ x
-            values = values.view(n_layers, n_comps, -1)
+            values = values.view(n_batch, n_layers, n_comps, -1)
         else:
-            # todo: select min of n_layers and n_components or something?
+            # todo: select min of n_batch and n_components or something?
             # todo: test
-            batched_values = torch.zeros(n_layers, n_comps, n_xes, dtype=torch.float32, device=self.device())
-            for i in range(n_layers):
-                xes_slice = xes[i, :, :].view(1, -1, n_dims)
-                positions = self.positions[i, :, :].view(n_comps, 1, n_dims)
+            batched_values = torch.zeros(n_batch, n_layers, n_comps, n_xes, dtype=torch.float32, device=self.device())
+            for i in range(n_batch):
+                xes_slice = xes[i, :, :].view(1, 1, -1, n_dims)
+                positions = self.positions[i, :, :, :].view(n_layers, n_comps, 1, n_dims)
                 values = xes_slice - positions
 
                 # x^t A x -> quadratic form
-                x_t = values.view(n_comps, -1, 1, n_dims)
-                x = values.view(n_comps, -1, n_dims, 1)
-                A = self.inverted_covariances()[i, :, :, :].view(n_comps, 1, n_dims, n_dims)
+                x_t = values.view(n_layers, n_comps, -1, 1, n_dims)
+                x = values.view(n_layers, n_comps, -1, n_dims, 1)
+                A = self.inverted_covariances()[i, :, :, :, :].view(n_layers, n_comps, 1, n_dims, n_dims)
                 values = -0.5 * x_t @ A @ x
-                batched_values[i, :, :] = values.view(n_comps, -1)
+                batched_values[i, :, :, :] = values.view(n_layers, n_comps, -1)
             values = batched_values
 
-        values = self.weights.view(n_layers, n_comps, 1) * torch.exp(values)
-        return values.view(n_layers, n_comps, -1)
+        values = self.weights.view(n_batch, n_layers, n_comps, 1) * torch.exp(values)
+        return values.view(n_batch, n_layers, n_comps, -1)
 
     def evaluate_few_xes(self, xes: Tensor) -> Tensor:
-        return self.evaluate_few_xes_component_wise(xes).sum(1)
+        return self.evaluate_few_xes_component_wise(xes).sum(2)
 
-    def evaluate_component_many_xes(self, xes: Tensor, component: int) -> Tensor:
-        n_layers = self.n_layers()
-        n_dims = self.n_dimensions()
-        n_xes = xes.size()[1]
-        assert xes.size()[0] == n_layers
-        assert xes.size()[2] == n_dims
-        assert component < self.n_components()
-
-        weights = self.weights[:, component].view(-1, 1)
-        positions = self.positions[:, component, :]
-        inverted_covs = self.inverted_covariances()[:, component, :, :]
-
-        # first dimension: batch (from mixture), second: sampling (xes), third: data
-        v = xes - positions.view(n_layers, 1, n_dims)
-        # first dimension: batch (from mixture), second: sampling (xes), third and fourth: matrix data
-        inverted_covs = inverted_covs.view(n_layers, 1, n_dims, n_dims)
-
-        v = -0.5 * v.view(n_layers, n_xes, 1, n_dims) @ inverted_covs @ v.view(n_layers, n_xes, n_dims, 1)
-        v = v.view(n_layers, n_xes)
-        v = weights * torch.exp(v)
-        assert not torch.isnan(v).any()
-        assert not torch.isinf(v).any()
-        return v
-
-    def evaluate_many_xes(self, xes: Tensor) -> Tensor:
-        n_xes = xes.size()[1]
-        n_layers = self.n_layers()
-        assert n_layers == xes.size()[0]
-        assert self.n_dimensions() == xes.size()[2]
-        values = torch.zeros(n_layers, n_xes, dtype=torch.float32, device=xes.device)
-        for i in range(self.n_components()):
-            # todo: adding many components like this probably makes the gradient graph and therefore memory explode
-            values += self.evaluate_component_many_xes(xes, i)
-        return values
-
-    def max_component_many_xes(self, xes: Tensor) -> Tensor:
+    # todo: untested
+    def max_component(self, xes: Tensor) -> Tensor:
         assert self.n_layers() == 1
         selected = torch.zeros(xes.size()[1], dtype=torch.long)
-        values = self.evaluate_component_many_xes(xes, 0).view(-1)
+        component_values = self.evaluate_few_xes_component_wise(xes)
+        values = component_values[:, :, 0]
+
         for i in range(self.n_components()):
-            component_values = self.evaluate_component_many_xes(xes, i).view(-1)
+            component_values = component_values[:, :, 0]
             mask = component_values > values
             selected[mask] = i
             values[mask] = component_values[mask]
 
         return selected
 
-    def debug_show(self, layer_i: int = 0, x_low: float = -22, y_low: float = -22, x_high: float = 22, y_high: float = 22, step: float = 0.1, imshow=True) -> Tensor:
+    def debug_show(self, batch_i: int = 0, layer_i: int = 0, x_low: float = -22, y_low: float = -22, x_high: float = 22, y_high: float = 22, step: float = 0.1, imshow=True) -> Tensor:
         assert layer_i < self.n_layers()
         assert self.n_dimensions() == 2
-        m = self.detach().batch(layer_i)
+        m = self.detach().batch(batch_i).layer(layer_i)
 
         xv, yv = torch.meshgrid([torch.arange(x_low, x_high, step, dtype=torch.float, device=self.device()),
                                  torch.arange(y_low, y_high, step, dtype=torch.float, device=self.device())])
         xes = torch.cat((xv.reshape(-1, 1), yv.reshape(-1, 1)), 1).view(1, -1, 2)
 
-        values = m.evaluate_many_xes(xes).detach()
+        values = m.evaluate_few_xes(xes).detach()
         image = values.view(xv.size()[0], xv.size()[1]).t().cpu().numpy()
         if imshow:
             plt.scatter(m.positions[0, :, 0].cpu().numpy(), m.positions[0, :, 1].cpu().numpy(), zorder=1)
@@ -177,31 +155,47 @@ class Mixture:
 
     def select_components(self, begin: int, end: int) -> Mixture:
         assert 0 <= begin < end <= self.n_components()
+        n_batch = self.n_batch()
+        n_layers = self.n_layers()
         n_components = end - begin
         n_dims = self.n_dimensions()
-        ret_mixture = generate_null_mixture(1, 1, n_dims, device=self.device())
-        ret_mixture.weights = self.weights[:, begin:end].view(-1, n_components)
-        ret_mixture.positions = self.positions[:, begin:end, :].view(-1, n_components, n_dims)
-        ret_mixture.covariances = self.covariances[:, begin:end, :, :].view(-1, n_components, n_dims, n_dims)
+        weights = self.weights[:, :, begin:end].view(n_batch, n_layers, n_components)
+        positions = self.positions[:, :, begin:end, :].view(n_batch, n_layers, n_components, n_dims)
+        covariances = self.covariances[:, :, begin:end, :, :].view(n_batch, n_layers, n_components, n_dims, n_dims)
+        ret_mixture = Mixture(weights, positions, covariances)
         if self._inverted_covariances is not None:
-            ret_mixture._inverted_covariances = self._inverted_covariances[:, begin:end, :, :].view(-1, n_components, n_dims, n_dims)
+            ret_mixture._inverted_covariances = self._inverted_covariances[:, begin:end, :, :].view(n_batch, n_layers, n_components, n_dims, n_dims)
         return ret_mixture
 
     def batch(self, batch_id: int) -> Mixture:
         n_dims = self.n_dimensions()
-        ret_mixture = generate_null_mixture(1, 1, n_dims, device=self.device())
-        ret_mixture.weights = self.weights[batch_id, :].view(1, -1)
-        ret_mixture.positions = self.positions[batch_id, :, :].view(1, -1, n_dims)
-        ret_mixture.covariances = self.covariances[batch_id, :, :, :].view(1, -1, n_dims, n_dims)
+        n_layers = self.n_layers()
+        n_components = self.n_components()
+        weights = self.weights[batch_id].view(1, n_layers, n_components)
+        positions = self.positions[batch_id].view(1, n_layers, n_components, n_dims)
+        covariances = self.covariances[batch_id].view(1, n_layers, n_components, n_dims, n_dims)
+        ret_mixture = Mixture(weights, positions, covariances)
         if self._inverted_covariances is not None:
-            ret_mixture._inverted_covariances = self._inverted_covariances[batch_id, :, :, :].view(1, -1, n_dims, n_dims)
+            ret_mixture._inverted_covariances = self._inverted_covariances[batch_id].view(1, n_layers, n_components, n_dims, n_dims)
+        return ret_mixture
+
+    def layer(self, layer_id: int) -> Mixture:
+        n_dims = self.n_dimensions()
+        n_batch = self.n_layers()
+        n_components = self.n_components()
+        weights = self.weights[:, layer_id].view(n_batch, 1, n_components)
+        positions = self.positions[:, layer_id].view(n_batch, 1, n_components, n_dims)
+        covariances = self.covariances[:, layer_id].view(n_batch, 1, n_components, n_dims, n_dims)
+        ret_mixture = Mixture(weights, positions, covariances)
+        if self._inverted_covariances is not None:
+            ret_mixture._inverted_covariances = self._inverted_covariances[:, layer_id].view(n_batch, 1, n_components, n_dims, n_dims)
         return ret_mixture
 
     def detach(self) -> Mixture:
-        detached_mixture = generate_null_mixture(1, 1, self.n_dimensions(), device=self.device())
-        detached_mixture.weights = self.weights.detach()
-        detached_mixture.positions = self.positions.detach()
-        detached_mixture.covariances = self.covariances.detach()
+        weights = self.weights.detach()
+        positions = self.positions.detach()
+        covariances = self.covariances.detach()
+        detached_mixture = Mixture(weights, positions, covariances)
         if self._inverted_covariances is not None:
             detached_mixture._inverted_covariances = self._inverted_covariances.detach()
         return detached_mixture
@@ -209,7 +203,7 @@ class Mixture:
     def save(self, file_name: str, meta_info=None) -> None:
         dict = {
             "type": "gm.Mixture",
-            "version": 3,
+            "version": 4,
             "weights": self.weights.detach().cpu(),
             "positions": self.positions.detach().cpu(),
             "covariances": self.covariances.detach().cpu(),
@@ -221,14 +215,26 @@ class Mixture:
     def load(cls, file_name: str) -> Mixture:
         dict = torch.load(config.data_base_path / file_name)
         assert dict["type"] == "gm.Mixture"
-        assert dict["version"] == 3
-        return Mixture(dict["weights"], dict["positions"], dict["covariances"]), dict["meta_info"]
+        if dict["version"] == 3:
+            weights = dict["weights"]
+            n_components = weights.shape[1]
+            positions = dict["positions"]
+            n_dims = positions.shape[2]
+            assert False # todo test
+            covariances = dict["covariances"]
+            return Mixture(weights.view(-1, 1, n_components),
+                           positions.view(-1, 1, n_components, n_dims),
+                           covariances.view(-1, 1, n_components, n_dims, n_dims))
+        else:
+            assert dict["version"] == 4
+            return Mixture(dict["weights"], dict["positions"], dict["covariances"]), dict["meta_info"]
 
 
 class MixtureReLUandBias:
     def __init__(self, mixture: Mixture, bias: Tensor) -> None:
         assert (bias >= 0).all()
-        assert bias.size()[0] == mixture.n_layers()
+        assert bias.shape[0] == 1 or bias.shape[0] == mixture.n_batch()
+        assert bias.shape[1] == mixture.n_layers()
         self.mixture = mixture
         self.bias = bias
 
@@ -236,18 +242,20 @@ class MixtureReLUandBias:
         return MixtureReLUandBias(self.mixture.detach(), self.bias.detach())
 
     def evaluate_few_xes(self, positions: Tensor) -> Tensor:
-        values = self.mixture.evaluate_few_xes(positions) - self.bias.view(-1, 1)
-        return torch.max(values, torch.tensor([0.0001], dtype=torch.float32, device=self.mixture.device()))
+        values = self.mixture.evaluate_few_xes(positions) - self.bias.view(self.mixture.n_batch(), self.mixture.n_layers(), 1)
+        return torch.max(values, torch.tensor([0.00001], dtype=torch.float32, device=self.mixture.device()))
 
-    def debug_show(self, batch_i: int = 0, x_low: float = -22, y_low: float = -22, x_high: float = 22, y_high: float = 22, step: float = 0.1, imshow=True) -> Tensor:
+    def debug_show(self, batch_i: int = 0, layer_i: int = 0, x_low: float = -22, y_low: float = -22, x_high: float = 22, y_high: float = 22, step: float = 0.1, imshow=True) -> Tensor:
         assert self.mixture.n_dimensions() == 2
-        assert batch_i < self.mixture.n_layers()
-        m = self.mixture.detach().batch(batch_i)
+        assert batch_i < self.mixture.n_batch()
+        assert layer_i < self.mixture.n_layers()
+
+        m = self.mixture.detach().batch(batch_i).layer(layer_i)
         xv, yv = torch.meshgrid([torch.arange(x_low, x_high, step, dtype=torch.float, device=m.device()),
                                  torch.arange(y_low, y_high, step, dtype=torch.float, device=m.device())])
         xes = torch.cat((xv.reshape(-1, 1), yv.reshape(-1, 1)), 1).view(1, -1, 2)
         values = m.evaluate_many_xes(xes)
-        values -= self.bias.detach()[batch_i]
+        values -= self.bias.detach()[layer_i]
         values[values < 0] = 0
         values = values.view(xv.size()[0], xv.size()[1]).t()
         if imshow:
@@ -261,33 +269,29 @@ class MixtureReLUandBias:
         return self.mixture.device()
 
 
-def single_batch_mixture(weights: Tensor, positions: Tensor, covariances: Tensor):
-    n_dims = positions.size()[1]
-    return Mixture(weights.view(1, -1), positions.view(1, -1, n_dims), covariances.view(1, -1, n_dims, n_dims))
-
-
 # we will need to work on the initialisation. it's unlikely this simple one will work.
-def generate_random_mixtures(n_layers: int, n_components: int, n_dims: int,
+def generate_random_mixtures(n_batch: int = 1, n_layers: int = 1, n_components: int = 1, n_dims: int = 2,
                              pos_radius: float = 10,
                              cov_radius: float = 10,
                              weight_min: float = -1,
                              weight_max: float = 1,
                              device: torch.device = 'cpu') -> Mixture:
+    assert n_batch > 0
+    assert n_layers > 0
+    assert n_components > 0
     assert n_dims == 2 or n_dims == 3
     assert weight_min < weight_max
-    assert n_components > 0
-    assert n_layers > 0
 
-    weights = torch.rand(n_layers, n_components, dtype=torch.float32, device=device) * (weight_max - weight_min) + weight_min
-    positions = torch.rand(n_layers, n_components, n_dims, dtype=torch.float32, device=device) * 2 * pos_radius - pos_radius
-    covs = mat_tools.gen_random_positive_definite((n_layers, n_components, n_dims, n_dims), device=device) * cov_radius
+    weights = torch.rand(n_batch, n_layers, n_components, dtype=torch.float32, device=device) * (weight_max - weight_min) + weight_min
+    positions = torch.rand(n_batch, n_layers, n_components, n_dims, dtype=torch.float32, device=device) * 2 * pos_radius - pos_radius
+    covs = mat_tools.gen_random_positive_definite((n_batch, n_layers, n_components, n_dims, n_dims), device=device) * cov_radius
 
     return Mixture(weights, positions, covs)
 
 
 # todo: this function is a mess
-def generate_null_mixture(n_layers: int, n_components: int, n_dims: int, device: torch.device = 'cpu') -> Mixture:
-    m = generate_random_mixtures(n_layers, n_components, n_dims, device=device)
+def generate_null_mixture(n_batch: int = 1, n_layers: int = 1, n_components: int = 1, n_dims: int = 2, device: torch.device = 'cpu') -> Mixture:
+    m = generate_random_mixtures(n_batch, n_layers, n_components, n_dims, device=device)
     m.weights *= 0
     m.positions *= 0
     m.covariances *= 0
@@ -295,24 +299,23 @@ def generate_null_mixture(n_layers: int, n_components: int, n_dims: int, device:
 
 
 def _polynomMulRepeat(A: Tensor, B: Tensor) -> (Tensor, Tensor):
-    A_n = A.size()[1]
-    B_n = B.size()[1]
-    A_repeats = [1] * len(A.size())
-    A_repeats[1] = B_n
-    return (A.repeat(A_repeats), B.repeat_interleave(A_n, dim=1))
+    A_n = A.shape[2]
+    B_n = B.shape[2]
+    A_repeats = [1] * len(A.shape)
+    A_repeats[2] = B_n
+    return (A.repeat(A_repeats), B.repeat_interleave(A_n, dim=2))
 
 
 def convolve(m1: Mixture, m2: Mixture) -> Mixture:
+    n_batch = m1.n_batch()
     n_layers = m1.n_layers()
     n_dims = m1.n_dimensions()
+    assert n_batch == m2.n_batch()
     assert n_layers == m2.n_layers()
     assert n_dims == m2.n_dimensions()
     m1_f, m2_f = _polynomMulRepeat(m1.weights, m2.weights)
     m1_p, m2_p = _polynomMulRepeat(m1.positions, m2.positions)
-    # m1_c, m2_c = _polynomMulRepeat(m1.covariances.view(n_layers, m1.n_components(), n_dims * n_dims), m2.covariances.view(n_layers, m2.n_components(), n_dims * n_dims))
     m1_c, m2_c = _polynomMulRepeat(m1.covariances, m2.covariances)
-    m1_c = m1_c
-    m2_c = m2_c
 
     positions = m1_p + m2_p
     covariances = m1_c + m2_c
@@ -328,20 +331,21 @@ def batch_sum(ms: typing.List[Mixture]) -> Mixture:
     positions = []
     covariances = []
     n_dims = ms[0].n_dimensions()
+    n_batch = ms[0].n_batch()
     for m in ms:
-        weights.append(m.weights.view(1, -1))
-        positions.append(m.positions.view(1, -1, n_dims))
-        covariances.append(m.covariances.view(1, -1, n_dims, n_dims))
+        weights.append(m.weights.view(n_batch, 1, -1))
+        positions.append(m.positions.view(n_batch, 1, -1, n_dims))
+        covariances.append(m.covariances.view(n_batch, 1, -1, n_dims, n_dims))
 
-    return Mixture(torch.cat(weights, dim=0),
-                   torch.cat(positions, dim=0),
-                   torch.cat(covariances, dim=0))
+    return Mixture(torch.cat(weights, dim=1),
+                   torch.cat(positions, dim=1),
+                   torch.cat(covariances, dim=1))
 
 
 def cat(ms: typing.List[Mixture], dim: int) -> Mixture:
     assert len(ms) > 0
     assert dim >= 0
-    assert dim <= 1
+    assert dim <= 2
     weights = []
     positions = []
     covariances = []
@@ -363,25 +367,26 @@ class NormalisationFactors:
 
 
 def normalise(data_in: MixtureReLUandBias) -> (MixtureReLUandBias, NormalisationFactors):
+    n_batch = data_in.mixture.n_batch()
     n_layers = data_in.mixture.n_layers()
     n_dims = data_in.mixture.n_dimensions()
-    weight_min, _ = torch.min(data_in.mixture.weights.detach(), dim=1)
-    weight_max, _ = torch.max(data_in.mixture.weights.detach(), dim=1)
+    weight_min, _ = torch.min(data_in.mixture.weights.detach(), dim=2)
+    weight_max, _ = torch.max(data_in.mixture.weights.detach(), dim=2)
     weight_scaling = torch.max(torch.abs(weight_min), weight_max)
     weight_scaling = torch.max(weight_scaling, data_in.bias.detach())
-    weight_scaling = weight_scaling.view(n_layers, 1)
+    weight_scaling = weight_scaling.view(n_batch, n_layers, 1)
     weight_scaling = (1 / weight_scaling)
 
     weights_normalised = data_in.mixture.weights * weight_scaling
-    bias_normalised = data_in.bias * weight_scaling.view(-1)
+    bias_normalised = data_in.bias.view(1, n_layers) * weight_scaling.view(n_batch, n_layers)
 
-    position_translation = (-torch.mean(data_in.mixture.positions.detach(), dim=1)).view(n_layers, 1, n_dims)
+    position_translation = (-torch.mean(data_in.mixture.positions.detach(), dim=2)).view(n_batch, n_layers, 1, n_dims)
     positions_normalised = data_in.mixture.positions + position_translation
     covariance_adjustment =  torch.sqrt(torch.diagonal(data_in.mixture.covariances.detach(), dim1=-2, dim2=-1))
-    position_max, _ = torch.max(positions_normalised.detach() + covariance_adjustment, dim=1)
-    position_min, _ = torch.min(positions_normalised.detach() - covariance_adjustment, dim=1)
+    position_max, _ = torch.max(positions_normalised.detach() + covariance_adjustment, dim=2)
+    position_min, _ = torch.min(positions_normalised.detach() - covariance_adjustment, dim=2)
     position_scaling = torch.max(torch.abs(position_min), position_max)
-    position_scaling = position_scaling.view(n_layers, 1, n_dims)
+    position_scaling = position_scaling.view(n_batch, n_layers, 1, n_dims)
     position_scaling = 1 / position_scaling
     positions_normalised *= position_scaling
 
@@ -390,6 +395,7 @@ def normalise(data_in: MixtureReLUandBias) -> (MixtureReLUandBias, Normalisation
 
     return MixtureReLUandBias(Mixture(weights_normalised, positions_normalised, covariances_normalised), bias_normalised), \
            NormalisationFactors(weight_scaling, position_translation, position_scaling)
+
 
 def de_normalise(m: Mixture, normalisation: NormalisationFactors) -> Mixture:
     inverted_weight_scaling = 1 / normalisation.weight_scaling
