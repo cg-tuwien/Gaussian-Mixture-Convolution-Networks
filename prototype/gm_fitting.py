@@ -218,14 +218,14 @@ class Trainer:
         self.optimiser.zero_grad()
 
         sampling_positions = torch.rand((1, 1, self.n_training_samples, data_in.mixture.n_dimensions()), dtype=torch.float32, device=self.net.device()) * 3 - 1.5
-        target_sampling_values = data_in.evaluate_few_xes(sampling_positions)
+        target_sampling_values = data_in.evaluate(sampling_positions)
 
         network_start_time = time.perf_counter()
         output_gm, latent_vector = self.net(data_in)
         network_time = time.perf_counter() - network_start_time
 
         eval_start_time = time.perf_counter()
-        output_gm_sampling_values = output_gm.evaluate_few_xes(sampling_positions)
+        output_gm_sampling_values = output_gm.evaluate(sampling_positions)
         criterion = self.criterion(output_gm_sampling_values, target_sampling_values) * 2
 
         # the network was moving gaussians out of the sampling radius
@@ -264,9 +264,9 @@ class Trainer:
             xv, yv = torch.meshgrid([torch.arange(-1.0, 1.0, 2 / image_size, dtype=torch.float, device=data_in.device()),
                                      torch.arange(-1.0, 1.0, 2 / image_size, dtype=torch.float, device=data_in.device())])
             xes = torch.cat((xv.reshape(-1, 1), yv.reshape(-1, 1)), 1).view(1, 1, -1, 2)
-            image_target = data_in.evaluate_few_xes(xes).view(-1, image_size, image_size)
+            image_target = data_in.evaluate(xes).view(-1, image_size, image_size)
             n_shown_images = 10
-            fitted_mixture_image = output_gm.detach().evaluate_few_xes(xes).view(-1, image_size, image_size)
+            fitted_mixture_image = output_gm.detach().evaluate(xes).view(-1, image_size, image_size)
             self.log_images(f"target_image_mixture",
                             [image_target[:n_shown_images, :, :].transpose(0, 1).reshape(image_size, -1),
                              fitted_mixture_image[:n_shown_images, :, :].transpose(0, 1).reshape(image_size, -1)],

@@ -112,7 +112,7 @@ class Mixture:
         values = self.weights.view(n_batch, n_layers, n_comps, 1) * torch.exp(values)
         return values.view(n_batch, n_layers, n_comps, -1)
 
-    def evaluate_few_xes(self, xes: Tensor) -> Tensor:
+    def evaluate(self, xes: Tensor) -> Tensor:
         return self.evaluate_few_xes_component_wise(xes).sum(2)
 
     # todo: untested
@@ -139,7 +139,7 @@ class Mixture:
                                  torch.arange(y_low, y_high, step, dtype=torch.float, device=self.device())])
         xes = torch.cat((xv.reshape(-1, 1), yv.reshape(-1, 1)), 1).view(1, -1, 2)
 
-        values = m.evaluate_few_xes(xes).detach()
+        values = m.evaluate(xes).detach()
         image = values.view(xv.size()[0], xv.size()[1]).t().cpu().numpy()
         if imshow:
             plt.scatter(m.positions[0, :, 0].cpu().numpy(), m.positions[0, :, 1].cpu().numpy(), zorder=1)
@@ -245,8 +245,8 @@ class MixtureReLUandBias:
     def detach(self):
         return MixtureReLUandBias(self.mixture.detach(), self.bias.detach())
 
-    def evaluate_few_xes(self, positions: Tensor) -> Tensor:
-        values = self.mixture.evaluate_few_xes(positions) - self.bias.view(self.bias.shape[0], self.bias.shape[1], 1)
+    def evaluate(self, positions: Tensor) -> Tensor:
+        values = self.mixture.evaluate(positions) - self.bias.view(self.bias.shape[0], self.bias.shape[1], 1)
         return torch.max(values, torch.tensor([0.00001], dtype=torch.float32, device=self.mixture.device()))
 
     def debug_show(self, batch_i: int = 0, layer_i: int = 0, x_low: float = -22, y_low: float = -22, x_high: float = 22, y_high: float = 22, step: float = 0.1, imshow=True) -> Tensor:

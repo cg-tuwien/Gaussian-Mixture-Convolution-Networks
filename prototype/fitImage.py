@@ -169,7 +169,7 @@ def ad_algorithm(image: Tensor, n_components: int, n_iterations: int = 8, device
         xes_indices = xes_indices[:, :, 0] * int(height) + xes_indices[:, :, 1]
 
         mixture._inverted_covariances = icov_factor @ icov_factor.transpose(-2, -1) + torch.eye(2, 2, device=mixture.device()) * 0.005
-        output = mixture.evaluate_few_xes(xes)
+        output = mixture.evaluate(xes)
         assert not torch.isnan(mixture.inverted_covariances()).any()
         assert not torch.isinf(mixture.inverted_covariances()).any()
         loss = torch.mean(torch.abs(output - mat_tools.batched_index_select(target.view(batch_size, -1), dim=1, index=xes_indices)))
