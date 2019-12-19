@@ -173,7 +173,7 @@ class Mixture:
 
         xv, yv = torch.meshgrid([torch.arange(x_low, x_high, step, dtype=torch.float, device=self.device()),
                                  torch.arange(y_low, y_high, step, dtype=torch.float, device=self.device())])
-        xes = torch.cat((xv.reshape(-1, 1), yv.reshape(-1, 1)), 1).view(1, -1, 2)
+        xes = torch.cat((xv.reshape(-1, 1), yv.reshape(-1, 1)), 1).view(1, 1, -1, 2)
 
         values = m.evaluate(xes).detach()
         image = values.view(xv.size()[0], xv.size()[1]).t().cpu().numpy()
@@ -221,7 +221,7 @@ class Mixture:
 
     def layer(self, layer_id: int) -> Mixture:
         n_dims = self.n_dimensions()
-        n_batch = self.n_layers()
+        n_batch = self.n_batch()
         n_components = self.n_components()
         weights = self.weights[:, layer_id].view(n_batch, 1, n_components)
         positions = self.positions[:, layer_id].view(n_batch, 1, n_components, n_dims)
@@ -260,11 +260,10 @@ class Mixture:
             n_components = weights.shape[1]
             positions = dict["positions"]
             n_dims = positions.shape[2]
-            assert False # todo test
             covariances = dict["covariances"]
             return Mixture(weights.view(-1, 1, n_components),
                            positions.view(-1, 1, n_components, n_dims),
-                           covariances.view(-1, 1, n_components, n_dims, n_dims))
+                           covariances.view(-1, 1, n_components, n_dims, n_dims)), dict["meta_info"]
         else:
             assert dict["version"] == 4
             return Mixture(dict["weights"], dict["positions"], dict["covariances"]), dict["meta_info"]

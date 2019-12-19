@@ -17,6 +17,15 @@ def batched_index_select(input, dim, index):
     index = index.expand(expanse)
     return torch.gather(input, dim, index)
 
+def my_index_select(input, index):
+    dim = len(index.shape)-1
+    expanse = list(input.shape)
+    for i in range(len(index.shape)):
+        expanse[i] = -1
+    for ii in range(len(index.shape), len(input.shape)):
+        index = index.unsqueeze(ii)
+    index = index.expand(expanse)
+    return torch.gather(input, dim, index)
 
 def trimat_size(dims: int) -> int:
     return 3 if dims == 2 else 6

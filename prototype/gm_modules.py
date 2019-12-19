@@ -66,13 +66,16 @@ class GmBiasAndRelu(torch.nn.modules.Module):
     def forward(self, x: gm.Mixture, division_axis=0) -> gm.Mixture:
         # todo: think of something that would make it possible to do live learning of the fitting network
         if x.n_components() < 134:
-            x = gm.MixtureReLUandBias(x, torch.abs(self.bias))
+            x = gm.MixtureReLUandBias(x, torch.abs(self.bias).view(1, -1))
             return self.net(x)[0]
         else:
-            sorted_indices = torch.argsort(x.positions[:, :, division_axis])
-            sorted_mixture = gm.Mixture(mat_tools.batched_index_select(x.weights, 1, sorted_indices),
-                                        mat_tools.batched_index_select(x.positions, 1, sorted_indices),
-                                        mat_tools.batched_index_select(x.covariances, 1, sorted_indices))
+            sorted_indices = torch.argsort(x.positions[:, :, :, division_axis])
+            sorted_mixture = gm.Mixture(mat_tools.my_index_select(x.weights, sorted_indices),
+                                        mat_tools.my_index_select(x.positions, sorted_indices),
+                                        mat_tools.my_index_select(x.covariances, sorted_indices))
+            # sorted_mixture = gm.Mixture(mat_tools.batched_index_select(x.weights, 2, sorted_indices),
+            #                             mat_tools.batched_index_select(x.positions, 2, sorted_indices),
+            #                             mat_tools.batched_index_select(x.covariances, 2, sorted_indices))
             fitted_left = self.forward(sorted_mixture.select_components(0, x.n_components() // 2), (division_axis + 1) % x.n_dimensions())
             fitted_right = self.forward(sorted_mixture.select_components(x.n_components() // 2, x.n_components()), (division_axis + 1) % x.n_dimensions())
-            return gm.cat((fitted_left, fitted_right), dim=1)
+            return gm.cat((fitted_left, fitted_right), dim=2)
