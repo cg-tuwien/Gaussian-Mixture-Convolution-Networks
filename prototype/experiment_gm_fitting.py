@@ -31,7 +31,7 @@ def generate_random_ReLUandBias(convolved: bool, bias_max: float, weight_min: fl
     if convolved:
         random_m = gm.generate_random_mixtures(1, BATCH_SIZE, random.randint(10, 10), DIMS, pos_radius=1, cov_radius=0.25, weight_min=0, weight_max=weight_max, device=device)
         random_kernel = gm.generate_random_mixtures(1, BATCH_SIZE, 10, DIMS, pos_radius=0.2, cov_radius=0.04, device=device)
-        random_kernel.weights -= random_kernel.weights.mean(dim=1).view(-1, 1)
+        random_kernel.weights -= random_kernel.weights.mean(dim=2).view(1, -1, 1)
         random_kernel.weights += 0.1
         input_gm_after_activation = gm.MixtureReLUandBias(gm.convolve(random_m, random_kernel),
                                                           torch.rand(1, BATCH_SIZE, dtype=torch.float32, device=device) * bias_max)

@@ -109,7 +109,7 @@ class Net(nn.Module):
         cov_data = data_normalised.mixture.covariances
         # view weights, positions and covariances as one data vector
         x = torch.cat((data_normalised.mixture.weights.view(n_batch * n_layers, n_input_components, 1),
-                       data_normalised.mixture.positions.view(n_batch * n_layers, n_input_components, 1),
+                       data_normalised.mixture.positions.view(n_batch * n_layers, n_input_components, n_dims),
                        cov_data.view(n_batch * n_layers, n_input_components, n_dims * n_dims)), dim=2)
         # component should be the last dimension for conv1d to work
         x = x.transpose(1, 2)
@@ -169,9 +169,9 @@ class Net(nn.Module):
         covariances = C
 
         try:
-            normalised_out = gm.Mixture(weights.view(n_batch, n_layers, n_input_components),
-                                        positions.view(n_batch, n_layers, n_input_components, n_dims),
-                                        covariances.view(n_batch, n_layers, n_input_components, n_dims, n_dims))
+            normalised_out = gm.Mixture(weights.view(n_batch, n_layers, self.n_output_gaussians),
+                                        positions.view(n_batch, n_layers, self.n_output_gaussians, n_dims),
+                                        covariances.view(n_batch, n_layers, self.n_output_gaussians, n_dims, n_dims))
         except AssertionError:
             _, _, tb = sys.exc_info()
             traceback.print_tb(tb) # Fixed format
@@ -263,7 +263,7 @@ class Trainer:
             image_size = 128
             xv, yv = torch.meshgrid([torch.arange(-1.0, 1.0, 2 / image_size, dtype=torch.float, device=data_in.device()),
                                      torch.arange(-1.0, 1.0, 2 / image_size, dtype=torch.float, device=data_in.device())])
-            xes = torch.cat((xv.reshape(-1, 1), yv.reshape(-1, 1)), 1).view(1, -1, 2).expand(batch_size, -1, 2)
+            xes = torch.cat((xv.reshape(-1, 1), yv.reshape(-1, 1)), 1).view(1, 1, -1, 2)
             image_target = data_in.evaluate_few_xes(xes).view(-1, image_size, image_size)
             n_shown_images = 10
             fitted_mixture_image = output_gm.detach().evaluate_few_xes(xes).view(-1, image_size, image_size)
