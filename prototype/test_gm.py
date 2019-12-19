@@ -126,12 +126,14 @@ class TestGM(unittest.TestCase):
             our_solution = gmc_samples[i, :, :]
             # plt.imshow(gm1_samples[i, :, :]); plt.colorbar(); plt.show()
             # plt.imshow(gm2_samples[i, :, :]); plt.colorbar(); plt.show()
+            reference_solution = reference_solution[1:, 1:]
+            our_solution = our_solution[:-1, :-1]
             # plt.imshow(reference_solution); plt.colorbar(); plt.show()
             # plt.imshow(our_solution); plt.colorbar(); plt.show()
 
             max_l2_err = ((reference_solution - our_solution) ** 2).max()
             # plt.imshow((reference_solution - our_solution)); plt.colorbar(); plt.show();
-            assert max_l2_err < 0.001
+            assert max_l2_err < 0.0000001
 
 
     def test_batch_sum(self):

@@ -97,7 +97,7 @@ class Mixture:
             # todo: test
             batched_values = torch.zeros(n_batch, n_layers, n_comps, n_xes, dtype=torch.float32, device=self.device())
             for i in range(n_batch):
-                xes_slice = xes[i, :, :].view(1, 1, -1, n_dims)
+                xes_slice = xes[i, 1, :, :].view(1, 1, -1, n_dims)
                 positions = self.positions[i, :, :, :].view(n_layers, n_comps, 1, n_dims)
                 values = xes_slice - positions
 
@@ -113,7 +113,43 @@ class Mixture:
         return values.view(n_batch, n_layers, n_comps, -1)
 
     def evaluate(self, xes: Tensor) -> Tensor:
-        return self.evaluate_few_xes_component_wise(xes).sum(2)
+        n_batch = self.n_batch()
+        n_layers = self.n_layers()
+        n_dims = self.n_dimensions()
+        n_comps = self.n_components()
+
+        # xes dims: 1. batch (may be 1), 2. layers (may be 1), 3. n_xes, 4. x/y/[z]
+        assert len(xes.shape) == 4
+        assert xes.shape[0] == 1 or xes.shape[0] == n_batch
+        assert xes.shape[1] == 1 or xes.shape[1] == n_layers
+        n_xes = xes.shape[2]
+        assert xes.shape[3] == n_dims
+
+        xes = xes.view(xes.shape[0], xes.shape[1], 1, n_xes, n_dims)
+        values_sum = torch.zeros(n_batch, n_layers, n_xes, dtype=torch.float32, device=self.device())
+
+        total_memory_space = n_batch * n_layers * n_comps * n_xes * n_dims # did i forget something
+        n_memory_slices = max(total_memory_space // (1024 * 1024 * 100), 1)
+        comp_slice_size = n_comps // n_memory_slices
+        n_memory_slices = n_comps // comp_slice_size + int(n_comps % comp_slice_size != 0)
+        for i in range(n_memory_slices):
+            # 1. dim: batches, 2. layers, 3. component, 4. xes, 5.+: vector / matrix components
+            comps_begin = i * comp_slice_size
+            comps_end = min(comps_begin + comp_slice_size, n_comps)
+            n_comps_slice = comps_end - comps_begin
+            positions = self.positions[:, :, comps_begin:comps_end, :].view(n_batch, n_layers, n_comps_slice, 1, n_dims)
+            values = xes - positions
+
+            # x^t A x -> quadratic form
+            x_t = values.view(n_batch, n_layers, n_comps_slice, -1, 1, n_dims)
+            x = values.view(n_batch, n_layers, n_comps_slice, -1, n_dims, 1)
+            A = self.inverted_covariances()[:, :, comps_begin:comps_end, :].view(n_batch, n_layers, n_comps_slice, 1, n_dims, n_dims)
+            values = -0.5 * x_t @ A @ x
+            values = values.view(n_batch, n_layers, n_comps_slice, -1)
+
+            values = self.weights[:, :, comps_begin:comps_end].view(n_batch, n_layers, n_comps_slice, 1) * torch.exp(values)
+            values_sum += values.sum(dim=2)
+        return values_sum
 
     # todo: untested
     def max_component(self, xes: Tensor) -> Tensor:
@@ -311,10 +347,9 @@ def _polynomMulRepeat(A: Tensor, B: Tensor) -> (Tensor, Tensor):
 
 
 def convolve(m1: Mixture, m2: Mixture) -> Mixture:
-    n_batch = m1.n_batch()
     n_layers = m1.n_layers()
     n_dims = m1.n_dimensions()
-    assert n_batch == m2.n_batch()
+    assert m1.n_batch() == 1 or m2.n_batch() == 1 or m1.n_batch() == m2.n_batch()
     assert n_layers == m2.n_layers()
     assert n_dims == m2.n_dimensions()
     m1_f, m2_f = _polynomMulRepeat(m1.weights, m2.weights)
