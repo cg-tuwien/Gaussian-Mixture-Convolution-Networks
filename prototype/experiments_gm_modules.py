@@ -6,13 +6,12 @@ import gm
 
 m = gm.generate_random_mixtures(n_layers=3, n_components=4, n_dims=2, pos_radius=10, cov_radius=2.5, weight_min=0)
 m, l = gm.Mixture.load("mnist/train_0")
+m = m.to('cuda')
 
-m = gm.cat((m.batch(0), m.batch(1), m.batch(2)), dim=0)
-
-gmc1 = gm_modules.GmConvolution(n_layers_in=1, n_layers_out=5, n_kernel_components=6)
-relu1 = gm_modules.GmBiasAndRelu(n_layers=5, n_output_gaussians=10)
-gmc2 = gm_modules.GmConvolution(n_layers_in=5, n_layers_out=3, n_kernel_components=6)
-relu2 = gm_modules.GmBiasAndRelu(n_layers=3, n_output_gaussians=10)
+gmc1 = gm_modules.GmConvolution(n_layers_in=1, n_layers_out=5, n_kernel_components=6).cuda()
+relu1 = gm_modules.GmBiasAndRelu(n_layers=5, n_output_gaussians=10).cuda()
+gmc2 = gm_modules.GmConvolution(n_layers_in=5, n_layers_out=3, n_kernel_components=6).cuda()
+relu2 = gm_modules.GmBiasAndRelu(n_layers=3, n_output_gaussians=10).cuda()
 
 
 def debug_show(m: gm.Mixture):
@@ -34,21 +33,21 @@ def debug_show(m: gm.Mixture):
 
 x = m
 print(f"n_layers = {x.n_layers()}, n_components = {x.n_components()}")
-debug_show(x)
+# debug_show(x)
 
 x = gmc1(x)
 print(f"n_layers = {x.n_layers()}, n_components = {x.n_components()}")
-debug_show(x)
+# debug_show(x)
 
 x = relu1(x)
 print(f"n_layers = {x.n_layers()}, n_components = {x.n_components()}")
-debug_show(x)
+# debug_show(x)
 
 x = gmc2(x)
 print(f"n_layers = {x.n_layers()}, n_components = {x.n_components()}")
-debug_show(x)
+# debug_show(x)
 
 x = relu2(x)
 print(f"n_layers = {x.n_layers()}, n_components = {x.n_components()}")
-debug_show(x)
+# debug_show(x)
 

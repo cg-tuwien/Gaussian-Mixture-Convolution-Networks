@@ -21,14 +21,14 @@ class GmConvolution(torch.nn.modules.Module):
         self.weights = torch.nn.modules.ParameterList()
         self.positions = torch.nn.modules.ParameterList()
         self.covariances = torch.nn.modules.ParameterList()
-        self.kernels = []
+        # self.kernels = []
 
         for i in range(self.n_layers_out):
             k = gm.generate_random_mixtures(n_batch=1, n_layers=n_layers_in, n_components=n_kernel_components, n_dims=n_dims,
                                             pos_radius=position_range, cov_radius=covariance_range, weight_min=weight_min, weight_max=weight_max)
             # positive mean produces a rather positive gm. i believe this is a better init
             k.weights -= k.weights.mean(dim=2).view(1, -1, 1) - 0.2
-            self.kernels.append(k)
+            # self.kernels.append(k)
             self.weights.append(torch.nn.Parameter(k.weights))
             self.positions.append(torch.nn.Parameter(k.positions))
             self.covariances.append(torch.nn.Parameter(k.covariances))
@@ -37,7 +37,8 @@ class GmConvolution(torch.nn.modules.Module):
         out_mixtures = []
 
         for i in range(self.n_layers_out):
-            m = gm.convolve(x, self.kernels[i])
+            k = gm.Mixture(self.weights[i], self.positions[i], self.covariances[i])
+            m = gm.convolve(x, k)
             out_mixtures.append(m)
 
         return gm.batch_sum(out_mixtures)
@@ -61,6 +62,8 @@ class GmBiasAndRelu(torch.nn.modules.Module):
                                   n_agrs=3, batch_norm=True)
         if not self.net.load(strict=True):
             raise Exception(f"Fitting network {self.net.name} not found.")
+        self.net.requires_grad_(False)
+        print(self.net)
         # todo: option to make fitting net have common or seperate weights per module
 
     def forward(self, x: gm.Mixture, division_axis=0) -> gm.Mixture:
