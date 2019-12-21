@@ -35,13 +35,16 @@ class GmConvolution(torch.nn.modules.Module):
 
     def forward(self, x: gm.Mixture) -> gm.Mixture:
         out_mixtures = []
+        out_mixture_shape = x.shape
+        out_mixture_shape[1] = 1
+        out_mixture_shape[2] = -1
 
         for i in range(self.n_layers_out):
-            k = gm.Mixture(self.weights[i], self.positions[i], self.covariances[i])
+            k = gm.pack_mixture(self.weights[i], self.positions[i], self.covariances[i])
             m = gm.convolve(x, k)
-            out_mixtures.append(m)
+            out_mixtures.append(m.view(out_mixture_shape))
 
-        return gm.batch_sum(out_mixtures)
+        return torch.cat(out_mixtures, dim=1)
 
 
 class GmBiasAndRelu(torch.nn.modules.Module):
