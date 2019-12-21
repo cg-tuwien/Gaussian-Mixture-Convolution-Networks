@@ -1,6 +1,8 @@
 import torch
 import torch.nn.modules
 
+from torch import Tensor
+
 import gm
 import gm_fitting
 import mat_tools
@@ -18,30 +20,24 @@ class GmConvolution(torch.nn.modules.Module):
         self.weight_min = weight_min
         self.weight_max = weight_max
 
-        self.weights = torch.nn.modules.ParameterList()
-        self.positions = torch.nn.modules.ParameterList()
-        self.covariances = torch.nn.modules.ParameterList()
-        # self.kernels = []
+        self.kernels = torch.nn.modules.ParameterList()
 
         for i in range(self.n_layers_out):
             k = gm.generate_random_mixtures(n_batch=1, n_layers=n_layers_in, n_components=n_kernel_components, n_dims=n_dims,
                                             pos_radius=position_range, cov_radius=covariance_range, weight_min=weight_min, weight_max=weight_max)
             # positive mean produces a rather positive gm. i believe this is a better init
-            k.weights -= k.weights.mean(dim=2).view(1, -1, 1) - 0.2
-            # self.kernels.append(k)
-            self.weights.append(torch.nn.Parameter(k.weights))
-            self.positions.append(torch.nn.Parameter(k.positions))
-            self.covariances.append(torch.nn.Parameter(k.covariances))
+            weights = gm.weights(k)
+            weights -= gm.weights(k).mean(dim=2).view(1, -1, 1) - 0.2
+            self.kernels.append(torch.nn.Parameter(k))
 
-    def forward(self, x: gm.Mixture) -> gm.Mixture:
+    def forward(self, x: Tensor) -> Tensor:
         out_mixtures = []
-        out_mixture_shape = x.shape
+        out_mixture_shape = list(x.shape)
         out_mixture_shape[1] = 1
         out_mixture_shape[2] = -1
 
         for i in range(self.n_layers_out):
-            k = gm.pack_mixture(self.weights[i], self.positions[i], self.covariances[i])
-            m = gm.convolve(x, k)
+            m = gm.convolve(x, self.kernels[i])
             out_mixtures.append(m.view(out_mixture_shape))
 
         return torch.cat(out_mixtures, dim=1)
@@ -69,19 +65,21 @@ class GmBiasAndRelu(torch.nn.modules.Module):
         print(self.net)
         # todo: option to make fitting net have common or seperate weights per module
 
-    def forward(self, x: gm.Mixture, division_axis=0) -> gm.Mixture:
+    def forward(self, x: Tensor, division_axis: int=0) -> Tensor:
         # todo: think of something that would make it possible to do live learning of the fitting network
-        if x.n_components() < 134:
-            x = gm.MixtureReLUandBias(x, torch.abs(self.bias).view(1, -1))
-            return self.net(x)[0]
+        n_dimensions = gm.n_dimensions(x)
+        n_components = gm.n_components(x)
+
+        if n_components < 134:
+            return self.net(x, torch.abs(self.bias).view(1, -1))[0]
         else:
-            sorted_indices = torch.argsort(x.positions[:, :, :, division_axis])
-            sorted_mixture = gm.Mixture(mat_tools.my_index_select(x.weights, sorted_indices),
-                                        mat_tools.my_index_select(x.positions, sorted_indices),
-                                        mat_tools.my_index_select(x.covariances, sorted_indices))
-            # sorted_mixture = gm.Mixture(mat_tools.batched_index_select(x.weights, 2, sorted_indices),
-            #                             mat_tools.batched_index_select(x.positions, 2, sorted_indices),
-            #                             mat_tools.batched_index_select(x.covariances, 2, sorted_indices))
-            fitted_left = self.forward(sorted_mixture.select_components(0, x.n_components() // 2), (division_axis + 1) % x.n_dimensions())
-            fitted_right = self.forward(sorted_mixture.select_components(x.n_components() // 2, x.n_components()), (division_axis + 1) % x.n_dimensions())
+            sorted_indices = torch.argsort(gm.positions(x.detach())[:, :, :, division_axis])
+            sorted_mixture = mat_tools.my_index_select(x, sorted_indices)
+
+            division_index = n_components // 2
+            next_division_axis = (division_axis + 1) % n_dimensions
+
+            fitted_left = self.forward(sorted_mixture[:, :, :division_index], next_division_axis)
+            fitted_right = self.forward(sorted_mixture[:, :, division_index:], next_division_axis)
+
             return gm.cat((fitted_left, fitted_right), dim=2)

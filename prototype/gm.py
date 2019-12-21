@@ -135,7 +135,7 @@ def evaluate_inversed(mixture: Tensor, xes: Tensor) -> Tensor:
     xes = xes.view(xes.shape[0], xes.shape[1], 1, n_xes, _n_dims)
     values_sum = torch.zeros(_n_batch, _n_layers, n_xes, dtype=torch.float32, device=mixture.device)
 
-    total_memory_space = _n_batch * _n_layers * _n_comps * n_xes * _n_dims # did i forget something
+    total_memory_space = _n_batch * _n_layers * _n_comps * n_xes * _n_dims # did i forget something?
     n_memory_slices = max(total_memory_space // (1024 * 1024 * 100), 1)
     comp_slice_size = _n_comps // n_memory_slices
     n_memory_slices = _n_comps // comp_slice_size + int(_n_comps % comp_slice_size != 0)
@@ -144,17 +144,18 @@ def evaluate_inversed(mixture: Tensor, xes: Tensor) -> Tensor:
         comps_begin = i * comp_slice_size
         comps_end = min(comps_begin + comp_slice_size, _n_comps)
         n_comps_slice = comps_end - comps_begin
-        _positions = positions(mixture)[:, :, comps_begin:comps_end, :].view(_n_batch, _n_layers, n_comps_slice, 1, _n_dims)
+        mixture_slice = mixture[:, :, comps_begin:comps_end, :]
+        _positions = positions(mixture_slice).view(_n_batch, _n_layers, n_comps_slice, 1, _n_dims)
         values = xes - _positions
 
         # x^t A x -> quadratic form
         x_t = values.view(_n_batch, _n_layers, n_comps_slice, -1, 1, _n_dims)
         x = values.view(_n_batch, _n_layers, n_comps_slice, -1, _n_dims, 1)
-        A = covariances(mixture)[:, :, comps_begin:comps_end].view(_n_batch, _n_layers, n_comps_slice, 1, _n_dims, _n_dims)
-        values = -0.5 * x_t @ A @ x
+        A = covariances(mixture_slice).view(_n_batch, _n_layers, n_comps_slice, 1, _n_dims, _n_dims)
+        values = -0.5 * x_t @ A @ x # 0.8 -> 3.0gb
         values = values.view(_n_batch, _n_layers, n_comps_slice, -1)
 
-        values = weights(mixture)[:, :, comps_begin:comps_end].view(_n_batch, _n_layers, n_comps_slice, 1) * torch.exp(values)
+        values = weights(mixture_slice).view(_n_batch, _n_layers, n_comps_slice, 1) * torch.exp(values) # 3.0 -> 3.3Gb
         values_sum += values.sum(dim=2)
     return values_sum
 

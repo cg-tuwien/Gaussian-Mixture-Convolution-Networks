@@ -13,10 +13,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import torch.utils.tensorboard
+from torch import Tensor
 
 import gm
-from gm import MixtureReLUandBias
-from gm import Mixture
 import config
 import madam_imagetools
 
@@ -32,6 +31,7 @@ class Net(nn.Module):
                  n_dims: int = 2,
                  n_agrs: int = 4,
                  batch_norm: bool = False):
+        # todo: refactor to have some nice sequential blocks
         super(Net, self).__init__()
         self.n_dims = n_dims
         self.n_agrs = n_agrs
@@ -98,19 +98,16 @@ class Net(nn.Module):
     def device(self):
         return self.output_layer.bias.device
 
-    def forward(self, data_in: MixtureReLUandBias, learning: bool = True) -> Mixture:
-        n_batch = data_in.mixture.n_batch()
-        n_layers = data_in.mixture.n_layers()
-        n_input_components = data_in.mixture.n_components()
-        n_dims = data_in.mixture.n_dimensions()
+    def forward(self, mixture_in: Tensor, bias_in: Tensor, learning: bool = True) -> typing.Tuple[Tensor, Tensor]:
+        n_batch = gm.n_batch(mixture_in)
+        n_layers = gm.n_layers(mixture_in)
+        n_input_components = gm.n_components(mixture_in)
+        n_dims = gm.n_dimensions(mixture_in)
 
-        data_normalised, normalisation_factors = gm.normalise(data_in)
+        mixtures_normalised, bias_normalised, normalisation_factors = gm.normalise(mixture_in, bias_in)
 
-        cov_data = data_normalised.mixture.covariances
-        # view weights, positions and covariances as one data vector
-        x = torch.cat((data_normalised.mixture.weights.view(n_batch * n_layers, n_input_components, 1),
-                       data_normalised.mixture.positions.view(n_batch * n_layers, n_input_components, n_dims),
-                       cov_data.view(n_batch * n_layers, n_input_components, n_dims * n_dims)), dim=2)
+        x = n_dims.view(n_batch * n_layers, n_input_components, -1)
+
         # component should be the last dimension for conv1d to work
         x = x.transpose(1, 2)
 
@@ -148,7 +145,8 @@ class Net(nn.Module):
 
         # x is batch size x final g layer size now
         x = x.view(n_batch * n_layers, -1, self.n_output_gaussians)
-        x = torch.cat((data_normalised.bias.view(n_batch * n_layers, 1, 1).expand(n_batch * n_layers, 1, self.n_output_gaussians), x), dim=1)
+        bias_extended = bias_normalised.view(-1, n_layers, 1, 1).expand(n_batch, n_layers, 1, self.n_output_gaussians).view(n_batch * n_layers, 1, self.n_output_gaussians)
+        x = torch.cat((bias_extended, x), dim=1)
 
         for i, layer in enumerate(self.fully_layers):
             x = layer(x)
@@ -168,10 +166,12 @@ class Net(nn.Module):
         C = A @ A.transpose(2, 3) + torch.eye(self.n_dims, self.n_dims, dtype=torch.float32, device=self.device()) * COVARIANCE_MIN
         covariances = C
 
+        normalised_out = gm.pack_mixture(weights.view(n_batch, n_layers, self.n_output_gaussians),
+                                         positions.view(n_batch, n_layers, self.n_output_gaussians, n_dims),
+                                         covariances.view(n_batch, n_layers, self.n_output_gaussians, n_dims, n_dims))
         try:
-            normalised_out = gm.Mixture(weights.view(n_batch, n_layers, self.n_output_gaussians),
-                                        positions.view(n_batch, n_layers, self.n_output_gaussians, n_dims),
-                                        covariances.view(n_batch, n_layers, self.n_output_gaussians, n_dims, n_dims))
+            # don't test when in release mode
+            assert gm.is_valid_mixture(normalised_out)
         except AssertionError:
             _, _, tb = sys.exc_info()
             traceback.print_tb(tb) # Fixed format
@@ -209,27 +209,31 @@ class Trainer:
         images = np.concatenate(images, axis=0)
         self.tensor_board_writer.add_image(tag, images, epoch, dataformats='NHWC')
 
-    def train_on(self, data_in: gm.MixtureReLUandBias, epoch: int):
-        data_in = data_in.detach()
-        data_in, _ = gm.normalise(data_in)  # we normalise twice, but that shouldn't hurt (but performance). normalisation here is needed due to regularisation
-        batch_size = data_in.mixture.n_batch()
-        n_layers = data_in.mixture.n_layers()
+    def train_on(self, mixture_in: Tensor, bias_in: Tensor, epoch: int):
+        mixture_in = mixture_in.detach()
+        bias_in = bias_in.detach()
+        gm.is_valid_mixture_and_bias(mixture_in, bias_in)
+
+        mixture_in, bias_in, _ = gm.normalise(mixture_in, bias_in)  # we normalise twice, but that shouldn't hurt (but performance). normalisation here is needed due to regularisation
+        batch_size = gm.n_batch(mixture_in)
+        n_layers = gm.n_layers(mixture_in)
+        n_dims = gm.n_dimensions(mixture_in)
         batch_start_time = time.perf_counter()
         self.optimiser.zero_grad()
 
-        sampling_positions = torch.rand((1, 1, self.n_training_samples, data_in.mixture.n_dimensions()), dtype=torch.float32, device=self.net.device()) * 3 - 1.5
-        target_sampling_values = data_in.evaluate(sampling_positions)
+        sampling_positions = torch.rand((1, 1, self.n_training_samples, n_dims), dtype=torch.float32, device=mixture_in.device) * 3 - 1.5
+        target_sampling_values = gm.evaluate_with_activation_fun(mixture_in, bias_in, sampling_positions)
 
         network_start_time = time.perf_counter()
-        output_gm, latent_vector = self.net(data_in)
+        output_gm, latent_vector = self.net(mixture_in, bias_in)
         network_time = time.perf_counter() - network_start_time
 
         eval_start_time = time.perf_counter()
-        output_gm_sampling_values = output_gm.evaluate(sampling_positions)
+        output_gm_sampling_values = gm.evaluate(output_gm, sampling_positions)
         criterion = self.criterion(output_gm_sampling_values, target_sampling_values) * 2
 
         # the network was moving gaussians out of the sampling radius
-        p = (output_gm.positions.abs() - 1)
+        p = (gm.positions(output_gm).abs() - 1)
         p = p.where(p > torch.zeros(1, device=p.device), torch.zeros(1, device=p.device))
         regularisation = p.sum()
 
@@ -261,12 +265,12 @@ class Trainer:
 
         if (epoch % 10 == 0 and epoch < 100) or (epoch % 100 == 0 and epoch < 1000) or (epoch % 1000 == 0 and epoch < 10000) or (epoch % 10000 == 0):
             image_size = 128
-            xv, yv = torch.meshgrid([torch.arange(-1.0, 1.0, 2 / image_size, dtype=torch.float, device=data_in.device()),
-                                     torch.arange(-1.0, 1.0, 2 / image_size, dtype=torch.float, device=data_in.device())])
+            xv, yv = torch.meshgrid([torch.arange(-1.0, 1.0, 2 / image_size, dtype=torch.float, device=mixture_in.device),
+                                     torch.arange(-1.0, 1.0, 2 / image_size, dtype=torch.float, device=mixture_in.device)])
             xes = torch.cat((xv.reshape(-1, 1), yv.reshape(-1, 1)), 1).view(1, 1, -1, 2)
-            image_target = data_in.evaluate(xes).view(-1, image_size, image_size)
+            image_target = gm.evaluate_with_activation_fun(mixture_in.detach(), bias_in.detach(), xes).view(-1, image_size, image_size)
             n_shown_images = 10
-            fitted_mixture_image = output_gm.detach().evaluate(xes).view(-1, image_size, image_size)
+            fitted_mixture_image = gm.evaluate(output_gm.detach(), xes).view(-1, image_size, image_size)
             self.log_images(f"target_image_mixture",
                             [image_target[:n_shown_images, :, :].transpose(0, 1).reshape(image_size, -1),
                              fitted_mixture_image[:n_shown_images, :, :].transpose(0, 1).reshape(image_size, -1)],

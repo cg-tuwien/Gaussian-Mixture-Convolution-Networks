@@ -4,10 +4,9 @@ import typing
 from torch import Tensor
 
 
-#
 # from https://discuss.pytorch.org/t/batched-index-select/9115/10
 # I added an unit test, but it's easy to make an error in such code, so.. :)
-def batched_index_select(input, dim, index):
+def batched_index_select(input: Tensor, dim: int, index: Tensor) -> Tensor:
     for ii in range(1, len(input.shape)):
         if ii != dim:
             index = index.unsqueeze(ii)
@@ -17,7 +16,8 @@ def batched_index_select(input, dim, index):
     index = index.expand(expanse)
     return torch.gather(input, dim, index)
 
-def my_index_select(input, index):
+
+def my_index_select(input: Tensor, index: Tensor) -> Tensor:
     dim = len(index.shape)-1
     expanse = list(input.shape)
     for i in range(len(index.shape)):
@@ -26,6 +26,7 @@ def my_index_select(input, index):
         index = index.unsqueeze(ii)
     index = index.expand(expanse)
     return torch.gather(input, dim, index)
+
 
 def trimat_size(dims: int) -> int:
     return 3 if dims == 2 else 6

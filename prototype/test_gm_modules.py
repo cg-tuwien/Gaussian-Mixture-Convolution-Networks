@@ -9,8 +9,6 @@ import matplotlib.pyplot as plt
 import gm
 import gm_modules
 
-from torch import Tensor
-from gm import Mixture
 
 class TestGM(unittest.TestCase):
     # todo: test convolution by covolving discretised versions of GMs
@@ -29,11 +27,11 @@ class TestGM(unittest.TestCase):
                                  torch.arange(-6, 6, 1 / samples_per_unit, dtype=torch.float)])
         size = xv.size()[0]
         xes = torch.cat((xv.reshape(-1, 1), yv.reshape(-1, 1)), 1).view(1, 1, -1, 2)
-        gm_in_samples = gm_in.evaluate(xes).numpy()
-        gm_out_samples = gm_out.evaluate(xes).numpy()
+        gm_in_samples = gm.evaluate(gm_in, xes).numpy()
+        gm_out_samples = gm.evaluate(gm_out.detach(), xes).numpy()
 
         for l in range(n_layers_out):
-            gm_kernel_samples = conv_layer.kernels[l].evaluate(xes).view(n_layers_in, size, size).numpy()
+            gm_kernel_samples = gm.evaluate(conv_layer.kernels[l].detach(), xes).view(n_layers_in, size, size).numpy()
 
             for b in range(n_batches):
                 reference_solution = np.zeros((size, size))
@@ -51,8 +49,6 @@ class TestGM(unittest.TestCase):
                 max_l2_err = ((reference_solution - our_solution) ** 2).max()
                 # plt.imshow((reference_solution - our_solution)); plt.colorbar(); plt.show();
                 assert max_l2_err < 0.0000001
-
-
 
 
 if __name__ == '__main__':
