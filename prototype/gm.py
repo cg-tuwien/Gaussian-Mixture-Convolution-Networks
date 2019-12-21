@@ -221,19 +221,19 @@ def load(file_name: str) -> typing.Tuple[Tensor, typing.Any]:
         positions = dictionary["positions"]
         n_dims = positions.shape[2]
         covariances = dictionary["covariances"]
-        mixture = pack_mixture(weights.view(-1, 1, n_components), positions.view(-1, 1, n_components, n_dims), covariances.view(-1, 1, n_components, n_dims, n_dims)), dictionary["meta_info"]
+        mixture = pack_mixture(weights.view(-1, 1, n_components), positions.view(-1, 1, n_components, n_dims), covariances.view(-1, 1, n_components, n_dims, n_dims))
 
     elif dictionary["version"] == 4:
         weights = dictionary["weights"]
         positions = dictionary["positions"]
         covariances = dictionary["covariances"]
-        mixture = pack_mixture(weights, positions, covariances), dictionary["meta_info"]
+        mixture = pack_mixture(weights, positions, covariances)
     else:
         assert dictionary["version"] == 5
-        mixture = dictionary["data"], dictionary["meta_info"]
+        mixture = dictionary["data"]
 
     assert is_valid_mixture(mixture)
-    return mixture
+    return mixture, dictionary["meta_info"]
 
 
 def is_valid_mixture_and_bias(mixture: Tensor, bias: Tensor) -> bool:

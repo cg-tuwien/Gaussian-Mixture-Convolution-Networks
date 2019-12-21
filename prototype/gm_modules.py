@@ -82,4 +82,4 @@ class GmBiasAndRelu(torch.nn.modules.Module):
             fitted_left = self.forward(sorted_mixture[:, :, :division_index], next_division_axis)
             fitted_right = self.forward(sorted_mixture[:, :, division_index:], next_division_axis)
 
-            return gm.cat((fitted_left, fitted_right), dim=2)
+            return torch.cat((fitted_left, fitted_right), dim=2)
