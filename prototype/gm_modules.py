@@ -1,5 +1,6 @@
 import torch
 import torch.nn.modules
+import torch.utils.checkpoint
 
 from torch import Tensor
 
@@ -71,7 +72,8 @@ class GmBiasAndRelu(torch.nn.modules.Module):
         n_components = gm.n_components(x)
 
         if n_components < 134:
-            return self.net(x, torch.abs(self.bias).view(1, -1))[0]
+            result = torch.utils.checkpoint.checkpoint(self.net, x, torch.abs(self.bias).view(1, -1))[0]
+            return result
         else:
             sorted_indices = torch.argsort(gm.positions(x.detach())[:, :, :, division_axis])
             sorted_mixture = mat_tools.my_index_select(x, sorted_indices)
