@@ -241,8 +241,8 @@ def is_valid_mixture_and_bias(mixture: Tensor, bias: Tensor) -> bool:
     ok = ok and (bias >= 0).all()
     ok = ok and is_valid_mixture(mixture)
     ok = ok and len(bias.shape) == 2
-    ok = ok and (bias.shape[0] == 1 or bias.shape[0] == mixture[0])
-    ok = ok and bias.shape[1] == mixture[1]
+    ok = ok and (bias.shape[0] == 1 or bias.shape[0] == mixture.shape[0])
+    ok = ok and bias.shape[1] == mixture.shape[1]
     ok = ok and mixture.device == bias.device
     return ok
 
