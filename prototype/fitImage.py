@@ -11,11 +11,11 @@ import torch.utils.data
 import gm
 import mat_tools
 
-from gm import Mixture
 from torch import Tensor
 
 
-def em_algorithm(image: Tensor, n_components: int, n_iterations: int, device: torch.device = 'cpu') -> Mixture:
+def em_algorithm(image: Tensor, n_components: int, n_iterations: int, device: torch.device = 'cpu') -> Tensor:
+    # todo test (after moving from Mixture class to Tensor data
     assert len(image.size()) == 2
     assert n_components > 0
     width = image.size()[1]
@@ -105,7 +105,7 @@ def em_algorithm(image: Tensor, n_components: int, n_iterations: int, device: to
 # my_funs(xes, w, dims)
 
 # todo: test for width != height!
-def ad_algorithm(image: Tensor, n_components: int, n_iterations: int = 8, device: torch.device = 'cpu') -> Mixture:
+def ad_algorithm(image: Tensor, n_components: int, n_iterations: int = 8, device: torch.device = 'cpu') -> Tensor:
     assert len(image.shape) == 3
     assert n_components > 0
     batch_size = image.size()[0]
@@ -117,21 +117,23 @@ def ad_algorithm(image: Tensor, n_components: int, n_iterations: int = 8, device
 
     if width == 28 and height == 28:
         # mnist
-        xv, yv = torch.meshgrid([torch.arange(0, height, 1, dtype=torch.float32, device=device),
+        yv, xv = torch.meshgrid([torch.arange(0, height, 1, dtype=torch.float32, device=device),
                                  torch.arange(0, width, 1, dtype=torch.float32, device=device)])
         xes = torch.cat((xv.reshape(-1, 1), yv.reshape(-1, 1)), 1).view(1, -1, 2).repeat((batch_size, 1, 1))
         xes += 0.5
         xes += torch.rand_like(xes) - 0.5
-        randperm = torch.randperm(width * height, device=device)   # torch.sort might be stable, but we want to be random. I don't think it matters that all images are permuted the same way.
+        randperm = torch.randperm(width * height, device=device)  # torch.sort might be stable, but we want to be random. I don't think it matters that all images are permuted the same way.
         xes = xes[:, randperm, :]
         values = target.view(batch_size, -1)[:, randperm]
+        # quantise with reduced resolution
+        values = (values + 0.5).int()
         indices = torch.argsort(values, dim=1, descending=True)
         indices = indices[:, 0:n_components]
 
-        weights = torch.rand(batch_size, n_components, dtype=torch.float32, device=device) * 0.1 + 0.9
-        positions = mat_tools.batched_index_select(xes, 1, indices).view(batch_size, -1, 2)
-        covariances = (torch.tensor([[32/height, 0], [0, 32/width]], dtype=torch.float32, device=device)).view(1, 1, 2, 2).expand((batch_size, n_components, 2, 2))
-        mixture = Mixture(weights, positions, covariances)
+        weights = torch.rand(batch_size, 1, n_components, dtype=torch.float32, device=device) * 0.1 + 0.9
+        positions = mat_tools.batched_index_select(xes, 1, indices).view(batch_size, 1, -1, 2)
+        covariances = (torch.tensor([[32 / height, 0], [0, 32 / width]], dtype=torch.float32, device=device)).view(1, 1, 1, 2, 2).expand((batch_size, 1, n_components, 2, 2))
+        mixture = gm.pack_mixture(weights, positions, covariances)
     else:
         # the mnist initialisation might not be ideal for larger or more complex images.
         # todo: implement batching for em
@@ -143,70 +145,86 @@ def ad_algorithm(image: Tensor, n_components: int, n_iterations: int = 8, device
         mixture = gm.generate_random_mixtures(n_layers=batch_size, n_components=n_components, n_dims=2,
                                               pos_radius=0.5, cov_radius=5 * min(width, height) / math.sqrt(n_components),
                                               weight_min=0, weight_max=1, device=device)
-        mixture.positions += 0.5
-        mixture.positions *= torch.tensor([[[width, height]]], dtype=torch.float, device=device)
+        positions = gm.positions(mixture)
+        positions += 0.5
+        positions *= torch.tensor([[[width, height]]], dtype=torch.float, device=device)
 
-    # mixture.debug_show(0, 0, 0, width, height, min(width, height) / 100)
+    # gm.debug_show(mixture, 0, 0, 0, 0, width, height, min(width, height) / 100)
 
     fitting_start = time.time()
 
-    mixture.weights.requires_grad = True;
-    mixture.positions.requires_grad = True;
+    weights = gm.weights(mixture)
+    positions = gm.positions(mixture)
+    weights.requires_grad = True;
+    positions.requires_grad = True;
 
-    (eigvals, eigvecs) = torch.symeig(mixture.inverted_covariances(), eigenvectors=True)
+    inversed_covariances = gm.covariances(mixture).inverse()
+    (eigvals, eigvecs) = torch.symeig(inversed_covariances, eigenvectors=True)
     eigvals = torch.max(eigvals, torch.tensor([0.01], dtype=torch.float, device=device))
     icov_factor = torch.matmul(eigvecs, eigvals.sqrt().diag_embed())
     icov_factor.requires_grad = True
 
-    optimiser = optim.Adam([mixture.weights, mixture.positions, icov_factor], lr=0.05)
+    optimiser = optim.Adam([weights, positions, icov_factor], lr=0.05)
 
-    print("starting gradient descent")
+    # print("starting gradient descent")
     for k in range(n_iterations):
         optimiser.zero_grad()
 
-        xes = torch.rand(batch_size, 50*50, 2, device=device, dtype=torch.float32) * torch.tensor([[[width, height]]], device=device, dtype=torch.float32)
-        xes_indices = xes.type(torch.long).view(batch_size, -1, 2)
-        xes_indices = xes_indices[:, :, 0] * int(height) + xes_indices[:, :, 1]
+        xes = torch.rand(batch_size, 1, 50*50, 2, device=device, dtype=torch.float32) * torch.tensor([[[width, height]]], device=device, dtype=torch.float32)
+        # indices are row * column, while position is x * y, therefore we flip
+        xes_indices = xes.type(torch.long).view(batch_size, -1, 2).flip(dims=[-1])
+        xes_indices_b = xes_indices
+        xes_indices = mat_tools.flatten_index(xes_indices, target.shape[-2:])
 
-        mixture._inverted_covariances = icov_factor @ icov_factor.transpose(-2, -1) + torch.eye(2, 2, device=mixture.device()) * 0.005
-        output = mixture.evaluate(xes)
-        assert not torch.isnan(mixture.inverted_covariances()).any()
-        assert not torch.isinf(mixture.inverted_covariances()).any()
-        loss = torch.mean(torch.abs(output - mat_tools.batched_index_select(target.view(batch_size, -1), dim=1, index=xes_indices)))
+        inversed_covariances = icov_factor @ icov_factor.transpose(-2, -1) + torch.eye(2, 2, device=mixture.device) * 0.005
+        assert not torch.isnan(inversed_covariances).any()
+        assert not torch.isinf(inversed_covariances).any()
+        mixture_with_inversed_cov = gm.pack_mixture(weights, positions, inversed_covariances)
+        output = gm.evaluate_inversed(mixture_with_inversed_cov, xes).view(batch_size, -1)
+        target_samples = mat_tools.batched_index_select(target.view(batch_size, -1), dim=1, index=xes_indices)
+        loss = torch.mean(torch.abs(output - target_samples))
 
         loss.backward()
         optimiser.step()
 
-        if k % 40 == 0:
-            print(f"iterations {k}: loss = {loss.item()}, min det = {torch.min(torch.det(mixture.inverted_covariances().detach()))}")#, regularisation_1 = {regularisation_1.item()}, "
-                  # f"regularisation_2 = {regularisation_2.item()}, regularisation_3 = {regularisation_3.item()}")
-            # mixture.covariances = torch.inverse(mixture.inverted_covariances)
-            # md = mixture.detach().cpu()
-            # md.save("fire_small_mixture")
-            # mixture.debug_show(0, 0, 0, width, height, min(width, height) / 256)
+        # if k % 40 == 0:
+        #     print(f"iterations {k}: loss = {loss.item()}, min det = {torch.min(torch.det(inversed_covariances.detach()))}")
+        #     _weights = weights.detach()
+        #     _positions = positions.detach()
+        #     # torch inverse returns a transposed matrix (v 1.3.1). our matrix is symmetric however, and we want to take a view, so the transpose avoids a copy.
+        #     _covariances = inversed_covariances.detach().inverse().transpose(-1, -2)
+        #     mixture = gm.pack_mixture(_weights, _positions, _covariances)
+        #     gm.debug_show(mixture, x_low=0, y_low=0, x_high=width, y_high=height, step=min(width, height) / 256)
+        #     # input("Press enter to continue!")
 
     fitting_end = time.time()
     print(f"fitting time: {fitting_end - fitting_start}")
-    mixture = mixture.detach()
-    mixture.update_covariance_from_inverted()
-    return mixture
+    weights = weights.detach()
+    positions = positions.detach()
+    # torch inverse returns a transposed matrix (v 1.3.1). our matrix is symmetric however, and we want to take a view, so the transpose avoids a copy.
+    covariances = inversed_covariances.detach().inverse().transpose(-1, -2)
+    return gm.pack_mixture(weights, positions, covariances)
 
 
 def test():
     # image: np.ndarray = plt.imread("/home/madam/cloud/Photos/fire_small.jpg").view(1, 256, 256)
-    image = plt.imread("/home/madam/Downloads/mnist_png/training/8/17.png") * 255
+    image = plt.imread("/home/madam/Downloads/mnist_png/training/3/7.png") * 255
     if len(image.shape) == 3:
         image = image.mean(axis=2)
+    image_width = image.shape[0]
+    image_height = image.shape[1]
+    image = torch.tensor(image, dtype=torch.float32).flip(dims=[0]).view(1, image_height, image_width)
     # m1 = em_algorithm(torch.tensor(image, dtype=torch.float32), n_components=2500, n_iterations=5, device='cpu')
-    m1 = ad_algorithm(torch.tensor(image, dtype=torch.float32), n_components=20, n_iterations=80, device='cpu')
-    m1.save("mnist_8")
+    m1 = ad_algorithm(image, n_components=25, n_iterations=121, device='cpu')
+    # gm.save(m1, "mnist_8")
 
     m1 = m1.cpu()
 
-    m1.debug_show(0, 0, 0, image.shape[1], image.shape[0], min(image.shape[0], image.shape[1]) / 200)
+    gm.debug_show(m1, x_low=0, y_low=0, x_high=image_width, y_high=image_height, step=min(image.shape[0], image.shape[1]) / 200)
 
+# todo test_mnist() doesn't work but test() does. WHY?
 def test_mnist():
-    batch_size=100
+    batch_size = 100
     width = 28
     height = 28
     # train_loader = torch.utils.data.DataLoader(
@@ -217,15 +235,18 @@ def test_mnist():
     #                    ])),
 
     mnist_test = torchvision.datasets.MNIST("/home/madam/temp/mnist/", train=False, transform=torchvision.transforms.ToTensor(),
-                                                target_transform=None, download=True)
+                                            target_transform=None, download=True)
     data_generator = torch.utils.data.DataLoader(mnist_test,
                                                  batch_size=batch_size,
                                                  shuffle=False,
                                                  num_workers=16)
     for i, (local_batch, local_labels) in enumerate(data_generator):
-        assert local_batch.size()[1] == 1
-        gms = ad_algorithm(local_batch.view(batch_size, height, width), 25, 121, device='cuda')
-        gms.save(f"mnist/test_{i}", local_labels)
+        assert local_batch.shape[1] == 1
+        images = local_batch.view(batch_size, height, width).flip(dims=[1]).contiguous()
+        gms = ad_algorithm(images, n_components=25, n_iterations=121, device='cuda')
+        # gm.debug_show(gms, x_low=0, y_low=0, x_high=28, y_high=28, step=28 / 200)
+        gm.save(gms, f"mnist/test_{i}", local_labels)
+        print(f"mnist/test_{i}")
 
     mnist_training = torchvision.datasets.MNIST("/home/madam/temp/mnist/", train=True, transform=torchvision.transforms.ToTensor(),
                                                 target_transform=None, download=True)
@@ -235,8 +256,10 @@ def test_mnist():
                                                  num_workers=16)
     for i, (local_batch, local_labels) in enumerate(data_generator):
         assert local_batch.size()[1] == 1
-        gms = ad_algorithm(local_batch.view(batch_size, height, width), 25, 121, device='cuda')
-        gms.save(f"mnist/train_{i}", local_labels)
+        images = local_batch.view(batch_size, height, width).flip(dims=[1]).contiguous()
+        gms = ad_algorithm(images, n_components=25, n_iterations=121, device='cuda')
+        gm.save(gms, f"mnist/train_{i}", local_labels)
+        print(f"mnist/train_{i}")
 
         # for i in range(20):
         #     fit = gms.debug_show(i, 0, 0, width, height, width / 200, imshow=False)
@@ -246,5 +269,6 @@ def test_mnist():
         #     ax1.imshow(fit)
         #     ax2.imshow(target)
         #     plt.show()
+
 
 test_mnist()

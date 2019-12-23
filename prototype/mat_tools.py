@@ -28,6 +28,20 @@ def my_index_select(input: Tensor, index: Tensor) -> Tensor:
     return torch.gather(input, dim, index)
 
 
+def flatten_index(input: Tensor, shape: torch.Size) -> Tensor:
+    assert input.shape[-1] == len(shape)
+    shape = list(shape)
+    old_m = 1
+    for d in range(1, len(shape)+1):
+        new_m = old_m * shape[-d]
+        shape[-d] = old_m
+        old_m = new_m
+    shape = torch.tensor(shape, dtype=torch.long, device=input.device)
+
+    # dot product
+    return (input * shape).sum(dim=-1).view(input.shape[:-1])
+
+
 def trimat_size(dims: int) -> int:
     return 3 if dims == 2 else 6
 

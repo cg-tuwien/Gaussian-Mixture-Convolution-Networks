@@ -48,6 +48,18 @@ class MatToolsTest(unittest.TestCase):
 
         self.assertAlmostEqual((b - target).abs().sum().item(), 0)
 
+    def test_flatten_index(self):
+        indices = torch.arange(3 * 5 * 7 * 11).view(3, 5, 7, 11)
+        for i in range(3):
+            for j in range(5):
+                for k in range(7):
+                    for l in range(11):
+                        coordinates = torch.tensor([i, j, k, l], dtype=torch.long).view(1, -1).expand((13, -1))
+                        found_index = mat_tools.flatten_index(coordinates, indices.shape)
+                        for m in range(13):
+                            self.assertEqual(indices[i, j, k, l].item(), found_index[m].item())
+
+
     def test_triangle_conv(self):
         for dims in range(2, 4):
             Atri = mat_tools.gen_random_positive_definite_triangle(20, dims)
