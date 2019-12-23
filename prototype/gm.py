@@ -240,6 +240,7 @@ def is_valid_mixture_and_bias(mixture: Tensor, bias: Tensor) -> bool:
     ok = True
     ok = ok and (bias >= 0).all()
     ok = ok and is_valid_mixture(mixture)
+    # todo: actually, i think the batch dimension is not needed for the bias
     ok = ok and len(bias.shape) == 2
     ok = ok and (bias.shape[0] == 1 or bias.shape[0] == mixture.shape[0])
     ok = ok and bias.shape[1] == mixture.shape[1]

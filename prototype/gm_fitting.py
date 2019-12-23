@@ -211,7 +211,7 @@ class Trainer:
     def train_on(self, mixture_in: Tensor, bias_in: Tensor, epoch: int):
         mixture_in = mixture_in.detach()
         bias_in = bias_in.detach()
-        gm.is_valid_mixture_and_bias(mixture_in, bias_in)
+        assert gm.is_valid_mixture_and_bias(mixture_in, bias_in)
 
         mixture_in, bias_in, _ = gm.normalise(mixture_in, bias_in)  # we normalise twice, but that shouldn't hurt (but performance). normalisation here is needed due to regularisation
         batch_size = gm.n_batch(mixture_in)
@@ -224,8 +224,14 @@ class Trainer:
         target_sampling_values = gm.evaluate_with_activation_fun(mixture_in, bias_in, sampling_positions)
 
         network_start_time = time.perf_counter()
-        output_gm, latent_vector = self.net(mixture_in, bias_in)
+        net_result = self.net(mixture_in, bias_in)
         network_time = time.perf_counter() - network_start_time
+
+        if isinstance(net_result, tuple):
+            output_gm, latent_vector = net_result
+        else:
+            output_gm = net_result
+            latent_vector = torch.zeros(1, 1)
 
         eval_start_time = time.perf_counter()
         output_gm_sampling_values = gm.evaluate(output_gm, sampling_positions)

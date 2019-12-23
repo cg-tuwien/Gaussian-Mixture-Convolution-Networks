@@ -4,17 +4,31 @@ import numpy as np
 
 import gm_modules
 import gm
+import gm_fitting
 
 m = gm.generate_random_mixtures(n_layers=3, n_components=4, n_dims=2, pos_radius=10, cov_radius=2.5, weight_min=0)
-m, l = gm.load("mnist/train_0")
-m = m[:10]
-m = m.to('cuda')
+
 
 gmc1 = gm_modules.GmConvolution(n_layers_in=1, n_layers_out=5, n_kernel_components=6).cuda()
 relu1 = gm_modules.GmBiasAndRelu(n_layers=5, n_output_gaussians=10).cuda()
 gmc2 = gm_modules.GmConvolution(n_layers_in=5, n_layers_out=3, n_kernel_components=6).cuda()
 relu2 = gm_modules.GmBiasAndRelu(n_layers=3, n_output_gaussians=10).cuda()
 
+relu1.train_fitting(True)
+trainer = gm_fitting.Trainer(relu1, save_weights=False)
+epoch = 0
+for j in range(2):
+    for i in range(599):
+        m, l = gm.load(f"mnist/train_{i}")
+        m = m.to('cuda')
+        m = gmc1(m)
+        trainer.train_on(m, torch.rand_like(relu1.bias) * 0.3, epoch)
+        epoch += 1
+relu1.train_fitting(False)
+
+m, l = gm.load("mnist/test_0")
+m = m[:10]
+m = m.to('cuda')
 
 def debug_show(m: torch.Tensor):
     low = -5

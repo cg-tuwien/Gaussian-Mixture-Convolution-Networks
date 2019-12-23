@@ -1,12 +1,23 @@
+import time
+import datetime
+import pathlib
+import typing
+import numpy as np
+
 import torch
 import torch.nn.modules
 import torch.utils.checkpoint
+import torch.nn as nn
+import torch.optim as optim
+import torch.utils.tensorboard
 
 from torch import Tensor
 
+import madam_imagetools
 import gm
 import gm_fitting
 import mat_tools
+import config
 
 
 class GmConvolution(torch.nn.modules.Module):
@@ -45,15 +56,14 @@ class GmConvolution(torch.nn.modules.Module):
 
 
 class GmBiasAndRelu(torch.nn.modules.Module):
-    def __init__(self, n_layers: int, n_output_gaussians: int = 10, n_dimensions=2, train_fitting_net: bool = False):
+    def __init__(self, n_layers: int, n_output_gaussians: int = 10, n_dimensions=2):
         # todo support variable number of outputs and configurable net archs. needs a better init + training routine (start with few gaussians etc?)
         assert n_output_gaussians == 10
         super(GmBiasAndRelu, self).__init__()
         self.n_layers = n_layers
         self.n_output_gaussians = n_output_gaussians
-        self.train_fitting_net = train_fitting_net
         # use a small bias for the start. i hope it's easier for the net to increase it than to lower it
-        self.bias = torch.nn.Parameter(torch.rand(self.n_layers) * 0.2)
+        self.bias = torch.nn.Parameter(torch.rand(1, self.n_layers) * 0.2)
 
         self.net = gm_fitting.Net([64, 128, 256, 512, 1024, 1024, 750],
                                   [256, 256, 256, 256, 256, 128],
@@ -62,17 +72,35 @@ class GmBiasAndRelu(torch.nn.modules.Module):
                                   n_agrs=3, batch_norm=True)
         if not self.net.load(strict=True):
             raise Exception(f"Fitting network {self.net.name} not found.")
-        self.net.requires_grad_(False)
+        self.train_fitting_flag = False
+        self.train_fitting(self.train_fitting_flag)
+
+        self.name = f"GmBiasAndRelu_{n_layers}_{n_output_gaussians}"
+
         print(self.net)
         # todo: option to make fitting net have common or seperate weights per module
 
-    def forward(self, x: Tensor, division_axis: int=0) -> Tensor:
+    def train_fitting(self, flag: bool):
+        self.train_fitting_flag = flag
+        if flag:
+            self.net.requires_grad_(True)
+            self.bias.requires_grad_(False)
+        else:
+            self.net.requires_grad_(True)
+            self.bias.requires_grad_(False)
+
+    def forward(self, x: Tensor, overwrite_bias: Tensor = None, division_axis: int=0) -> Tensor:
         # todo: think of something that would make it possible to do live learning of the fitting network
         n_dimensions = gm.n_dimensions(x)
         n_components = gm.n_components(x)
 
         if n_components < 134:
-            result = torch.utils.checkpoint.checkpoint(self.net, x, torch.abs(self.bias).view(1, -1))[0]
+            bias = self.bias if overwrite_bias is None else overwrite_bias
+            bias = torch.abs(bias)
+            if self.train_fitting_flag:
+                result = self.net(x, bias)[0]
+            else:
+                result = torch.utils.checkpoint.checkpoint(self.net, x, bias)[0]
             return result
         else:
             sorted_indices = torch.argsort(gm.positions(x.detach())[:, :, :, division_axis])
@@ -81,7 +109,10 @@ class GmBiasAndRelu(torch.nn.modules.Module):
             division_index = n_components // 2
             next_division_axis = (division_axis + 1) % n_dimensions
 
-            fitted_left = self.forward(sorted_mixture[:, :, :division_index], next_division_axis)
-            fitted_right = self.forward(sorted_mixture[:, :, division_index:], next_division_axis)
+            fitted_left = self.forward(sorted_mixture[:, :, :division_index], division_axis=next_division_axis)
+            fitted_right = self.forward(sorted_mixture[:, :, division_index:], division_axis=next_division_axis)
 
             return torch.cat((fitted_left, fitted_right), dim=2)
+
+    def save(self):
+        self.net.save()
