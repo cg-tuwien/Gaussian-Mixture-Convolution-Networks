@@ -184,12 +184,11 @@ class Net(nn.Module):
 
 
 class Trainer:
-    def __init__(self, net: Net, n_training_samples: int = 50 * 50, learning_rate: float = 0.001, save_weights: bool = False, testing_mode: bool = False):
+    def __init__(self, net: Net, n_training_samples: int = 50 * 50, learning_rate: float = 0.001, save_weights: bool = False):
         self.net = net
         self.n_training_samples = n_training_samples
         self.learning_rate = learning_rate
         self.save_weights = save_weights
-        self.testing_mode = testing_mode
         self.criterion = nn.MSELoss()
         self.optimiser = optim.Adam(net.parameters(), lr=learning_rate)
         self.tensor_board_writer = torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard' / f'{self.net.name}_{datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}')
@@ -280,6 +279,3 @@ class Trainer:
         print(info)
         if self.save_weights:
             self.net.save()
-            f = open(config.data_base_path / "weights" / (self.net.name + "_loss"), "w")
-            f.write(info)
-            f.close()
