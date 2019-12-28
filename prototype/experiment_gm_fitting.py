@@ -84,8 +84,9 @@ def test_dl_fitting(g_layer_sizes: typing.List,
 
     for i in range(1 if testing_mode else n_iterations):
         mixture, bias = generate_random_ReLUandBias(convolved=convolved_input, bias_max=bias_max, weight_min=weight_min, weight_max=weight_max, device=net.device())
-        trainer.save_weights = False# and i % 1000 == 0
         trainer.train_on(mixture, bias, i)
+        if i % 1000 == 0:
+            trainer.save_weights()
 
     # target, input_ = draw_random_samples(10, WIDTH, HEIGHT)
     # output = net(input_)

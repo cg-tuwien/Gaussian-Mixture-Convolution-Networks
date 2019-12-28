@@ -213,7 +213,7 @@ def test():
         image = image.mean(axis=2)
     image_width = image.shape[0]
     image_height = image.shape[1]
-    image = torch.tensor(image, dtype=torch.float32).flip(dims=[0]).view(1, image_height, image_width)
+    image = torch.tensor(image, dtype=torch.float32).view(1, image_height, image_width)
     # m1 = em_algorithm(torch.tensor(image, dtype=torch.float32), n_components=2500, n_iterations=5, device='cpu')
     m1 = ad_algorithm(image, n_components=25, n_iterations=121, device='cpu')
     # gm.save(m1, "mnist_8")
@@ -242,7 +242,7 @@ def test_mnist():
                                                  num_workers=16)
     for i, (local_batch, local_labels) in enumerate(data_generator):
         assert local_batch.shape[1] == 1
-        images = local_batch.view(batch_size, height, width).flip(dims=[1]).contiguous()
+        images = local_batch.view(batch_size, height, width)
         gms = ad_algorithm(images, n_components=25, n_iterations=121, device='cuda')
         # gm.debug_show(gms, x_low=0, y_low=0, x_high=28, y_high=28, step=28 / 200)
         gm.save(gms, f"mnist/test_{i}", local_labels)
@@ -256,7 +256,7 @@ def test_mnist():
                                                  num_workers=16)
     for i, (local_batch, local_labels) in enumerate(data_generator):
         assert local_batch.size()[1] == 1
-        images = local_batch.view(batch_size, height, width).flip(dims=[1]).contiguous()
+        images = local_batch.view(batch_size, height, width)
         gms = ad_algorithm(images, n_components=25, n_iterations=121, device='cuda')
         gm.save(gms, f"mnist/train_{i}", local_labels)
         print(f"mnist/train_{i}")

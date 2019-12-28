@@ -1,3 +1,5 @@
+import random
+
 import torch
 import matplotlib.pyplot as plt
 import numpy as np
@@ -6,25 +8,44 @@ import gm_modules
 import gm
 import gm_fitting
 
+n_kernel_components = 8
+
 m = gm.generate_random_mixtures(n_layers=3, n_components=4, n_dims=2, pos_radius=10, cov_radius=2.5, weight_min=0)
 
-
-gmc1 = gm_modules.GmConvolution(n_layers_in=1, n_layers_out=5, n_kernel_components=6).cuda()
+# todo: fitting and learning fitting doesn't work with the bias and relu layer.
+# todo: - maybe the recursion is bad. tried reducing n_kernel_components, but it doesn't run any more..
+gmc1 = gm_modules.GmConvolution(n_layers_in=1, n_layers_out=5, n_kernel_components=n_kernel_components).cuda()
 relu1 = gm_modules.GmBiasAndRelu(n_layers=5, n_output_gaussians=10).cuda()
-gmc2 = gm_modules.GmConvolution(n_layers_in=5, n_layers_out=3, n_kernel_components=6).cuda()
+gmc2 = gm_modules.GmConvolution(n_layers_in=5, n_layers_out=3, n_kernel_components=n_kernel_components).cuda()
 relu2 = gm_modules.GmBiasAndRelu(n_layers=3, n_output_gaussians=10).cuda()
+relu2.net = relu1.net
 
 relu1.train_fitting(True)
-trainer = gm_fitting.Trainer(relu1, save_weights=False)
+relu2.train_fitting(True)
+trainer1 = gm_fitting.Trainer(relu1)
+trainer2 = gm_fitting.Trainer(relu1)
 epoch = 0
-for j in range(2):
+for j in range(1000):
     for i in range(599):
-        m, l = gm.load(f"mnist/train_{i}")
-        m = m.to('cuda')
-        m = gmc1(m)
-        trainer.train_on(m, torch.rand_like(relu1.bias) * 0.3, epoch)
+        gmc1 = gm_modules.GmConvolution(n_layers_in=1, n_layers_out=5, n_kernel_components=random.randint(1, n_kernel_components), position_range=4, covariance_range=1).cuda()
+        x, l = gm.load(f"mnist/train_{i}")
+        x = x.to('cuda')
+        x = gmc1(x)
+        trainer1.train_on(x, torch.rand_like(relu1.bias) * 0.3, epoch)
         epoch += 1
+
+        # x = x.detach()
+        # x = relu1(x)
+        # x = gmc2(x)
+        #
+        # trainer2.train_on(x, torch.rand_like(relu2.bias) * 0.3, epoch)
+        # epoch += 1
+
+        if epoch % 100 == 0:
+            trainer1.save_weights()
+    trainer1.save_weights()
 relu1.train_fitting(False)
+relu2.train_fitting(False)
 
 m, l = gm.load("mnist/test_0")
 m = m[:10]
@@ -43,7 +64,7 @@ def debug_show(m: torch.Tensor):
         for c in range(n_cols):
             i = gm.debug_show(m, batch_i=r, layer_i=c, x_low=low, y_low=low, x_high=high, y_high=high, step=spacing, imshow=False)
             canvas[r*size:(r+1)*size, c*size:(c+1)*size] = i
-    plt.imshow(canvas,  extent=[low, low + n_cols * (high - low), low, low + n_rows * (high - low)],origin='lower')
+    plt.imshow(canvas,  extent=[low, low + n_cols * (high - low), low, low + n_rows * (high - low)])
     plt.colorbar()
     plt.show()
 

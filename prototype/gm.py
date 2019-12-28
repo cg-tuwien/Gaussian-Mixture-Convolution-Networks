@@ -65,13 +65,18 @@ def pack_mixture(weights: Tensor, positions: Tensor, covariances: Tensor) -> Ten
 
 
 def is_valid_mixture(mixture: Tensor) -> bool:
-    # mixture: 1st dimension: batch, 2nd: layer, 3rd: component, 4th: vector of gaussian data
-    ok = True
-    ok = ok and len(mixture.shape) == 4
-    ok = ok and n_dimensions(mixture) == 2 or n_dimensions(mixture) == 3   # also checks the length of the Gaussian vector
-    ok = ok and torch.all(covariances(mixture).det() > 0)
-    return ok
+    # # mixture: 1st dimension: batch, 2nd: layer, 3rd: component, 4th: vector of gaussian data
+    # ok = True
+    # ok = ok and len(mixture.shape) == 4
+    # ok = ok and n_dimensions(mixture) == 2 or n_dimensions(mixture) == 3   # also checks the length of the Gaussian vector
+    # ok = ok and torch.all(covariances(mixture).det() > 0)
+    # return ok
 
+    # mixture: 1st dimension: batch, 2nd: layer, 3rd: component, 4th: vector of gaussian data
+    assert len(mixture.shape) == 4
+    assert n_dimensions(mixture) == 2 or n_dimensions(mixture) == 3   # also checks the length of the Gaussian vector
+    assert torch.all(covariances(mixture).det() > 0)
+    return True
 
 def evaluate_few_xes_component_wise(mixture: Tensor, xes: Tensor) -> Tensor:
     _n_batch = n_batch(mixture)
@@ -195,8 +200,8 @@ def debug_show(mixture: Tensor, batch_i: int = 0, layer_i: int = 0, x_low: float
     values = evaluate(m, xes).detach()
     image = values.view(xv.size()[0], xv.size()[1]).t().cpu().numpy()
     if imshow:
-        plt.scatter(positions(m)[0, 0, :, 0].cpu().numpy(), positions(m)[0, 0, :, 1].cpu().numpy(), zorder=1)
-        plt.imshow(image, zorder=0, extent=[x_low, x_high, y_low, y_high], origin='lower')
+        plt.scatter(positions(m)[0, 0, :, 0].cpu().numpy(), y_high + y_low - positions(m)[0, 0, :, 1].cpu().numpy(), zorder=1)
+        plt.imshow(image, zorder=0, extent=[x_low, x_high, y_low, y_high])
         plt.colorbar()
         plt.show()
     return image
@@ -237,15 +242,24 @@ def load(file_name: str) -> typing.Tuple[Tensor, typing.Any]:
 
 
 def is_valid_mixture_and_bias(mixture: Tensor, bias: Tensor) -> bool:
-    ok = True
-    ok = ok and (bias >= 0).all()
-    ok = ok and is_valid_mixture(mixture)
+    # ok = True
+    # ok = ok and (bias >= 0).all()
+    # ok = ok and is_valid_mixture(mixture)
+    # # t o d o : actually, i think the batch dimension is not needed for the bias
+    # ok = ok and len(bias.shape) == 2
+    # ok = ok and (bias.shape[0] == 1 or bias.shape[0] == mixture.shape[0])
+    # ok = ok and bias.shape[1] == mixture.shape[1]
+    # ok = ok and mixture.device == bias.device
+    # return ok
+
+    assert (bias >= 0).all()
+    assert is_valid_mixture(mixture)
     # todo: actually, i think the batch dimension is not needed for the bias
-    ok = ok and len(bias.shape) == 2
-    ok = ok and (bias.shape[0] == 1 or bias.shape[0] == mixture.shape[0])
-    ok = ok and bias.shape[1] == mixture.shape[1]
-    ok = ok and mixture.device == bias.device
-    return ok
+    assert len(bias.shape) == 2
+    assert (bias.shape[0] == 1 or bias.shape[0] == mixture.shape[0])
+    assert bias.shape[1] == mixture.shape[1]
+    assert mixture.device == bias.device
+    return True
 
 
 def evaluate_with_activation_fun(mixture: Tensor, bias: Tensor, xes: Tensor) -> Tensor:
@@ -262,19 +276,26 @@ def debug_show_with_activation_fun(mixture: Tensor, bias: Tensor, batch_i: int =
     assert batch_i < n_batch(mixture)
     assert layer_i < n_layers(mixture)
 
-    mixture_shape = mixture.shape
+    mixture_shape = list(mixture.shape)
     mixture_shape[0] = 1
     mixture_shape[1] = 1
     mixture = mixture.detach()[batch_i][layer_i].view(mixture_shape)
 
-    xv, yv = torch.meshgrid([torch.arange(x_low, x_high, step, dtype=torch.float, device=m.device()),
-                             torch.arange(y_low, y_high, step, dtype=torch.float, device=m.device())])
-    xes = torch.cat((xv.reshape(-1, 1), yv.reshape(-1, 1)), 1).view(1, -1, 2)
+    bias_shape = list(bias.shape)
+    bias_shape[0] = 1
+    bias_shape[1] = 1
+    bias_batch_i = 0 if bias.shape[0] == 1 else batch_i
+    bias_layer_i = 0 if bias.shape[1] == 1 else layer_i
+    bias = bias.detach()[bias_batch_i][bias_layer_i].view(bias_shape)
+
+    xv, yv = torch.meshgrid([torch.arange(x_low, x_high, step, dtype=torch.float, device=mixture.device),
+                             torch.arange(y_low, y_high, step, dtype=torch.float, device=mixture.device)])
+    xes = torch.cat((xv.reshape(-1, 1), yv.reshape(-1, 1)), 1).view(1, 1, -1, 2)
     values = evaluate_with_activation_fun(mixture, bias, xes)
     values = values.view(xv.size()[0], xv.size()[1]).t()
     if imshow:
         image = values.cpu().numpy()
-        plt.imshow(image, origin='lower')
+        plt.imshow(image)
         plt.colorbar()
         plt.show()
     return values
@@ -338,6 +359,7 @@ class NormalisationFactors:
 
 def normalise(mixture_in: Tensor, bias_in: Tensor) -> (Tensor, Tensor, NormalisationFactors):
     _n_batch = n_batch(mixture_in)
+    assert bias_in.shape[0] == 1 or bias_in.shape[0] == _n_batch
     _n_layers = n_layers(mixture_in)
     _n_dims = n_dimensions(mixture_in)
     weight_min, _ = torch.min(weights(mixture_in.detach()), dim=2)
@@ -348,7 +370,7 @@ def normalise(mixture_in: Tensor, bias_in: Tensor) -> (Tensor, Tensor, Normalisa
     weight_scaling = torch.ones(1, dtype=torch.float32, device=mixture_in.device) / weight_scaling
 
     weights_normalised = weights(mixture_in) * weight_scaling
-    bias_normalised = bias_in.view(1, _n_layers) * weight_scaling.view(_n_batch, _n_layers)
+    bias_normalised = bias_in.view(bias_in.shape[0], _n_layers) * weight_scaling.view(_n_batch, _n_layers)
 
     position_translation = (-torch.mean(positions(mixture_in.detach()), dim=2)).view(_n_batch, _n_layers, 1, _n_dims)
     positions_normalised = positions(mixture_in) + position_translation

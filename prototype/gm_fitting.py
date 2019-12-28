@@ -184,11 +184,10 @@ class Net(nn.Module):
 
 
 class Trainer:
-    def __init__(self, net: Net, n_training_samples: int = 50 * 50, learning_rate: float = 0.001, save_weights: bool = False):
+    def __init__(self, net: Net, n_training_samples: int = 50 * 50, learning_rate: float = 0.001):
         self.net = net
         self.n_training_samples = n_training_samples
         self.learning_rate = learning_rate
-        self.save_weights = save_weights
         self.criterion = nn.MSELoss()
         self.optimiser = optim.Adam(net.parameters(), lr=learning_rate)
         self.tensor_board_writer = torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard' / f'{self.net.name}_{datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}')
@@ -214,6 +213,7 @@ class Trainer:
         assert gm.is_valid_mixture_and_bias(mixture_in, bias_in)
 
         mixture_in, bias_in, _ = gm.normalise(mixture_in, bias_in)  # we normalise twice, but that shouldn't hurt (but performance). normalisation here is needed due to regularisation
+        # gm.debug_show_with_activation_fun(mixture_in, bias_in, batch_i=0, layer_i=0, x_low=-1.2, y_low=-1.2, x_high=1.2, y_high=1.2, step=0.02)
         batch_size = gm.n_batch(mixture_in)
         n_layers = gm.n_layers(mixture_in)
         n_dims = gm.n_dimensions(mixture_in)
@@ -240,7 +240,7 @@ class Trainer:
         # the network was moving gaussians out of the sampling radius
         p = (gm.positions(output_gm).abs() - 1)
         p = p.where(p > torch.zeros(1, device=p.device), torch.zeros(1, device=p.device))
-        regularisation = p.sum()
+        regularisation = p.mean()
 
         eval_time = time.perf_counter() - eval_start_time
 
@@ -270,8 +270,8 @@ class Trainer:
 
         if (epoch % 10 == 0 and epoch < 100) or (epoch % 100 == 0 and epoch < 1000) or (epoch % 1000 == 0 and epoch < 10000) or (epoch % 10000 == 0):
             image_size = 128
-            xv, yv = torch.meshgrid([torch.arange(-1.0, 1.0, 2 / image_size, dtype=torch.float, device=mixture_in.device),
-                                     torch.arange(-1.0, 1.0, 2 / image_size, dtype=torch.float, device=mixture_in.device)])
+            xv, yv = torch.meshgrid([torch.arange(-1.2, 1.2, 2.4 / image_size, dtype=torch.float, device=mixture_in.device),
+                                     torch.arange(-1.2, 1.2, 2.4 / image_size, dtype=torch.float, device=mixture_in.device)])
             xes = torch.cat((xv.reshape(-1, 1), yv.reshape(-1, 1)), 1).view(1, 1, -1, 2)
             image_target = gm.evaluate_with_activation_fun(mixture_in.detach(), bias_in.detach(), xes).view(-1, image_size, image_size)
             n_shown_images = 10
@@ -283,5 +283,6 @@ class Trainer:
             self.log_image("latent_space", latent_vector.detach(), epoch, (-5, 5))
 
         print(info)
-        if self.save_weights:
-            self.net.save()
+
+    def save_weights(self):
+        self.net.save()
