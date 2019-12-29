@@ -55,6 +55,16 @@ class GmConvolution(torch.nn.modules.Module):
         return torch.cat(out_mixtures, dim=1)
 
 
+class _NetCheckpointWrapper:
+    def __init__(self, net, x, bias):
+        self.net = net
+        self.x = x
+        self.bias = bias
+
+    def __call__(self, *args, **kwargs):
+        return self.net(self.x, self.bias)
+
+
 class GmBiasAndRelu(torch.nn.modules.Module):
     def __init__(self, n_layers: int, n_output_gaussians: int = 10, n_dimensions=2):
         # todo support variable number of outputs and configurable net archs. needs a better init + training routine (start with few gaussians etc?)
@@ -98,7 +108,10 @@ class GmBiasAndRelu(torch.nn.modules.Module):
             bias = self.bias if overwrite_bias is None else overwrite_bias
             bias = torch.abs(bias)
             if self.train_fitting_flag:
-                result = self.net(x, bias)[0]
+                wrapper = _NetCheckpointWrapper(self.net, x, bias)
+                net_params = tuple(self.net.parameters())
+                result = torch.utils.checkpoint.checkpoint(wrapper, *net_params)[0]
+
             else:
                 result = torch.utils.checkpoint.checkpoint(self.net, x, bias)[0]
             return result

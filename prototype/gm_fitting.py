@@ -276,11 +276,11 @@ class Trainer:
             image_target = gm.evaluate_with_activation_fun(mixture_in.detach(), bias_in.detach(), xes).view(-1, image_size, image_size)
             n_shown_images = 10
             fitted_mixture_image = gm.evaluate(output_gm.detach(), xes).view(-1, image_size, image_size)
-            self.log_images(f"target_image_mixture",
+            self.log_images(f"target_prediction",
                             [image_target[:n_shown_images, :, :].transpose(0, 1).reshape(image_size, -1),
                              fitted_mixture_image[:n_shown_images, :, :].transpose(0, 1).reshape(image_size, -1)],
                             epoch, [-0.5, 2])
-            self.log_image("latent_space", latent_vector.detach(), epoch, (-5, 5))
+            # self.log_image("latent_space", latent_vector.detach(), epoch, (-5, 5))
 
         print(info)
 

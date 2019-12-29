@@ -23,29 +23,34 @@ relu2.net = relu1.net
 relu1.train_fitting(True)
 relu2.train_fitting(True)
 trainer1 = gm_fitting.Trainer(relu1)
-trainer2 = gm_fitting.Trainer(relu1)
+trainer2 = gm_fitting.Trainer(relu2)
 epoch = 0
 for j in range(1000):
     for i in range(599):
-        gmc1 = gm_modules.GmConvolution(n_layers_in=1, n_layers_out=5, n_kernel_components=random.randint(1, n_kernel_components), position_range=4, covariance_range=1).cuda()
+        # gmc1 = gm_modules.GmConvolution(n_layers_in=1, n_layers_out=5, n_kernel_components=random.randint(1, n_kernel_components), position_range=4, covariance_range=1).cuda()
+        gmc1 = gm_modules.GmConvolution(n_layers_in=1, n_layers_out=5, n_kernel_components=n_kernel_components, position_range=4, covariance_range=1).cuda()
         x, l = gm.load(f"mnist/train_{i}")
         x = x.to('cuda')
         x = gmc1(x)
         trainer1.train_on(x, torch.rand_like(relu1.bias) * 0.3, epoch)
-        epoch += 1
-
-        # x = x.detach()
-        # x = relu1(x)
-        # x = gmc2(x)
-        #
-        # trainer2.train_on(x, torch.rand_like(relu2.bias) * 0.3, epoch)
         # epoch += 1
 
+        gmc2 = gm_modules.GmConvolution(n_layers_in=5, n_layers_out=3, n_kernel_components=n_kernel_components).cuda()
+        x = x.detach()
+        x = relu1(x)
+        x = gmc2(x)
+
+        trainer2.train_on(x, torch.rand_like(relu2.bias) * 0.3, epoch)
+        epoch += 1
+#
         if epoch % 100 == 0:
             trainer1.save_weights()
     trainer1.save_weights()
 relu1.train_fitting(False)
 relu2.train_fitting(False)
+
+gmc1 = gm_modules.GmConvolution(n_layers_in=1, n_layers_out=5, n_kernel_components=n_kernel_components).cuda()
+gmc2 = gm_modules.GmConvolution(n_layers_in=5, n_layers_out=3, n_kernel_components=n_kernel_components).cuda()
 
 m, l = gm.load("mnist/test_0")
 m = m[:10]
