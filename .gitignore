@@ -7,3 +7,8 @@
 /documentation/gm_convolution/derivation.synctex.gz
 /documentation/gm_convolution/gm_convolution.pdf
 /prototype/__pycache__/*
+/documentation/*/*.aux
+/documentation/*/*.log
+/documentation/*/*.out
+*.synctex.gz
+/documentation/*/*.pdf
