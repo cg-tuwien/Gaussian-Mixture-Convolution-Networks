@@ -1,0 +1,168 @@
+% ---------------------------------------------------------------------------
+\documentclass{paper}
+
+\usepackage[T1]{fontenc}
+
+%\usepackage{cite}  % comment out for biblatex with backend=biber 
+% ---------------------------
+
+
+
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsthm}
+\usepackage{supertabular}
+%\usepackage{cite}
+%\usepackage[utf8]{inputenc}
+\usepackage[font={it},labelfont={bf,up}]{caption}
+\usepackage[font={small,it}]{subcaption}
+\usepackage{hyperref}
+\hypersetup{
+	colorlinks=true,
+	linkcolor=blue,
+	filecolor=magenta,      
+	urlcolor=blue,
+	citecolor=magenta,
+}
+
+\newtheorem{theorem}{Theorem}
+% end of prologue
+
+\newcommand{\todo}[1]{{\color{red}\textbf{(TODO: {#1})}}} % Comment for the final version, to raise errors.
+\newcommand{\MW}[1]{{\color[rgb]{0,0.7,0}\textbf{(MW: {#1})}}} % Comment for the final version, to raise errors.
+\newcommand{\AC}[1]{{\color{magenta}{#1}}} % Comment for the final version, to raise errors.
+\newcommand{\abs}[1]{\left| #1 \right|}
+\newcommand{\tAbs}[1]{| #1 |}
+\newcommand{\F}{\ensuremath{\mathcal{F}}}
+\newcommand{\vr}[1]{\ensuremath{\boldsymbol{#1}}}
+\newcommand{\tr}[1]{\ensuremath{\boldsymbol{#1}}}
+\newcommand{\T}[1]{\ensuremath{{#1}^T}}
+\newcommand{\f}[1]{\operatorname{#1}}
+
+\newcommand{\alphavec}[0]{\ensuremath{\vr{\alpha{}}}}
+\newcommand{\betavec}[0]{\ensuremath{\vr{\beta{}}}}
+\newcommand{\omegavec}[0]{\ensuremath{\vr{\omega{}}}}
+\newcommand{\xivec}[0]{\ensuremath{\vr{\xi{}}}}
+\newcommand{\avec}[0]{\ensuremath{\vr{a}}}
+\newcommand{\bvec}[0]{\ensuremath{\vr{b}}}
+\newcommand{\xvec}[0]{\ensuremath{\vr{x}}}
+\newcommand{\yvec}[0]{\ensuremath{\vr{y}}}
+\newcommand{\zvec}[0]{\ensuremath{\vr{z}}}
+
+\newcommand{\Ctns}[0]{\ensuremath{\tr{C}}}
+\newcommand{\Gammatns}[0]{\ensuremath{\tr{\Gamma}}}
+
+\newcount\colveccount
+\newcommand*\colvec[1]{
+	\global\colveccount#1
+	\begin{pmatrix}
+		\colvecnext
+	}
+	\def\colvecnext#1{
+		#1
+		\global\advance\colveccount-1
+		\ifnum\colveccount>0
+		\\
+		\expandafter\colvecnext
+		\else
+	\end{pmatrix}
+	\fi
+}
+
+% ---------------------------------------------------------------------
+
+\title{Integrals of Gaussian Mixtures}
+\author{Adam Celarek\\Research Unit of Computer Graphics, TU Wien}
+
+\begin{document}
+\maketitle
+
+%-------------------------------------------------------------------------
+\section{Definitions}
+\subsection*{Notation}
+\begin{center}
+	\begin{supertabular}{rp{8cm}}
+		$a$	& Scalar \\
+		$\vr{a}$	& Column vector \\
+		$A$			& Matrix \\ 
+		$\tr{A}$	& Tensor/Array with more than 2 dimensions, e.g. $\tr{A} \in \mathbb{R}^{L \times M \times N}$ \\ 
+		$\tr{A}_{\star, 3, 2}$
+					& Element of an array.
+					The first index is the row, the second a column and the third a slice.
+					"$\star$" selects all elements in that dimension.
+					So in this case the full 3rd column of the second slice. \\ 
+		$A^T, \vr{a}^T$
+					& Transpose of $A$ and $\vec{a}$ (row vector) \\
+		$i$			& Imaginary unit \\
+		$\vr{x}, \vr{\omega}$
+					& Spatial (time) domain and frequency domain coordinates \\
+		$\f{f}(\vr{x})$
+					& Function in spatial space \\
+		$\f{F}(\vr{\omega})$
+					& Function in Fourier space \\
+		$\f{F} = \F \f{f}$
+					& Fourier transform \\
+		$\f{f} = \F^{-1} \f{F}$
+					& Inverse Fourier transform \\
+	\end{supertabular}
+\end{center}
+Zero based indices are used and summation ends at $N-1$.
+
+\subsection*{Gaussian function and mixture model}
+We define the multi dimensional Gaussian function as
+\begin{align}
+\label{eq:gaussian_definition}
+\f{g}(\vr{x}, a, \vr{b}, C) = a e^{-\frac{1}{2}(\vr{x}-\vr{b})^TC^{-1}(\vr{x}-\vr{b})},
+\end{align}
+where $a$ is the height, $\vr{b}$ the shift, $C$ the shape (covariance) of the Gaussian, and all parameters are real.
+The factor $\frac{1}{2}$ and the inversion of $C$ are there to make convolution simpler.
+This Gaussian would turn into a normal distribution if $a$ were replaced with the inverse of the integral of $e^{-\frac{1}{2}...}$.
+
+A Gaussian mixture is defined as
+\begin{align}
+	\f{gm}(\vr{x}, \vr{a}, B, \tr{C}) = \sum_{n=0}^{N} \f{g}(\vr{x}, \vr{a}_n, B_{\star, n}, C_{\star, \star, n}),
+\end{align}
+where $N$ is the number of Gaussians.
+Our definition does not include any normalisation.
+If desired, this could be included in $\vr{a}$.
+
+
+\section{Integral}
+According to wikipedia\cite{wiki_simple_gaussian_int}
+\begin{align}
+	\label{eq: simple_guassian_int}
+	\int_{\mathbb{R}^n} e^{-\vr{x}^TA\vr{x}} = \sqrt{\frac{\pi^n}{\det{A}}},
+\end{align}
+and\cite{wiki_det_inverse}
+\begin{align}
+\det{A^{-1}} &= \frac{1}{\det{A}}, \text{ and}\\
+\det{cA} &= c^n \det{A}
+\end{align}
+for an $n \times n$ matrix.
+
+In our Gaussian definition\ref{eq:gaussian_definition} we use an inverted covariance matrix, so Equation \ref{eq: simple_guassian_int} becomes
+\begin{align}
+	\int_{\mathbb{R}^n} e^{-\vr{x}^TA^{-1}\vr{x}} = \sqrt{\pi^n \det{A}}.
+\end{align}
+
+The position shift $\vr{b}$ has no effect on the integral, therefore our result for a single Gaussian is
+
+\begin{align}
+	\int_{\mathbb{R}^n} a e^{-\frac{1}{2}(\vr{x}-\vr{b})^TC^{-1}(\vr{x}-\vr{b})} &= a \int_{\mathbb{R}^n} e^{-\frac{1}{2}\vr{x}^TC^{-1}\vr{x}} = a \sqrt{\pi^n \det{2 C}} \\
+	&= a \sqrt{(2 \pi)^n \det{C}}.
+\end{align}
+
+For a Gaussian mixture it is
+\begin{align}
+	\int_{\mathbb{R}^n} \f{gm}(\vr{x}, \vr{a}, B, \tr{C}) &= \int_{\mathbb{R}^n} \sum_{m=0}^{M} \f{g}(\vr{x}, \vr{a}_m, B_{\star, m}, C_{\star, \star, m}) \\
+	&= \sum_{m=0}^{M} a_m \sqrt{(2 \pi)^n \det{C_{\star, \star, m}}}.
+\end{align}
+
+
+\begin{thebibliography}{9}% 2nd arg is the width of the widest label.
+	\bibitem{wiki_simple_gaussian_int} \url{https://en.wikipedia.org/w/index.php?title=Gaussian_function&oldid=931706640#Multi-dimensional_Gaussian_function}
+	\bibitem{wiki_det_inverse} \url{https://en.wikipedia.org/w/index.php?title=Determinant&oldid=930476527#Properties_of_the_determinant}
+\end{thebibliography}
+
+\end{document}
