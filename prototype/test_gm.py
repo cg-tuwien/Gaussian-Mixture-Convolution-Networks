@@ -1,3 +1,4 @@
+import math
 import unittest
 import torch
 import numpy as np
@@ -132,7 +133,7 @@ class TestGM(unittest.TestCase):
 
             max_l2_err = ((reference_solution - our_solution) ** 2).max()
             # plt.imshow((reference_solution - our_solution)); plt.colorbar(); plt.show();
-            assert max_l2_err < 0.0000001
+            self.assertLess(max_l2_err, 0.0000001)
 
     def test_mixture_normalisation(self):
         n_batch = 10
@@ -159,6 +160,28 @@ class TestGM(unittest.TestCase):
         #     gm.debug_show(mixture_normalised, i, 0, -10, -10, 10, 10, 0.1)
         #     gm.debug_show(mixture_out, i, 0, -10, -10, 10, 10, 0.1)
         #     input("Press enter to continue!")
+
+    def test_mixture_integration(self):
+        for n_dims in range(2, 4):
+            print(n_dims)
+            n_batch = 2
+            n_layers = 4
+            gm1 = gm.generate_random_mixtures(n_batch=n_batch, n_layers=n_layers, n_components=3, n_dims=n_dims, pos_radius=0.5, cov_radius=0.2)
+            gm1_covs = gm.covariances(gm1)
+            gm1_covs += (torch.eye(n_dims) * 0.02).view(1, 1, 1, n_dims, n_dims)
+            n_samples = 2000000
+            integration_area_side_length = 6
+
+            xes = (torch.rand(1, 1, n_samples, n_dims) - 0.5) * integration_area_side_length
+
+            gm1_samples = gm.evaluate(gm1, xes)
+
+            reference_solution = gm1_samples.sum(2).cpu() / (n_samples / (integration_area_side_length**n_dims))
+            my_solution = gm.integrate(gm1)
+
+            for b in range(n_batch):
+                for l in range(n_layers):
+                    self.assertLess(abs(my_solution[b, l].item() - reference_solution[b, l].item()), 0.015)
 
 
 if __name__ == '__main__':

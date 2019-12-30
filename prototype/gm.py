@@ -64,6 +64,14 @@ def pack_mixture(weights: Tensor, positions: Tensor, covariances: Tensor) -> Ten
     return torch.cat((weights.view(weight_shape), positions, covariances.view(cov_shape)), dim=len(positions.shape) - 1)
 
 
+def integrate(mixture: Tensor) -> Tensor:
+    assert is_valid_mixture(mixture)
+
+    dets = torch.det(covariances(mixture))
+    values = weights(mixture) * torch.sqrt((2*math.pi)**n_dimensions(mixture) * dets)
+    return values.sum(dim=2)
+
+
 def is_valid_mixture(mixture: Tensor) -> bool:
     # # mixture: 1st dimension: batch, 2nd: layer, 3rd: component, 4th: vector of gaussian data
     # ok = True
