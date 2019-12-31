@@ -37,7 +37,7 @@ class GmMnistDataSet(torch.utils.data.Dataset):
 class Net(nn.Module):
     def __init__(self):
         super(Net, self).__init__()
-        n_layers_1 = 6
+        n_layers_1 = 5
         n_layers_2 = 6
         self.gmc1 = gm_modules.GmConvolution(n_layers_in=1, n_layers_out=n_layers_1, n_kernel_components=n_kernel_components).cuda()
         self.relu1 = gm_modules.GmBiasAndRelu(n_layers=n_layers_1, n_output_gaussians=10).cuda()
@@ -62,6 +62,7 @@ class Net(nn.Module):
         self.relu2.train_fitting(True)
         self.trainer2.train_on(x, self.relu2.bias)
         self.relu2.train_fitting(False)
+        self.trainer2.save_weights()
 
         x = self.relu2(x)
         x = self.gmc3(x)
@@ -73,8 +74,8 @@ class Net(nn.Module):
 
 def train(args, model, device, train_loader, optimizer, epoch):
     model.train()
+    tensor_board_writer = torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard' / f'gm_mnist_{datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}')
     for batch_idx, (data, target) in enumerate(train_loader):
-        tensor_board_writer = torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard' / f'gm_mnist_{datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}')
 
         data, target = data.to(device), target.to(device)
         optimizer.zero_grad()
@@ -114,7 +115,7 @@ def main():
                         help='input batch size for training (default: 100)')
     parser.add_argument('--test-batch-size', type=int, default=1000, metavar='N',
                         help='input batch size for testing (default: 1000)')
-    parser.add_argument('--epochs', type=int, default=1, metavar='N',
+    parser.add_argument('--epochs', type=int, default=8, metavar='N',
                         help='number of epochs to train (default: 1)')
     parser.add_argument('--lr', type=float, default=1, metavar='LR',
                         help='learning rate (default: 0.01)')
