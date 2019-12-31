@@ -81,6 +81,8 @@ def is_valid_mixture(mixture: Tensor) -> bool:
     # return ok
 
     # mixture: 1st dimension: batch, 2nd: layer, 3rd: component, 4th: vector of gaussian data
+    assert not torch.any(torch.isnan(mixture))
+    assert not torch.any(torch.isinf(mixture))
     assert len(mixture.shape) == 4
     assert n_dimensions(mixture) == 2 or n_dimensions(mixture) == 3   # also checks the length of the Gaussian vector
     assert torch.all(covariances(mixture).det() > 0)
@@ -226,7 +228,7 @@ def save(mixture: Tensor, file_name: str, meta_info=None) -> None:
 
 
 def load(file_name: str) -> typing.Tuple[Tensor, typing.Any]:
-    dictionary = torch.load(config.data_base_path / file_name)
+    dictionary = torch.load(config.data_base_path / 'mnist' / file_name)
     assert dictionary["type"] == "gm.Mixture"
     if dictionary["version"] == 3:
         weights = dictionary["weights"]
@@ -341,18 +343,31 @@ def convolve(m1: Tensor, m2: Tensor) -> Tensor:
     assert n_batch(m1) == 1 or n_batch(m2) == 1 or n_batch(m1) == n_batch(m2)
     assert n_layers(m1) == n_layers(m2)
     assert n_dimensions(m1) == n_dimensions(m2)
+    assert is_valid_mixture(m1)
+    assert is_valid_mixture(m2)
     m1, m2 = _polynomMulRepeat(m1, m2)
 
     m1_c = covariances(m1)
     m2_c = covariances(m2)
     m_new = m1 + m2
     m_new_c = covariances(m_new)
+    assert (torch.det(m_new_c) > 0).all()
     detc1tc2 = torch.det(m1_c) * torch.det(m2_c)
     detc1pc2 = torch.det(m_new_c)
     m1_w = weights(m1)
     m2_w = weights(m2)
+    assert not torch.isnan(m1_w).any()
+    assert not torch.isnan(m2_w).any()
+    assert not torch.isnan(detc1tc2).any()
+    assert not torch.isnan(detc1pc2).any()
+    assert not torch.isnan(torch.sqrt(detc1tc2)).any()
+    assert not torch.isnan(torch.sqrt(detc1pc2)).any()
     m_new_w = math.pow(math.sqrt(2 * math.pi), n_dimensions(m1)) * m1_w * m2_w * torch.sqrt(detc1tc2) / torch.sqrt(detc1pc2)
-    m_new[:, :, :, 0] = m_new_w
+    assert not torch.isnan(m_new_w).any()
+    m_new_w = m_new_w.view(n_batch(m_new), n_layers(m_new), n_components(m_new), 1)
+    assert not torch.isnan(m_new_w).any()
+    m_new = m_new[:, :, :, 1:]
+    m_new = torch.cat((m_new_w, m_new), dim=-1)
 
     assert is_valid_mixture(m_new)
     return m_new

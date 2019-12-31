@@ -1,3 +1,4 @@
+import math
 import time
 import datetime
 import pathlib
@@ -17,11 +18,10 @@ import madam_imagetools
 import gm
 import gm_fitting
 import mat_tools
-import config
 
 
 class GmConvolution(torch.nn.modules.Module):
-    def __init__(self, n_layers_in: int, n_layers_out: int, n_kernel_components: int = 4, n_dims: int = 2, position_range: float = 1, covariance_range: float = 0.25, weight_min=-1, weight_max=1):
+    def __init__(self, n_layers_in: int, n_layers_out: int, n_kernel_components: int = 4, n_dims: int = 2, position_range: float = 1, covariance_range: float = 0.25, weight_min=-1, weight_max=1, covariance_epsilon = 0.0001):
         super(GmConvolution, self).__init__()
         self.n_layers_in = n_layers_in
         self.n_layers_out = n_layers_out
@@ -31,16 +31,22 @@ class GmConvolution(torch.nn.modules.Module):
         self.covariance_range = covariance_range
         self.weight_min = weight_min
         self.weight_max = weight_max
+        self.covariance_epsilon = covariance_epsilon
 
-        self.kernels = torch.nn.modules.ParameterList()
+        self.weights_and_positions = torch.nn.modules.ParameterList()
+        self.covariance_factors = torch.nn.modules.ParameterList()
 
         for i in range(self.n_layers_out):
-            k = gm.generate_random_mixtures(n_batch=1, n_layers=n_layers_in, n_components=n_kernel_components, n_dims=n_dims,
-                                            pos_radius=position_range, cov_radius=covariance_range, weight_min=weight_min, weight_max=weight_max)
             # positive mean produces a rather positive gm. i believe this is a better init
-            weights = gm.weights(k)
-            weights -= gm.weights(k).mean(dim=2).view(1, -1, 1) - 0.2
-            self.kernels.append(torch.nn.Parameter(k))
+            weights = torch.rand(1, n_layers_in, n_kernel_components, 1, dtype=torch.float32) * (weight_max - weight_min) + weight_min
+            weights -= weights.mean() - 0.2
+            positions = torch.rand(1, n_layers_in, n_kernel_components, n_dims, dtype=torch.float32) * 2 * position_range - position_range
+            self.weights_and_positions.append(torch.nn.Parameter(torch.cat((weights, positions), dim=-1)))
+
+            # a psd matrix can be generated with A A'. we learn A and generate a pd matrix via  A A' + eye * epsilon
+            covariance_factors = torch.rand(1, n_layers_in, n_kernel_components, n_dims, n_dims, dtype=torch.float32) * 2 - 1
+            covariance_factors = covariance_factors * math.sqrt(covariance_range)
+            self.covariance_factors.append(torch.nn.Parameter(covariance_factors))
 
     def forward(self, x: Tensor) -> Tensor:
         out_mixtures = []
@@ -49,7 +55,11 @@ class GmConvolution(torch.nn.modules.Module):
         out_mixture_shape[2] = -1
 
         for i in range(self.n_layers_out):
-            m = gm.convolve(x, self.kernels[i])
+            A = self.covariance_factors[i]
+            # a psd matrix can be generated with A A'. we learn A and generate a pd matrix via  A A' + eye * epsilon
+            covariances = A @ A.transpose(-1, -2) + torch.eye(self.n_dims, dtype=torch.float32, device=A.device) * self.covariance_epsilon
+            kernel = torch.cat((self.weights_and_positions[i], covariances.view(1, self.n_layers_in, self.n_kernel_components, self.n_dims * self.n_dims)), dim=-1)
+            m = gm.convolve(x, kernel)
             out_mixtures.append(m.view(out_mixture_shape))
 
         return torch.cat(out_mixtures, dim=1)
@@ -96,8 +106,8 @@ class GmBiasAndRelu(torch.nn.modules.Module):
             self.net.requires_grad_(True)
             self.bias.requires_grad_(False)
         else:
-            self.net.requires_grad_(True)
-            self.bias.requires_grad_(False)
+            self.net.requires_grad_(False)
+            self.bias.requires_grad_(True)
 
     def forward(self, x: Tensor, overwrite_bias: Tensor = None, division_axis: int=0) -> Tensor:
         # todo: think of something that would make it possible to do live learning of the fitting network

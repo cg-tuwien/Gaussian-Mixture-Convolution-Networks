@@ -169,17 +169,7 @@ class Net(nn.Module):
         normalised_out = gm.pack_mixture(weights.view(n_batch, n_layers, self.n_output_gaussians),
                                          positions.view(n_batch, n_layers, self.n_output_gaussians, n_dims),
                                          covariances.view(n_batch, n_layers, self.n_output_gaussians, n_dims, n_dims))
-        try:
-            # don't test when in release mode
-            assert gm.is_valid_mixture(normalised_out)
-        except AssertionError:
-            _, _, tb = sys.exc_info()
-            traceback.print_tb(tb) # Fixed format
-            tb_info = traceback.extract_tb(tb)
-            filename, line, func, text = tb_info[-1]
-
-            print('An error occurred on line {} in statement {}'.format(line, text))
-            exit(1)
+        assert gm.is_valid_mixture(normalised_out)
         return gm.de_normalise(normalised_out, normalisation_factors), latent_vector
 
 
