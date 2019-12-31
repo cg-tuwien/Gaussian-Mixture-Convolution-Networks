@@ -1,5 +1,7 @@
 from __future__ import print_function
 import argparse
+import datetime
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -10,12 +12,13 @@ from torch.optim.lr_scheduler import StepLR
 
 import config
 import gm
+import gm_fitting
 import gm_modules
 
 
 # based on https://github.com/pytorch/examples/blob/master/mnist/main.py
 n_kernel_components = 8
-torch.autograd.set_detect_anomaly(True)
+# torch.autograd.set_detect_anomaly(True)
 
 
 class GmMnistDataSet(torch.utils.data.Dataset):
@@ -43,22 +46,36 @@ class Net(nn.Module):
         self.gmc3 = gm_modules.GmConvolution(n_layers_in=n_layers_2, n_layers_out=10, n_kernel_components=n_kernel_components).cuda()
         self.relu2.net = self.relu1.net
 
+        self.trainer1 = gm_fitting.Trainer(self.relu1)
+        self.trainer2 = gm_fitting.Trainer(self.relu2)
+
     def forward(self, in_x):
         x = self.gmc1(in_x)
+
+        self.relu1.train_fitting(True)
+        self.trainer1.train_on(x, self.relu1.bias)
+        self.relu1.train_fitting(False)
+
         x = self.relu1(x)
-
         x = self.gmc2(x)
-        x = self.relu2(x)
 
+        self.relu2.train_fitting(True)
+        self.trainer2.train_on(x, self.relu2.bias)
+        self.relu2.train_fitting(False)
+
+        x = self.relu2(x)
         x = self.gmc3(x)
         x = gm.integrate(x)
         x = F.log_softmax(x, dim=1)
         return x.view(-1, 10)
 
 
+
 def train(args, model, device, train_loader, optimizer, epoch):
     model.train()
     for batch_idx, (data, target) in enumerate(train_loader):
+        tensor_board_writer = torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard' / f'gm_mnist_{datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}')
+
         data, target = data.to(device), target.to(device)
         optimizer.zero_grad()
         output = model(data)
@@ -68,7 +85,8 @@ def train(args, model, device, train_loader, optimizer, epoch):
         if batch_idx % args.log_interval == 0:
             pred = output.detach().argmax(dim=1, keepdim=True)  # get the index of the max log-probability
             correct = pred.eq(target.view_as(pred)).sum().item()
-
+            tensor_board_writer.add_scalar("0. loss", loss.item(), batch_idx)
+            tensor_board_writer.add_scalar("1. accuracy", 100 * correct / len(data), batch_idx)
             print(f'Train Epoch: {epoch} [{batch_idx * len(data)}/{len(train_loader.dataset) * len(data)} ({100. * batch_idx / len(train_loader):.0f}%)]\tLoss: {loss.item():.6f} (accuracy: {100 * correct / len(data)})')
 
 

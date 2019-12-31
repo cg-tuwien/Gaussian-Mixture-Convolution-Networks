@@ -197,7 +197,7 @@ class Trainer:
         images = np.concatenate(images, axis=0)
         self.tensor_board_writer.add_image(tag, images, epoch, dataformats='NHWC')
 
-    def train_on(self, mixture_in: Tensor, bias_in: Tensor, epoch: int):
+    def train_on(self, mixture_in: Tensor, bias_in: Tensor, epoch: int = None):
         mixture_in = mixture_in.detach()
         bias_in = bias_in.detach()
         assert gm.is_valid_mixture_and_bias(mixture_in, bias_in)
@@ -258,7 +258,7 @@ class Trainer:
         self.tensor_board_writer.add_scalar("6. eval_time", eval_time, epoch)
         self.tensor_board_writer.add_scalar("7. backward_time", backward_time, epoch)
 
-        if (epoch % 10 == 0 and epoch < 100) or (epoch % 100 == 0 and epoch < 1000) or (epoch % 1000 == 0 and epoch < 10000) or (epoch % 10000 == 0):
+        if epoch is None or (epoch % 10 == 0 and epoch < 100) or (epoch % 100 == 0 and epoch < 1000) or (epoch % 1000 == 0 and epoch < 10000) or (epoch % 10000 == 0):
             image_size = 128
             xv, yv = torch.meshgrid([torch.arange(-1.2, 1.2, 2.4 / image_size, dtype=torch.float, device=mixture_in.device),
                                      torch.arange(-1.2, 1.2, 2.4 / image_size, dtype=torch.float, device=mixture_in.device)])
