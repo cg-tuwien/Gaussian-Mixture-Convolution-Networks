@@ -21,7 +21,10 @@ import mat_tools
 
 
 class GmConvolution(torch.nn.modules.Module):
-    def __init__(self, n_layers_in: int, n_layers_out: int, n_kernel_components: int = 4, n_dims: int = 2, position_range: float = 1, covariance_range: float = 0.25, weight_sd=0.1, covariance_epsilon = 0.0001):
+    def __init__(self, n_layers_in: int, n_layers_out: int, n_kernel_components: int = 4, n_dims: int = 2,
+                 position_range: float = 1, covariance_range: float = 0.25, weight_sd=0.1,
+                 learn_positions: bool = True, learn_covariances: bool = True,
+                 covariance_epsilon: float = 0.0001):
         super(GmConvolution, self).__init__()
         self.n_layers_in = n_layers_in
         self.n_layers_out = n_layers_out
@@ -31,17 +34,30 @@ class GmConvolution(torch.nn.modules.Module):
         self.covariance_range = covariance_range
         self.weight_sd = weight_sd
         self.covariance_epsilon = covariance_epsilon
+        self.learn_positions = learn_positions
+        self.learn_covariances = learn_covariances
 
-        self.weights_and_positions = torch.nn.modules.ParameterList()
+        self.weights = torch.nn.modules.ParameterList()
+        self.positions = torch.nn.modules.ParameterList()
         self.covariance_factors = torch.nn.modules.ParameterList()
+
 
         # todo: probably can optimise performance by putting kernels into their own dimension
         for i in range(self.n_layers_out):
             # positive mean produces a rather positive gm. i believe this is a better init
             weights = torch.randn(1, n_layers_in, n_kernel_components, 1, dtype=torch.float32) * weight_sd
 
-            positions = torch.rand(1, n_layers_in, n_kernel_components, n_dims, dtype=torch.float32) * 2 * position_range - position_range
-            self.weights_and_positions.append(torch.nn.Parameter(torch.cat((weights, positions), dim=-1)))
+            self.weights.append(torch.nn.Parameter(weights))
+            if self.learn_positions:
+                positions = torch.rand(1, n_layers_in, n_kernel_components, n_dims, dtype=torch.float32) * 2 * position_range - position_range
+            else:
+                assert(self.n_dims == 2)
+                angles = torch.arange(0, 2 * math.pi, 2 * math.pi / (n_kernel_components - 1))
+                xes = torch.cat((torch.zeros(1, dtype=torch.float), torch.sin(angles)), dim=0)
+                yes = torch.cat((torch.zeros(1, dtype=torch.float), torch.cos(angles)), dim=0)
+                positions = torch.cat((xes.view(-1, 1), yes.view(-1, 1)), dim=1) * position_range
+                positions = positions.view(1, 1, n_kernel_components, 2).repeat((1, n_layers_in, 1, 1))
+            self.positions.append(torch.nn.Parameter(positions))
 
             # initialise with a rather round covariance matrix
             # a psd matrix can be generated with A A'. we learn A and generate a pd matrix via  A A' + eye * epsilon
@@ -50,11 +66,19 @@ class GmConvolution(torch.nn.modules.Module):
             covariance_factors = covariance_factors * math.sqrt(covariance_range)
             self.covariance_factors.append(torch.nn.Parameter(covariance_factors))
 
+        if not self.learn_positions:
+            for t in self.positions:
+                t.requires_grad = False
+
+        if not self.learn_covariances:
+            for t in self.covariance_factors:
+                t.requires_grad = False
+
     def kernel(self, index: int):
         # a psd matrix can be generated with A A'. we learn A and generate a pd matrix via  A A' + eye * epsilon
         A = self.covariance_factors[index]
         covariances = A @ A.transpose(-1, -2) + torch.eye(self.n_dims, dtype=torch.float32, device=A.device) * self.covariance_epsilon
-        kernel = torch.cat((self.weights_and_positions[index], covariances.view(1, self.n_layers_in, self.n_kernel_components, self.n_dims * self.n_dims)), dim=-1)
+        kernel = torch.cat((self.weights[index], self.positions[index], covariances.view(1, self.n_layers_in, self.n_kernel_components, self.n_dims * self.n_dims)), dim=-1)
         assert gm.is_valid_mixture(kernel)
         return kernel
 
@@ -130,7 +154,7 @@ class GmBiasAndRelu(torch.nn.modules.Module):
             self.net.requires_grad_(False)
             self.bias.requires_grad_(True)
 
-    def forward(self, x: Tensor, overwrite_bias: Tensor = None, division_axis: int=0) -> Tensor:
+    def forward(self, x: Tensor, overwrite_bias: Tensor = None, division_axis: int = 0) -> Tensor:
         # todo: think of something that would make it possible to do live learning of the fitting network
         n_dimensions = gm.n_dimensions(x)
         n_components = gm.n_components(x)
