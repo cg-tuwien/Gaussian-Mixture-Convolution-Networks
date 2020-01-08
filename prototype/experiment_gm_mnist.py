@@ -36,7 +36,7 @@ class GmMnistDataSet(torch.utils.data.Dataset):
 
 
 class Net(nn.Module):
-    def __init__(self, train_fitting=True):
+    def __init__(self, train_fitting=False):
         super(Net, self).__init__()
         n_layers_1 = 5
         n_layers_2 = 6
@@ -49,6 +49,8 @@ class Net(nn.Module):
         self.gmc3 = gm_modules.GmConvolution(n_layers_in=n_layers_2, n_layers_out=10, n_kernel_components=n_kernel_components, position_range=8, covariance_range=4).cuda()
         self.relu3 = gm_modules.GmBiasAndRelu(n_layers=10, n_output_gaussians=10).cuda()
         self.maxPool3 = gm_modules.MaxPooling(2)
+
+        # todo: all the relus must use the same net for now, because all of them save it to the same location on disc.
         self.relu2.net = self.relu1.net
         self.relu3.net = self.relu1.net
 
@@ -59,35 +61,41 @@ class Net(nn.Module):
             self.trainer2 = gm_fitting.Trainer(self.relu2, n_training_samples=400)
             self.trainer3 = gm_fitting.Trainer(self.relu3, n_training_samples=400)
 
-    def forward(self, in_x):
-        x = self.gmc1(in_x)
-
+    def forward(self, in_x: torch.Tensor):
         if self.train_fitting and self.training:
+            x = self.gmc1(in_x.detach())
             self.relu1.train_fitting(True)
             self.trainer1.train_on(x, self.relu1.bias, self.train_fitting_epoch)
             self.relu1.train_fitting(False)
 
-        x = self.relu1(x)
-        x = self.maxPool1(x)
-        x = self.gmc2(x)
+            x = self.relu1(x)
+            x = self.maxPool1(x)
+            x = self.gmc2(x)
 
-        if self.train_fitting and self.training:
             self.relu2.train_fitting(True)
             self.trainer2.train_on(x, self.relu2.bias, self.train_fitting_epoch)
             self.relu2.train_fitting(False)
-            self.trainer2.save_weights()
 
-        x = self.relu2(x)
-        x = self.maxPool2(x)
-        x = self.gmc3(x)
+            x = self.relu2(x)
+            x = self.maxPool2(x)
+            x = self.gmc3(x)
 
-        if self.train_fitting and self.training:
             self.relu3.train_fitting(True)
             self.trainer3.train_on(x, self.relu3.bias, self.train_fitting_epoch)
             self.relu3.train_fitting(False)
+
             self.train_fitting_epoch = self.train_fitting_epoch + 1
             self.trainer3.save_weights()
 
+        x = self.gmc1(in_x)
+        x = self.relu1(x)
+        x = self.maxPool1(x)
+
+        x = self.gmc2(x)
+        x = self.relu2(x)
+        x = self.maxPool2(x)
+
+        x = self.gmc3(x)
         x = self.relu3(x)
         x = self.maxPool3(x)
 
