@@ -36,17 +36,42 @@ class GmConvolution(torch.nn.modules.Module):
         self.weights_and_positions = torch.nn.modules.ParameterList()
         self.covariance_factors = torch.nn.modules.ParameterList()
 
+        # todo: probably can optimise performance by putting kernels into their own dimension
         for i in range(self.n_layers_out):
             # positive mean produces a rather positive gm. i believe this is a better init
             weights = torch.rand(1, n_layers_in, n_kernel_components, 1, dtype=torch.float32) * (weight_max - weight_min) + weight_min
-            weights -= weights.mean() - 0.2
+            weights -= weights.mean() - 0.05
             positions = torch.rand(1, n_layers_in, n_kernel_components, n_dims, dtype=torch.float32) * 2 * position_range - position_range
             self.weights_and_positions.append(torch.nn.Parameter(torch.cat((weights, positions), dim=-1)))
 
+            # initialise with a rather round covariance matrix
             # a psd matrix can be generated with A A'. we learn A and generate a pd matrix via  A A' + eye * epsilon
             covariance_factors = torch.rand(1, n_layers_in, n_kernel_components, n_dims, n_dims, dtype=torch.float32) * 2 - 1
+            covariance_factors = covariance_factors * 0.1 + torch.eye(self.n_dims)
             covariance_factors = covariance_factors * math.sqrt(covariance_range)
             self.covariance_factors.append(torch.nn.Parameter(covariance_factors))
+
+    def kernel(self, index: int):
+        # a psd matrix can be generated with A A'. we learn A and generate a pd matrix via  A A' + eye * epsilon
+        A = self.covariance_factors[index]
+        covariances = A @ A.transpose(-1, -2) + torch.eye(self.n_dims, dtype=torch.float32, device=A.device) * self.covariance_epsilon
+        kernel = torch.cat((self.weights_and_positions[index], covariances.view(1, self.n_layers_in, self.n_kernel_components, self.n_dims * self.n_dims)), dim=-1)
+        assert gm.is_valid_mixture(kernel)
+        return kernel
+
+    def debug_render(self, position_range: float = None, image_size: int = 100, clamp: typing.Tuple[float, float] = (-0.5, 2)):
+        if position_range is None:
+            position_range = self.position_range * 2
+
+        images = list()
+        for i in range(self.n_layers_out):
+            kernel = self.kernel(i)
+            assert kernel.shape[0] == 1
+            kernel_rendering = gm.render(kernel, x_low=-position_range, x_high=position_range, y_low=-position_range, y_high=position_range, width=image_size, height=image_size)
+            images.append(kernel_rendering)
+        images = torch.cat(images, dim=1)
+        images = madam_imagetools.colour_mapped(images.cpu().numpy(), clamp[0], clamp[1])
+        return images[:, :, :3]
 
     def forward(self, x: Tensor) -> Tensor:
         out_mixtures = []
@@ -55,10 +80,7 @@ class GmConvolution(torch.nn.modules.Module):
         out_mixture_shape[2] = -1
 
         for i in range(self.n_layers_out):
-            A = self.covariance_factors[i]
-            # a psd matrix can be generated with A A'. we learn A and generate a pd matrix via  A A' + eye * epsilon
-            covariances = A @ A.transpose(-1, -2) + torch.eye(self.n_dims, dtype=torch.float32, device=A.device) * self.covariance_epsilon
-            kernel = torch.cat((self.weights_and_positions[i], covariances.view(1, self.n_layers_in, self.n_kernel_components, self.n_dims * self.n_dims)), dim=-1)
+            kernel = self.kernel(i)
             m = gm.convolve(x, kernel)
             out_mixtures.append(m.view(out_mixture_shape))
 

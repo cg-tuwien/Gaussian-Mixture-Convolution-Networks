@@ -17,6 +17,7 @@ def n_dimensions(mixture: Tensor) -> int:
     if vector_length == 13:  # weight: 1, position: 3, covariance: 9
         return 3
     print(f"Invalid matrix in gm.n_dims with shape {mixture.shape}!")
+    assert False
     exit(1)
 
 
@@ -64,12 +65,14 @@ def pack_mixture(weights: Tensor, positions: Tensor, covariances: Tensor) -> Ten
     return torch.cat((weights.view(weight_shape), positions, covariances.view(cov_shape)), dim=len(positions.shape) - 1)
 
 
-def integrate(mixture: Tensor) -> Tensor:
+def integrate_components(mixture: Tensor) -> Tensor:
     assert is_valid_mixture(mixture)
-
     dets = torch.det(covariances(mixture))
-    values = weights(mixture) * torch.sqrt((2*math.pi)**n_dimensions(mixture) * dets)
-    return values.sum(dim=2)
+    return weights(mixture) * torch.sqrt((2 * math.pi) ** n_dimensions(mixture) * dets)
+
+
+def integrate(mixture: Tensor) -> Tensor:
+    return integrate_components(mixture).sum(dim=2)
 
 
 def is_valid_mixture(mixture: Tensor) -> bool:
@@ -217,14 +220,28 @@ def debug_show(mixture: Tensor, batch_i: int = 0, layer_i: int = 0, x_low: float
     return image
 
 
+def render(mixture: Tensor, batches: typing.Tuple[int, int] = (0, None), layers: typing.Tuple[int, int] = (0, None), x_low: float = -22, y_low: float = -22, x_high: float = 22, y_high: float = 22, width: int = 100, height: int = 100):
+    assert n_dimensions(mixture) == 2
+    assert is_valid_mixture(mixture)
+    xv, yv = torch.meshgrid([torch.arange(x_low, x_high, (x_high - x_low) / width, dtype=torch.float, device=mixture.device),
+                             torch.arange(y_low, y_high, (y_high - y_low) / height, dtype=torch.float, device=mixture.device)])
+    m = mixture.detach()[batches[0]:batches[1], layers[0]:layers[1]]
+    n_batch = m.shape[0]
+    n_layers = m.shape[1]
+    xes = torch.cat((xv.reshape(-1, 1), yv.reshape(-1, 1)), 1).view(1, 1, -1, 2)
+    rendering = evaluate(m.detach(), xes).view(n_batch, n_layers, height, width)
+    rendering = rendering.transpose(0, 1).reshape(n_layers * height, n_batch * width)
+    return rendering
+
+
 def save(mixture: Tensor, file_name: str, meta_info=None) -> None:
-    dict = {
+    dictionary = {
         "type": "gm.Mixture",
         "version": 5,
         "data": mixture.detach().cpu(),
         "meta_info": meta_info
     }
-    torch.save(dict, config.data_base_path / file_name)
+    torch.save(dictionary, config.data_base_path / file_name)
 
 
 def load(file_name: str) -> typing.Tuple[Tensor, typing.Any]:
