@@ -161,3 +161,16 @@ class GmBiasAndRelu(torch.nn.modules.Module):
 
     def save(self):
         self.net.save()
+
+
+class MaxPooling(torch.nn.modules.Module):
+    def __init__(self, n_output_gaussians: int = 10):
+        super(MaxPooling, self).__init__()
+        self.n_output_gaussians = n_output_gaussians
+
+    def forward(self, x: Tensor) -> Tensor:
+        sorted_indices = torch.argsort(gm.integrate_components(x.detach()), dim=2, descending=True)
+        sorted_mixture = mat_tools.my_index_select(x, sorted_indices)
+
+        n_output_gaussians = min(self.n_output_gaussians, gm.n_components(x))
+        return sorted_mixture[:, :, :n_output_gaussians, :]
