@@ -21,7 +21,7 @@ import mat_tools
 
 
 class GmConvolution(torch.nn.modules.Module):
-    def __init__(self, n_layers_in: int, n_layers_out: int, n_kernel_components: int = 4, n_dims: int = 2, position_range: float = 1, covariance_range: float = 0.25, weight_min=-1, weight_max=1, covariance_epsilon = 0.0001):
+    def __init__(self, n_layers_in: int, n_layers_out: int, n_kernel_components: int = 4, n_dims: int = 2, position_range: float = 1, covariance_range: float = 0.25, weight_sd=0.1, covariance_epsilon = 0.0001):
         super(GmConvolution, self).__init__()
         self.n_layers_in = n_layers_in
         self.n_layers_out = n_layers_out
@@ -29,8 +29,7 @@ class GmConvolution(torch.nn.modules.Module):
         self.n_dims = n_dims
         self.position_range = position_range
         self.covariance_range = covariance_range
-        self.weight_min = weight_min
-        self.weight_max = weight_max
+        self.weight_sd = weight_sd
         self.covariance_epsilon = covariance_epsilon
 
         self.weights_and_positions = torch.nn.modules.ParameterList()
@@ -39,8 +38,8 @@ class GmConvolution(torch.nn.modules.Module):
         # todo: probably can optimise performance by putting kernels into their own dimension
         for i in range(self.n_layers_out):
             # positive mean produces a rather positive gm. i believe this is a better init
-            weights = torch.rand(1, n_layers_in, n_kernel_components, 1, dtype=torch.float32) * (weight_max - weight_min) + weight_min
-            weights -= weights.mean() - 0.05
+            weights = torch.randn(1, n_layers_in, n_kernel_components, 1, dtype=torch.float32) * weight_sd
+
             positions = torch.rand(1, n_layers_in, n_kernel_components, n_dims, dtype=torch.float32) * 2 * position_range - position_range
             self.weights_and_positions.append(torch.nn.Parameter(torch.cat((weights, positions), dim=-1)))
 
@@ -59,7 +58,7 @@ class GmConvolution(torch.nn.modules.Module):
         assert gm.is_valid_mixture(kernel)
         return kernel
 
-    def debug_render(self, position_range: float = None, image_size: int = 100, clamp: typing.Tuple[float, float] = (-0.5, 2)):
+    def debug_render(self, position_range: float = None, image_size: int = 100, clamp: typing.Tuple[float, float] = (-0.3, 0.3)):
         if position_range is None:
             position_range = self.position_range * 2
 
@@ -98,14 +97,14 @@ class _NetCheckpointWrapper:
 
 
 class GmBiasAndRelu(torch.nn.modules.Module):
-    def __init__(self, n_layers: int, n_output_gaussians: int = 10, n_dimensions=2):
+    def __init__(self, n_layers: int, n_output_gaussians: int = 10, n_dimensions=2, max_bias: float = 0.1):
         # todo support variable number of outputs and configurable net archs. needs a better init + training routine (start with few gaussians etc?)
         assert n_output_gaussians == 10
         super(GmBiasAndRelu, self).__init__()
         self.n_layers = n_layers
         self.n_output_gaussians = n_output_gaussians
         # use a small bias for the start. i hope it's easier for the net to increase it than to lower it
-        self.bias = torch.nn.Parameter(torch.rand(1, self.n_layers) * 0.2)
+        self.bias = torch.nn.Parameter(torch.rand(1, self.n_layers) * max_bias)
 
         self.net = gm_fitting.Net([64, 128, 256, 512, 1024, 1024, 750],
                                   [256, 256, 256, 256, 256, 128],

@@ -1,6 +1,7 @@
 from __future__ import print_function
 import argparse
 import datetime
+import math
 import pathlib
 
 import torch
@@ -40,14 +41,14 @@ class Net(nn.Module):
         super(Net, self).__init__()
         n_layers_1 = 5
         n_layers_2 = 6
-        self.gmc1 = gm_modules.GmConvolution(n_layers_in=1, n_layers_out=n_layers_1, n_kernel_components=n_kernel_components, position_range=2, covariance_range=0.5).cuda()
-        self.relu1 = gm_modules.GmBiasAndRelu(n_layers=n_layers_1, n_output_gaussians=10).cuda()
+        self.gmc1 = gm_modules.GmConvolution(n_layers_in=1, n_layers_out=n_layers_1, n_kernel_components=n_kernel_components, position_range=2, covariance_range=0.5, weight_sd=.1/math.sqrt(n_kernel_components * 25)).cuda()
+        self.relu1 = gm_modules.GmBiasAndRelu(n_layers=n_layers_1, n_output_gaussians=10, max_bias=0.0).cuda()
         self.maxPool1 = gm_modules.MaxPooling(10)
-        self.gmc2 = gm_modules.GmConvolution(n_layers_in=n_layers_1, n_layers_out=n_layers_2, n_kernel_components=n_kernel_components, position_range=4, covariance_range=2).cuda()
-        self.relu2 = gm_modules.GmBiasAndRelu(n_layers=n_layers_2, n_output_gaussians=10).cuda()
+        self.gmc2 = gm_modules.GmConvolution(n_layers_in=n_layers_1, n_layers_out=n_layers_2, n_kernel_components=n_kernel_components, position_range=4, covariance_range=2, weight_sd=.1/math.sqrt(n_kernel_components * n_layers_1 * 10)).cuda()
+        self.relu2 = gm_modules.GmBiasAndRelu(n_layers=n_layers_2, n_output_gaussians=10, max_bias=0.0).cuda()
         self.maxPool2 = gm_modules.MaxPooling(10)
-        self.gmc3 = gm_modules.GmConvolution(n_layers_in=n_layers_2, n_layers_out=10, n_kernel_components=n_kernel_components, position_range=8, covariance_range=4).cuda()
-        self.relu3 = gm_modules.GmBiasAndRelu(n_layers=10, n_output_gaussians=10).cuda()
+        self.gmc3 = gm_modules.GmConvolution(n_layers_in=n_layers_2, n_layers_out=10, n_kernel_components=n_kernel_components, position_range=8, covariance_range=4, weight_sd=.1/math.sqrt(n_kernel_components * n_layers_2 * 20)).cuda()
+        self.relu3 = gm_modules.GmBiasAndRelu(n_layers=10, n_output_gaussians=10, max_bias=0.0).cuda()
         self.maxPool3 = gm_modules.MaxPooling(2)
 
         # todo: all the relus must use the same net for now, because all of them save it to the same location on disc.
