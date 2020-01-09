@@ -22,7 +22,7 @@ import mat_tools
 
 class GmConvolution(torch.nn.modules.Module):
     def __init__(self, n_layers_in: int, n_layers_out: int, n_kernel_components: int = 4, n_dims: int = 2,
-                 position_range: float = 1, covariance_range: float = 0.25, weight_sd=0.1,
+                 position_range: float = 1, covariance_range: float = 0.25, weight_sd=0.1, weight_mean=0.0,
                  learn_positions: bool = True, learn_covariances: bool = True,
                  covariance_epsilon: float = 0.0001):
         super(GmConvolution, self).__init__()
@@ -45,7 +45,7 @@ class GmConvolution(torch.nn.modules.Module):
         # todo: probably can optimise performance by putting kernels into their own dimension
         for i in range(self.n_layers_out):
             # positive mean produces a rather positive gm. i believe this is a better init
-            weights = torch.randn(1, n_layers_in, n_kernel_components, 1, dtype=torch.float32) * weight_sd
+            weights = torch.randn(1, n_layers_in, n_kernel_components, 1, dtype=torch.float32) * weight_sd + weight_mean
 
             self.weights.append(torch.nn.Parameter(weights))
             if self.learn_positions:
@@ -62,7 +62,8 @@ class GmConvolution(torch.nn.modules.Module):
             # initialise with a rather round covariance matrix
             # a psd matrix can be generated with A A'. we learn A and generate a pd matrix via  A A' + eye * epsilon
             covariance_factors = torch.rand(1, n_layers_in, n_kernel_components, n_dims, n_dims, dtype=torch.float32) * 2 - 1
-            covariance_factors = covariance_factors * 0.1 + torch.eye(self.n_dims)
+            cov_rand_factor = 0.1 if self.learn_covariances else 0.0
+            covariance_factors = covariance_factors * cov_rand_factor + torch.eye(self.n_dims)
             covariance_factors = covariance_factors * math.sqrt(covariance_range)
             self.covariance_factors.append(torch.nn.Parameter(covariance_factors))
 

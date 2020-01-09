@@ -37,19 +37,28 @@ class GmMnistDataSet(torch.utils.data.Dataset):
 
 
 class Net(nn.Module):
-    def __init__(self, train_fitting=False):
+    def __init__(self, train_fitting=True):
         super(Net, self).__init__()
         n_layers_1 = 5
         n_layers_2 = 6
-        self.gmc1 = gm_modules.GmConvolution(n_layers_in=1, n_layers_out=n_layers_1, n_kernel_components=n_kernel_components, position_range=2, covariance_range=0.5, learn_positions=False, weight_sd=.1/math.sqrt(n_kernel_components * 25)).cuda()
+        self.gmc1 = gm_modules.GmConvolution(n_layers_in=1, n_layers_out=n_layers_1, n_kernel_components=n_kernel_components,
+                                             position_range=2, covariance_range=0.5,
+                                             learn_positions=False, learn_covariances=False,
+                                             weight_sd=.1/math.sqrt(n_kernel_components * 25)).cuda()
         self.relu1 = gm_modules.GmBiasAndRelu(n_layers=n_layers_1, n_output_gaussians=10, max_bias=0.0).cuda()
-        self.maxPool1 = gm_modules.MaxPooling(10)
-        self.gmc2 = gm_modules.GmConvolution(n_layers_in=n_layers_1, n_layers_out=n_layers_2, n_kernel_components=n_kernel_components, position_range=4, covariance_range=2, learn_positions=False, weight_sd=.1/math.sqrt(n_kernel_components * n_layers_1 * 10)).cuda()
+        # self.maxPool1 = gm_modules.MaxPooling(10)
+        self.gmc2 = gm_modules.GmConvolution(n_layers_in=n_layers_1, n_layers_out=n_layers_2, n_kernel_components=n_kernel_components,
+                                             position_range=4, covariance_range=2,
+                                             learn_positions=False, learn_covariances=False,
+                                             weight_sd=.1/math.sqrt(n_kernel_components * n_layers_1 * 10)).cuda()
         self.relu2 = gm_modules.GmBiasAndRelu(n_layers=n_layers_2, n_output_gaussians=10, max_bias=0.0).cuda()
-        self.maxPool2 = gm_modules.MaxPooling(10)
-        self.gmc3 = gm_modules.GmConvolution(n_layers_in=n_layers_2, n_layers_out=10, n_kernel_components=n_kernel_components, position_range=8, covariance_range=4, learn_positions=False, weight_sd=.1/math.sqrt(n_kernel_components * n_layers_2 * 20)).cuda()
+        # self.maxPool2 = gm_modules.MaxPooling(10)
+        self.gmc3 = gm_modules.GmConvolution(n_layers_in=n_layers_2, n_layers_out=10, n_kernel_components=n_kernel_components,
+                                             position_range=8, covariance_range=4,
+                                             learn_positions=False, learn_covariances=False,
+                                             weight_sd=.1/math.sqrt(n_kernel_components * n_layers_2 * 20)).cuda()
         self.relu3 = gm_modules.GmBiasAndRelu(n_layers=10, n_output_gaussians=10, max_bias=0.0).cuda()
-        self.maxPool3 = gm_modules.MaxPooling(2)
+        # self.maxPool3 = gm_modules.MaxPooling(2)
 
         # todo: all the relus must use the same net for now, because all of them save it to the same location on disc.
         self.relu2.net = self.relu1.net
@@ -70,7 +79,7 @@ class Net(nn.Module):
             self.relu1.train_fitting(False)
 
             x = self.relu1(x)
-            x = self.maxPool1(x)
+            # x = self.maxPool1(x)
             x = self.gmc2(x)
 
             self.relu2.train_fitting(True)
@@ -78,7 +87,7 @@ class Net(nn.Module):
             self.relu2.train_fitting(False)
 
             x = self.relu2(x)
-            x = self.maxPool2(x)
+            # x = self.maxPool2(x)
             x = self.gmc3(x)
 
             self.relu3.train_fitting(True)
@@ -90,15 +99,15 @@ class Net(nn.Module):
 
         x = self.gmc1(in_x)
         x = self.relu1(x)
-        x = self.maxPool1(x)
+        # x = self.maxPool1(x)
 
         x = self.gmc2(x)
         x = self.relu2(x)
-        x = self.maxPool2(x)
+        # x = self.maxPool2(x)
 
         x = self.gmc3(x)
         x = self.relu3(x)
-        x = self.maxPool3(x)
+        # x = self.maxPool3(x)
 
         x = gm.integrate(x)
         x = F.log_softmax(x, dim=1)
@@ -119,7 +128,7 @@ def train(args, model, device, train_loader, optimizer, epoch):
         loss.backward()
         optimizer.step()
         if batch_idx % args.log_interval == 0:
-            i = (epoch - 1) * len(data) + batch_idx
+            i = (epoch - 1) * len(train_loader.dataset) + batch_idx
             pred = output.detach().argmax(dim=1, keepdim=True)  # get the index of the max log-probability
             correct = pred.eq(target.view_as(pred)).sum().item()
             tensor_board_writer.add_scalar("0. loss", loss.item(), i)
@@ -148,7 +157,7 @@ def test(args, model, device, test_loader):
 
 
 def main():
-    default_learning_rate = 1
+    default_learning_rate = 0.1
     default_epochs = 6*10
     model_storage_path = config.data_base_path / "mnist_gmcnet.pt"
     # Training settings
