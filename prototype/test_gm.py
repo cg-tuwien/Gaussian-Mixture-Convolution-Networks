@@ -181,7 +181,7 @@ class TestGM(unittest.TestCase):
 
             for b in range(n_batch):
                 for l in range(n_layers):
-                    self.assertLess(abs(my_solution[b, l].item() - reference_solution[b, l].item()), 0.015)
+                    self.assertLess(abs(my_solution[b, l].item() - reference_solution[b, l].item()), 0.016)
 
 
 if __name__ == '__main__':

@@ -18,7 +18,7 @@ class TestGM(unittest.TestCase):
         n_layers_in = 4
         n_layers_out = 5
         gm_in = gm.generate_random_mixtures(n_batches, n_layers_in, 3, n_dims=2, pos_radius=1, cov_radius=0.25)
-        conv_layer = gm_modules.GmConvolution(n_layers_in = n_layers_in, n_layers_out = n_layers_out, n_dims=2, position_range = 1, covariance_range = 0.25, weight_min=-1, weight_max=1)
+        conv_layer = gm_modules.GmConvolution(n_layers_in = n_layers_in, n_layers_out = n_layers_out, n_dims=2, position_range = 1, covariance_range = 0.25, weight_sd=1)
 
         gm_out = conv_layer(gm_in)
         samples_per_unit = 50
@@ -31,7 +31,7 @@ class TestGM(unittest.TestCase):
         gm_out_samples = gm.evaluate(gm_out.detach(), xes).numpy()
 
         for l in range(n_layers_out):
-            gm_kernel_samples = gm.evaluate(conv_layer.kernels[l].detach(), xes).view(n_layers_in, size, size).numpy()
+            gm_kernel_samples = gm.evaluate(conv_layer.kernel(l).detach(), xes).view(n_layers_in, size, size).numpy()
 
             for b in range(n_batches):
                 reference_solution = np.zeros((size, size))
