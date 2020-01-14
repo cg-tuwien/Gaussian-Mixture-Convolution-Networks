@@ -37,26 +37,27 @@ class GmMnistDataSet(torch.utils.data.Dataset):
 
 
 class Net(nn.Module):
-    def __init__(self, train_fitting=True):
+    def __init__(self, train_fitting=False):
         super(Net, self).__init__()
         n_layers_1 = 5
         n_layers_2 = 6
+        # sqrt(2) / (n_kernel_components * n_input_gauss * math.sqrt(2 * math.pi * det(cov))
         self.gmc1 = gm_modules.GmConvolution(n_layers_in=1, n_layers_out=n_layers_1, n_kernel_components=n_kernel_components,
                                              position_range=2, covariance_range=0.5,
                                              learn_positions=False, learn_covariances=False,
-                                             weight_sd=.1/math.sqrt(n_kernel_components * 25)).cuda()
+                                             weight_sd=0.00015).cuda()
         self.relu1 = gm_modules.GmBiasAndRelu(n_layers=n_layers_1, n_output_gaussians=10, max_bias=0.0).cuda()
         # self.maxPool1 = gm_modules.MaxPooling(10)
         self.gmc2 = gm_modules.GmConvolution(n_layers_in=n_layers_1, n_layers_out=n_layers_2, n_kernel_components=n_kernel_components,
                                              position_range=4, covariance_range=2,
                                              learn_positions=False, learn_covariances=False,
-                                             weight_sd=.1/math.sqrt(n_kernel_components * n_layers_1 * 10)).cuda()
+                                             weight_sd=0.002).cuda()
         self.relu2 = gm_modules.GmBiasAndRelu(n_layers=n_layers_2, n_output_gaussians=10, max_bias=0.0).cuda()
         # self.maxPool2 = gm_modules.MaxPooling(10)
         self.gmc3 = gm_modules.GmConvolution(n_layers_in=n_layers_2, n_layers_out=10, n_kernel_components=n_kernel_components,
                                              position_range=8, covariance_range=4,
                                              learn_positions=False, learn_covariances=False,
-                                             weight_sd=.1/math.sqrt(n_kernel_components * n_layers_2 * 20)).cuda()
+                                             weight_sd=0.001).cuda()
         self.relu3 = gm_modules.GmBiasAndRelu(n_layers=10, n_output_gaussians=10, max_bias=0.0).cuda()
         # self.maxPool3 = gm_modules.MaxPooling(2)
 
@@ -98,19 +99,36 @@ class Net(nn.Module):
             self.trainer3.save_weights()
 
         x = self.gmc1(in_x)
+        # integral11 = gm.integrate(x)
         x = self.relu1(x)
+        # integral12 = gm.integrate(x)
         # x = self.maxPool1(x)
 
         x = self.gmc2(x)
+        # integral21 = gm.integrate(x)
         x = self.relu2(x)
+        # integral22 = gm.integrate(x)
         # x = self.maxPool2(x)
 
         x = self.gmc3(x)
+        # integral31 = gm.integrate(x)
         x = self.relu3(x)
+        # integral32 = gm.integrate(x)
         # x = self.maxPool3(x)
 
         x = gm.integrate(x)
+        # integral4 = x
         x = F.log_softmax(x, dim=1)
+        # print(integral11.mean())
+        # print(integral12.mean())
+        #
+        # print(integral21.mean())
+        # print(integral22.mean())
+        #
+        # print(integral31.mean())
+        # print(integral32.mean())
+        #
+        # print(integral4.mean())
         return x.view(-1, 10)
 
 
