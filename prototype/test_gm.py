@@ -138,8 +138,8 @@ class TestGM(unittest.TestCase):
     def test_mixture_normalisation(self):
         n_batch = 10
         n_layers = 8
-        mixture_in = gm.generate_random_mixtures(n_batch=n_batch, n_layers=n_layers, n_components=3, n_dims=2, pos_radius=3, cov_radius=0.3)
         bias_in = torch.rand(1, n_layers) + 0.2
+        mixture_in = gm.generate_random_mixtures(n_batch=n_batch, n_layers=n_layers, n_components=3, n_dims=2, pos_radius=3, cov_radius=0.3, weight_min=-0.5, weight_max=4)
         gm.weights(mixture_in)[0:4, 0, 0] = 2
         gm.positions(mixture_in)[0, 0, 0, 0] = -10
         gm.positions(mixture_in)[1, 0, 0, 1] = 10
