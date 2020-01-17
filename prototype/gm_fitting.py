@@ -279,8 +279,15 @@ class Trainer:
             xv, yv = torch.meshgrid([torch.arange(-1.2, 1.2, 2.4 / image_size, dtype=torch.float, device=mixture_in.device),
                                      torch.arange(-1.2, 1.2, 2.4 / image_size, dtype=torch.float, device=mixture_in.device)])
             xes = torch.cat((xv.reshape(-1, 1), yv.reshape(-1, 1)), 1).view(1, 1, -1, 2)
-            image_target = gm.evaluate_with_activation_fun(mixture_in.detach(), bias_in.detach(), xes).view(-1, image_size, image_size)
+
             n_shown_images = 10
+            n_batches_eval = n_shown_images // gm.n_layers(mixture_in) + 1
+            n_batches_eval = min(n_batches_eval, gm.n_batch(mixture_in))
+            n_layers_eval = min(gm.n_layers(mixture_in), n_shown_images)
+            mixture_eval = mixture_in.detach()[:n_batches_eval, :n_layers_eval, :, :]
+            bias_eval = bias_in.detach()[:n_batches_eval, :n_layers]
+
+            image_target = gm.evaluate_with_activation_fun(mixture_eval, bias_eval, xes).view(-1, image_size, image_size)
             fitted_mixture_image = gm.evaluate(output_gm.detach(), xes).view(-1, image_size, image_size)
             self.log_images(f"fitting target_prediction",
                             [image_target[:n_shown_images, :, :].transpose(0, 1).reshape(image_size, -1),
