@@ -154,7 +154,7 @@ def evaluate_inversed(mixture: Tensor, xes: Tensor) -> Tensor:
     values_sum = torch.zeros(_n_batch, _n_layers, n_xes, dtype=torch.float32, device=mixture.device)
 
     total_memory_space = _n_batch * _n_layers * _n_comps * n_xes * _n_dims # did i forget something?
-    n_memory_slices = max(total_memory_space // (1024 * 1024 * 100), 1)
+    n_memory_slices = max(total_memory_space // (1024 * 1024 * 200), 1)
     comp_slice_size = max(_n_comps // n_memory_slices, 1)
     n_memory_slices = _n_comps // comp_slice_size + int(_n_comps % comp_slice_size != 0)
     for i in range(n_memory_slices):
