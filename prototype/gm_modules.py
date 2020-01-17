@@ -191,6 +191,24 @@ class GmBiasAndRelu(torch.nn.modules.Module):
         self.net.save()
 
 
+class BatchNorm(torch.nn.modules.Module):
+    def __init__(self, per_gaussian_norm: bool = False):
+        super(BatchNorm, self).__init__()
+        self.per_gaussian_norm = per_gaussian_norm
+
+    def forward(self, x: Tensor) -> Tensor:
+        integral = gm.integrate(x).view(gm.n_batch(x), gm.n_layers(x), 1)
+        if not self.per_gaussian_norm:
+            integral = torch.mean(integral, dim=0, keepdim=True)
+
+        weights = gm.weights(x)
+        positions = gm.positions(x)
+        covariances = gm.covariances(x)
+
+        weights = weights / integral
+        return gm.pack_mixture(weights, positions, covariances)
+
+
 class MaxPooling(torch.nn.modules.Module):
     def __init__(self, n_output_gaussians: int = 10):
         super(MaxPooling, self).__init__()

@@ -9,6 +9,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import torch.utils.data
+import typing
 from torchvision import datasets, transforms
 from torch.optim.lr_scheduler import StepLR
 
@@ -17,9 +18,12 @@ import gm
 import gm_fitting
 import gm_modules
 
-
 # based on https://github.com/pytorch/examples/blob/master/mnist/main.py
+import madam_imagetools
+
 n_kernel_components = 5
+
+
 # torch.autograd.set_detect_anomaly(True)
 
 
@@ -45,25 +49,28 @@ class Net(nn.Module):
         self.gmc1 = gm_modules.GmConvolution(n_layers_in=1, n_layers_out=n_layers_1, n_kernel_components=n_kernel_components,
                                              position_range=2, covariance_range=0.5,
                                              learn_positions=False, learn_covariances=False,
-                                             weight_sd=0.00015).cuda()
+                                             weight_sd=0.4).cuda()
         self.relu1 = gm_modules.GmBiasAndRelu(n_layers=n_layers_1, n_output_gaussians=25, max_bias=0.0).cuda()
         # self.maxPool1 = gm_modules.MaxPooling(10)
         self.gmc2 = gm_modules.GmConvolution(n_layers_in=n_layers_1, n_layers_out=n_layers_2, n_kernel_components=n_kernel_components,
                                              position_range=4, covariance_range=2,
                                              learn_positions=False, learn_covariances=False,
-                                             weight_sd=0.002).cuda()
+                                             weight_sd=0.04).cuda()
         self.relu2 = gm_modules.GmBiasAndRelu(n_layers=n_layers_2, n_output_gaussians=12, max_bias=0.0).cuda()
         # self.maxPool2 = gm_modules.MaxPooling(10)
         self.gmc3 = gm_modules.GmConvolution(n_layers_in=n_layers_2, n_layers_out=10, n_kernel_components=n_kernel_components,
                                              position_range=8, covariance_range=4,
                                              learn_positions=False, learn_covariances=False,
-                                             weight_sd=0.001).cuda()
+                                             weight_sd=0.025).cuda()
         self.relu3 = gm_modules.GmBiasAndRelu(n_layers=10, n_output_gaussians=5, max_bias=0.0).cuda()
         # self.maxPool3 = gm_modules.MaxPooling(2)
 
         # todo: all the relus must use the same net for now, because all of them save it to the same location on disc.
         self.relu2.net = self.relu1.net
         self.relu3.net = self.relu1.net
+
+        self.bn0 = gm_modules.BatchNorm(per_gaussian_norm=True)
+        self.bn = gm_modules.BatchNorm(per_gaussian_norm=False)
 
         self.train_fitting = train_fitting
         if self.train_fitting:
@@ -72,9 +79,11 @@ class Net(nn.Module):
             self.trainer2 = gm_fitting.Trainer(self.relu2, n_training_samples=400)
             self.trainer3 = gm_fitting.Trainer(self.relu3, n_training_samples=400)
 
-    def forward(self, in_x: torch.Tensor):
+    def forward(self, in_x: torch.Tensor, activation_out: typing.List[torch.Tensor] = None):
+        in_x_norm = self.bn0(in_x)
+
         if self.train_fitting and self.training:
-            x = self.gmc1(in_x.detach())
+            x = self.gmc1(in_x_norm.detach())
             self.relu1.train_fitting(True)
             self.trainer1.train_on(x, self.relu1.bias, self.train_fitting_epoch)
             self.relu1.train_fitting(False)
@@ -98,21 +107,38 @@ class Net(nn.Module):
             self.train_fitting_epoch = self.train_fitting_epoch + 1
             self.trainer3.save_weights()
 
-        x = self.gmc1(in_x)
-        # integral11 = gm.integrate(x)
+        if activation_out is not None:
+            activation_out.append(in_x_norm.detach())
+        x = self.gmc1(in_x_norm)
+        # integral11 = gm.integrate(x).mean()
+        if activation_out is not None:
+            activation_out.append(x.detach())
         x = self.relu1(x)
-        # integral12 = gm.integrate(x)
+        x = self.bn(x)
+        if activation_out is not None:
+            activation_out.append(x.detach())
+        integral12 = gm.integrate(x)
         # x = self.maxPool1(x)
 
         x = self.gmc2(x)
         # integral21 = gm.integrate(x)
+        if activation_out is not None:
+            activation_out.append(x.detach())
         x = self.relu2(x)
+        x = self.bn(x)
+        if activation_out is not None:
+            activation_out.append(x.detach())
         # integral22 = gm.integrate(x)
         # x = self.maxPool2(x)
 
         x = self.gmc3(x)
         # integral31 = gm.integrate(x)
+        if activation_out is not None:
+            activation_out.append(x.detach())
         x = self.relu3(x)
+        x = self.bn(x)
+        if activation_out is not None:
+            activation_out.append(x.detach())
         # integral32 = gm.integrate(x)
         # x = self.maxPool3(x)
 
@@ -137,24 +163,35 @@ tensor_board_writer = torch.utils.tensorboard.SummaryWriter(config.data_base_pat
 
 def train(args, model, device, train_loader, optimizer, epoch):
     model.train()
-    for batch_idx, (data, target) in enumerate(train_loader):
+    for batch_idx, (data_all, target_all) in enumerate(train_loader):
 
-        data, target = data.to(device), target.to(device)
-        optimizer.zero_grad()
-        output = model(data)
-        loss = F.nll_loss(output, target)
-        loss.backward()
-        optimizer.step()
-        if batch_idx % args.log_interval == 0:
-            i = (epoch - 1) * len(train_loader.dataset) + batch_idx
-            pred = output.detach().argmax(dim=1, keepdim=True)  # get the index of the max log-probability
-            correct = pred.eq(target.view_as(pred)).sum().item()
-            tensor_board_writer.add_scalar("0. loss", loss.item(), i)
-            tensor_board_writer.add_scalar("1. accuracy", 100 * correct / len(data), i)
-            tensor_board_writer.add_image("conv layer 1", model.gmc1.debug_render(), i, dataformats='HWC')
-            tensor_board_writer.add_image("conv layer 2", model.gmc2.debug_render(), i, dataformats='HWC')
-            tensor_board_writer.add_image("conv layer 3", model.gmc3.debug_render(), i, dataformats='HWC')
-            print(f'Train Epoch: {epoch} [{batch_idx * len(data)}/{len(train_loader.dataset) * len(data)} ({100. * batch_idx / len(train_loader):.0f}%)]\tLoss: {loss.item():.6f} (accuracy: {100 * correct / len(data)})')
+        data_all, target_all = data_all.to(device), target_all.to(device)
+        for k in range(4):
+            data = data_all[k * 25:(k + 1) * 25]
+            target = target_all[k * 25:(k + 1) * 25]
+
+            optimizer.zero_grad()
+            activation_out = list()
+            output = model(data, activation_out=activation_out)
+            loss = F.nll_loss(output, target)
+            loss.backward()
+            optimizer.step()
+            i = (epoch - 1) * len(train_loader.dataset) * 4 + batch_idx * 4 + k
+            if i % args.log_interval == 0:
+                pred = output.detach().argmax(dim=1, keepdim=True)  # get the index of the max log-probability
+                correct = pred.eq(target.view_as(pred)).sum().item()
+                tensor_board_writer.add_scalar("0. loss", loss.item(), i)
+                tensor_board_writer.add_scalar("1. accuracy", 100 * correct / len(data), i)
+                tensor_board_writer.add_image("conv layer 1", model.gmc1.debug_render(clamp=[-0.8, 0.8]), i, dataformats='HWC')
+                tensor_board_writer.add_image("conv layer 2", model.gmc2.debug_render(clamp=[-0.08, 0.08]), i, dataformats='HWC')
+                tensor_board_writer.add_image("conv layer 3", model.gmc3.debug_render(clamp=[-0.05, 0.05]), i, dataformats='HWC')
+                for activation_index, act in enumerate(activation_out):
+                    rendering = gm.render(act, batches=[0, 1], layers=[0, None], x_low=-2, x_high=30, y_low=-2, y_high=30, width=80, height=80)
+                    rendering = madam_imagetools.colour_mapped(rendering.cpu().numpy(), -0.5/(28**2), 2.0/(28**2))
+                    tensor_board_writer.add_image(f"activation {activation_index}", rendering, i, dataformats='HWC')
+
+                print(
+                    f'Train Epoch: {epoch} [{batch_idx * len(data)}/{len(train_loader.dataset) * len(data)} ({100. * batch_idx / len(train_loader):.0f}%)]\tLoss: {loss.item():.6f} (accuracy: {100 * correct / len(data)})')
 
 
 def test(args, model, device, test_loader):
@@ -175,8 +212,8 @@ def test(args, model, device, test_loader):
 
 
 def main():
-    default_learning_rate = 0.1
-    default_epochs = 6*10
+    default_learning_rate = 0.01
+    default_epochs = 6 * 10
     model_storage_path = config.data_base_path / "mnist_gmcnet.pt"
     # Training settings
     parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
