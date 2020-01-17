@@ -220,7 +220,9 @@ def debug_show(mixture: Tensor, batch_i: int = 0, layer_i: int = 0, x_low: float
     return image
 
 
-def render(mixture: Tensor, batches: typing.Tuple[int, int] = (0, None), layers: typing.Tuple[int, int] = (0, None), x_low: float = -22, y_low: float = -22, x_high: float = 22, y_high: float = 22, width: int = 100, height: int = 100):
+def render(mixture: Tensor, batches: typing.Tuple[int, int] = (0, None), layers: typing.Tuple[int, int] = (0, None),
+           x_low: float = -22, y_low: float = -22, x_high: float = 22, y_high: float = 22,
+           width: int = 100, height: int = 100):
     assert n_dimensions(mixture) == 2
     assert is_valid_mixture(mixture)
     xv, yv = torch.meshgrid([torch.arange(x_low, x_high, (x_high - x_low) / width, dtype=torch.float, device=mixture.device),
