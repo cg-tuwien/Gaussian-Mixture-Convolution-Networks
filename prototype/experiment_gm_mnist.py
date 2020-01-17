@@ -65,9 +65,10 @@ class Net(nn.Module):
         self.relu3 = gm_modules.GmBiasAndRelu(n_layers=10, n_output_gaussians=5, max_bias=0.0).cuda()
         # self.maxPool3 = gm_modules.MaxPooling(2)
 
-        # todo: all the relus must use the same net for now, because all of them save it to the same location on disc.
-        self.relu2.net = self.relu1.net
-        self.relu3.net = self.relu1.net
+        # to do: all the relus must use the same net for now, because all of them save it to the same location on disc.
+        # for now testing seperate nets
+        # self.relu2.net = self.relu1.net
+        # self.relu3.net = self.relu1.net
 
         self.bn0 = gm_modules.BatchNorm(per_gaussian_norm=True)
         self.bn = gm_modules.BatchNorm(per_gaussian_norm=False)
