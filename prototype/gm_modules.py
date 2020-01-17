@@ -145,6 +145,9 @@ class GmBiasAndRelu(torch.nn.modules.Module):
         self.name = f"GmBiasAndRelu_{n_layers}_{n_output_gaussians}"
         self.storage_path = self.net.storage_path
 
+        self.last_in = None
+        self.last_out = None
+
         print(self.net)
         # todo: option to make fitting net have common or seperate weights per module
 
@@ -162,11 +165,10 @@ class GmBiasAndRelu(torch.nn.modules.Module):
         n_dimensions = gm.n_dimensions(x)
         n_components = gm.n_components(x)
 
-
         if n_components < 134 or True:
             bias = self.bias if overwrite_bias is None else overwrite_bias
             bias = torch.abs(bias)
-            return self.net(x, bias)[0]
+            result = self.net(x, bias)[0]
             # if self.train_fitting_flag:
             #     wrapper = _NetCheckpointWrapper(self.net, x, bias)
             #     net_params = tuple(self.net.parameters())
@@ -174,7 +176,6 @@ class GmBiasAndRelu(torch.nn.modules.Module):
             #
             # else:
             #     result = torch.utils.checkpoint.checkpoint(self.net, x, bias)[0]
-            # return result
         else:
             sorted_indices = torch.argsort(gm.positions(x.detach())[:, :, :, division_axis])
             sorted_mixture = mat_tools.my_index_select(x, sorted_indices)
@@ -185,7 +186,23 @@ class GmBiasAndRelu(torch.nn.modules.Module):
             fitted_left = self.forward(sorted_mixture[:, :, :division_index], overwrite_bias=overwrite_bias, division_axis=next_division_axis)
             fitted_right = self.forward(sorted_mixture[:, :, division_index:], overwrite_bias=overwrite_bias, division_axis=next_division_axis)
 
-            return torch.cat((fitted_left, fitted_right), dim=2)
+            result = torch.cat((fitted_left, fitted_right), dim=2)
+
+        self.last_in = x.detach()
+        self.last_out = result.detach()
+        return result
+
+    def debug_render(self, position_range: typing.Tuple[float, float, float, float] = None, image_size: int = 80, clamp: typing.Tuple[float, float] = (-1.0, 1.0)):
+        if position_range is None:
+            position_range = [-1.0, -1.0, 1.0, 1.0]
+
+        last_in = gm.render(self.last_in, batches=[0, 1], layers=[0, None], x_low=-position_range[0], x_high=position_range[2], y_low=-position_range[1], y_high=position_range[3], width=image_size, height=image_size)
+        target = gm.render_bias_and_relu(self.last_in, self.bias.detach(), batches=[0, 1], layers=[0, None], x_low=-position_range[0], x_high=position_range[2], y_low=-position_range[1], y_high=position_range[3], width=image_size, height=image_size)
+        prediction = gm.render(self.last_out, batches=[0, 1], layers=[0, None], x_low=-position_range[0], x_high=position_range[2], y_low=-position_range[1], y_high=position_range[3], width=image_size, height=image_size)
+        images = [last_in, target, prediction]
+        images = torch.cat(images, dim=1)
+        images = madam_imagetools.colour_mapped(images.cpu().numpy(), clamp[0], clamp[1])
+        return images[:, :, :3]
 
     def save(self):
         self.net.save()

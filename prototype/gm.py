@@ -236,6 +236,18 @@ def render(mixture: Tensor, batches: typing.Tuple[int, int] = (0, None), layers:
     return rendering
 
 
+def render_bias_and_relu(mixture: Tensor, bias: Tensor,
+                         batches: typing.Tuple[int, int] = (0, None), layers: typing.Tuple[int, int] = (0, None),
+                         x_low: float = -22, y_low: float = -22, x_high: float = 22, y_high: float = 22,
+                         width: int = 100, height: int = 100):
+    assert is_valid_mixture_and_bias(mixture, bias)
+    assert bias.shape[0] == 1
+    rendering = render(mixture, batches, layers, x_low, y_low, x_high, y_high, width, height)
+    bias_ = bias[layers[0]:layers[1]].view(-1, 1).repeat_interleave(height, dim=0)
+    rendering = rendering - bias_
+    return torch.max(rendering, torch.tensor([0.00001], dtype=torch.float32, device=mixture.device))
+
+
 def save(mixture: Tensor, file_name: str, meta_info=None) -> None:
     dictionary = {
         "type": "gm.Mixture",

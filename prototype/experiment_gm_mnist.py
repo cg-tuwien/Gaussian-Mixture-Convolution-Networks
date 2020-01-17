@@ -79,7 +79,7 @@ class Net(nn.Module):
             self.trainer2 = gm_fitting.Trainer(self.relu2, n_training_samples=400)
             self.trainer3 = gm_fitting.Trainer(self.relu3, n_training_samples=400)
 
-    def forward(self, in_x: torch.Tensor, activation_out: typing.List[torch.Tensor] = None):
+    def forward(self, in_x: torch.Tensor):
         in_x_norm = self.bn0(in_x)
 
         if self.train_fitting and self.training:
@@ -107,54 +107,23 @@ class Net(nn.Module):
             self.train_fitting_epoch = self.train_fitting_epoch + 1
             self.trainer3.save_weights()
 
-        if activation_out is not None:
-            activation_out.append(in_x_norm.detach())
         x = self.gmc1(in_x_norm)
-        # integral11 = gm.integrate(x).mean()
-        if activation_out is not None:
-            activation_out.append(x.detach())
         x = self.relu1(x)
         x = self.bn(x)
-        if activation_out is not None:
-            activation_out.append(x.detach())
-        integral12 = gm.integrate(x)
         # x = self.maxPool1(x)
 
         x = self.gmc2(x)
-        # integral21 = gm.integrate(x)
-        if activation_out is not None:
-            activation_out.append(x.detach())
         x = self.relu2(x)
         x = self.bn(x)
-        if activation_out is not None:
-            activation_out.append(x.detach())
-        # integral22 = gm.integrate(x)
         # x = self.maxPool2(x)
 
         x = self.gmc3(x)
-        # integral31 = gm.integrate(x)
-        if activation_out is not None:
-            activation_out.append(x.detach())
         x = self.relu3(x)
         x = self.bn(x)
-        if activation_out is not None:
-            activation_out.append(x.detach())
-        # integral32 = gm.integrate(x)
         # x = self.maxPool3(x)
 
         x = gm.integrate(x)
-        # integral4 = x
         x = F.log_softmax(x, dim=1)
-        # print(integral11.mean())
-        # print(integral12.mean())
-        #
-        # print(integral21.mean())
-        # print(integral22.mean())
-        #
-        # print(integral31.mean())
-        # print(integral32.mean())
-        #
-        # print(integral4.mean())
         return x.view(-1, 10)
 
 
@@ -171,8 +140,7 @@ def train(args, model, device, train_loader, optimizer, epoch):
             target = target_all[k * 25:(k + 1) * 25]
 
             optimizer.zero_grad()
-            activation_out = list()
-            output = model(data, activation_out=activation_out)
+            output = model(data)
             loss = F.nll_loss(output, target)
             loss.backward()
             optimizer.step()
@@ -182,13 +150,13 @@ def train(args, model, device, train_loader, optimizer, epoch):
                 correct = pred.eq(target.view_as(pred)).sum().item()
                 tensor_board_writer.add_scalar("0. loss", loss.item(), i)
                 tensor_board_writer.add_scalar("1. accuracy", 100 * correct / len(data), i)
-                tensor_board_writer.add_image("conv layer 1", model.gmc1.debug_render(clamp=[-0.8, 0.8]), i, dataformats='HWC')
-                tensor_board_writer.add_image("conv layer 2", model.gmc2.debug_render(clamp=[-0.08, 0.08]), i, dataformats='HWC')
-                tensor_board_writer.add_image("conv layer 3", model.gmc3.debug_render(clamp=[-0.05, 0.05]), i, dataformats='HWC')
-                for activation_index, act in enumerate(activation_out):
-                    rendering = gm.render(act, batches=[0, 1], layers=[0, None], x_low=-2, x_high=30, y_low=-2, y_high=30, width=80, height=80)
-                    rendering = madam_imagetools.colour_mapped(rendering.cpu().numpy(), -0.5/(28**2), 2.0/(28**2))
-                    tensor_board_writer.add_image(f"activation {activation_index}", rendering, i, dataformats='HWC')
+                tensor_board_writer.add_image("conv 1", model.gmc1.debug_render(clamp=[-0.8, 0.8]), i, dataformats='HWC')
+                tensor_board_writer.add_image("conv 2", model.gmc2.debug_render(clamp=[-0.08, 0.08]), i, dataformats='HWC')
+                tensor_board_writer.add_image("conv 3", model.gmc3.debug_render(clamp=[-0.05, 0.05]), i, dataformats='HWC')
+
+                tensor_board_writer.add_image("relu 1", model.relu1.debug_render(position_range=[0, 0, 28, 28], clamp=[-0.5/(28**2), 2.0/(28**2)]), i, dataformats='HWC')
+                tensor_board_writer.add_image("relu 2", model.relu2.debug_render(position_range=[0, 0, 28, 28], clamp=[-0.5/(28**2), 2.0/(28**2)]), i, dataformats='HWC')
+                tensor_board_writer.add_image("relu 3", model.relu3.debug_render(position_range=[0, 0, 28, 28], clamp=[-0.5/(28**2), 2.0/(28**2)]), i, dataformats='HWC')
 
                 print(
                     f'Train Epoch: {epoch} [{batch_idx * len(data)}/{len(train_loader.dataset) * len(data)} ({100. * batch_idx / len(train_loader):.0f}%)]\tLoss: {loss.item():.6f} (accuracy: {100 * correct / len(data)})')
