@@ -266,13 +266,13 @@ class Trainer:
         # if not self.tensor_board_graph_written:
         #     self.tensor_board_graph_written = True
         #     self.tensor_board_writer.add_graph(self.net, data_in)
-        self.tensor_board_writer.add_scalar("0. batch_loss", loss.item(), epoch)
-        self.tensor_board_writer.add_scalar("1. criterion", criterion.item(), epoch)
-        # self.tensor_board_writer.add_scalar("3. regularisation_aggr_prod", regularisation_aggr_prod.item(), epoch)
-        self.tensor_board_writer.add_scalar("4. whole time", time.perf_counter() - batch_start_time, epoch)
-        self.tensor_board_writer.add_scalar("5. network_time", network_time, epoch)
-        self.tensor_board_writer.add_scalar("6. eval_time", eval_time, epoch)
-        self.tensor_board_writer.add_scalar("7. backward_time", backward_time, epoch)
+        self.tensor_board_writer.add_scalar("fitting 0. batch_loss", loss.item(), epoch)
+        self.tensor_board_writer.add_scalar("fitting 1. criterion", criterion.item(), epoch)
+        # self.tensor_board_writer.add_scalar("fitting 3. regularisation_aggr_prod", regularisation_aggr_prod.item(), epoch)
+        self.tensor_board_writer.add_scalar("fitting 4. whole time", time.perf_counter() - batch_start_time, epoch)
+        self.tensor_board_writer.add_scalar("fitting 5. network_time", network_time, epoch)
+        self.tensor_board_writer.add_scalar("fitting 6. eval_time", eval_time, epoch)
+        self.tensor_board_writer.add_scalar("fitting 7. backward_time", backward_time, epoch)
 
         if epoch is None or (epoch % 10 == 0 and epoch < 100) or (epoch % 100 == 0 and epoch < 1000) or (epoch % 1000 == 0 and epoch < 10000) or (epoch % 10000 == 0):
             image_size = 80
@@ -282,7 +282,7 @@ class Trainer:
             image_target = gm.evaluate_with_activation_fun(mixture_in.detach(), bias_in.detach(), xes).view(-1, image_size, image_size)
             n_shown_images = 10
             fitted_mixture_image = gm.evaluate(output_gm.detach(), xes).view(-1, image_size, image_size)
-            self.log_images(f"target_prediction",
+            self.log_images(f"fitting target_prediction",
                             [image_target[:n_shown_images, :, :].transpose(0, 1).reshape(image_size, -1),
                              fitted_mixture_image[:n_shown_images, :, :].transpose(0, 1).reshape(image_size, -1)],
                             epoch, [-0.5, 2])
