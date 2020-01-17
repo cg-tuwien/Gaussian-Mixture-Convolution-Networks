@@ -83,7 +83,7 @@ class GmConvolution(torch.nn.modules.Module):
         assert gm.is_valid_mixture(kernel)
         return kernel
 
-    def debug_render(self, position_range: float = None, image_size: int = 100, clamp: typing.Tuple[float, float] = (-0.3, 0.3)):
+    def debug_render(self, position_range: float = None, image_size: int = 80, clamp: typing.Tuple[float, float] = (-0.3, 0.3)):
         if position_range is None:
             position_range = self.position_range * 2
 
@@ -196,9 +196,15 @@ class GmBiasAndRelu(torch.nn.modules.Module):
         if position_range is None:
             position_range = [-1.0, -1.0, 1.0, 1.0]
 
-        last_in = gm.render(self.last_in, batches=[0, 1], layers=[0, None], x_low=-position_range[0], x_high=position_range[2], y_low=-position_range[1], y_high=position_range[3], width=image_size, height=image_size)
-        target = gm.render_bias_and_relu(self.last_in, self.bias.detach(), batches=[0, 1], layers=[0, None], x_low=-position_range[0], x_high=position_range[2], y_low=-position_range[1], y_high=position_range[3], width=image_size, height=image_size)
-        prediction = gm.render(self.last_out, batches=[0, 1], layers=[0, None], x_low=-position_range[0], x_high=position_range[2], y_low=-position_range[1], y_high=position_range[3], width=image_size, height=image_size)
+        last_in = gm.render(self.last_in, batches=[0, 1], layers=[0, None],
+                            x_low=position_range[0], y_low=position_range[1], x_high=position_range[2], y_high=position_range[3],
+                            width=image_size, height=image_size)
+        target = gm.render_bias_and_relu(self.last_in, self.bias.detach(), batches=[0, 1], layers=[0, None],
+                                         x_low=position_range[0], y_low=position_range[1], x_high=position_range[2], y_high=position_range[3],
+                                         width=image_size, height=image_size)
+        prediction = gm.render(self.last_out, batches=[0, 1], layers=[0, None],
+                               x_low=position_range[0], y_low=position_range[1], x_high=position_range[2], y_high=position_range[3],
+                               width=image_size, height=image_size)
         images = [last_in, target, prediction]
         images = torch.cat(images, dim=1)
         images = madam_imagetools.colour_mapped(images.cpu().numpy(), clamp[0], clamp[1])
