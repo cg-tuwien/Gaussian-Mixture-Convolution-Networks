@@ -142,6 +142,7 @@ class GmBiasAndRelu(torch.nn.modules.Module):
         self.train_fitting(self.train_fitting_flag)
 
         self.name = f"GmBiasAndRelu_{n_layers}_{n_output_gaussians}"
+        self.storage_path = self.net.storage_path
 
         print(self.net)
         # todo: option to make fitting net have common or seperate weights per module

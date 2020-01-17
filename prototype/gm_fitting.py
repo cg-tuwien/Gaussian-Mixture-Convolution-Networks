@@ -182,6 +182,22 @@ class Trainer:
         self.optimiser = optim.Adam(net.parameters(), lr=learning_rate)
         self.tensor_board_writer = torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard' / f'{self.net.name}_{datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}')
         self.tensor_board_graph_written = False
+        self.storage_path = self.net.storage_path.with_suffix(".optimiser_state")
+        self.load()
+
+    def load(self, strict: bool = False):
+        print(f"gm_fitting.Trainer: trying to load {self.storage_path}")
+        if pathlib.Path(self.storage_path).is_file():
+            state_dict = torch.load(self.storage_path)
+            self.optimiser.load_state_dict(state_dict)
+            # assert len(missing_keys) == 0
+            # assert len(unexpected_keys) == 0
+            print(f"gm_fitting.Trainer: loaded")
+            return True
+        else:
+            print("gm_fitting.Trainer: not found")
+            assert not strict
+            return False
 
     def log_image(self, tag: str, image: typing.Sequence[torch.Tensor], epoch: int, clamp: typing.Sequence[float]):
         image = image.detach().t().cpu().numpy()
@@ -275,4 +291,6 @@ class Trainer:
         print(info)
 
     def save_weights(self):
+        print(f"gm_fitting.Trainer: saving to {self.storage_path}")
+        torch.save(self.optimiser.state_dict(), self.storage_path)
         self.net.save()
