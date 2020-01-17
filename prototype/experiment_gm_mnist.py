@@ -90,6 +90,7 @@ class Net(nn.Module):
             self.relu1.train_fitting(False)
 
             x = self.relu1(x)
+            x = self.bn(x)
             # x = self.maxPool1(x)
             x = self.gmc2(x)
 
@@ -98,6 +99,7 @@ class Net(nn.Module):
             self.relu2.train_fitting(False)
 
             x = self.relu2(x)
+            x = self.bn(x)
             # x = self.maxPool2(x)
             x = self.gmc3(x)
 
