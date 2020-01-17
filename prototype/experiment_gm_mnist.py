@@ -46,19 +46,19 @@ class Net(nn.Module):
                                              position_range=2, covariance_range=0.5,
                                              learn_positions=False, learn_covariances=False,
                                              weight_sd=0.00015).cuda()
-        self.relu1 = gm_modules.GmBiasAndRelu(n_layers=n_layers_1, n_output_gaussians=10, max_bias=0.0).cuda()
+        self.relu1 = gm_modules.GmBiasAndRelu(n_layers=n_layers_1, n_output_gaussians=25, max_bias=0.0).cuda()
         # self.maxPool1 = gm_modules.MaxPooling(10)
         self.gmc2 = gm_modules.GmConvolution(n_layers_in=n_layers_1, n_layers_out=n_layers_2, n_kernel_components=n_kernel_components,
                                              position_range=4, covariance_range=2,
                                              learn_positions=False, learn_covariances=False,
                                              weight_sd=0.002).cuda()
-        self.relu2 = gm_modules.GmBiasAndRelu(n_layers=n_layers_2, n_output_gaussians=10, max_bias=0.0).cuda()
+        self.relu2 = gm_modules.GmBiasAndRelu(n_layers=n_layers_2, n_output_gaussians=12, max_bias=0.0).cuda()
         # self.maxPool2 = gm_modules.MaxPooling(10)
         self.gmc3 = gm_modules.GmConvolution(n_layers_in=n_layers_2, n_layers_out=10, n_kernel_components=n_kernel_components,
                                              position_range=8, covariance_range=4,
                                              learn_positions=False, learn_covariances=False,
                                              weight_sd=0.001).cuda()
-        self.relu3 = gm_modules.GmBiasAndRelu(n_layers=10, n_output_gaussians=10, max_bias=0.0).cuda()
+        self.relu3 = gm_modules.GmBiasAndRelu(n_layers=10, n_output_gaussians=5, max_bias=0.0).cuda()
         # self.maxPool3 = gm_modules.MaxPooling(2)
 
         # todo: all the relus must use the same net for now, because all of them save it to the same location on disc.
@@ -210,6 +210,7 @@ def main():
     test_loader = torch.utils.data.DataLoader(GmMnistDataSet('test_', begin=0, end=100), batch_size=None, collate_fn=lambda x: x)
 
     model = Net()
+    print(f"experiment_gm_mnist.Net: trying to load {model_storage_path}")
     if pathlib.Path(model_storage_path).is_file():
         state_dict = torch.load(model_storage_path)
         missing_keys, unexpected_keys = model.load_state_dict(state_dict, strict=True)
