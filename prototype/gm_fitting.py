@@ -106,7 +106,7 @@ class Net(nn.Module):
 
         mixtures_normalised, bias_normalised, normalisation_factors = gm.normalise(mixture_in, bias_in)
 
-        x = mixture_in.view(n_batch * n_layers, n_input_components, -1)
+        x = mixtures_normalised.view(n_batch * n_layers, n_input_components, -1)
 
         # component should be the last dimension for conv1d to work
         x = x.transpose(1, 2)
