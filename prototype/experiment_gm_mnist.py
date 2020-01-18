@@ -91,9 +91,12 @@ class Net(nn.Module):
             x = self.gmc1(in_x_norm.detach())
             if 1 in self.train_fitting_layers:
                 self.relu1.train_fitting(True)
-                self.trainer1.train_on(x.detach(), self.relu1.bias.detach(), self.train_fitting_epoch)
+                # dirty hack: also train with bias, use a different epoch for logging. it's not really clean, also the reusing of the input, but i hope it'll be ok
+                self.trainer1.train_on(x.detach(), torch.rand_like(self.relu1.bias) * 20.0/(28**2), self.train_fitting_epoch)
+                self.trainer1.train_on(x.detach(), self.relu1.bias.detach(), self.train_fitting_epoch + 1)
                 self.relu1.train_fitting(False)
-                self.trainer1.save_weights()
+                if self.train_fitting_epoch % 20 == 0:
+                    self.trainer1.save_weights()
 
             x = self.relu1(x)
             x = self.bn(x)
@@ -102,9 +105,11 @@ class Net(nn.Module):
 
             if 2 in self.train_fitting_layers:
                 self.relu2.train_fitting(True)
-                self.trainer2.train_on(x.detach(), self.relu2.bias.detach(), self.train_fitting_epoch)
+                self.trainer2.train_on(x.detach(), torch.rand_like(self.relu2.bias) * 100.0/(28**2), self.train_fitting_epoch)
+                self.trainer2.train_on(x.detach(), self.relu2.bias.detach(), self.train_fitting_epoch + 1)
                 self.relu2.train_fitting(False)
-                self.trainer2.save_weights()
+                if self.train_fitting_epoch % 20 == 0:
+                    self.trainer2.save_weights()
 
             x = self.relu2(x)
             x = self.bn(x)
@@ -113,11 +118,13 @@ class Net(nn.Module):
 
             if 3 in self.train_fitting_layers:
                 self.relu3.train_fitting(True)
-                self.trainer3.train_on(x.detach(), self.relu3.bias.detach(), self.train_fitting_epoch)
+                self.trainer3.train_on(x.detach(), torch.rand_like(self.relu3.bias) * 28.0/(28**2), self.train_fitting_epoch)
+                self.trainer3.train_on(x.detach(), self.relu3.bias.detach(), self.train_fitting_epoch + 1)
                 self.relu3.train_fitting(False)
-                self.trainer3.save_weights()
+                if self.train_fitting_epoch % 20 == 0:
+                    self.trainer3.save_weights()
 
-            self.train_fitting_epoch = self.train_fitting_epoch + 1
+            self.train_fitting_epoch = self.train_fitting_epoch + 2
 
         x = self.gmc1(in_x_norm)
         x = self.relu1(x)
@@ -172,8 +179,8 @@ def train(args, model, device, train_loader, optimizer, epoch, only_simulate):
                 tensor_board_writer.add_image("conv 3", model.gmc3.debug_render(clamp=[-0.05, 0.05]), i, dataformats='HWC')
 
                 tensor_board_writer.add_image("relu 1", model.relu1.debug_render(position_range=[-14, -14, 42, 42], clamp=[-4/(28**2), 16.0/(28**2)]), i, dataformats='HWC')
-                tensor_board_writer.add_image("relu 2", model.relu2.debug_render(position_range=[-14, -14, 42, 42], clamp=[-4/(28**2), 16.0/(28**2)]), i, dataformats='HWC')
-                tensor_board_writer.add_image("relu 3", model.relu3.debug_render(position_range=[-14, -14, 42, 42], clamp=[-4/(28**2), 16.0/(28**2)]), i, dataformats='HWC')
+                tensor_board_writer.add_image("relu 2", model.relu2.debug_render(position_range=[-14, -14, 42, 42], clamp=[-4/(28**2), 100.0/(28**2)]), i, dataformats='HWC')
+                tensor_board_writer.add_image("relu 3", model.relu3.debug_render(position_range=[-14, -14, 42, 42], clamp=[-4/(28**2), 24.0/(28**2)]), i, dataformats='HWC')
 
                 print(f'Train Epoch: {epoch} [{(batch_idx * batch_divisor + k) * len(data)}/{len(train_loader.dataset) * len(data_all)} '
                       f'({100. * batch_idx / len(train_loader):.0f}%)]\tLoss: {loss.item():.6f} (accuracy: {100 * correct / len(data)})')
@@ -200,7 +207,7 @@ def main():
     default_learning_rate = 0.01
     default_epochs = 6 * 10
     default_log_interval = 10
-    train_fitting_layers = {2}
+    train_fitting_layers = {1, 2, 3}
     train_mnist = False
     model_storage_path = config.data_base_path / "mnist_gmcnet.pt"
     # Training settings
