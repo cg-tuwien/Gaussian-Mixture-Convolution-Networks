@@ -149,7 +149,7 @@ class Net(nn.Module):
 tensor_board_writer = torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard' / f'gm_mnist_{datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}')
 
 
-def train(args, model, device, train_loader, optimizer, epoch, only_simulate):
+def train(args, model, device, train_loader, optimizer, epoch, only_simulate, model_storage_path):
     model.train()
     for batch_idx, (data_all, target_all) in enumerate(train_loader):
 
@@ -174,16 +174,20 @@ def train(args, model, device, train_loader, optimizer, epoch, only_simulate):
                 correct = pred.eq(target.view_as(pred)).sum().item()
                 tensor_board_writer.add_scalar("0. loss", loss.item(), i)
                 tensor_board_writer.add_scalar("1. accuracy", 100 * correct / len(data), i)
-                tensor_board_writer.add_image("conv 1", model.gmc1.debug_render(clamp=[-0.8, 0.8]), i, dataformats='HWC')
-                tensor_board_writer.add_image("conv 2", model.gmc2.debug_render(clamp=[-0.08, 0.08]), i, dataformats='HWC')
-                tensor_board_writer.add_image("conv 3", model.gmc3.debug_render(clamp=[-0.05, 0.05]), i, dataformats='HWC')
+                tensor_board_writer.add_image("conv 1", model.gmc1.debug_render(clamp=[-0.80, 0.80]), i, dataformats='HWC')
+                tensor_board_writer.add_image("conv 2", model.gmc2.debug_render(clamp=[-0.32, 0.32]), i, dataformats='HWC')
+                tensor_board_writer.add_image("conv 3", model.gmc3.debug_render(clamp=[-0.20, 0.20]), i, dataformats='HWC')
 
                 tensor_board_writer.add_image("relu 1", model.relu1.debug_render(position_range=[-14, -14, 42, 42], clamp=[-4/(28**2), 16.0/(28**2)]), i, dataformats='HWC')
-                tensor_board_writer.add_image("relu 2", model.relu2.debug_render(position_range=[-14, -14, 42, 42], clamp=[-4/(28**2), 100.0/(28**2)]), i, dataformats='HWC')
-                tensor_board_writer.add_image("relu 3", model.relu3.debug_render(position_range=[-14, -14, 42, 42], clamp=[-4/(28**2), 24.0/(28**2)]), i, dataformats='HWC')
+                tensor_board_writer.add_image("relu 2", model.relu2.debug_render(position_range=[-14, -14, 42, 42], clamp=[-20/(28**2), 80.0/(28**2)]), i, dataformats='HWC')
+                tensor_board_writer.add_image("relu 3", model.relu3.debug_render(position_range=[-14, -14, 42, 42], clamp=[-6/(28**2), 24.0/(28**2)]), i, dataformats='HWC')
 
                 print(f'Train Epoch: {epoch} [{(batch_idx * batch_divisor + k) * len(data)}/{len(train_loader.dataset) * len(data_all)} '
                       f'({100. * batch_idx / len(train_loader):.0f}%)]\tLoss: {loss.item():.6f} (accuracy: {100 * correct / len(data)})')
+
+        if args.save_model and batch_idx % args.log_interval == 0:
+            print(f"experiment_gm_mnist.train: saving model to {model_storage_path}")
+            torch.save(model.state_dict(), model_storage_path)
 
 
 def test(args, model, device, test_loader):
@@ -206,9 +210,9 @@ def test(args, model, device, test_loader):
 def main():
     default_learning_rate = 0.01
     default_epochs = 6 * 10
-    default_log_interval = 10
-    train_fitting_layers = {1, 2, 3}
-    train_mnist = False
+    default_log_interval = 20
+    train_fitting_layers = None  # {1, 2, 3}
+    train_mnist = True
     model_storage_path = config.data_base_path / "mnist_gmcnet.pt"
     # Training settings
     parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
@@ -242,24 +246,25 @@ def main():
     test_loader = torch.utils.data.DataLoader(GmMnistDataSet('test_', begin=0, end=100), batch_size=None, collate_fn=lambda x: x)
 
     model = Net(train_fitting_layers)
-    print(f"experiment_gm_mnist.Net: trying to load {model_storage_path}")
+    print(f"experiment_gm_mnist.main: trying to load {model_storage_path}")
     if pathlib.Path(model_storage_path).is_file():
         state_dict = torch.load(model_storage_path)
         missing_keys, unexpected_keys = model.load_state_dict(state_dict, strict=True)
-        print(f"experiment_gm_mnist.Net: loaded (missing: {missing_keys}, unexpected: {unexpected_keys}")
+        print(f"experiment_gm_mnist.main: loaded (missing: {missing_keys}, unexpected: {unexpected_keys}")
     else:
-        print("experiment_gm_mnist.Net: not found")
+        print("experiment_gm_mnist.main: not found")
     model = model.to(device)
 
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
     # scheduler = StepLR(optimizer, step_size=1, gamma=args.gamma)
     for epoch in range(1, args.epochs + 1):
-        train(args, model, device, train_loader, optimizer, epoch, not train_mnist)
+        train(args, model, device, train_loader, optimizer, epoch, not train_mnist, model_storage_path)
         test(args, model, device, test_loader)
         # scheduler.step()
 
         if args.save_model:
+            print(f"experiment_gm_mnist.main: saving model to {model_storage_path}")
             torch.save(model.state_dict(), model_storage_path)
 
 
