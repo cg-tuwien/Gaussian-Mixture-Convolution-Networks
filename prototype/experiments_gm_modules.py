@@ -31,7 +31,7 @@ trainer3 = gm_fitting.Trainer(relu3, n_training_samples=400)
 epoch = 0
 for j in range(1000):
     for i in range(599):
-        x_all, l = gm.load(f"train_{i}")
+        x_all, l = gm.load(f"mnist/train_{i}")
         x_all = x_all.to('cuda')
         for k in range(4):
             x = x_all[k*25:(k+1)*25]

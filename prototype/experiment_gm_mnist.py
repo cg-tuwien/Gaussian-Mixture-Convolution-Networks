@@ -242,8 +242,8 @@ def main():
 
     device = torch.device("cuda" if use_cuda else "cpu")
 
-    train_loader = torch.utils.data.DataLoader(GmMnistDataSet('train_', begin=0, end=600), batch_size=None, collate_fn=lambda x: x)
-    test_loader = torch.utils.data.DataLoader(GmMnistDataSet('test_', begin=0, end=100), batch_size=None, collate_fn=lambda x: x)
+    train_loader = torch.utils.data.DataLoader(GmMnistDataSet('mnist/train_', begin=0, end=600), batch_size=None, collate_fn=lambda x: x)
+    test_loader = torch.utils.data.DataLoader(GmMnistDataSet('mnist/test_', begin=0, end=100), batch_size=None, collate_fn=lambda x: x)
 
     model = Net(train_fitting_layers)
     print(f"experiment_gm_mnist.main: trying to load {model_storage_path}")

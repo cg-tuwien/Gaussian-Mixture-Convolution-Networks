@@ -259,7 +259,7 @@ def save(mixture: Tensor, file_name: str, meta_info=None) -> None:
 
 
 def load(file_name: str) -> typing.Tuple[Tensor, typing.Any]:
-    dictionary = torch.load(config.data_base_path / 'mnist' / file_name)
+    dictionary = torch.load(config.data_base_path / file_name)
     assert dictionary["type"] == "gm.Mixture"
     if dictionary["version"] == 3:
         weights = dictionary["weights"]
