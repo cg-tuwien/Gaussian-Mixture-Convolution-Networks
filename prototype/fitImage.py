@@ -7,12 +7,19 @@ import torch.optim as optim
 import torchvision.datasets
 import torchvision.transforms
 import torch.utils.data
+import typing
+import madam_imagetools
 
 import gm
 import mat_tools
 
 from torch import Tensor
 
+
+def debug_render(mixture: Tensor, orig_size: typing.Tuple[int, int] = (800, 600), image_size: typing.Tuple[int, int] = (800, 600), clamp: typing.Tuple[float, float] = (0, 1)):
+    images = gm.render(mixture, x_low=0, x_high=orig_size[0], y_low=0, y_high=orig_size[1], width=image_size[0], height=image_size[1])
+    images = madam_imagetools.colour_mapped(images.cpu().numpy(), clamp[0], clamp[1])
+    return images[:, :, :3]
 
 def em_algorithm(image: Tensor, n_components: int, n_iterations: int, device: torch.device = 'cpu') -> Tensor:
     # todo test (after moving from Mixture class to Tensor data
@@ -109,8 +116,8 @@ def ad_algorithm(image: Tensor, n_components: int, n_iterations: int = 8, device
     assert len(image.shape) == 3
     assert n_components > 0
     batch_size = image.size()[0]
-    width = image.size()[1]
-    height = image.size()[2]
+    width = image.size()[2]
+    height = image.size()[1]
 
     target = image.to(device)
     target = target / torch.max(target)
@@ -164,10 +171,12 @@ def ad_algorithm(image: Tensor, n_components: int, n_iterations: int = 8, device
     icov_factor = torch.matmul(eigvecs, eigvals.sqrt().diag_embed())
     icov_factor.requires_grad = True
 
-    optimiser = optim.Adam([weights, positions, icov_factor], lr=0.05)
+    optimiser = optim.Adam([weights, positions, icov_factor], lr=0.005)
 
     # print("starting gradient descent")
     for k in range(n_iterations):
+        if k == n_iterations / 2:
+            optimiser = optim.Adam([weights, positions, icov_factor], lr=0.0005)
         optimiser.zero_grad()
 
         xes = torch.rand(batch_size, 1, 50*50, 2, device=device, dtype=torch.float32) * torch.tensor([[[width, height]]], device=device, dtype=torch.float32)
@@ -176,7 +185,7 @@ def ad_algorithm(image: Tensor, n_components: int, n_iterations: int = 8, device
         xes_indices_b = xes_indices
         xes_indices = mat_tools.flatten_index(xes_indices, target.shape[-2:])
 
-        inversed_covariances = icov_factor @ icov_factor.transpose(-2, -1) + torch.eye(2, 2, device=mixture.device) * 0.005
+        inversed_covariances = icov_factor @ icov_factor.transpose(-2, -1) + torch.eye(2, 2, device=mixture.device) * 0.001
         assert not torch.isnan(inversed_covariances).any()
         assert not torch.isinf(inversed_covariances).any()
         mixture_with_inversed_cov = gm.pack_mixture(weights, positions, inversed_covariances)
@@ -187,15 +196,18 @@ def ad_algorithm(image: Tensor, n_components: int, n_iterations: int = 8, device
         loss.backward()
         optimiser.step()
 
-        # if k % 40 == 0:
-        #     print(f"iterations {k}: loss = {loss.item()}, min det = {torch.min(torch.det(inversed_covariances.detach()))}")
-        #     _weights = weights.detach()
-        #     _positions = positions.detach()
-        #     # torch inverse returns a transposed matrix (v 1.3.1). our matrix is symmetric however, and we want to take a view, so the transpose avoids a copy.
-        #     _covariances = inversed_covariances.detach().inverse().transpose(-1, -2)
-        #     mixture = gm.pack_mixture(_weights, _positions, _covariances)
-        #     gm.debug_show(mixture, x_low=0, y_low=0, x_high=width, y_high=height, step=min(width, height) / 256)
-        #     # input("Press enter to continue!")
+        if k % 200 == 0:
+            print(f"iterations {k}: loss = {loss.item()}, min det = {torch.min(torch.det(inversed_covariances.detach()))}")
+            _weights = weights.detach()
+            _positions = positions.detach()
+            # torch inverse returns a transposed matrix (v 1.3.1). our matrix is symmetric however, and we want to take a view, so the transpose avoids a copy.
+            _covariances = inversed_covariances.detach().inverse().transpose(-1, -2)
+            mixture = gm.pack_mixture(_weights, _positions, _covariances)
+            # gm.debug_show(mixture, x_low=0, y_low=0, x_high=width, y_high=height, step=min(width, height) / 256)
+
+            rendering = debug_render(mixture, (width, height), (480, 270))
+            plt.imsave("/home/madam/cloud/celarek/Photos/auto_rendering.png", rendering)
+            # input("Press enter to continue!")
 
     fitting_end = time.time()
     print(f"fitting time: {fitting_end - fitting_start}")
@@ -207,20 +219,21 @@ def ad_algorithm(image: Tensor, n_components: int, n_iterations: int = 8, device
 
 
 def test():
-    # image: np.ndarray = plt.imread("/home/madam/cloud/Photos/fire_small.jpg").view(1, 256, 256)
-    image = plt.imread("/home/madam/Downloads/mnist_png/training/3/7.png") * 255
+    image = plt.imread("/home/madam/cloud/celarek/Photos/auto.jpg")
+    # image = plt.imread("/home/madam/Downloads/mnist_png/training/3/7.png") * 255
     if len(image.shape) == 3:
         image = image.mean(axis=2)
-    image_width = image.shape[0]
-    image_height = image.shape[1]
+    image_width = image.shape[1]
+    image_height = image.shape[0]
     image = torch.tensor(image, dtype=torch.float32).view(1, image_height, image_width)
     # m1 = em_algorithm(torch.tensor(image, dtype=torch.float32), n_components=2500, n_iterations=5, device='cpu')
-    m1 = ad_algorithm(image, n_components=25, n_iterations=121, device='cpu')
-    # gm.save(m1, "mnist_8")
+    m1 = ad_algorithm(image, n_components=2000, n_iterations=400000, device='cuda')
+    gm.save(m1, "auto")
 
     m1 = m1.cpu()
 
-    gm.debug_show(m1, x_low=0, y_low=0, x_high=image_width, y_high=image_height, step=min(image.shape[0], image.shape[1]) / 200)
+    rendering = debug_render(m1, (image_width, image_height), (1920, 1080))
+    plt.imsave("/home/madam/cloud/celarek/Photos/auto_rendering.png", rendering)
 
 # todo test_mnist() doesn't work but test() does. WHY?
 def test_mnist():
@@ -271,4 +284,4 @@ def test_mnist():
         #     plt.show()
 
 
-test_mnist()
+test()

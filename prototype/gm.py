@@ -213,7 +213,7 @@ def debug_show(mixture: Tensor, batch_i: int = 0, layer_i: int = 0, x_low: float
     values = evaluate(m, xes).detach()
     image = values.view(xv.size()[0], xv.size()[1]).t().cpu().numpy()
     if imshow:
-        plt.scatter(positions(m)[0, 0, :, 0].cpu().numpy(), y_high + y_low - positions(m)[0, 0, :, 1].cpu().numpy(), zorder=1)
+        # plt.scatter(positions(m)[0, 0, :, 0].cpu().numpy(), y_high + y_low - positions(m)[0, 0, :, 1].cpu().numpy(), zorder=1)
         plt.imshow(image, zorder=0, extent=[x_low, x_high, y_low, y_high])
         plt.colorbar()
         plt.show()
@@ -231,7 +231,7 @@ def render(mixture: Tensor, batches: typing.Tuple[int, int] = (0, None), layers:
     n_batch = m.shape[0]
     n_layers = m.shape[1]
     xes = torch.cat((xv.reshape(-1, 1), yv.reshape(-1, 1)), 1).view(1, 1, -1, 2)
-    rendering = evaluate(m.detach(), xes).view(n_batch, n_layers, height, width)
+    rendering = evaluate(m, xes).view(n_batch, n_layers, width, height).transpose(2, 3)
     rendering = rendering.transpose(0, 1).reshape(n_layers * height, n_batch * width)
     return rendering
 
