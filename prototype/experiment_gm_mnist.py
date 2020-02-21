@@ -212,7 +212,7 @@ def main():
     default_epochs = 6 * 10
     default_log_interval = 20
     train_fitting_layers = None  # {1, 2, 3}
-    train_mnist = True
+    train_mnist = False
     model_storage_path = config.data_base_path / "mnist_gmcnet.pt"
     # Training settings
     parser = argparse.ArgumentParser(description='PyTorch MNIST Example')

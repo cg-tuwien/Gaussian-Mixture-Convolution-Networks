@@ -29,14 +29,14 @@ assert COVARIANCE_MIN > 0
 def generate_random_ReLUandBias(convolved: bool, bias_max: float, weight_min: float, weight_max: float, device: torch.device = 'cpu'):
     # we use the layers for batching so that we can have different biases
     if convolved:
-        random_m = gm.generate_random_mixtures(1, BATCH_SIZE, random.randint(10, 10), DIMS, pos_radius=1, cov_radius=0.25, weight_min=0, weight_max=weight_max, device=device)
-        random_kernel = gm.generate_random_mixtures(1, BATCH_SIZE, 10, DIMS, pos_radius=0.2, cov_radius=0.04, device=device)
+        random_m = gm.generate_random_mixtures(n_batch=1, n_layers=BATCH_SIZE, n_components=random.randint(10, 10), n_dims=DIMS, pos_radius=1, cov_radius=0.25, weight_min=0, weight_max=weight_max, device=device)
+        random_kernel = gm.generate_random_mixtures(n_batch=1, n_layers=BATCH_SIZE, n_components=10, n_dims=DIMS, pos_radius=0.2, cov_radius=0.04, device=device)
         weights = gm.weights(random_kernel)
         weights -= weights.mean(dim=2).view(1, -1, 1)
         weights += 0.1
         mixture = gm.convolve(random_m, random_kernel)
     else:
-        mixture = gm.generate_random_mixtures(1, BATCH_SIZE, N_INPUT_GAUSSIANS, DIMS,
+        mixture = gm.generate_random_mixtures(n_batch=1, n_layers=BATCH_SIZE, n_components=N_INPUT_GAUSSIANS, n_dims=DIMS,
                                               pos_radius=1, cov_radius=0.25,
                                               weight_min=weight_min, weight_max=weight_max, device=device)
     # distribution = torch.distributions.categorical.Categorical(torch.ones(N_INPUT_GAUSSIANS, device=device))
@@ -80,13 +80,13 @@ def test_dl_fitting(g_layer_sizes: typing.List,
 
     print(net)
 
-    trainer = gm_fitting.Trainer(net, N_SAMPLES, LEARNING_RATE * float(not testing_mode), not testing_mode, testing_mode)
+    trainer = gm_fitting.Trainer(net, N_SAMPLES, LEARNING_RATE)
 
-    for i in range(1 if testing_mode else n_iterations):
+    for i in range(n_iterations):
         mixture, bias = generate_random_ReLUandBias(convolved=convolved_input, bias_max=bias_max, weight_min=weight_min, weight_max=weight_max, device=net.device())
         trainer.train_on(mixture, bias, i)
-        if i % 1000 == 0:
-            trainer.save_weights()
+        # if i % 1000 == 0:
+            # trainer.save_weights()
 
     # target, input_ = draw_random_samples(10, WIDTH, HEIGHT)
     # output = net(input_)
