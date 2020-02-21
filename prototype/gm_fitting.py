@@ -285,7 +285,7 @@ class Trainer:
             n_batches_eval = min(n_batches_eval, gm.n_batch(mixture_in))
             n_layers_eval = min(gm.n_layers(mixture_in), n_shown_images)
             mixture_eval = mixture_in.detach()[:n_batches_eval, :n_layers_eval, :, :]
-            bias_eval = bias_in.detach()[:n_batches_eval, :n_layers]
+            bias_eval = bias_in.detach()[:n_batches_eval, :n_layers_eval]
 
             image_target = gm.evaluate_with_activation_fun(mixture_eval, bias_eval, xes).view(-1, image_size, image_size)
             fitted_mixture_image = gm.evaluate(output_gm.detach(), xes).view(-1, image_size, image_size)
