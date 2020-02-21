@@ -160,7 +160,7 @@ class GmBiasAndRelu(torch.nn.modules.Module):
             self.net.requires_grad_(False)
             self.bias.requires_grad_(True)
 
-    def forward(self, x: Tensor, overwrite_bias: Tensor = None, division_axis: int = 0) -> Tensor:
+    def forward(self, x: Tensor, overwrite_bias: Tensor = None, division_axis: int = 0, latent_space_vectors: typing.List[Tensor] = None) -> Tensor:
         # todo: think of something that would make it possible to do live learning of the fitting network
         n_dimensions = gm.n_dimensions(x)
         n_components = gm.n_components(x)
@@ -168,7 +168,7 @@ class GmBiasAndRelu(torch.nn.modules.Module):
         if n_components < 134 or True:
             bias = self.bias if overwrite_bias is None else overwrite_bias
             bias = torch.abs(bias)
-            result = self.net(x, bias)[0]
+            result = self.net(x, bias, latent_space_vectors=latent_space_vectors)
             # if self.train_fitting_flag:
             #     wrapper = _NetCheckpointWrapper(self.net, x, bias)
             #     net_params = tuple(self.net.parameters())
@@ -183,6 +183,7 @@ class GmBiasAndRelu(torch.nn.modules.Module):
             division_index = n_components // 2
             next_division_axis = (division_axis + 1) % n_dimensions
 
+            # todo concatenate latent space vecotr if is not null:: that is actually easy, but we the resorting will foo things up. do we need a safe guard? the result would be only usefull for drawing latent space
             fitted_left = self.forward(sorted_mixture[:, :, :division_index], overwrite_bias=overwrite_bias, division_axis=next_division_axis)
             fitted_right = self.forward(sorted_mixture[:, :, division_index:], overwrite_bias=overwrite_bias, division_axis=next_division_axis)
 

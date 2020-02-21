@@ -248,6 +248,16 @@ def render_bias_and_relu(mixture: Tensor, bias: Tensor,
     return torch.max(rendering, torch.tensor([0.00001], dtype=torch.float32, device=mixture.device))
 
 
+def export_as_image(mixture: Tensor):
+    # todo make general on next occasion
+    rendering = render(mixture.detach().view(1, -1, 1, 7), x_low=-1.5, x_high=1.5, y_low=-1.5, y_high=1.5).cpu().numpy()
+    import madam_imagetools
+    rendering_cm = madam_imagetools.colour_mapped(rendering, -1, 1)
+    rendering_cm = rendering_cm.reshape(-1, 100, 100, 4)
+    for i in range(rendering_cm.shape[0]):
+        plt.imsave(f"{i:05}.png", rendering_cm[i, :, :, :])
+
+
 def save(mixture: Tensor, file_name: str, meta_info=None) -> None:
     dictionary = {
         "type": "gm.Mixture",

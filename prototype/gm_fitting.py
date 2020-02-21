@@ -98,7 +98,7 @@ class Net(nn.Module):
     def device(self):
         return self.output_layer.bias.device
 
-    def forward(self, mixture_in: Tensor, bias_in: Tensor, learning: bool = True) -> typing.Tuple[Tensor, Tensor]:
+    def forward(self, mixture_in: Tensor, bias_in: Tensor, learning: bool = True, latent_space_vectors: typing.List[Tensor] = None) -> Tensor:
         n_batch = gm.n_batch(mixture_in)
         n_layers = gm.n_layers(mixture_in)
         n_input_components = gm.n_components(mixture_in)
@@ -141,7 +141,8 @@ class Net(nn.Module):
             agrs_list.append(x_prd)
 
         x = torch.cat(agrs_list, dim=2).reshape(n_batch * n_layers, -1)
-        latent_vector = x
+        if latent_space_vectors is not None:
+            latent_space_vectors.append(x.detach())
 
         # x is batch size x final g layer size now
         x = x.view(n_batch * n_layers, -1, self.n_output_gaussians)
@@ -170,7 +171,7 @@ class Net(nn.Module):
                                          positions.view(n_batch, n_layers, self.n_output_gaussians, n_dims),
                                          covariances.view(n_batch, n_layers, self.n_output_gaussians, n_dims, n_dims))
         assert gm.is_valid_mixture(normalised_out)
-        return gm.de_normalise(normalised_out, normalisation_factors), latent_vector
+        return gm.de_normalise(normalised_out, normalisation_factors)
 
 
 class Trainer:

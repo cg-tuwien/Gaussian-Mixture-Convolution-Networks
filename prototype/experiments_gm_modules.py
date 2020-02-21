@@ -47,6 +47,7 @@ for j in range(1000):
             # epoch += 1
 
             gmc1 = None
+            latent_space = torch.zeros(1)
             x = relu1(x)
             x = x.detach()
             #
