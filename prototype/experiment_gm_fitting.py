@@ -17,7 +17,7 @@ N_INPUT_GAUSSIANS = 10
 N_OUTPUT_GAUSSIANS = 10
 COVARIANCE_MIN = 0.01
 
-BATCH_SIZE = 50
+BATCH_SIZE = 1000
 LEARNING_RATE = 0.001
 
 assert DIMS == 2 or DIMS == 3
@@ -58,7 +58,6 @@ def generate_random_ReLUandBias(convolved: bool, bias_max: float, weight_min: fl
 def test_dl_fitting(g_layer_sizes: typing.List,
                     fully_layer_sizes: typing.List,
                     device: str = "cuda",
-                    testing_mode: bool = False,
                     n_iterations: int = 16385,
                     n_agrs: int = 1,
                     batch_norm: bool = False,
@@ -66,12 +65,12 @@ def test_dl_fitting(g_layer_sizes: typing.List,
                     weight_min: float = -1,
                     weight_max: float = 15,
                     convolved_input: bool = True):
-    net = gm_fitting.Net(g_layer_sizes,
-                         fully_layer_sizes,
-                         n_output_gaussians=N_OUTPUT_GAUSSIANS,
-                         n_dims=DIMS,
-                         n_agrs=n_agrs,
-                         batch_norm=batch_norm)
+    net = gm_fitting.PointNetWithParallelMLPs(g_layer_sizes,
+                                              fully_layer_sizes,
+                                              n_output_gaussians=N_OUTPUT_GAUSSIANS,
+                                              n_dims=DIMS,
+                                              aggregations=n_agrs,
+                                              batch_norm=batch_norm)
     net.load()
     net.to(device);
 
@@ -86,11 +85,10 @@ def test_dl_fitting(g_layer_sizes: typing.List,
         mixture, bias = generate_random_ReLUandBias(convolved=convolved_input, bias_max=bias_max, weight_min=weight_min, weight_max=weight_max, device=net.device())
         trainer.train_on(mixture, bias, i)
         # if i % 1000 == 0:
-            # trainer.save_weights()
+        # trainer.save_weights()
 
     # target, input_ = draw_random_samples(10, WIDTH, HEIGHT)
     # output = net(input_)
     # print(f"target={target}")
     # print(f"output={output}")
     # print(f"diff={output - target}")
-

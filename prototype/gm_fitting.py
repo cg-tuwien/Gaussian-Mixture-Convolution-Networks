@@ -23,114 +23,82 @@ COVARIANCE_MIN = 0.0001
 
 
 class Net(nn.Module):
-    def __init__(self,
-                 g_layer_sizes: typing.List,
-                 fully_layer_sizes: typing.List,
-                 n_output_gaussians: int,
-                 name: str = "",
-                 n_dims: int = 2,
-                 n_agrs: int = 4,
-                 batch_norm: bool = False):
-        # todo: refactor to have some nice sequential blocks
+    def __init__(self, class_name: str, config_name: str, n_dims: int):
         super(Net, self).__init__()
+        self.class_name = class_name
+        self.config_name = config_name
+        self.name = "gmfit_" + self.class_name + "_" + self.config_name
         self.n_dims = n_dims
-        self.n_agrs = n_agrs
-        self.batch_norm = batch_norm
-        self.n_output_gaussians = n_output_gaussians
-        # n * (1 for weights, DIMS for positions, trimat_size(DIMS) for the triangle cov matrix) +1 for the bias
-        n_inputs_per_gaussian = 1 + n_dims + n_dims * n_dims
-        # n_inputs = N_INPUT_GAUSSIANS * (1 + DIMS + mat_tools.trimat_size(DIMS)) + 1
-        # and we want to output A, so that C = A @ A.T() + 0.01 * identity() is the cov matrix
-        n_outputs_per_gaussian = 1 + n_dims + n_dims * n_dims
-        # n_outputs = N_OUTPUT_GAUSSIANS * n_outputs_per_gaussian
-
-        last_layer_size = n_inputs_per_gaussian
-        self.per_g_layers = nn.ModuleList()
-        self.per_g_batch_norms = nn.ModuleList()
-        for s in g_layer_sizes[:-1]:
-            self.per_g_layers.append(nn.Conv1d(last_layer_size, s, kernel_size=1, stride=1, groups=1))
-            if self.batch_norm:
-                self.per_g_batch_norms.append(nn.BatchNorm1d(s))
-            last_layer_size = s
-        self.per_g_output_layer = nn.Conv1d(last_layer_size, g_layer_sizes[-1], kernel_size=1, stride=1, groups=1)
-        last_layer_size = g_layer_sizes[-1]
-
-        self.fully_layers = nn.ModuleList()
-        self.fully_batch_norms = nn.ModuleList()
-
-        assert last_layer_size % (self.n_output_gaussians * self.n_agrs) == 0
-        last_layer_size = last_layer_size // self.n_output_gaussians + 1
-        for s in fully_layer_sizes:
-            self.fully_layers.append(nn.Conv1d(last_layer_size, s, kernel_size=1, stride=1, groups=1))
-            if self.batch_norm:
-                self.fully_batch_norms.append(nn.BatchNorm1d(s))
-            last_layer_size = s
-
-        self.output_layer = nn.Conv1d(last_layer_size, n_outputs_per_gaussian, kernel_size=1, stride=1, groups=1)
-
-        self.name = f"fit_gm_net_woio{'_bn' if self.batch_norm else ''}_a{self.n_agrs}"
-        self.name += name + "_g"
-        for s in g_layer_sizes:
-            self.name += f"_{s}"
-        self.name += "__f"
-        for s in fully_layer_sizes:
-            self.name += f"_{s}"
-
         self.storage_path = config.data_base_path / "weights" / self.name
 
-    def save(self):
-        print(f"gm_fitting.Net: saving to {self.storage_path}")
+    def save(self) -> None:
+        print(f"gm_fitting.{self.class_name}: saving to {self.storage_path}")
         torch.save(self.state_dict(), self.storage_path)
 
-    def load(self, strict: bool = False):
-        print(f"gm_fitting.Net: trying to load {self.storage_path}")
+    def load(self, strict: bool = False) -> bool:
+        print(f"gm_fitting.{self.class_name}: trying to load {self.storage_path}")
         if pathlib.Path(self.storage_path).is_file():
             state_dict = torch.load(self.storage_path)
             missing_keys, unexpected_keys = self.load_state_dict(state_dict, strict=strict)
             # assert len(missing_keys) == 0
             # assert len(unexpected_keys) == 0
-            print(f"gm_fitting.Net: loaded (missing: {missing_keys}, unexpected: {unexpected_keys}")
+            print(f"gm_fitting.{self.class_name}: loaded (missing: {missing_keys}, unexpected: {unexpected_keys}")
             return True
         else:
-            print("gm_fitting.Net: not found")
+            print(f"gm_fitting.{self.class_name}: not found")
             return False
 
-    def device(self):
-        return self.output_layer.bias.device
+    def device(self) -> torch.device:
+        return next(self.parameters()).device
 
-    def forward(self, mixture_in: Tensor, bias_in: Tensor, learning: bool = True, latent_space_vectors: typing.List[Tensor] = None) -> Tensor:
+
+class PointNetToLatent(nn.Module):
+    def __init__(self, g_layer_sizes: typing.List, n_dims: int = 2, batch_norm: bool = True, aggregations: int = 1):
+        super(PointNetToLatent, self).__init__()
+        self.g_layer_sizes = g_layer_sizes
+        self.batch_norm = batch_norm
+        self.aggregations = aggregations
+
+        n_inputs_per_gaussian = 1 + n_dims + n_dims * n_dims
+        last_layer_size = n_inputs_per_gaussian
+        module_list = nn.ModuleList()
+        for s in g_layer_sizes[:-1]:
+            module_list.append(nn.Conv1d(last_layer_size, s, kernel_size=1, stride=1, groups=1))
+            if batch_norm:
+                module_list.append(nn.BatchNorm1d(s))
+            module_list.append(torch.nn.LeakyReLU())
+            last_layer_size = s
+        module_list.append(nn.Conv1d(last_layer_size, g_layer_sizes[-1], kernel_size=1, stride=1, groups=1))
+
+        self.net = torch.nn.Sequential(*module_list)
+        self.latent_layer_size = g_layer_sizes[-1]
+
+    def forward(self, mixture_in: Tensor) -> Tensor:
         n_batch = gm.n_batch(mixture_in)
         n_layers = gm.n_layers(mixture_in)
         n_input_components = gm.n_components(mixture_in)
-        n_dims = gm.n_dimensions(mixture_in)
 
-        mixtures_normalised, bias_normalised, normalisation_factors = gm.normalise(mixture_in, bias_in)
-
-        x = mixtures_normalised.view(n_batch * n_layers, n_input_components, -1)
+        x = mixture_in.view(n_batch * n_layers, n_input_components, -1)
 
         # component should be the last dimension for conv1d to work
         x = x.transpose(1, 2)
 
-        for i, layer in enumerate(self.per_g_layers):
-            x = layer(x)
-            if self.batch_norm:
-                x = self.per_g_batch_norms[i](x)
-            x = F.leaky_relu(x)
-        x = self.per_g_output_layer(x)
+        # this goes through all the layers, the rest of the code is just massaging
+        x = self.net(x)
 
-        n_agrs = self.n_agrs
-        agrs_list = []
+        aggregations = self.aggregations
+        aggregations_list = []
         n_out = x.shape[1]
-        x_sum = torch.sum(x[:,                 0:(n_out//n_agrs)*1, :], dim=2).view(n_batch * n_layers, -1, 1)
-        agrs_list.append(x_sum)
-        if n_agrs >= 4:
-            x_max = torch.max(x[:, (n_out//n_agrs)*3:(n_out//n_agrs)*4, :], dim=2).values.view(n_batch * n_layers, -1, 1)
-            agrs_list.append(x_max)
-        if n_agrs >= 3:
-            x_var = torch.var(x[:, (n_out//n_agrs)*2:(n_out//n_agrs)*3, :], dim=2, unbiased=False).view(n_batch * n_layers, -1, 1)
-            agrs_list.append(x_var)
-        if n_agrs >= 2:
-            x_prd = torch.abs(x[:, (n_out//n_agrs)*1:(n_out//n_agrs)*2, :] + 1)
+        x_sum = torch.sum(x[:, 0:(n_out // aggregations) * 1, :], dim=2).view(n_batch * n_layers, -1, 1)
+        aggregations_list.append(x_sum)
+        if aggregations >= 4:
+            x_max = torch.max(x[:, (n_out // aggregations) * 3:(n_out // aggregations) * 4, :], dim=2).values.view(n_batch * n_layers, -1, 1)
+            aggregations_list.append(x_max)
+        if aggregations >= 3:
+            x_var = torch.var(x[:, (n_out // aggregations) * 2:(n_out // aggregations) * 3, :], dim=2, unbiased=False).view(n_batch * n_layers, -1, 1)
+            aggregations_list.append(x_var)
+        if aggregations >= 2:
+            x_prd = torch.abs(x[:, (n_out // aggregations) * 1:(n_out // aggregations) * 2, :] + 1)
             # old, explods when switchng from n_gaussians=10 to 100
             # x_prd = torch.prod(x_prd, dim=2).view(n_layers, -1, 1)
 
@@ -138,9 +106,145 @@ class Net(nn.Module):
             x_prd = torch.mean(torch.log(x_prd), dim=2).view(n_batch * n_layers, -1, 1)
             x_prd = torch.min(x_prd, torch.tensor(10, dtype=torch.float32, device=x.device))
             x_prd = torch.exp(x_prd)
-            agrs_list.append(x_prd)
+            aggregations_list.append(x_prd)
 
-        x = torch.cat(agrs_list, dim=2).reshape(n_batch * n_layers, -1)
+        x = torch.cat(aggregations_list, dim=2).reshape(n_batch, n_layers, -1)
+        return x
+
+    def config_name(self) -> str:
+        config_name = "_bn" if self.batch_norm else ''
+        config_name += f"_a{self.aggregations}" if self.aggregations > 1 else ''
+        config_name += "_g"
+        for s in self.g_layer_sizes:
+            config_name += f"_{s}"
+        return config_name
+
+
+def raw_out_to_gm(x: Tensor) -> Tensor:
+    n_batch = gm.n_batch(x)
+    n_layers = gm.n_layers(x)
+    n_dims = gm.n_dimensions(x)
+    n_components = gm.n_components(x)
+
+    weights = x[:, :, :, 0]
+    positions = x[:, :, :, 1:(n_dims + 1)]
+    # we are learning A, so that C = A @ A.T() + 0.01 * identity() is the resulting cov matrix
+    A = x[:, :, :, (n_dims + 1):].view(n_batch, n_layers, n_components, n_dims, n_dims)
+    C = A @ A.transpose(-2, -1) + torch.eye(n_dims, n_dims, dtype=torch.float32, device=x.device) * COVARIANCE_MIN
+    covariances = C
+
+    m = gm.pack_mixture(weights.view(n_batch, n_layers, n_components),
+                        positions.view(n_batch, n_layers, n_components, n_dims),
+                        covariances.view(n_batch, n_layers, n_components, n_dims, n_dims))
+    assert gm.is_valid_mixture(m)
+    return m
+
+
+class PointNetWithMLP(Net):
+    def __init__(self,
+                 g_layer_sizes: typing.List,
+                 fully_layer_sizes: typing.List,
+                 n_output_gaussians: int,
+                 name: str = "",
+                 n_dims: int = 2,
+                 aggregations: int = 4,
+                 batch_norm: bool = False):
+        config_name = name
+        point_net_to_latent_module = PointNetToLatent(g_layer_sizes, n_dims=n_dims, batch_norm=batch_norm, aggregations=aggregations)
+        config_name += point_net_to_latent_module.config_name()
+        config_name += "_f"
+        for s in fully_layer_sizes:
+            config_name += f"_{s}"
+
+        super(PointNetWithMLP, self).__init__("PointNetWithMLP", config_name, n_dims)
+
+        self.point_net_to_latent_module = point_net_to_latent_module
+
+        self.n_output_gaussians = n_output_gaussians
+        n_outputs_per_gaussian = 1 + n_dims + n_dims * n_dims
+
+        fully_layers = nn.ModuleList()
+
+        assert point_net_to_latent_module.latent_layer_size % (self.n_output_gaussians * aggregations) == 0
+        last_layer_size = point_net_to_latent_module.latent_layer_size + 1
+        for s in fully_layer_sizes:
+            fully_layers.append(nn.Linear(last_layer_size, s))
+            if batch_norm:
+                fully_layers.append(nn.BatchNorm1d(s))
+            fully_layers.append(nn.LeakyReLU())
+            last_layer_size = s
+
+        fully_layers.append(nn.Linear(last_layer_size, n_outputs_per_gaussian * self.n_output_gaussians))
+
+        self.latent_to_raw_out = nn.Sequential(*fully_layers)
+
+    def forward(self, mixture_in: Tensor, bias_in: Tensor, latent_space_vectors: typing.List[Tensor] = None) -> Tensor:
+        n_batch = gm.n_batch(mixture_in)
+        n_layers = gm.n_layers(mixture_in)
+
+        mixtures_normalised, bias_normalised, normalisation_factors = gm.normalise(mixture_in, bias_in)
+
+        x = self.point_net_to_latent_module(mixtures_normalised).view(n_batch * n_layers, -1)
+        if latent_space_vectors is not None:
+            latent_space_vectors.append(x.detach())
+
+        bias_extended = bias_normalised.view(-1, n_layers, 1).expand(n_batch, n_layers, 1).view(n_batch * n_layers, 1)
+        x = torch.cat((bias_extended, x), dim=1)
+
+        # this goes through all the output layers, the rest of the code is just massaging
+        x = self.latent_to_raw_out(x)
+
+        x = x.view(n_batch, n_layers, self.n_output_gaussians, -1)
+        x = raw_out_to_gm(x)
+
+        return gm.de_normalise(x, normalisation_factors)
+
+
+class PointNetWithParallelMLPs(Net):
+    def __init__(self,
+                 g_layer_sizes: typing.List,
+                 fully_layer_sizes: typing.List,
+                 n_output_gaussians: int,
+                 name: str = "",
+                 n_dims: int = 2,
+                 aggregations: int = 4,
+                 batch_norm: bool = False):
+        config_name = name
+        point_net_to_latent_module = PointNetToLatent(g_layer_sizes, n_dims=n_dims, batch_norm=batch_norm, aggregations=aggregations)
+        config_name += point_net_to_latent_module.config_name()
+        config_name += "_f"
+        for s in fully_layer_sizes:
+            config_name += f"_{s}"
+
+        super(PointNetWithParallelMLPs, self).__init__("PointNetWithParallelMLPs", config_name, n_dims)
+
+        self.point_net_to_latent_module = point_net_to_latent_module
+
+        self.n_output_gaussians = n_output_gaussians
+        n_outputs_per_gaussian = 1 + n_dims + n_dims * n_dims
+
+        fully_layers = nn.ModuleList()
+
+        assert point_net_to_latent_module.latent_layer_size % (self.n_output_gaussians * self.n_agrs) == 0
+        last_layer_size = point_net_to_latent_module.latent_layer_size // self.n_output_gaussians + 1
+        for s in fully_layer_sizes:
+            fully_layers.append(nn.Conv1d(last_layer_size, s, kernel_size=1, stride=1, groups=1))
+            if batch_norm:
+                fully_layers.append(nn.BatchNorm1d(s))
+            fully_layers.append(nn.LeakyReLU())
+            last_layer_size = s
+
+        fully_layers.append(nn.Conv1d(last_layer_size, n_outputs_per_gaussian, kernel_size=1, stride=1, groups=1))
+
+        self.latent_to_raw_out = nn.Sequential(*fully_layers)
+
+    def forward(self, mixture_in: Tensor, bias_in: Tensor, learning: bool = True, latent_space_vectors: typing.List[Tensor] = None) -> Tensor:
+        n_batch = gm.n_batch(mixture_in)
+        n_layers = gm.n_layers(mixture_in)
+
+        mixtures_normalised, bias_normalised, normalisation_factors = gm.normalise(mixture_in, bias_in)
+
+        x = self.point_net_to_latent_module(mixtures_normalised).view(n_batch * n_layers, -1)
         if latent_space_vectors is not None:
             latent_space_vectors.append(x.detach())
 
@@ -149,29 +253,13 @@ class Net(nn.Module):
         bias_extended = bias_normalised.view(-1, n_layers, 1, 1).expand(n_batch, n_layers, 1, self.n_output_gaussians).view(n_batch * n_layers, 1, self.n_output_gaussians)
         x = torch.cat((bias_extended, x), dim=1)
 
-        for i, layer in enumerate(self.fully_layers):
-            x = layer(x)
-            if self.batch_norm:
-                x = self.fully_batch_norms[i](x)
-            x = F.leaky_relu(x)
-            # x = self.batch_norms[i](x.view(-1, 1))
-            i += 1
+        # this goes through all the output layers, the rest of the code is just massaging
+        x = self.latent_to_raw_out(x)
 
-        x = self.output_layer(x)
-        x = x.transpose(1, 2)
+        x = x.view(n_batch, n_layers, self.n_output_gaussians, -1)
+        x = raw_out_to_gm(x)
 
-        weights = x[:, :, 0]
-        positions = x[:, :, 1:(self.n_dims + 1)]
-        # we are learning A, so that C = A @ A.T() + 0.01 * identity() is the resulting cov matrix
-        A = x[:, :, (self.n_dims + 1):].view(n_batch * n_layers, -1, self.n_dims, self.n_dims)
-        C = A @ A.transpose(2, 3) + torch.eye(self.n_dims, self.n_dims, dtype=torch.float32, device=self.device()) * COVARIANCE_MIN
-        covariances = C
-
-        normalised_out = gm.pack_mixture(weights.view(n_batch, n_layers, self.n_output_gaussians),
-                                         positions.view(n_batch, n_layers, self.n_output_gaussians, n_dims),
-                                         covariances.view(n_batch, n_layers, self.n_output_gaussians, n_dims, n_dims))
-        assert gm.is_valid_mixture(normalised_out)
-        return gm.de_normalise(normalised_out, normalisation_factors)
+        return gm.de_normalise(x, normalisation_factors)
 
 
 class Trainer:
