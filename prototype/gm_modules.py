@@ -131,11 +131,11 @@ class GmBiasAndRelu(torch.nn.modules.Module):
         # use a small bias for the start. i hope it's easier for the net to increase it than to lower it
         self.bias = torch.nn.Parameter(torch.rand(1, self.n_layers) * max_bias)
 
-        self.net = gm_fitting.Net([64, 128, 256, 512, 512, n_output_gaussians * 25],
+        self.net = gm_fitting.PointNetWithParallelMLPs([64, 128, 256, 512, 512, n_output_gaussians * 25],
                                   [256, 256, 256, 256, 256, 128],
                                   n_output_gaussians=n_output_gaussians,
                                   n_dims=n_dimensions,
-                                  n_agrs=1, batch_norm=True)
+                                  aggregations=1, batch_norm=True)
         self.net.load(strict=False)
         # if not self.net.load(strict=True):
         #     raise Exception(f"Fitting network {self.net.name} not found.")
