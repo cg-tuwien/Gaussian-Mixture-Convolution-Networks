@@ -39,30 +39,40 @@ class GmMnistDataSet(torch.utils.data.Dataset):
     def __getitem__(self, index):
         return gm.load(f"{self.prefix}{index}")
 
-
 class Net(nn.Module):
-    def __init__(self, train_fitting_layers: typing.Set[int] = None):
+    def __init__(self,
+                 train_fitting_layers: typing.Set[int] = None,
+                 layer1_m2m_fitting: typing.Callable = gm_modules.generate_default_fitting_module,
+                 layer2_m2m_fitting: typing.Callable = gm_modules.generate_default_fitting_module,
+                 layer3_m2m_fitting: typing.Callable = gm_modules.generate_default_fitting_module):
         super(Net, self).__init__()
+        self.storage_path = config.data_base_path / "weights" / "mnist_gmcnet.pt"
+        n_in_g = 25
         n_layers_1 = 5
+        n_out_g_1 = 25
         n_layers_2 = 6
+        n_out_g_2 = 12
+        n_out_g_3 = 5
         # sqrt(2) / (n_kernel_components * n_input_gauss * math.sqrt(2 * math.pi * det(cov))
         self.gmc1 = gm_modules.GmConvolution(n_layers_in=1, n_layers_out=n_layers_1, n_kernel_components=n_kernel_components,
                                              position_range=2, covariance_range=0.5,
                                              learn_positions=False, learn_covariances=False,
                                              weight_sd=0.4).cuda()
-        self.relu1 = gm_modules.GmBiasAndRelu(n_layers=n_layers_1, n_output_gaussians=25, max_bias=0.0).cuda()
+        self.relu1 = gm_modules.GmBiasAndRelu(layer_id=1, n_layers=n_layers_1, generate_fitting_module=layer1_m2m_fitting, n_input_gaussians=n_in_g*n_kernel_components, n_output_gaussians=n_out_g_1).cuda()
         # self.maxPool1 = gm_modules.MaxPooling(10)
+
         self.gmc2 = gm_modules.GmConvolution(n_layers_in=n_layers_1, n_layers_out=n_layers_2, n_kernel_components=n_kernel_components,
                                              position_range=4, covariance_range=2,
                                              learn_positions=False, learn_covariances=False,
                                              weight_sd=0.04).cuda()
-        self.relu2 = gm_modules.GmBiasAndRelu(n_layers=n_layers_2, n_output_gaussians=12, max_bias=0.0).cuda()
+        self.relu2 = gm_modules.GmBiasAndRelu(layer_id=2, n_layers=n_layers_2, generate_fitting_module=layer2_m2m_fitting, n_input_gaussians=n_out_g_1*n_layers_1*n_kernel_components, n_output_gaussians=n_out_g_2).cuda()
         # self.maxPool2 = gm_modules.MaxPooling(10)
+
         self.gmc3 = gm_modules.GmConvolution(n_layers_in=n_layers_2, n_layers_out=10, n_kernel_components=n_kernel_components,
                                              position_range=8, covariance_range=4,
                                              learn_positions=False, learn_covariances=False,
                                              weight_sd=0.025).cuda()
-        self.relu3 = gm_modules.GmBiasAndRelu(n_layers=10, n_output_gaussians=5, max_bias=0.0).cuda()
+        self.relu3 = gm_modules.GmBiasAndRelu(layer_id=3, n_layers=10, generate_fitting_module=layer3_m2m_fitting, n_input_gaussians=n_out_g_2*n_layers_2*n_kernel_components, n_output_gaussians=n_out_g_3).cuda()
         # self.maxPool3 = gm_modules.MaxPooling(2)
 
         # to do: all the relus must use the same net for now, because all of them save it to the same location on disc.
@@ -96,7 +106,8 @@ class Net(nn.Module):
                 self.trainer1.train_on(x.detach(), self.relu1.bias.detach(), self.train_fitting_epoch + 1)
                 self.relu1.train_fitting(False)
                 if self.train_fitting_epoch % 20 == 0:
-                    self.trainer1.save_weights()
+                    self.relu1.save_fitting_parameters()
+                    self.trainer1.save_optimiser_state()
 
             x = self.relu1(x)
             x = self.bn(x)
@@ -109,7 +120,8 @@ class Net(nn.Module):
                 self.trainer2.train_on(x.detach(), self.relu2.bias.detach(), self.train_fitting_epoch + 1)
                 self.relu2.train_fitting(False)
                 if self.train_fitting_epoch % 20 == 0:
-                    self.trainer2.save_weights()
+                    self.relu2.save_fitting_parameters()
+                    self.trainer2.save_optimiser_state()
 
             x = self.relu2(x)
             x = self.bn(x)
@@ -122,7 +134,8 @@ class Net(nn.Module):
                 self.trainer3.train_on(x.detach(), self.relu3.bias.detach(), self.train_fitting_epoch + 1)
                 self.relu3.train_fitting(False)
                 if self.train_fitting_epoch % 20 == 0:
-                    self.trainer3.save_weights()
+                    self.relu3.save_fitting_parameters()
+                    self.trainer3.save_optimiser_state()
 
             self.train_fitting_epoch = self.train_fitting_epoch + 2
 
@@ -145,11 +158,36 @@ class Net(nn.Module):
         x = F.log_softmax(x, dim=1)
         return x.view(-1, 10)
 
+    def save(self):
+        print(f"experiment_gm_mnist.Net.save: saving model to {self.storage_path}")
+        torch.save(self.state_dict(), self.storage_path)
+
+        print(f"experiment_gm_mnist.Net.save: saving fitting parameters now")
+        self.relu1.save_fitting_parameters()
+        self.relu2.save_fitting_parameters()
+        self.relu3.save_fitting_parameters()
+
+    # will load kernels and biases and fitting net params (if available)
+    def load(self):
+        print(f"experiment_gm_mnist.Net.load: trying to load {self.storage_path}")
+        if pathlib.Path(self.storage_path).is_file():
+            state_dict = torch.load(self.storage_path)
+            missing_keys, unexpected_keys = self.load_state_dict(state_dict, strict=False)
+            print(f"experiment_gm_mnist.Net.load: loaded (missing: {missing_keys}, unexpected: {unexpected_keys}")
+        else:
+            print("experiment_gm_mnist.Net.load: not found")
+
+        # warning, fitting must be loaded after the the state dict! this will overwrite the fitting params. so different
+        # fitting params can be tested with the same kernels, biases and other params (if any)
+        print("experiment_gm_mnist.Net.load: trying to load fitting params now")
+        self.relu1.load_fitting_parameters()
+        self.relu2.load_fitting_parameters()
+        self.relu3.load_fitting_parameters()
 
 tensor_board_writer = torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard' / f'gm_mnist_{datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}')
 
 
-def train(args, model, device, train_loader, optimizer, epoch, only_simulate, model_storage_path):
+def train(args, model, device, train_loader, optimizer, epoch, only_simulate):
     model.train()
     for batch_idx, (data_all, target_all) in enumerate(train_loader):
 
@@ -186,8 +224,7 @@ def train(args, model, device, train_loader, optimizer, epoch, only_simulate, mo
                       f'({100. * batch_idx / len(train_loader):.0f}%)]\tLoss: {loss.item():.6f} (accuracy: {100 * correct / len(data)})')
 
         if args.save_model and batch_idx % args.log_interval == 0:
-            print(f"experiment_gm_mnist.train: saving model to {model_storage_path}")
-            torch.save(model.state_dict(), model_storage_path)
+            model.save()
 
 
 def test(args, model, device, test_loader):
@@ -211,9 +248,8 @@ def main():
     default_learning_rate = 0.01
     default_epochs = 6 * 10
     default_log_interval = 20
-    train_fitting_layers = None  # {1, 2, 3}
+    train_fitting_layers = {1}  # {1, 2, 3}
     train_mnist = False
-    model_storage_path = config.data_base_path / "mnist_gmcnet.pt"
     # Training settings
     parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
     parser.add_argument('--batch-size', type=int, default=100, metavar='N',
@@ -246,26 +282,19 @@ def main():
     test_loader = torch.utils.data.DataLoader(GmMnistDataSet('mnist/test_', begin=0, end=100), batch_size=None, collate_fn=lambda x: x)
 
     model = Net(train_fitting_layers)
-    print(f"experiment_gm_mnist.main: trying to load {model_storage_path}")
-    if pathlib.Path(model_storage_path).is_file():
-        state_dict = torch.load(model_storage_path)
-        missing_keys, unexpected_keys = model.load_state_dict(state_dict, strict=True)
-        print(f"experiment_gm_mnist.main: loaded (missing: {missing_keys}, unexpected: {unexpected_keys}")
-    else:
-        print("experiment_gm_mnist.main: not found")
+    model.load()
     model = model.to(device)
 
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
     # scheduler = StepLR(optimizer, step_size=1, gamma=args.gamma)
     for epoch in range(1, args.epochs + 1):
-        train(args, model, device, train_loader, optimizer, epoch, not train_mnist, model_storage_path)
+        train(args, model, device, train_loader, optimizer, epoch, not train_mnist)
         test(args, model, device, test_loader)
         # scheduler.step()
 
         if args.save_model:
-            print(f"experiment_gm_mnist.main: saving model to {model_storage_path}")
-            torch.save(model.state_dict(), model_storage_path)
+            model.save()
 
 
 if __name__ == '__main__':

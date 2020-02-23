@@ -14,6 +14,7 @@ import torch.utils.tensorboard
 
 from torch import Tensor
 
+import config
 import madam_imagetools
 import gm
 import gm_fitting
@@ -41,7 +42,6 @@ class GmConvolution(torch.nn.modules.Module):
         self.positions = torch.nn.modules.ParameterList()
         self.covariance_factors = torch.nn.modules.ParameterList()
 
-
         # todo: probably can optimise performance by putting kernels into their own dimension
         for i in range(self.n_layers_out):
             # positive mean produces a rather positive gm. i believe this is a better init
@@ -51,7 +51,7 @@ class GmConvolution(torch.nn.modules.Module):
             if self.learn_positions:
                 positions = torch.rand(1, n_layers_in, n_kernel_components, n_dims, dtype=torch.float32) * 2 * position_range - position_range
             else:
-                assert(self.n_dims == 2)
+                assert (self.n_dims == 2)
                 angles = torch.arange(0, 2 * math.pi, 2 * math.pi / (n_kernel_components - 1))
                 xes = torch.cat((torch.zeros(1, dtype=torch.float), torch.sin(angles)), dim=0)
                 yes = torch.cat((torch.zeros(1, dtype=torch.float), torch.cos(angles)), dim=0)
@@ -121,35 +121,40 @@ class _NetCheckpointWrapper:
         return self.net(self.x, self.bias)
 
 
+def generate_default_fitting_module(n_input_gaussians: int, n_output_gaussians: int) -> gm_fitting.Net:
+    assert n_output_gaussians > 0
+    n_dimensions = 2
+    return gm_fitting.PointNetWithParallelMLPs([64, 128, 256, 512, 512, n_output_gaussians * 25],
+                                               [256, 256, 256, 256, 256, 128],
+                                               n_output_gaussians=n_output_gaussians,
+                                               n_dims=n_dimensions,
+                                               aggregations=1, batch_norm=True)
+
+
 class GmBiasAndRelu(torch.nn.modules.Module):
-    def __init__(self, n_layers: int, n_output_gaussians: int = 10, n_dimensions=2, max_bias: float = 0.1):
-        # todo support variable number of outputs and configurable net archs. needs a better init + training routine (start with few gaussians etc?)
-        # assert n_output_gaussians == 10
+    def __init__(self, layer_id: int, n_layers: int, n_output_gaussians: int, n_input_gaussians: int = -1, max_bias: float = 0.0, generate_fitting_module: typing.Callable = generate_default_fitting_module):
+        # todo: option to make fitting net have common or seperate weights per module
         super(GmBiasAndRelu, self).__init__()
+        self.layer_id = layer_id
         self.n_layers = n_layers
+        self.n_input_gaussians = n_input_gaussians
         self.n_output_gaussians = n_output_gaussians
+
         # use a small bias for the start. i hope it's easier for the net to increase it than to lower it
         self.bias = torch.nn.Parameter(torch.rand(1, self.n_layers) * max_bias)
 
-        self.net = gm_fitting.PointNetWithParallelMLPs([64, 128, 256, 512, 512, n_output_gaussians * 25],
-                                  [256, 256, 256, 256, 256, 128],
-                                  n_output_gaussians=n_output_gaussians,
-                                  n_dims=n_dimensions,
-                                  aggregations=1, batch_norm=True)
-        self.net.load(strict=False)
-        # if not self.net.load(strict=True):
-        #     raise Exception(f"Fitting network {self.net.name} not found.")
+        self.net: gm_fitting.Net = generate_fitting_module(n_input_gaussians, n_output_gaussians)
+
         self.train_fitting_flag = False
         self.train_fitting(self.train_fitting_flag)
 
-        self.name = f"GmBiasAndRelu_{n_layers}_{n_output_gaussians}"
-        self.storage_path = self.net.storage_path
+        self.name = f"GmBiasAndRelu_{layer_id}_{self.net.name}"
+        self.storage_path = config.data_base_path / "weights" / self.name
 
         self.last_in = None
         self.last_out = None
 
         print(self.net)
-        # todo: option to make fitting net have common or seperate weights per module
 
     def train_fitting(self, flag: bool):
         self.train_fitting_flag = flag
@@ -161,33 +166,16 @@ class GmBiasAndRelu(torch.nn.modules.Module):
             self.bias.requires_grad_(True)
 
     def forward(self, x: Tensor, overwrite_bias: Tensor = None, division_axis: int = 0, latent_space_vectors: typing.List[Tensor] = None) -> Tensor:
-        # todo: think of something that would make it possible to do live learning of the fitting network
-        n_dimensions = gm.n_dimensions(x)
-        n_components = gm.n_components(x)
-
-        if n_components < 134 or True:
-            bias = self.bias if overwrite_bias is None else overwrite_bias
-            bias = torch.abs(bias)
-            result = self.net(x, bias, latent_space_vectors=latent_space_vectors)
-            # if self.train_fitting_flag:
-            #     wrapper = _NetCheckpointWrapper(self.net, x, bias)
-            #     net_params = tuple(self.net.parameters())
-            #     result = torch.utils.checkpoint.checkpoint(wrapper, *net_params)[0]
-            #
-            # else:
-            #     result = torch.utils.checkpoint.checkpoint(self.net, x, bias)[0]
-        else:
-            sorted_indices = torch.argsort(gm.positions(x.detach())[:, :, :, division_axis])
-            sorted_mixture = mat_tools.my_index_select(x, sorted_indices)
-
-            division_index = n_components // 2
-            next_division_axis = (division_axis + 1) % n_dimensions
-
-            # todo concatenate latent space vecotr if is not null:: that is actually easy, but we the resorting will foo things up. do we need a safe guard? the result would be only usefull for drawing latent space
-            fitted_left = self.forward(sorted_mixture[:, :, :division_index], overwrite_bias=overwrite_bias, division_axis=next_division_axis)
-            fitted_right = self.forward(sorted_mixture[:, :, division_index:], overwrite_bias=overwrite_bias, division_axis=next_division_axis)
-
-            result = torch.cat((fitted_left, fitted_right), dim=2)
+        bias = self.bias if overwrite_bias is None else overwrite_bias
+        bias = torch.abs(bias)
+        result = self.net(x, bias, latent_space_vectors=latent_space_vectors)
+        # if self.train_fitting_flag:
+        #     wrapper = _NetCheckpointWrapper(self.net, x, bias)
+        #     net_params = tuple(self.net.parameters())
+        #     result = torch.utils.checkpoint.checkpoint(wrapper, *net_params)[0]
+        #
+        # else:
+        #     result = torch.utils.checkpoint.checkpoint(self.net, x, bias)[0]
 
         self.last_in = x.detach()
         self.last_out = result.detach()
@@ -211,8 +199,23 @@ class GmBiasAndRelu(torch.nn.modules.Module):
         images = madam_imagetools.colour_mapped(images.cpu().numpy(), clamp[0], clamp[1])
         return images[:, :, :3]
 
-    def save(self):
-        self.net.save()
+    def save_fitting_parameters(self):
+        # todo: make nicer, we want facilities to separate the learned parameters from fitting and gaussian kernels / bias
+        print(f"gm_modules.GmBiasAndRelu: saving fitting module to {self.storage_path}")
+        torch.save(self.state_dict(), self.storage_path)
+
+    def load_fitting_parameters(self, strict: bool = False) -> bool:
+        print(f"gm_modules.GmBiasAndRelu: trying to load fitting module from {self.storage_path}")
+        if pathlib.Path(self.storage_path).is_file():
+            state_dict = torch.load(self.storage_path)
+            missing_keys, unexpected_keys = self.load_state_dict(state_dict, strict=strict)
+            # assert len(missing_keys) == 0
+            # assert len(unexpected_keys) == 0
+            print(f"gm_modules.GmBiasAndRelu: loaded (missing: {missing_keys}, unexpected: {unexpected_keys}")
+            return True
+        else:
+            print(f"gm_modules.GmBiasAndRelu: not found")
+            return False
 
 
 class BatchNorm(torch.nn.modules.Module):

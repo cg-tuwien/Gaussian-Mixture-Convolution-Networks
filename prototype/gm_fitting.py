@@ -18,6 +18,7 @@ from torch import Tensor
 import gm
 import config
 import madam_imagetools
+import mat_tools
 
 COVARIANCE_MIN = 0.0001
 
@@ -262,6 +263,50 @@ class PointNetWithParallelMLPs(Net):
         return gm.de_normalise(x, normalisation_factors)
 
 
+class SpaceSubdivider(Net):
+    def __init__(self, generate_fitting_module: typing.Callable, n_input_gaussians: int, n_output_gaussians: int):
+        net: Net = generate_fitting_module(n_input_gaussians, 10)
+        config_name = net.name
+        super(PointNetWithParallelMLPs, self).__init__("SpaceSubdivider", config_name, net.n_dims)
+
+        self.n_output_gaussians = n_output_gaussians
+
+        self.net = net
+        self.net.load(strict=False)
+        # if not self.net.load(strict=True):
+        #     raise Exception(f"Fitting network {self.net.name} not found.")
+
+    def forward(self, x: Tensor, overwrite_bias: Tensor = None, division_axis: int = 0, latent_space_vectors: typing.List[Tensor] = None) -> Tensor:
+        n_dimensions = gm.n_dimensions(x)
+        n_components = gm.n_components(x)
+
+        if n_components < 134:
+            bias = self.bias if overwrite_bias is None else overwrite_bias
+            bias = torch.abs(bias)
+            result = self.net(x, bias, latent_space_vectors=latent_space_vectors)
+            # if self.train_fitting_flag:
+            #     wrapper = _NetCheckpointWrapper(self.net, x, bias)
+            #     net_params = tuple(self.net.parameters())
+            #     result = torch.utils.checkpoint.checkpoint(wrapper, *net_params)[0]
+            #
+            # else:
+            #     result = torch.utils.checkpoint.checkpoint(self.net, x, bias)[0]
+        else:
+            sorted_indices = torch.argsort(gm.positions(x.detach())[:, :, :, division_axis])
+            sorted_mixture = mat_tools.my_index_select(x, sorted_indices)
+
+            division_index = n_components // 2
+            next_division_axis = (division_axis + 1) % n_dimensions
+
+            # todo concatenate latent space vecotr if is not null:: that is actually easy, but we the resorting will foo things up. do we need a safe guard? the result would be only usefull for drawing latent space
+            fitted_left = self.forward(sorted_mixture[:, :, :division_index], overwrite_bias=overwrite_bias, division_axis=next_division_axis)
+            fitted_right = self.forward(sorted_mixture[:, :, division_index:], overwrite_bias=overwrite_bias, division_axis=next_division_axis)
+
+            result = torch.cat((fitted_left, fitted_right), dim=2)
+
+        return result
+
+
 class Trainer:
     def __init__(self, net: Net, n_training_samples: int = 50 * 50, learning_rate: float = 0.001):
         self.net = net
@@ -386,7 +431,6 @@ class Trainer:
 
         print(info)
 
-    def save_weights(self):
+    def save_optimiser_state(self):
         print(f"gm_fitting.Trainer: saving to {self.storage_path}")
         torch.save(self.optimiser.state_dict(), self.storage_path)
-        self.net.save()
