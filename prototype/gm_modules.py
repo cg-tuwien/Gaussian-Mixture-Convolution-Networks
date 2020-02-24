@@ -132,7 +132,7 @@ def generate_default_fitting_module(n_input_gaussians: int, n_output_gaussians: 
 
 
 class GmBiasAndRelu(torch.nn.modules.Module):
-    def __init__(self, layer_id: int, n_layers: int, n_output_gaussians: int, n_input_gaussians: int = -1, max_bias: float = 0.0, generate_fitting_module: typing.Callable = generate_default_fitting_module):
+    def __init__(self, layer_id: str, n_layers: int, n_output_gaussians: int, n_input_gaussians: int = -1, max_bias: float = 0.0, generate_fitting_module: typing.Callable = generate_default_fitting_module):
         # todo: option to make fitting net have common or seperate weights per module
         super(GmBiasAndRelu, self).__init__()
         self.layer_id = layer_id
@@ -202,20 +202,12 @@ class GmBiasAndRelu(torch.nn.modules.Module):
     def save_fitting_parameters(self):
         # todo: make nicer, we want facilities to separate the learned parameters from fitting and gaussian kernels / bias
         print(f"gm_modules.GmBiasAndRelu: saving fitting module to {self.storage_path}")
-        torch.save(self.state_dict(), self.storage_path)
+        self.net.save(self.storage_path)
 
     def load_fitting_parameters(self, strict: bool = False) -> bool:
         print(f"gm_modules.GmBiasAndRelu: trying to load fitting module from {self.storage_path}")
-        if pathlib.Path(self.storage_path).is_file():
-            state_dict = torch.load(self.storage_path)
-            missing_keys, unexpected_keys = self.load_state_dict(state_dict, strict=strict)
-            # assert len(missing_keys) == 0
-            # assert len(unexpected_keys) == 0
-            print(f"gm_modules.GmBiasAndRelu: loaded (missing: {missing_keys}, unexpected: {unexpected_keys}")
-            return True
-        else:
-            print(f"gm_modules.GmBiasAndRelu: not found")
-            return False
+        if not self.net.load(self.storage_path, strict=strict):
+            self.net.load(strict=strict)
 
 
 class BatchNorm(torch.nn.modules.Module):

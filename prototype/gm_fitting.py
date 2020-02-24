@@ -32,14 +32,19 @@ class Net(nn.Module):
         self.n_dims = n_dims
         self.storage_path = config.data_base_path / "weights" / self.name
 
-    def save(self) -> None:
-        print(f"gm_fitting.{self.class_name}: saving to {self.storage_path}")
-        torch.save(self.state_dict(), self.storage_path)
+    def save(self, storage_path: str = None) -> None:
+        if storage_path is None:
+            storage_path = self.storage_path
+        print(f"gm_fitting.{self.class_name}: saving to {storage_path}")
+        torch.save(self.state_dict(), storage_path)
 
-    def load(self, strict: bool = False) -> bool:
-        print(f"gm_fitting.{self.class_name}: trying to load {self.storage_path}")
-        if pathlib.Path(self.storage_path).is_file():
-            state_dict = torch.load(self.storage_path)
+    def load(self, storage_path: str = None, strict: bool = False) -> bool:
+        if storage_path is None:
+            storage_path = self.storage_path
+
+        print(f"gm_fitting.{self.class_name}: trying to load {storage_path}")
+        if pathlib.Path(storage_path).is_file():
+            state_dict = torch.load(storage_path)
             missing_keys, unexpected_keys = self.load_state_dict(state_dict, strict=strict)
             # assert len(missing_keys) == 0
             # assert len(unexpected_keys) == 0
@@ -226,7 +231,7 @@ class PointNetWithParallelMLPs(Net):
 
         fully_layers = nn.ModuleList()
 
-        assert point_net_to_latent_module.latent_layer_size % (self.n_output_gaussians * self.n_agrs) == 0
+        assert point_net_to_latent_module.latent_layer_size % (self.n_output_gaussians * aggregations) == 0
         last_layer_size = point_net_to_latent_module.latent_layer_size // self.n_output_gaussians + 1
         for s in fully_layer_sizes:
             fully_layers.append(nn.Conv1d(last_layer_size, s, kernel_size=1, stride=1, groups=1))
