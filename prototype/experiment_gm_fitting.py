@@ -123,6 +123,8 @@ def test_dl_fitting(fitting_function_generator: typing.Callable = generate_simpl
                                                    tensor_board_writer=tensor_board_writer,
                                                    test_fitting_layers=test_fitting_layers,
                                                    layer1_m2m_fitting=fitting_function_generator,
+                                                   layer2_m2m_fitting=fitting_function_generator,
+                                                   layer3_m2m_fitting=fitting_function_generator,
                                                    device=device)
             print("testing end")
 
