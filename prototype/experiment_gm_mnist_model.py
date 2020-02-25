@@ -71,8 +71,8 @@ class Net(nn.Module):
 
     def run_fitting_sampling(self, in_x: torch.Tensor, sampling_layers, train: bool, epoch: int, tensor_board_writer: torch.utils.tensorboard.SummaryWriter):
         assert sampling_layers is not None and self.training
-        in_x_norm = self.bn0(in_x)
-        x = self.gmc1(in_x_norm.detach())
+        x = self.bn0(in_x)
+        x = self.gmc1(x.detach())
         if 1 in sampling_layers:
             # dirty hack: also train with random bias
             training_bias = self.relu1_current.bias.detach().clone()
@@ -112,9 +112,9 @@ class Net(nn.Module):
                 self.relu3_sampler.save_optimiser_state()
 
     def forward(self, in_x: torch.Tensor):
-        in_x_norm = self.bn0(in_x)
+        x = self.bn0(in_x)
 
-        x = self.gmc1(in_x_norm)
+        x = self.gmc1(x)
         x = self.relu1_current(x)
         x = self.bn(x)
         # x = self.maxPool1(x)

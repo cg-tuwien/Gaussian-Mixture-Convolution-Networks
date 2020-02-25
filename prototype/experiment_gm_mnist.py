@@ -80,7 +80,7 @@ def train(args, model, device, train_loader, optimizer, epoch, only_simulate, tr
                 correct = pred.eq(target.view_as(pred)).sum().item()
                 tensor_board_writer.add_scalar("0. mnist training loss", loss.item(), i)
                 tensor_board_writer.add_scalar("1. mnist training accuracy", 100 * correct / len(data), i)
-                render_debug_images_to_tensorboard(model, i)
+                render_debug_images_to_tensorboard(model, i, tensor_board_writer)
 
                 print(f'Train Epoch: {epoch} [{(batch_idx * batch_divisor + k) * len(data)}/{len(train_loader.dataset) * len(data_all)} '
                       f'({100. * batch_idx / len(train_loader):.0f}%)]\tLoss: {loss.item():.6f} (accuracy: {100 * correct / len(data)})')
