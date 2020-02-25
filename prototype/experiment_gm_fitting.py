@@ -61,16 +61,17 @@ def generate_random_ReLUandBias(bias_max: float, weight_min: float, weight_max: 
 def generate_simple_fitting_module(n_input_gaussians: int, n_output_gaussians: int) -> gm_fitting.Net:
     assert n_output_gaussians > 0
     n_dimensions = 2
-    return gm_fitting.PointNetWithParallelMLPs([64, 128, 128, 512, n_output_gaussians * 25],
-                                               [256, 256, 128],
+    return gm_fitting.PointNetWithParallelMLPs([64, 64, 64, 512, 512, 512, n_output_gaussians * 25],
+                                               [100, 100, 50, 50, 20],
                                                n_output_gaussians=n_output_gaussians,
                                                n_dims=n_dimensions,
                                                aggregations=1, batch_norm=True)
 
+# 1h, approx 2000 iterations = 20 epochs of length 100
 def test_dl_fitting(fitting_function_generator: typing.Callable = generate_simple_fitting_module,
                     device: str = "cuda",
                     epoch_length: int = 100,
-                    n_epochs: int = 200,
+                    n_epochs: int = 100,
                     test_fitting_layers={1, 2, 3},
                     bias_max: float = 0.65,
                     weight_min: float = -1,
@@ -127,6 +128,3 @@ def test_dl_fitting(fitting_function_generator: typing.Callable = generate_simpl
                                                    layer3_m2m_fitting=fitting_function_generator,
                                                    device=device)
             print("testing end")
-
-
-test_dl_fitting()
