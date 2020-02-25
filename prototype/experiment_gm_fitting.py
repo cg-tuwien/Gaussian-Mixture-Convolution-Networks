@@ -21,7 +21,7 @@ N_INPUT_GAUSSIANS = 10
 N_OUTPUT_GAUSSIANS = 10
 COVARIANCE_MIN = 0.01
 
-BATCH_SIZE = 1000
+BATCH_SIZE = 200
 LEARNING_RATE = 0.001
 
 assert DIMS == 2 or DIMS == 3
@@ -33,8 +33,8 @@ assert COVARIANCE_MIN > 0
 def generate_random_ReLUandBias(convolved: bool, bias_max: float, weight_min: float, weight_max: float, device: torch.device = 'cpu'):
     # we use the layers for batching so that we can have different biases
     if convolved:
-        random_m = gm.generate_random_mixtures(n_batch=1, n_layers=BATCH_SIZE, n_components=random.randint(10, 10), n_dims=DIMS, pos_radius=1, cov_radius=0.25, weight_min=0, weight_max=weight_max, device=device)
-        random_kernel = gm.generate_random_mixtures(n_batch=1, n_layers=BATCH_SIZE, n_components=10, n_dims=DIMS, pos_radius=0.2, cov_radius=0.04, device=device)
+        random_m = gm.generate_random_mixtures(n_batch=1, n_layers=BATCH_SIZE, n_components=random.randint(25, 25), n_dims=DIMS, pos_radius=1, cov_radius=0.10, weight_min=0, weight_max=weight_max, device=device)
+        random_kernel = gm.generate_random_mixtures(n_batch=1, n_layers=BATCH_SIZE, n_components=5, n_dims=DIMS, pos_radius=0.1, cov_radius=0.02, device=device)
         weights = gm.weights(random_kernel)
         weights -= weights.mean(dim=2).view(1, -1, 1)
         weights += 0.1

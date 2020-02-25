@@ -1,5 +1,6 @@
 from __future__ import print_function
 import pathlib
+import random
 
 import torch
 import torch.nn as nn
@@ -73,9 +74,11 @@ class Net(nn.Module):
         in_x_norm = self.bn0(in_x)
         x = self.gmc1(in_x_norm.detach())
         if 1 in sampling_layers:
-            # dirty hack: also train with bias, use a different epoch for logging. it's not really clean, also the reusing of the input, but i hope it'll be ok
-            self.relu1_sampler.run_on(x.detach(), torch.rand_like(self.relu1_current.bias) * gm.weights(x.detach()).max(), epoch * 2, train=train, tensor_board_writer=tensor_board_writer)
-            self.relu1_sampler.run_on(x.detach(), self.relu1_current.bias.detach(), epoch * 2 + 1, train=train, tensor_board_writer=tensor_board_writer)
+            # dirty hack: also train with random bias
+            training_bias = self.relu1_current.bias.detach().clone()
+            random_selection = torch.rand_like(training_bias, dtype=torch.float32) > 0.5  # no hay rand_like con dtype=torch.bool
+            training_bias[random_selection] = torch.rand(int(random_selection.sum().item()), dtype=torch.float32, device=training_bias.device) * gm.weights(x.detach()).max()
+            self.relu1_sampler.run_on(x.detach(), training_bias, epoch, train=train, tensor_board_writer=tensor_board_writer)
             if epoch % 40 == 0 and train:
                 self.relu1_current.save_fitting_parameters()
                 self.relu1_sampler.save_optimiser_state()
@@ -86,8 +89,10 @@ class Net(nn.Module):
         x = self.gmc2(x)
 
         if 2 in sampling_layers:
-            self.relu2_sampler.run_on(x.detach(), torch.rand_like(self.relu2_current.bias) * gm.weights(x.detach()).max(), epoch * 2, train=train, tensor_board_writer=tensor_board_writer)
-            self.relu2_sampler.run_on(x.detach(), self.relu2_current.bias.detach(), epoch * 2 + 1, train=train, tensor_board_writer=tensor_board_writer)
+            training_bias = self.relu2_current.bias.detach().clone()
+            random_selection = torch.rand_like(training_bias, dtype=torch.float32) > 0.5  # no hay rand_like con dtype=torch.bool
+            training_bias[random_selection] = torch.rand(int(random_selection.sum().item()), dtype=torch.float32, device=training_bias.device) * gm.weights(x.detach()).max()
+            self.relu2_sampler.run_on(x.detach(), training_bias, epoch, train=train, tensor_board_writer=tensor_board_writer)
             if epoch % 40 == 0 and train:
                 self.relu2_current.save_fitting_parameters()
                 self.relu2_sampler.save_optimiser_state()
@@ -98,8 +103,10 @@ class Net(nn.Module):
         x = self.gmc3(x)
 
         if 3 in sampling_layers:
-            self.relu3_sampler.run_on(x.detach(), torch.rand_like(self.relu3_current.bias) * gm.weights(x.detach()).max(), epoch * 2, train=train, tensor_board_writer=tensor_board_writer)
-            self.relu3_sampler.run_on(x.detach(), self.relu3_current.bias.detach(), epoch * 2 + 1, train=train, tensor_board_writer=tensor_board_writer)
+            training_bias = self.relu3_current.bias.detach().clone()
+            random_selection = torch.rand_like(training_bias, dtype=torch.float32) > 0.5  # no hay rand_like con dtype=torch.bool
+            training_bias[random_selection] = torch.rand(int(random_selection.sum().item()), dtype=torch.float32, device=training_bias.device) * gm.weights(x.detach()).max()
+            self.relu3_sampler.run_on(x.detach(), training_bias, epoch, train=train, tensor_board_writer=tensor_board_writer)
             if epoch % 40 == 0 and train:
                 self.relu3_current.save_fitting_parameters()
                 self.relu3_sampler.save_optimiser_state()
