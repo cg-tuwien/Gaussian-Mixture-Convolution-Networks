@@ -17,12 +17,12 @@ import config
 import gm
 import gm_fitting
 import gm_modules
+import experiment_gm_mnist_model
 
 # based on https://github.com/pytorch/examples/blob/master/mnist/main.py
 import madam_imagetools
 
 n_kernel_components = 5
-
 
 # torch.autograd.set_detect_anomaly(True)
 
@@ -39,170 +39,18 @@ class GmMnistDataSet(torch.utils.data.Dataset):
     def __getitem__(self, index):
         return gm.load(f"{self.prefix}{index}")
 
-class Net(nn.Module):
-    def __init__(self,
-                 train_fitting_layers: typing.Set[int] = None,
-                 layer1_m2m_fitting: typing.Callable = gm_modules.generate_default_fitting_module,
-                 layer2_m2m_fitting: typing.Callable = gm_modules.generate_default_fitting_module,
-                 layer3_m2m_fitting: typing.Callable = gm_modules.generate_default_fitting_module):
-        super(Net, self).__init__()
-        self.storage_path = config.data_base_path / "weights" / "mnist_gmcnet.pt"
-        reference_fitter = gm_modules.generate_default_fitting_module
-        n_in_g = 25
-        n_layers_1 = 5
-        n_out_g_1 = 25
-        n_layers_2 = 6
-        n_out_g_2 = 12
-        n_out_g_3 = 5
-        # sqrt(2) / (n_kernel_components * n_input_gauss * math.sqrt(2 * math.pi * det(cov))
-        self.gmc1 = gm_modules.GmConvolution(n_layers_in=1, n_layers_out=n_layers_1, n_kernel_components=n_kernel_components,
-                                             position_range=2, covariance_range=0.5,
-                                             learn_positions=False, learn_covariances=False,
-                                             weight_sd=0.4).cuda()
-        self.relu1_reference = gm_modules.GmBiasAndRelu(layer_id="1r", n_layers=n_layers_1, generate_fitting_module=reference_fitter, n_input_gaussians=n_in_g*n_kernel_components, n_output_gaussians=n_out_g_1).cuda()
-        self.relu1_current = gm_modules.GmBiasAndRelu(layer_id="1c", n_layers=n_layers_1, generate_fitting_module=layer1_m2m_fitting, n_input_gaussians=n_in_g*n_kernel_components, n_output_gaussians=n_out_g_1).cuda()
-        # self.maxPool1 = gm_modules.MaxPooling(10)
 
-        self.gmc2 = gm_modules.GmConvolution(n_layers_in=n_layers_1, n_layers_out=n_layers_2, n_kernel_components=n_kernel_components,
-                                             position_range=4, covariance_range=2,
-                                             learn_positions=False, learn_covariances=False,
-                                             weight_sd=0.04).cuda()
-        self.relu2_reference = gm_modules.GmBiasAndRelu(layer_id="2r", n_layers=n_layers_2, generate_fitting_module=reference_fitter, n_input_gaussians=n_out_g_1*n_layers_1*n_kernel_components, n_output_gaussians=n_out_g_2).cuda()
-        self.relu2_current = gm_modules.GmBiasAndRelu(layer_id="2c", n_layers=n_layers_2, generate_fitting_module=layer2_m2m_fitting, n_input_gaussians=n_out_g_1*n_layers_1*n_kernel_components, n_output_gaussians=n_out_g_2).cuda()
-        # self.maxPool2 = gm_modules.MaxPooling(10)
+def render_debug_images_to_tensorboard(model, epoch, tensor_board_writer):
+    tensor_board_writer.add_image("mnist conv 1", model.gmc1.debug_render(clamp=[-0.80, 0.80]), epoch, dataformats='HWC')
+    tensor_board_writer.add_image("mnist conv 2", model.gmc2.debug_render(clamp=[-0.32, 0.32]), epoch, dataformats='HWC')
+    tensor_board_writer.add_image("mnist conv 3", model.gmc3.debug_render(clamp=[-0.20, 0.20]), epoch, dataformats='HWC')
 
-        self.gmc3 = gm_modules.GmConvolution(n_layers_in=n_layers_2, n_layers_out=10, n_kernel_components=n_kernel_components,
-                                             position_range=8, covariance_range=4,
-                                             learn_positions=False, learn_covariances=False,
-                                             weight_sd=0.025).cuda()
-        # self.relu3_reference = gm_modules.GmBiasAndRelu(layer_id="3r", n_layers=10, generate_fitting_module=reference_fitter, n_input_gaussians=n_out_g_2*n_layers_2*n_kernel_components, n_output_gaussians=n_out_g_3).cuda()
-        self.relu3_current = gm_modules.GmBiasAndRelu(layer_id="3c", n_layers=10, generate_fitting_module=layer3_m2m_fitting, n_input_gaussians=n_out_g_2*n_layers_2*n_kernel_components, n_output_gaussians=n_out_g_3).cuda()
-        # self.maxPool3 = gm_modules.MaxPooling(2)
-
-        # to do: all the relus must use the same net for now, because all of them save it to the same location on disc.
-        # for now testing seperate nets
-        # self.relu2.net = self.relu1.net
-        # self.relu3.net = self.relu1.net
-
-        self.bn0 = gm_modules.BatchNorm(per_gaussian_norm=True)
-        self.bn = gm_modules.BatchNorm(per_gaussian_norm=False)
-
-        self.train_fitting_layers = train_fitting_layers
-        if self.train_fitting_layers is not None:
-            self.train_fitting_epoch = 0
-
-            if 1 in self.train_fitting_layers:
-                self.relu1_current.train_fitting(True)
-                self.trainer1 = gm_fitting.Trainer(self.relu1_current, n_training_samples=400)
-            if 2 in self.train_fitting_layers:
-                self.relu2_current.train_fitting(True)
-                self.trainer2 = gm_fitting.Trainer(self.relu2_current, n_training_samples=400)
-            if 3 in self.train_fitting_layers:
-                self.relu3_current.train_fitting(True)
-                self.trainer3 = gm_fitting.Trainer(self.relu3_current, n_training_samples=400)
-
-    def forward(self, in_x: torch.Tensor):
-        in_x_norm = self.bn0(in_x)
-
-        if self.train_fitting_layers is not None and self.training:
-            x = self.gmc1(in_x_norm.detach())
-            if 1 in self.train_fitting_layers:
-                # self.relu1_current.train_fitting(True)
-                # dirty hack: also train with bias, use a different epoch for logging. it's not really clean, also the reusing of the input, but i hope it'll be ok
-                self.trainer1.train_on(x.detach(), torch.rand_like(self.relu1_current.bias) * gm.weights(x.detach()).max(), self.train_fitting_epoch)
-                self.trainer1.train_on(x.detach(), self.relu1_current.bias.detach(), self.train_fitting_epoch + 1)
-                # self.relu1_current.train_fitting(False)
-                if self.train_fitting_epoch % 20 == 0:
-                    self.relu1_current.save_fitting_parameters()
-                    self.trainer1.save_optimiser_state()
-
-            x = self.relu1_reference(x)
-            x = self.bn(x)
-            # x = self.maxPool1(x)
-            x = self.gmc2(x)
-
-            if 2 in self.train_fitting_layers:
-                # self.relu2.train_fitting(True)
-                self.trainer2.train_on(x.detach(), torch.rand_like(self.relu2_current.bias) * gm.weights(x.detach()).max(), self.train_fitting_epoch)
-                self.trainer2.train_on(x.detach(), self.relu2_current.bias.detach(), self.train_fitting_epoch + 1)
-                # self.relu2.train_fitting(False)
-                if self.train_fitting_epoch % 20 == 0:
-                    self.relu2_current.save_fitting_parameters()
-                    self.trainer2.save_optimiser_state()
-
-            x = self.relu2_reference(x)
-            x = self.bn(x)
-            # x = self.maxPool2(x)
-            x = self.gmc3(x)
-
-            if 3 in self.train_fitting_layers:
-                # self.relu3.train_fitting(True)
-                self.trainer3.train_on(x.detach(), torch.rand_like(self.relu3_current.bias) * gm.weights(x.detach()).max(), self.train_fitting_epoch)
-                self.trainer3.train_on(x.detach(), self.relu3_current.bias.detach(), self.train_fitting_epoch + 1)
-                # self.relu3.train_fitting(False)
-                if self.train_fitting_epoch % 20 == 0:
-                    self.relu3_current.save_fitting_parameters()
-                    self.trainer3.save_optimiser_state()
-
-            self.train_fitting_epoch = self.train_fitting_epoch + 2
-
-        x = self.gmc1(in_x_norm)
-        x = self.relu1_current(x)
-        x = self.bn(x)
-        # x = self.maxPool1(x)
-
-        x = self.gmc2(x)
-        x = self.relu2_current(x)
-        x = self.bn(x)
-        # x = self.maxPool2(x)
-
-        x = self.gmc3(x)
-        x = self.relu3_current(x)
-        x = self.bn(x)
-        # x = self.maxPool3(x)
-
-        x = gm.integrate(x)
-        x = F.log_softmax(x, dim=1)
-        return x.view(-1, 10)
-
-    def save(self):
-        print(f"experiment_gm_mnist.Net.save: saving model to {self.storage_path}")
-        torch.save(self.state_dict(), self.storage_path)
-
-        print(f"experiment_gm_mnist.Net.save: saving fitting parameters now")
-        self.relu1_current.save_fitting_parameters()
-        self.relu2_current.save_fitting_parameters()
-        self.relu3_current.save_fitting_parameters()
-
-    # will load kernels and biases and fitting net params (if available)
-    def load(self):
-        print(f"experiment_gm_mnist.Net.load: trying to load {self.storage_path}")
-        if pathlib.Path(self.storage_path).is_file():
-            state_dict = torch.load(self.storage_path)
-            missing_keys, unexpected_keys = self.load_state_dict(state_dict, strict=False)
-            print(f"experiment_gm_mnist.Net.load: loaded (missing: {missing_keys}, unexpected: {unexpected_keys}")
-        else:
-            print("experiment_gm_mnist.Net.load: not found")
-
-        # warning, fitting must be loaded after the the state dict! this will overwrite the fitting params. so different
-        # fitting params can be tested with the same kernels, biases and other params (if any)
-        print("experiment_gm_mnist.Net.load: trying to load fitting params now")
-        self.relu1_reference.load_fitting_parameters()
-        self.relu2_reference.load_fitting_parameters()
-
-        self.relu1_current.load_fitting_parameters()
-        self.relu2_current.load_fitting_parameters()
-        self.relu3_current.load_fitting_parameters()
-
-        # ref should later get bias from current
-        self.relu1_reference.bias = self.relu1_current.bias
-        self.relu2_reference.bias = self.relu2_current.bias
+    tensor_board_writer.add_image("mnist relu 1", model.relu1_current.debug_render(position_range=[-14, -14, 42, 42], clamp=[-4 / (28 ** 2), 16.0 / (28 ** 2)]), epoch, dataformats='HWC')
+    tensor_board_writer.add_image("mnist relu 2", model.relu2_current.debug_render(position_range=[-14, -14, 42, 42], clamp=[-20 / (28 ** 2), 80.0 / (28 ** 2)]), epoch, dataformats='HWC')
+    tensor_board_writer.add_image("mnist relu 3", model.relu3_current.debug_render(position_range=[-14, -14, 42, 42], clamp=[-6 / (28 ** 2), 24.0 / (28 ** 2)]), epoch, dataformats='HWC')
 
 
-tensor_board_writer = torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard' / f'gm_mnist_{datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}')
-
-
-def train(args, model, device, train_loader, optimizer, epoch, only_simulate):
+def train(args, model, device, train_loader, optimizer, epoch, only_simulate, train_fitting_layers, tensor_board_writer):
     model.train()
     for batch_idx, (data_all, target_all) in enumerate(train_loader):
 
@@ -211,9 +59,15 @@ def train(args, model, device, train_loader, optimizer, epoch, only_simulate):
         batch_divisor = 4
 
         for k in range(batch_divisor):
+            i = epoch * len(train_loader.dataset) * batch_divisor + batch_idx * batch_divisor + k
             divided_batch_length = 25
             data = data_all[k * divided_batch_length:(k + 1) * divided_batch_length]
             target = target_all[k * divided_batch_length:(k + 1) * divided_batch_length]
+
+            if train_fitting_layers is not None:
+                model.set_fitting_training(True)
+                model.run_fitting_sampling(data, sampling_layers=train_fitting_layers, train=True, epoch=i, tensor_board_writer=tensor_board_writer)
+                model.set_fitting_training(False)
 
             optimizer.zero_grad()
             output = model(data)
@@ -221,28 +75,24 @@ def train(args, model, device, train_loader, optimizer, epoch, only_simulate):
             if not only_simulate:
                 loss.backward()
                 optimizer.step()
-            i = (epoch - 1) * len(train_loader.dataset) * batch_divisor + batch_idx * batch_divisor + k
             if i % args.log_interval == 0:
                 pred = output.detach().argmax(dim=1, keepdim=True)  # get the index of the max log-probability
                 correct = pred.eq(target.view_as(pred)).sum().item()
-                tensor_board_writer.add_scalar("0. loss", loss.item(), i)
-                tensor_board_writer.add_scalar("1. accuracy", 100 * correct / len(data), i)
-                tensor_board_writer.add_image("conv 1", model.gmc1.debug_render(clamp=[-0.80, 0.80]), i, dataformats='HWC')
-                tensor_board_writer.add_image("conv 2", model.gmc2.debug_render(clamp=[-0.32, 0.32]), i, dataformats='HWC')
-                tensor_board_writer.add_image("conv 3", model.gmc3.debug_render(clamp=[-0.20, 0.20]), i, dataformats='HWC')
-
-                tensor_board_writer.add_image("relu 1", model.relu1_current.debug_render(position_range=[-14, -14, 42, 42], clamp=[-4/(28**2), 16.0/(28**2)]), i, dataformats='HWC')
-                tensor_board_writer.add_image("relu 2", model.relu2_current.debug_render(position_range=[-14, -14, 42, 42], clamp=[-20/(28**2), 80.0/(28**2)]), i, dataformats='HWC')
-                tensor_board_writer.add_image("relu 3", model.relu3_current.debug_render(position_range=[-14, -14, 42, 42], clamp=[-6/(28**2), 24.0/(28**2)]), i, dataformats='HWC')
+                tensor_board_writer.add_scalar("0. mnist training loss", loss.item(), i)
+                tensor_board_writer.add_scalar("1. mnist training accuracy", 100 * correct / len(data), i)
+                render_debug_images_to_tensorboard(model, i)
 
                 print(f'Train Epoch: {epoch} [{(batch_idx * batch_divisor + k) * len(data)}/{len(train_loader.dataset) * len(data_all)} '
                       f'({100. * batch_idx / len(train_loader):.0f}%)]\tLoss: {loss.item():.6f} (accuracy: {100 * correct / len(data)})')
 
-        if args.save_model and batch_idx % args.log_interval == 0:
-            model.save()
+        if args.save_model and batch_idx % args.log_interval == 0 and not only_simulate:
+            model.save_model()
+
+        if args.save_model and batch_idx % args.log_interval == 0 and train_fitting_layers is not None:
+            model.save_fitting_parameters()
 
 
-def test(args, model, device, test_loader):
+def test(args, model, device, test_loader, epoch, tensor_board_writer):
     model.eval()
     test_loss = 0
     correct = 0
@@ -255,15 +105,49 @@ def test(args, model, device, test_loader):
             correct += pred.eq(target.view_as(pred)).sum().item()
 
     test_loss /= len(test_loader.dataset)
-
+    tensor_board_writer.add_scalar("99. mnist test loss", test_loss, epoch)
+    tensor_board_writer.add_scalar("98. mnist test accuracy", 100. * correct / (len(test_loader.dataset) * len(data)), epoch)
     print(f'\nTest set: Average loss: {test_loss:.4f}, Accuracy: {correct}/{len(test_loader.dataset) * len(data)} ({100. * correct / (len(test_loader.dataset) * len(data)):.0f}%)\n')
+
+
+def test_fitting_layer(epoch: int,
+                       tensor_board_writer: torch.utils.tensorboard.SummaryWriter,
+                       test_fitting_layers={1, 2, 3},
+                       layer1_m2m_fitting: typing.Callable = gm_modules.generate_default_fitting_module,
+                       layer2_m2m_fitting: typing.Callable = gm_modules.generate_default_fitting_module,
+                       layer3_m2m_fitting: typing.Callable = gm_modules.generate_default_fitting_module,
+                       device: torch.device = torch.device('cuda')
+                       ):
+    test_loader = torch.utils.data.DataLoader(GmMnistDataSet('mnist/train_', begin=0, end=10), batch_size=None, collate_fn=lambda x: x)
+
+    model = experiment_gm_mnist_model.Net(layer1_m2m_fitting=layer1_m2m_fitting,
+                                          layer2_m2m_fitting=layer2_m2m_fitting,
+                                          layer3_m2m_fitting=layer3_m2m_fitting,
+                                          n_kernel_components=n_kernel_components)
+    model.load()
+    model = model.to(device)
+
+    for batch_idx, (data_all, target_all) in enumerate(test_loader):
+        data_all, target_all = data_all.to(device), target_all.to(device)
+        batch_divisor = 4
+        for k in range(batch_divisor):
+            i = epoch * len(test_loader.dataset) * batch_divisor + batch_idx * batch_divisor + k
+            divided_batch_length = 25
+            data = data_all[k * divided_batch_length:(k + 1) * divided_batch_length]
+
+            if test_fitting_layers is not None:
+                model.run_fitting_sampling(data, sampling_layers=test_fitting_layers, train=False, epoch=i, tensor_board_writer=tensor_board_writer)
+
+            if batch_idx == 0:
+                model(data)  # need to run data for debug printing
+                render_debug_images_to_tensorboard(model, i, tensor_board_writer)
 
 
 def main():
     default_learning_rate = 0.01
     default_epochs = 6 * 10
     default_log_interval = 20
-    train_fitting_layers = {1, 2, 3}  # {1, 2, 3}
+    train_fitting_layers = {1, 2, 3}
     train_mnist = False
     # Training settings
     parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
@@ -296,20 +180,24 @@ def main():
     train_loader = torch.utils.data.DataLoader(GmMnistDataSet('mnist/train_', begin=0, end=600), batch_size=None, collate_fn=lambda x: x)
     test_loader = torch.utils.data.DataLoader(GmMnistDataSet('mnist/test_', begin=0, end=100), batch_size=None, collate_fn=lambda x: x)
 
-    model = Net(train_fitting_layers)
+    model = experiment_gm_mnist_model.Net(n_kernel_components=n_kernel_components)
     model.load()
     model = model.to(device)
 
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
+    tensor_board_writer = torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard' / f'gm_mnist_{datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}')
     # scheduler = StepLR(optimizer, step_size=1, gamma=args.gamma)
-    for epoch in range(1, args.epochs + 1):
-        train(args, model, device, train_loader, optimizer, epoch, not train_mnist)
-        test(args, model, device, test_loader)
+    for epoch in range(0, args.epochs):
+        train(args, model, device, train_loader, optimizer, epoch, only_simulate=not train_mnist, train_fitting_layers=train_fitting_layers, tensor_board_writer=tensor_board_writer)
+        test(args, model, device, test_loader, epoch, tensor_board_writer=tensor_board_writer)
         # scheduler.step()
 
-        if args.save_model:
-            model.save()
+        if args.save_model and train_mnist:
+            model.save_model()
+
+        if args.save_model and train_fitting_layers is not None:
+            model.save_fitting_parameters()
 
 
 if __name__ == '__main__':

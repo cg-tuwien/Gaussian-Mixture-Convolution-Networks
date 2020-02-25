@@ -143,39 +143,41 @@ class GmBiasAndRelu(torch.nn.modules.Module):
         # use a small bias for the start. i hope it's easier for the net to increase it than to lower it
         self.bias = torch.nn.Parameter(torch.rand(1, self.n_layers) * max_bias)
 
-        self.net: gm_fitting.Net = generate_fitting_module(n_input_gaussians, n_output_gaussians)
+        # WARNING !!!: evil code. the string self.gm_fitting_net_666 is used for filtering in experiment_gm_mnist_model.Net.save_model(). !!! WARNING
+        # todo: fix it
+        self.gm_fitting_net_666: gm_fitting.Net = generate_fitting_module(n_input_gaussians, n_output_gaussians)
 
         self.train_fitting_flag = False
         self.train_fitting(self.train_fitting_flag)
 
-        self.name = f"GmBiasAndRelu_{layer_id}_{self.net.name}"
+        self.name = f"GmBiasAndRelu_{layer_id}_{self.gm_fitting_net_666.name}"
         self.storage_path = config.data_base_path / "weights" / self.name
 
         self.last_in = None
         self.last_out = None
 
-        print(self.net)
+        print(self.gm_fitting_net_666)
 
     def train_fitting(self, flag: bool):
         self.train_fitting_flag = flag
         if flag:
-            self.net.requires_grad_(True)
+            self.gm_fitting_net_666.requires_grad_(True)
             self.bias.requires_grad_(False)
         else:
-            self.net.requires_grad_(False)
+            self.gm_fitting_net_666.requires_grad_(False)
             self.bias.requires_grad_(True)
 
     def forward(self, x: Tensor, overwrite_bias: Tensor = None, division_axis: int = 0, latent_space_vectors: typing.List[Tensor] = None) -> Tensor:
         bias = self.bias if overwrite_bias is None else overwrite_bias
         bias = torch.abs(bias)
-        result = self.net(x, bias, latent_space_vectors=latent_space_vectors)
+        result = self.gm_fitting_net_666(x, bias, latent_space_vectors=latent_space_vectors)
         # if self.train_fitting_flag:
-        #     wrapper = _NetCheckpointWrapper(self.net, x, bias)
-        #     net_params = tuple(self.net.parameters())
+        #     wrapper = _NetCheckpointWrapper(self.gm_fitting_net_666, x, bias)
+        #     net_params = tuple(self.gm_fitting_net_666.parameters())
         #     result = torch.utils.checkpoint.checkpoint(wrapper, *net_params)[0]
         #
         # else:
-        #     result = torch.utils.checkpoint.checkpoint(self.net, x, bias)[0]
+        #     result = torch.utils.checkpoint.checkpoint(self.gm_fitting_net_666, x, bias)[0]
 
         self.last_in = x.detach()
         self.last_out = result.detach()
@@ -202,12 +204,12 @@ class GmBiasAndRelu(torch.nn.modules.Module):
     def save_fitting_parameters(self):
         # todo: make nicer, we want facilities to separate the learned parameters from fitting and gaussian kernels / bias
         print(f"gm_modules.GmBiasAndRelu: saving fitting module to {self.storage_path}")
-        self.net.save(self.storage_path)
+        self.gm_fitting_net_666.save(self.storage_path)
 
     def load_fitting_parameters(self, strict: bool = False) -> bool:
         print(f"gm_modules.GmBiasAndRelu: trying to load fitting module from {self.storage_path}")
-        if not self.net.load(self.storage_path, strict=strict):
-            self.net.load(strict=strict)
+        if not self.gm_fitting_net_666.load(self.storage_path, strict=strict):
+            self.gm_fitting_net_666.load(strict=strict)
 
 
 class BatchNorm(torch.nn.modules.Module):

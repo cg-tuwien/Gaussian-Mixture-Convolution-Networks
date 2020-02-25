@@ -2,7 +2,7 @@ from experiment_gm_fitting import test_dl_fitting
 
 n_iterations_r = 50001
 n_iterations_c = 50001
-test_dl_fitting(g_layer_sizes=[64, 128, 256, 250], fully_layer_sizes=[700, 700, 700], n_agrs=1, batch_norm=False, convolved_input=False, n_iterations=n_iterations_r, device='cuda:1')
+test_dl_fitting(g_layer_sizes=[64, 128, 256, 250], fully_layer_sizes=[700, 700, 700], n_agrs=1, batch_norm=False, convolved_input=False, n_iterations=n_iterations_r, device='cuda')
 
 ## local
 # test_dl_fitting(g_layer_sizes=[64, 128, 256, 512, 250], fully_layer_sizes=[128, 128, 64, 32], aggregations=1, batch_norm=True, convolved_input=False, n_iterations=n_iterations_r)

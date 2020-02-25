@@ -1,13 +1,17 @@
 import typing
 import time
+import datetime
 import random
 
 import torch
+import torch.utils.tensorboard
 import torch.distributions.categorical
 import torch.optim as optim
 import torch.nn as nn
 from torch import Tensor
 
+import config
+import experiment_gm_mnist
 import gm
 import gm_fitting
 
@@ -55,22 +59,26 @@ def generate_random_ReLUandBias(convolved: bool, bias_max: float, weight_min: fl
     return mixture, bias
 
 
-def test_dl_fitting(g_layer_sizes: typing.List,
-                    fully_layer_sizes: typing.List,
+def generate_simple_fitting_module(n_input_gaussians: int, n_output_gaussians: int) -> gm_fitting.Net:
+    assert n_output_gaussians > 0
+    n_dimensions = 2
+    return gm_fitting.PointNetWithParallelMLPs([64, 128, 128, 512, n_output_gaussians * 25],
+                                               [256, 256, 128],
+                                               n_output_gaussians=n_output_gaussians,
+                                               n_dims=n_dimensions,
+                                               aggregations=1, batch_norm=True)
+
+def test_dl_fitting(fitting_function_generator: typing.Callable = generate_simple_fitting_module,
                     device: str = "cuda",
-                    n_iterations: int = 16385,
-                    n_agrs: int = 1,
-                    batch_norm: bool = False,
+                    epoch_length: int = 100,
+                    n_epochs: int = 200,
+                    n_input_gaussians=100,
+                    n_output_gaussians=25,
                     bias_max: float = 0.65,
                     weight_min: float = -1,
                     weight_max: float = 15,
                     convolved_input: bool = True):
-    net = gm_fitting.PointNetWithParallelMLPs(g_layer_sizes,
-                                              fully_layer_sizes,
-                                              n_output_gaussians=N_OUTPUT_GAUSSIANS,
-                                              n_dims=DIMS,
-                                              aggregations=n_agrs,
-                                              batch_norm=batch_norm)
+    net = fitting_function_generator(n_input_gaussians, n_output_gaussians)
     net.load()
     net.to(device);
 
@@ -79,18 +87,22 @@ def test_dl_fitting(g_layer_sizes: typing.List,
 
     print(net)
 
-    trainer = gm_fitting.Trainer(net, N_SAMPLES, LEARNING_RATE)
+    trainer = gm_fitting.Sampler(net, N_SAMPLES, LEARNING_RATE)
+    tensor_board_writer = torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard' / f'experiment_gm_fitting_{datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}')
 
-    for i in range(n_iterations):
+    for i in range(epoch_length * n_epochs):
         mixture, bias = generate_random_ReLUandBias(convolved=convolved_input, bias_max=bias_max, weight_min=weight_min, weight_max=weight_max, device=net.device())
-        trainer.train_on(mixture, bias, i)
-        if i % 1000 == 0:
+        trainer.run_on(mixture, bias, epoch=i, train=True, tensor_board_writer=tensor_board_writer)
+        if i % epoch_length == 0:
+            print("testing start")
             net.save()
             trainer.save_optimiser_state()
+            experiment_gm_mnist.test_fitting_layer(i/epoch_length,
+                                                   tensor_board_writer=tensor_board_writer,
+                                                   test_fitting_layers={1},
+                                                   layer1_m2m_fitting=fitting_function_generator,
+                                                   device=device)
+            print("testing end")
 
 
-    # target, input_ = draw_random_samples(10, WIDTH, HEIGHT)
-    # output = net(input_)
-    # print(f"target={target}")
-    # print(f"output={output}")
-    # print(f"diff={output - target}")
+test_dl_fitting()
