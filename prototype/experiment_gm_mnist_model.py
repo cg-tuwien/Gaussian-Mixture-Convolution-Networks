@@ -19,16 +19,16 @@ class Net(nn.Module):
                  layer1_m2m_fitting: typing.Callable = gm_modules.generate_default_fitting_module,
                  layer2_m2m_fitting: typing.Callable = gm_modules.generate_default_fitting_module,
                  layer3_m2m_fitting: typing.Callable = gm_modules.generate_default_fitting_module,
-                 n_kernel_components: int = 5):
+                 n_kernel_components: int = config.mnist_n_kernel_components):
         super(Net, self).__init__()
         self.storage_path = config.data_base_path / "weights" / "mnist_gmcnet.pt"
         reference_fitter = gm_modules.generate_default_fitting_module
-        n_in_g = 25
-        n_layers_1 = 5
-        n_out_g_1 = 25
-        n_layers_2 = 6
-        n_out_g_2 = 12
-        n_out_g_3 = 5
+        n_in_g = config.mnist_n_in_g
+        n_layers_1 = config.mnist_n_layers_1
+        n_out_g_1 = config.mnist_n_out_g_1
+        n_layers_2 = config.mnist_n_layers_2
+        n_out_g_2 = config.mnist_n_out_g_2
+        n_out_g_3 = config.mnist_n_out_g_3
 
         self.gmc1 = gm_modules.GmConvolution(n_layers_in=1, n_layers_out=n_layers_1, n_kernel_components=n_kernel_components,
                                              position_range=2, covariance_range=0.5,
