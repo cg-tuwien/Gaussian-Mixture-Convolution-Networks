@@ -153,7 +153,7 @@ def evaluate_inversed(mixture: Tensor, xes: Tensor) -> Tensor:
     xes = xes.view(xes.shape[0], xes.shape[1], 1, n_xes, _n_dims)
     values_sum = torch.zeros(_n_batch, _n_layers, n_xes, dtype=torch.float32, device=mixture.device)
 
-    total_memory_space = _n_batch * _n_layers * _n_comps * n_xes * _n_dims # did i forget something?
+    total_memory_space = _n_batch * _n_layers * _n_comps * n_xes * _n_dims  # did i forget something?
     n_memory_slices = max(total_memory_space // (1024 * 1024 * 200), 1)
     comp_slice_size = max(_n_comps // n_memory_slices, 1)
     n_memory_slices = _n_comps // comp_slice_size + int(_n_comps % comp_slice_size != 0)
@@ -239,7 +239,7 @@ def render(mixture: Tensor, batches: typing.Tuple[int, int] = (0, None), layers:
 def render_bias_and_relu(mixture: Tensor, bias: Tensor,
                          batches: typing.Tuple[int, int] = (0, None), layers: typing.Tuple[int, int] = (0, None),
                          x_low: float = -22, y_low: float = -22, x_high: float = 22, y_high: float = 22,
-                         width: int = 100, height: int = 100):
+                         width: int = 100, height: int = 100) -> Tensor:
     assert is_valid_mixture_and_bias(mixture, bias)
     assert bias.shape[0] == 1
     rendering = render(mixture, batches, layers, x_low, y_low, x_high, y_high, width, height)
@@ -248,7 +248,7 @@ def render_bias_and_relu(mixture: Tensor, bias: Tensor,
     return torch.max(rendering, torch.tensor([0.00001], dtype=torch.float32, device=mixture.device))
 
 
-def export_as_image(mixture: Tensor):
+def export_as_image(mixture: Tensor) -> None:
     # todo make general on next occasion
     rendering = render(mixture.detach().view(1, -1, 1, 7), x_low=-1.5, x_high=1.5, y_low=-1.5, y_high=1.5).cpu().numpy()
     import madam_imagetools

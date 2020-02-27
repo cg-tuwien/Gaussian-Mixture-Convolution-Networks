@@ -111,7 +111,6 @@ def em_algorithm(image: Tensor, n_components: int, n_iterations: int, device: to
 # print(f"numpy mean = {np.average(xes, axis=1, weights=w)}, \n numpy cov=\n{np.cov(xes, fweights=w)}")
 # my_funs(xes, w, dims)
 
-# todo: test for width != height!
 def ad_algorithm(image: Tensor, n_components: int, n_iterations: int = 8, device: torch.device = 'cpu') -> Tensor:
     assert len(image.shape) == 3
     assert n_components > 0
