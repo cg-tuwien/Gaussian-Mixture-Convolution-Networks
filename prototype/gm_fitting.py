@@ -44,7 +44,7 @@ class Net(nn.Module):
 
         print(f"gm_fitting.{self.class_name}: trying to load {storage_path}")
         if pathlib.Path(storage_path).is_file():
-            state_dict = torch.load(storage_path)
+            state_dict = torch.load(storage_path, map_location=torch.device('cpu'))
             missing_keys, unexpected_keys = self.load_state_dict(state_dict, strict=strict)
             # assert len(missing_keys) == 0
             # assert len(unexpected_keys) == 0
@@ -321,21 +321,6 @@ class Sampler:
         self.optimiser = optim.Adam(net.parameters(), lr=learning_rate)
         self.tensor_board_graph_written = False
         self.storage_path = self.net.storage_path.with_suffix(".optimiser_state")
-        self.load()
-
-    def load(self, strict: bool = False):
-        print(f"gm_fitting.Trainer: trying to load {self.storage_path}")
-        if pathlib.Path(self.storage_path).is_file():
-            state_dict = torch.load(self.storage_path)
-            self.optimiser.load_state_dict(state_dict)
-            # assert len(missing_keys) == 0
-            # assert len(unexpected_keys) == 0
-            print(f"gm_fitting.Trainer: loaded")
-            return True
-        else:
-            print("gm_fitting.Trainer: not found")
-            assert not strict
-            return False
 
     @staticmethod
     def log_image(tensor_board_writer: torch.utils.tensorboard.SummaryWriter, tag: str, image: typing.Sequence[torch.Tensor], epoch: int, clamp: typing.Sequence[float]):
@@ -440,6 +425,26 @@ class Sampler:
                 f"(forward: {network_time :.2f}s (per layer: {network_time / batch_size :.4f}s), eval: {eval_time :.3f}s, backward: {backward_time :.4f}s) ")
         print(info)
         return criterion.item()
+
+    def to_(self, device: torch.device):
+        for state in self.optimiser.state.values():
+            for k, v in state.items():
+                if torch.is_tensor(v):
+                    state[k] = v.to(device)
+
+    def load(self, strict: bool = False):
+        print(f"gm_fitting.Trainer: trying to load {self.storage_path}")
+        if pathlib.Path(self.storage_path).is_file():
+            state_dict = torch.load(self.storage_path, map_location=torch.device('cpu'))
+            self.optimiser.load_state_dict(state_dict)
+            # assert len(missing_keys) == 0
+            # assert len(unexpected_keys) == 0
+            print(f"gm_fitting.Trainer: loaded")
+            return True
+        else:
+            print("gm_fitting.Trainer: not found")
+            assert not strict
+            return False
 
     def save_optimiser_state(self):
         print(f"gm_fitting.Trainer: saving to {self.storage_path}")

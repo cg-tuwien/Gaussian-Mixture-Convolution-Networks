@@ -68,7 +68,7 @@ def generate_simple_fitting_module(n_input_gaussians: int, n_output_gaussians: i
                                                aggregations=1, batch_norm=True)
 
 # 1h, approx 2000 iterations = 20 epochs of length 100
-def test_dl_fitting(fitting_function_generator: typing.Callable = generate_simple_fitting_module,
+def test_dl_fitting(fitting_function_generator: typing.Callable[[int, int], gm_fitting.Net] = generate_simple_fitting_module,
                     device: str = "cuda",
                     epoch_length: int = 100,
                     n_epochs: int = 100,
@@ -97,8 +97,14 @@ def test_dl_fitting(fitting_function_generator: typing.Callable = generate_simpl
     net3.to(device);
 
     trainer1 = gm_fitting.Sampler(net1, N_SAMPLES, LEARNING_RATE)
+    trainer1.load()
+    trainer1.to_(device)
     trainer2 = gm_fitting.Sampler(net2, N_SAMPLES, LEARNING_RATE)
+    trainer2.load()
+    trainer2.to_(device)
     trainer3 = gm_fitting.Sampler(net3, N_SAMPLES, LEARNING_RATE)
+    trainer3.load()
+    trainer3.to_(device)
     tensor_board_writer = torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard' / f'experiment_gm_fitting_{datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}')
 
     for i in range(epoch_length * n_epochs):

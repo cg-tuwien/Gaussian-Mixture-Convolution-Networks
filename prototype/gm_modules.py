@@ -132,7 +132,8 @@ def generate_default_fitting_module(n_input_gaussians: int, n_output_gaussians: 
 
 
 class GmBiasAndRelu(torch.nn.modules.Module):
-    def __init__(self, layer_id: str, n_layers: int, n_output_gaussians: int, n_input_gaussians: int = -1, max_bias: float = 0.0, generate_fitting_module: typing.Callable = generate_default_fitting_module):
+    def __init__(self, layer_id: str, n_layers: int, n_output_gaussians: int, n_input_gaussians: int = -1, max_bias: float = 0.0,
+                 generate_fitting_module: typing.Callable[[int, int], gm_fitting.Net] = generate_default_fitting_module):
         # todo: option to make fitting net have common or seperate weights per module
         super(GmBiasAndRelu, self).__init__()
         self.layer_id = layer_id
@@ -150,8 +151,8 @@ class GmBiasAndRelu(torch.nn.modules.Module):
         self.train_fitting_flag = False
         self.train_fitting(self.train_fitting_flag)
 
-        self.name = f"GmBiasAndRelu_{layer_id}_{self.gm_fitting_net_666.name}"
-        self.storage_path = config.data_base_path / "weights" / self.name
+        self.name = f"GmBiasAndRelu_{layer_id}"
+        self.storage_path = config.data_base_path / "weights" / f"GmBiasAndRelu_{layer_id}_{self.gm_fitting_net_666.name}"
 
         self.last_in = None
         self.last_out = None

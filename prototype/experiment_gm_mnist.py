@@ -24,6 +24,7 @@ import madam_imagetools
 
 n_kernel_components = 5
 
+
 # torch.autograd.set_detect_anomaly(True)
 
 
@@ -66,7 +67,7 @@ def train(args, model, device, train_loader, optimizer, epoch, only_simulate, tr
 
             if train_fitting_layers is not None:
                 model.set_fitting_training(True)
-                model.run_fitting_sampling(data, sampling_layers=train_fitting_layers, train=True, epoch=i, tensor_board_writer=tensor_board_writer)
+                model.run_fitting_sampling(data, sampling_layers=train_fitting_layers, train=True, epoch=i, tensor_board_writer=tensor_board_writer, use_reference_fitting_l=False)
                 model.set_fitting_training(False)
 
             optimizer.zero_grad()
@@ -141,6 +142,48 @@ def test_fitting_layer(epoch: int,
             if batch_idx == 0:
                 model(data)  # need to run data for debug printing
                 render_debug_images_to_tensorboard(model, i, tensor_board_writer)
+
+
+def experiment_alternating(device: str = 'cuda', n_epochs: int = 20, learning_rate: float = 0.01, log_interval: int = 20,
+                           layer1_m2m_fitting: typing.Callable = gm_modules.generate_default_fitting_module,
+                           layer2_m2m_fitting: typing.Callable = gm_modules.generate_default_fitting_module,
+                           layer3_m2m_fitting: typing.Callable = gm_modules.generate_default_fitting_module,
+                           desc_string: str = ""):
+    # Training settings
+    torch.manual_seed(0)
+
+    train_loader = torch.utils.data.DataLoader(GmMnistDataSet('mnist/train_', begin=0, end=600), batch_size=None, collate_fn=lambda x: x)
+    test_loader = torch.utils.data.DataLoader(GmMnistDataSet('mnist/test_', begin=0, end=100), batch_size=None, collate_fn=lambda x: x)
+
+    model = experiment_gm_mnist_model.Net(layer1_m2m_fitting=layer1_m2m_fitting,
+                                          layer2_m2m_fitting=layer2_m2m_fitting,
+                                          layer3_m2m_fitting=layer3_m2m_fitting,
+                                          n_kernel_components=n_kernel_components)
+    model.load()
+    model = model.to(device)
+
+    class Args:
+        pass
+
+    args = Args()
+    args.save_model = True
+    args.log_interval = log_interval
+
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+
+    tensor_board_writer = torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard' / f'gm_mnist_alternate_{desc_string}_{datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}')
+    # scheduler = StepLR(optimizer, step_size=1, gamma=args.gamma)
+    for epoch in range(0, n_epochs):
+        train(args, model, device, train_loader, optimizer, epoch * 2, only_simulate=True, train_fitting_layers={1, 2, 3}, tensor_board_writer=tensor_board_writer)
+        train(args, model, device, train_loader, optimizer, epoch * 2 + 1, only_simulate=False, train_fitting_layers=None, tensor_board_writer=tensor_board_writer)
+        test(args, model, device, test_loader, epoch, tensor_board_writer=tensor_board_writer)
+        # scheduler.step()
+
+        if args.save_model:
+            model.save_model()
+
+        if args.save_model:
+            model.save_fitting_parameters()
 
 
 def main():
