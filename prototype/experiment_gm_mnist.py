@@ -67,7 +67,10 @@ def train(args, model, device, train_loader, optimizer, epoch, only_simulate, tr
 
             if train_fitting_layers is not None:
                 model.set_fitting_training(True)
-                model.run_fitting_sampling(data, sampling_layers=train_fitting_layers, train=True, epoch=i, tensor_board_writer=tensor_board_writer, use_reference_fitting_l=False)
+                tb_writer = None
+                if i % args.log_interval == 0:
+                    tb_writer = tensor_board_writer
+                model.run_fitting_sampling(data, sampling_layers=train_fitting_layers, train=True, epoch=i, tensor_board_writer=tb_writer, use_reference_fitting_l=False)
                 model.set_fitting_training(False)
 
             optimizer.zero_grad()
@@ -144,7 +147,7 @@ def test_fitting_layer(epoch: int,
                 render_debug_images_to_tensorboard(model, i, tensor_board_writer)
 
 
-def experiment_alternating(device: str = 'cuda', n_epochs: int = 20, learning_rate: float = 0.01, log_interval: int = 20,
+def experiment_alternating(device: str = 'cuda', n_epochs: int = 20, learning_rate: float = 0.01, log_interval: int = 100,
                            layer1_m2m_fitting: typing.Callable = gm_modules.generate_default_fitting_module,
                            layer2_m2m_fitting: typing.Callable = gm_modules.generate_default_fitting_module,
                            layer3_m2m_fitting: typing.Callable = gm_modules.generate_default_fitting_module,
