@@ -371,6 +371,14 @@ class Sampler:
         p = (gm.positions(output_gm).abs() - 1)
         p = p.where(p > torch.zeros(1, device=p.device), torch.zeros(1, device=p.device))
         regularisation = p.mean()
+        
+        # use positive gaussians only (seems to be better)
+        w = gm.weights(output_gm)
+        w = w.where(w < torch.zeros(1, device=p.device), torch.zeros(1, device=p.device))
+        w = w.abs()
+        w = w * w
+        w = w.mean()
+        regularisation = regularisation + w
 
         eval_time = time.perf_counter() - eval_start_time
 
