@@ -111,16 +111,6 @@ class GmConvolution(torch.nn.modules.Module):
         return torch.cat(out_mixtures, dim=1)
 
 
-class _NetCheckpointWrapper:
-    def __init__(self, net, x, bias):
-        self.net = net
-        self.x = x
-        self.bias = bias
-
-    def __call__(self, *args, **kwargs):
-        return self.net(self.x, self.bias)
-
-
 def generate_default_fitting_module(n_input_gaussians: int, n_output_gaussians: int) -> gm_fitting.Net:
     assert n_output_gaussians > 0
     n_dimensions = 2

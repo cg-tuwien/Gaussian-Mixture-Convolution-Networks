@@ -272,30 +272,23 @@ class SpaceSubdivider(Net):
     def __init__(self, generate_fitting_module: typing.Callable, n_input_gaussians: int, n_output_gaussians: int):
         net: Net = generate_fitting_module(n_input_gaussians, 10)
         config_name = net.name
-        super(PointNetWithParallelMLPs, self).__init__("SpaceSubdivider", config_name, net.n_dims)
+        super(SpaceSubdivider, self).__init__("SpaceSubdivider", config_name, net.n_dims)
 
         self.n_output_gaussians = n_output_gaussians
-
-        self.net = net
-        self.net.load(strict=False)
+        net.load(strict=False)
+        self.add_module("net", net)
         # if not self.net.load(strict=True):
         #     raise Exception(f"Fitting network {self.net.name} not found.")
 
-    def forward(self, x: Tensor, overwrite_bias: Tensor = None, division_axis: int = 0, latent_space_vectors: typing.List[Tensor] = None) -> Tensor:
+    def forward(self, x: Tensor, bias_in: Tensor = None, division_axis: int = 0, latent_space_vectors: typing.List[Tensor] = None) -> Tensor:
         n_dimensions = gm.n_dimensions(x)
         n_components = gm.n_components(x)
 
         if n_components < 134:
-            bias = self.bias if overwrite_bias is None else overwrite_bias
-            bias = torch.abs(bias)
-            result = self.net(x, bias, latent_space_vectors=latent_space_vectors)
-            # if self.train_fitting_flag:
-            #     wrapper = _NetCheckpointWrapper(self.net, x, bias)
-            #     net_params = tuple(self.net.parameters())
-            #     result = torch.utils.checkpoint.checkpoint(wrapper, *net_params)[0]
-            #
-            # else:
-            #     result = torch.utils.checkpoint.checkpoint(self.net, x, bias)[0]
+            bias = torch.abs(bias_in)
+            if bias.requires_grad is False:
+                bias.requires_grad_(True)  # require gradient for the bias even when learning net weights, otherwise checkpoint doesn't work https://discuss.pytorch.org/t/checkpoint-for-a-whole-subnet/65295/3
+            result = torch.utils.checkpoint.checkpoint(self.net, x, bias)
         else:
             sorted_indices = torch.argsort(gm.positions(x.detach())[:, :, :, division_axis])
             sorted_mixture = mat_tools.my_index_select(x, sorted_indices)
@@ -304,8 +297,8 @@ class SpaceSubdivider(Net):
             next_division_axis = (division_axis + 1) % n_dimensions
 
             # todo concatenate latent space vecotr if is not null:: that is actually easy, but we the resorting will foo things up. do we need a safe guard? the result would be only usefull for drawing latent space
-            fitted_left = self.forward(sorted_mixture[:, :, :division_index], overwrite_bias=overwrite_bias, division_axis=next_division_axis)
-            fitted_right = self.forward(sorted_mixture[:, :, division_index:], overwrite_bias=overwrite_bias, division_axis=next_division_axis)
+            fitted_left = self.forward(sorted_mixture[:, :, :division_index], bias_in=bias_in, division_axis=next_division_axis)
+            fitted_right = self.forward(sorted_mixture[:, :, division_index:], bias_in=bias_in, division_axis=next_division_axis)
 
             result = torch.cat((fitted_left, fitted_right), dim=2)
 
@@ -355,6 +348,7 @@ class Sampler:
 
         network_start_time = time.perf_counter()
         net_result = self.net(mixture_in, bias_in)
+
         network_time = time.perf_counter() - network_start_time
 
         if isinstance(net_result, tuple):
