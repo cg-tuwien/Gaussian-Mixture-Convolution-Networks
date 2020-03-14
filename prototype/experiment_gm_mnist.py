@@ -151,6 +151,8 @@ def experiment_alternating(device: str = 'cuda', n_epochs: int = 20, learning_ra
                            layer1_m2m_fitting: typing.Callable = gm_modules.generate_default_fitting_module,
                            layer2_m2m_fitting: typing.Callable = gm_modules.generate_default_fitting_module,
                            layer3_m2m_fitting: typing.Callable = gm_modules.generate_default_fitting_module,
+                           learn_positions: bool = False,
+                           learn_covariances: bool = False,
                            desc_string: str = ""):
     # Training settings
     torch.manual_seed(0)
@@ -158,9 +160,12 @@ def experiment_alternating(device: str = 'cuda', n_epochs: int = 20, learning_ra
     train_loader = torch.utils.data.DataLoader(GmMnistDataSet('mnist/train_', begin=0, end=600), batch_size=None, collate_fn=lambda x: x)
     test_loader = torch.utils.data.DataLoader(GmMnistDataSet('mnist/test_', begin=0, end=100), batch_size=None, collate_fn=lambda x: x)
 
-    model = experiment_gm_mnist_model.Net(layer1_m2m_fitting=layer1_m2m_fitting,
+    model = experiment_gm_mnist_model.Net(name=desc_string,
+                                          layer1_m2m_fitting=layer1_m2m_fitting,
                                           layer2_m2m_fitting=layer2_m2m_fitting,
                                           layer3_m2m_fitting=layer3_m2m_fitting,
+                                          learn_positions=learn_positions,
+                                          learn_covariances=learn_covariances,
                                           n_kernel_components=n_kernel_components)
     model.load()
     model = model.to(device)

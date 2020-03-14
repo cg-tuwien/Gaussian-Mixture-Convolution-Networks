@@ -16,13 +16,16 @@ import gm_modules
 
 class Net(nn.Module):
     def __init__(self,
+                 name: str = "default",
                  layer1_m2m_fitting: typing.Callable = gm_modules.generate_default_fitting_module,
                  layer2_m2m_fitting: typing.Callable = gm_modules.generate_default_fitting_module,
                  layer3_m2m_fitting: typing.Callable = gm_modules.generate_default_fitting_module,
+                 learn_positions: bool = False,
+                 learn_covariances: bool = False,
                  n_kernel_components: int = config.mnist_n_kernel_components):
         super(Net, self).__init__()
-        self.storage_path = config.data_base_path / "weights" / "mnist_gmcnet.pt"
-        reference_fitter = gm_modules.generate_default_fitting_module
+        self.storage_path = config.data_base_path / "weights" / f"mnist_gmcnet_{name}.pt"
+        # reference_fitter = gm_modules.generate_default_fitting_module
         n_in_g = config.mnist_n_in_g
         n_layers_1 = config.mnist_n_layers_1
         n_out_g_1 = config.mnist_n_out_g_1
@@ -32,25 +35,25 @@ class Net(nn.Module):
 
         self.gmc1 = gm_modules.GmConvolution(n_layers_in=1, n_layers_out=n_layers_1, n_kernel_components=n_kernel_components,
                                              position_range=2, covariance_range=0.5,
-                                             learn_positions=False, learn_covariances=False,
+                                             learn_positions=learn_positions, learn_covariances=learn_covariances,
                                              weight_sd=0.4)
-        self.relu1_reference = gm_modules.GmBiasAndRelu(layer_id="1r", n_layers=n_layers_1, generate_fitting_module=reference_fitter, n_input_gaussians=n_in_g * n_kernel_components, n_output_gaussians=n_out_g_1)
+        # self.relu1_reference = gm_modules.GmBiasAndRelu(layer_id="1r", n_layers=n_layers_1, generate_fitting_module=reference_fitter, n_input_gaussians=n_in_g * n_kernel_components, n_output_gaussians=n_out_g_1)
         self.relu1_current = gm_modules.GmBiasAndRelu(layer_id="1c", n_layers=n_layers_1, generate_fitting_module=layer1_m2m_fitting, n_input_gaussians=n_in_g * n_kernel_components, n_output_gaussians=n_out_g_1)
         # self.maxPool1 = gm_modules.MaxPooling(10)
 
         self.gmc2 = gm_modules.GmConvolution(n_layers_in=n_layers_1, n_layers_out=n_layers_2, n_kernel_components=n_kernel_components,
                                              position_range=4, covariance_range=2,
-                                             learn_positions=False, learn_covariances=False,
+                                             learn_positions=learn_positions, learn_covariances=learn_covariances,
                                              weight_sd=0.04)
-        self.relu2_reference = gm_modules.GmBiasAndRelu(layer_id="2r", n_layers=n_layers_2, generate_fitting_module=reference_fitter, n_input_gaussians=n_out_g_1 * n_layers_1 * n_kernel_components,
-                                                        n_output_gaussians=n_out_g_2)
+        # self.relu2_reference = gm_modules.GmBiasAndRelu(layer_id="2r", n_layers=n_layers_2, generate_fitting_module=reference_fitter, n_input_gaussians=n_out_g_1 * n_layers_1 * n_kernel_components,
+        #                                                 n_output_gaussians=n_out_g_2)
         self.relu2_current = gm_modules.GmBiasAndRelu(layer_id="2c", n_layers=n_layers_2, generate_fitting_module=layer2_m2m_fitting, n_input_gaussians=n_out_g_1 * n_layers_1 * n_kernel_components,
                                                       n_output_gaussians=n_out_g_2)
         # self.maxPool2 = gm_modules.MaxPooling(10)
 
         self.gmc3 = gm_modules.GmConvolution(n_layers_in=n_layers_2, n_layers_out=10, n_kernel_components=n_kernel_components,
                                              position_range=8, covariance_range=4,
-                                             learn_positions=False, learn_covariances=False,
+                                             learn_positions=learn_positions, learn_covariances=learn_covariances,
                                              weight_sd=0.025)
         # self.relu3_reference = gm_modules.GmBiasAndRelu(layer_id="3r", n_layers=10, generate_fitting_module=reference_fitter, n_input_gaussians=n_out_g_2*n_layers_2*n_kernel_components, n_output_gaussians=n_out_g_3).cuda()
         self.relu3_current = gm_modules.GmBiasAndRelu(layer_id="3c", n_layers=10, generate_fitting_module=layer3_m2m_fitting, n_input_gaussians=n_out_g_2 * n_layers_2 * n_kernel_components,
@@ -86,10 +89,10 @@ class Net(nn.Module):
                 self.relu1_current.save_fitting_parameters()
                 self.relu1_sampler.save_optimiser_state()
 
-        if use_reference_fitting_l:
-            x = self.relu1_reference(x)
-        else:
-            x = self.relu1_current(x)
+        # if use_reference_fitting_l:
+        #     x = self.relu1_reference(x)
+        # else:
+        x = self.relu1_current(x)
         x = self.bn(x)
         # x = self.maxPool1(x)
         x = self.gmc2(x)
@@ -103,10 +106,10 @@ class Net(nn.Module):
                 self.relu2_current.save_fitting_parameters()
                 self.relu2_sampler.save_optimiser_state()
 
-        if use_reference_fitting_l:
-            x = self.relu2_reference(x)
-        else:
-            x = self.relu2_current(x)
+        # if use_reference_fitting_l:
+        #     x = self.relu2_reference(x)
+        # else:
+        x = self.relu2_current(x)
         x = self.bn(x)
         # x = self.maxPool2(x)
         x = self.gmc3(x)
@@ -175,15 +178,15 @@ class Net(nn.Module):
         # warning, fitting must be loaded after the the state dict! this will overwrite the fitting params. so different
         # fitting params can be tested with the same kernels, biases and other params (if any)
         print("experiment_gm_mnist_model.Net.load: trying to load fitting params now")
-        self.relu1_reference.load_fitting_parameters()
-        self.relu2_reference.load_fitting_parameters()
+        # self.relu1_reference.load_fitting_parameters()
+        # self.relu2_reference.load_fitting_parameters()
 
         self.relu1_current.load_fitting_parameters()
         self.relu2_current.load_fitting_parameters()
         self.relu3_current.load_fitting_parameters()
 
-        self.relu1_reference.bias = self.relu1_current.bias
-        self.relu2_reference.bias = self.relu2_current.bias
+        # self.relu1_reference.bias = self.relu1_current.bias
+        # self.relu2_reference.bias = self.relu2_current.bias
 
     def to(self, device: torch.device):
         self.relu1_sampler.to_(device)
