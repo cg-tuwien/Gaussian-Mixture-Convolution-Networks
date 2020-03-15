@@ -51,7 +51,7 @@ def render_debug_images_to_tensorboard(model, epoch, tensor_board_writer):
     tensor_board_writer.add_image("mnist relu 3", model.relu3_current.debug_render(position_range=[-14, -14, 42, 42], clamp=[-6 / (28 ** 2), 24.0 / (28 ** 2)]), epoch, dataformats='HWC')
 
 
-def train(args, model, device, train_loader, optimizer, epoch, only_simulate, train_fitting_layers, tensor_board_writer):
+def train(args, model:experiment_gm_mnist_model.Net, device, train_loader, optimizer, epoch, only_simulate, train_fitting_layers, tensor_board_writer):
     model.train()
     for batch_idx, (data_all, target_all) in enumerate(train_loader):
 
@@ -76,14 +76,17 @@ def train(args, model, device, train_loader, optimizer, epoch, only_simulate, tr
             optimizer.zero_grad()
             output = model(data)
             loss = F.nll_loss(output, target)
+            regularisation_loss = model.regularisation_loss()
+
             if not only_simulate:
-                loss.backward()
+                (loss + regularisation_loss).backward()
                 optimizer.step()
             if i % args.log_interval == 0:
                 pred = output.detach().argmax(dim=1, keepdim=True)  # get the index of the max log-probability
                 correct = pred.eq(target.view_as(pred)).sum().item()
                 tensor_board_writer.add_scalar("0. mnist training loss", loss.item(), i)
                 tensor_board_writer.add_scalar("1. mnist training accuracy", 100 * correct / len(data), i)
+                tensor_board_writer.add_scalar("2. mnist training regularisation loss", regularisation_loss.item(), i)
                 render_debug_images_to_tensorboard(model, i, tensor_board_writer)
 
                 print(f'Train Epoch: {epoch} [{(batch_idx * batch_divisor + k) * len(data)}/{len(train_loader.dataset) * len(data_all)} '

@@ -42,7 +42,7 @@ class GmConvolution(torch.nn.modules.Module):
         self.positions = torch.nn.modules.ParameterList()
         self.covariance_factors = torch.nn.modules.ParameterList()
 
-        # todo: probably can optimise performance by putting kernels into their own dimension
+        # todo: probably can optimise performance by putting kernels into their own dimension (currently as a list)
         for i in range(self.n_layers_out):
             # positive mean produces a rather positive gm. i believe this is a better init
             weights = torch.randn(1, n_layers_in, n_kernel_components, 1, dtype=torch.float32) * weight_sd + weight_mean
@@ -79,9 +79,31 @@ class GmConvolution(torch.nn.modules.Module):
         # a psd matrix can be generated with A A'. we learn A and generate a pd matrix via  A A' + eye * epsilon
         A = self.covariance_factors[index]
         covariances = A @ A.transpose(-1, -2) + torch.eye(self.n_dims, dtype=torch.float32, device=A.device) * self.covariance_epsilon
-        kernel = torch.cat((self.weights[index], self.positions[index], covariances.view(1, self.n_layers_in, self.n_kernel_components, self.n_dims * self.n_dims)), dim=-1)
+        # kernel = torch.cat((self.weights[index], self.positions[index], covariances.view(1, self.n_layers_in, self.n_kernel_components, self.n_dims * self.n_dims)), dim=-1)
+        kernel = gm.pack_mixture(self.weights[index], self.positions[index], covariances)
         assert gm.is_valid_mixture(kernel)
         return kernel
+
+    def regularisation_loss(self):
+        cost = torch.zeros(1, dtype=torch.float32, device=self.weights[0].device)
+        for i in range(self.n_layers_out):
+            A = self.covariance_factors[i]
+            covariances = A @ A.transpose(-1, -2) + torch.eye(self.n_dims, dtype=torch.float32, device=A.device) * self.covariance_epsilon
+            eigenvalues = torch.symeig(covariances, eigenvectors=False).eigenvalues
+            largest_eigenvalue = eigenvalues[:, :, :, -1]
+            smallest_eigenvalue = eigenvalues[:, :, :, 0]
+            cov_cost: Tensor = 0.1 * largest_eigenvalue / smallest_eigenvalue - 1
+            cov_cost = cov_cost.where(cov_cost > torch.zeros_like(cost), torch.zeros_like(cost))
+
+            positions = self.positions[i]
+            distances = (positions ** 2).sum(dim=-1).sqrt()
+            distance_cost = distances - largest_eigenvalue * 2
+            distance_cost = distance_cost.where(distance_cost > torch.zeros_like(cost), torch.zeros_like(cost))
+
+            cost = cost + cov_cost.sum() + distance_cost.sum()
+
+        return cost
+
 
     def debug_render(self, position_range: float = None, image_size: int = 80, clamp: typing.Tuple[float, float] = (-0.3, 0.3)):
         if position_range is None:

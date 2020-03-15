@@ -123,6 +123,9 @@ class Net(nn.Module):
                 self.relu3_current.save_fitting_parameters()
                 self.relu3_sampler.save_optimiser_state()
 
+    def regularisation_loss(self):
+        return self.gmc1.regularisation_loss() + self.gmc2.regularisation_loss() + self.gmc3.regularisation_loss()
+
     def forward(self, in_x: torch.Tensor):
         x = self.bn0(in_x)
 
