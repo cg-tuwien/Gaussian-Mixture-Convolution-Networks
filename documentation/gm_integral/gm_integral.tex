@@ -39,6 +39,7 @@
 \newcommand{\tr}[1]{\ensuremath{\boldsymbol{#1}}}
 \newcommand{\T}[1]{\ensuremath{{#1}^T}}
 \newcommand{\f}[1]{\operatorname{#1}}
+\newcommand*\diff{\mathop{}\!\mathrm{d}}
 
 \newcommand{\alphavec}[0]{\ensuremath{\vr{\alpha{}}}}
 \newcommand{\betavec}[0]{\ensuremath{\vr{\beta{}}}}
@@ -132,7 +133,7 @@ If desired, this could be included in $\vr{a}$.
 According to wikipedia\cite{wiki_simple_gaussian_int}
 \begin{align}
 	\label{eq: simple_guassian_int}
-	\int_{\mathbb{R}^n} e^{-\vr{x}^TA\vr{x}} = \sqrt{\frac{\pi^n}{\det{A}}},
+	\int_{\mathbb{R}^n} e^{-\vr{x}^TA\vr{x}} \diff \vr{x} = \sqrt{\frac{\pi^n}{\det{A}}},
 \end{align}
 and\cite{wiki_det_inverse}
 \begin{align}
@@ -143,19 +144,19 @@ for an $n \times n$ matrix.
 
 In our Gaussian definition\ref{eq:gaussian_definition} we use an inverted covariance matrix, so Equation \ref{eq: simple_guassian_int} becomes
 \begin{align}
-	\int_{\mathbb{R}^n} e^{-\vr{x}^TA^{-1}\vr{x}} = \sqrt{\pi^n \det{A}}.
+	\int_{\mathbb{R}^n} e^{-\vr{x}^TA^{-1}\vr{x}} \diff \vr{x} = \sqrt{\pi^n \det{A}}.
 \end{align}
 
 The position shift $\vr{b}$ has no effect on the integral, therefore our result for a single Gaussian is
 
 \begin{align}
-	\int_{\mathbb{R}^n} a e^{-\frac{1}{2}(\vr{x}-\vr{b})^TC^{-1}(\vr{x}-\vr{b})} &= a \int_{\mathbb{R}^n} e^{-\frac{1}{2}\vr{x}^TC^{-1}\vr{x}} = a \sqrt{\pi^n \det{2 C}} \\
+	\int_{\mathbb{R}^n} a e^{-\frac{1}{2}(\vr{x}-\vr{b})^TC^{-1}(\vr{x}-\vr{b})} \diff \vr{x} &= a \int_{\mathbb{R}^n} e^{-\frac{1}{2}\vr{x}^TC^{-1}\vr{x}} \diff \vr{x} = a \sqrt{\pi^n \det{2 C}} \\
 	&= a \sqrt{(2 \pi)^n \det{C}}.
 \end{align}
 
 For a Gaussian mixture it is
 \begin{align}
-	\int_{\mathbb{R}^n} \f{gm}(\vr{x}, \vr{a}, B, \tr{C}) &= \int_{\mathbb{R}^n} \sum_{m=0}^{M} \f{g}(\vr{x}, \vr{a}_m, B_{\star, m}, C_{\star, \star, m}) \\
+	\int_{\mathbb{R}^n} \f{gm}(\vr{x}, \vr{a}, B, \tr{C}) \diff \vr{x} &= \int_{\mathbb{R}^n} \sum_{m=0}^{M} \f{g}(\vr{x}, \vr{a}_m, B_{\star, m}, C_{\star, \star, m}) \diff \vr{x} \\
 	&= \sum_{m=0}^{M} a_m \sqrt{(2 \pi)^n \det{C_{\star, \star, m}}}.
 \end{align}
 

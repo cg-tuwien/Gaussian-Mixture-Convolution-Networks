@@ -39,6 +39,7 @@
 \newcommand{\tr}[1]{\ensuremath{\boldsymbol{#1}}}
 \newcommand{\T}[1]{\ensuremath{{#1}^T}}
 \newcommand{\f}[1]{\operatorname{#1}}
+\newcommand*\diff{\mathop{}\!\mathrm{d}}
 
 \newcommand{\alphavec}[0]{\ensuremath{\vr{\alpha{}}}}
 \newcommand{\betavec}[0]{\ensuremath{\vr{\beta{}}}}
@@ -130,15 +131,15 @@ If desired, this could be included in $\vr{a}$.
 We also know the integral of a single dimensional Gaussian \cite{wiki_gaussian_int}:
 \begin{align}
 	\label{eq:gaussian_integral}
-	\int_{\mathbb{R}} a e^{-(x+b)^2 c} dx = a\sqrt{\frac{\pi}{c}}
+	\int_{\mathbb{R}} a e^{-(x+b)^2 c} \diff x = a\sqrt{\frac{\pi}{c}}
 \end{align}
 
 \subsection*{Fourier transformation and its inverse}
 The definition of the Fourier transform is taken from Osgood's lecture notes (be careful, there is the whole book \cite{osgood_book} and separately the corrected version of chapter 8 \cite{osgood_chapter8}, which is the important one for us ):
 
 \begin{align}
-	\f{F} (\vr{\omega}) = \F \f{f} (\vr{\omega}) &= \int_{\mathbb{R}^n} \f{f}(\vr{x}) e^{-2 \pi i \vr{\omega}^T \vr{x}} d\vr{x} \\
-	\f{f} (\vr{x}) = (\F^{-1} \f{F}) (\vr{x}) &= \int_{\mathbb{R}^n} \f{F}(\vr{\omega}) e^{2 \pi i \vr{\omega}^T \vr{x}} d\vr{x}
+	\f{F} (\vr{\omega}) = \F \f{f} (\vr{\omega}) &= \int_{\mathbb{R}^n} \f{f}(\vr{x}) e^{-2 \pi i \vr{\omega}^T \vr{x}} \diff \vr{x} \\
+	\f{f} (\vr{x}) = (\F^{-1} \f{F}) (\vr{x}) &= \int_{\mathbb{R}^n} \f{F}(\vr{\omega}) e^{2 \pi i \vr{\omega}^T \vr{x}} \diff \vr{x}
 \end{align}
 
 Properties are:
@@ -181,8 +182,8 @@ For a simpler notation we substitute
 \end{align*}
 Therefore we start with
 \begin{align*}
-	(\F\f{g}(\vr{x}, C))(\frac{\xi}{-2 \pi i}) &= \int_{\mathbb{R}^n} e^{-\frac{1}{2} \vr{x}^T C^{-1} \vr{x}} e^{\vr{\xi}^T \vr{x}} d\vr{x} \\
-	&= \int_{\mathbb{R}^n} e^{-\frac{1}{2} \vr{x}^T C^{-1} \vr{x} + \vr{\xi}^T \vr{x}} d\vr{x}.
+	(\F\f{g}(\vr{x}, C))(\frac{\xi}{-2 \pi i}) &= \int_{\mathbb{R}^n} e^{-\frac{1}{2} \vr{x}^T C^{-1} \vr{x}} e^{\vr{\xi}^T \vr{x}} \diff \vr{x} \\
+	&= \int_{\mathbb{R}^n} e^{-\frac{1}{2} \vr{x}^T C^{-1} \vr{x} + \vr{\xi}^T \vr{x}} \diff \vr{x}.
 \end{align*}
 
 \subsection*{Moving the linear term out of the integral}
@@ -194,7 +195,7 @@ We substitute
 Resulting in
 \begin{align*}
 	(\F\f{g}(\vr{x}, C))(\frac{\xi}{-2 \pi i})
-	&= \int_{\mathbb{R}^n} e^{-\frac{1}{2} (\yvec + C\xivec)^T C^{-1} (\yvec + C\xivec) + \xivec^T (\yvec + C\xivec)} \abs{\f{det}(\f{D}\varphi)} d\yvec.
+	&= \int_{\mathbb{R}^n} e^{-\frac{1}{2} (\yvec + C\xivec)^T C^{-1} (\yvec + C\xivec) + \xivec^T (\yvec + C\xivec)} \abs{\f{det}(\f{D}\varphi)} \diff \yvec.
 \end{align*}
 $\abs{\f{det}(\f{D}\varphi)}$ is 1, and we can reduce the exponent:
 \begin{align*}
@@ -208,17 +209,19 @@ Putting it back results in
 \begin{align}
 	\label{eq:fourier_only_gauss_int_left}
 	(\F\f{g}(\vr{x}, C))(\frac{\xi}{-2 \pi i})
-	&= e^{\frac{1}{2} \xivec^T C \xivec} \int_{\mathbb{R}^n} e^{-\frac{1}{2} \yvec^T C^{-1} \yvec}  d\yvec.
+	&= e^{\frac{1}{2} \xivec^T C \xivec} \int_{\mathbb{R}^n} e^{-\frac{1}{2} \yvec^T C^{-1} \yvec}  \diff \yvec.
 \end{align}
 Nice, so we were able to move that $\xivec$ term out of the integral.
 Now we have to evaluate the latter.
+
+
 \subsection*{Computing the integral of the quadratic term}
 For that we use the eigendecomposition of $C$ with orthonormal matrices $Q$ and diagonal eigenvalue matrix $\Lambda$ \cite{wiki_eigendecomp}:
 \begin{align*}
 	C^{-1} &= (Q \Lambda Q^T)^{-1} = Q \Lambda^{-1} Q^T, \nonumber \\
-	\int_{\mathbb{R}^n} e^{-\frac{1}{2} \yvec^T C^{-1} \yvec}  d\yvec
-	&= \int_{\mathbb{R}^n} e^{-\frac{1}{2} \yvec^T Q \Lambda^{-1} Q^T \yvec}  d\yvec =  \nonumber \\
-	&= \int_{\mathbb{R}^n} e^{-\frac{1}{2} (Q^T \yvec)^T \Lambda^{-1} (Q^T \yvec)}  d\yvec
+	\int_{\mathbb{R}^n} e^{-\frac{1}{2} \yvec^T C^{-1} \yvec}  \diff \yvec
+	&= \int_{\mathbb{R}^n} e^{-\frac{1}{2} \yvec^T Q \Lambda^{-1} Q^T \yvec}  \diff \yvec =  \nonumber \\
+	&= \int_{\mathbb{R}^n} e^{-\frac{1}{2} (Q^T \yvec)^T \Lambda^{-1} (Q^T \yvec)}  \diff \yvec
 \end{align*}
 and substituting
 \begin{align*}
@@ -227,10 +230,10 @@ and substituting
 \end{align*}
 gives (the determinant is 1 again due to orthonormality of Q)
 \begin{align*}
-	&\quad \int_{\mathbb{R}^n} e^{-\frac{1}{2} \zvec^T \Lambda^{-1} \zvec} \abs{\f{det}(\f{D}\psi)} d\zvec =\\
-	&= \int_{\mathbb{R}^n} e^{-\frac{1}{2} \zvec^T \Lambda^{-1} \zvec} d\zvec =\\
-	&= \int_{\mathbb{R}^n} e^{-\frac{1}{2} \sum_{k=0}^\eta \zvec_k^2 \Lambda_{kk}^{-1} } d\zvec =\\
-	&= \int_{\mathbb{R}} e^{-\frac{1}{2} \zvec_1^2 \Lambda_{11}^{-1} } \int_{\mathbb{R}} e^{-\frac{1}{2} \zvec_2^2 \Lambda_{22}^{-1} } \dots \int_{\mathbb{R}} e^{-\frac{1}{2} \zvec_\eta^2 \Lambda_{\eta\eta}^{-1} } d\zvec_\eta d\zvec_{\eta-1} \dots d\zvec_1 =\\
+	&\quad \int_{\mathbb{R}^n} e^{-\frac{1}{2} \zvec^T \Lambda^{-1} \zvec} \abs{\f{det}(\f{D}\psi)} \diff \zvec =\\
+	&= \int_{\mathbb{R}^n} e^{-\frac{1}{2} \zvec^T \Lambda^{-1} \zvec} \diff \zvec =\\
+	&= \int_{\mathbb{R}^n} e^{-\frac{1}{2} \sum_{k=0}^\eta \zvec_k^2 \Lambda_{kk}^{-1} } \diff \zvec =\\
+	&= \int_{\mathbb{R}} e^{-\frac{1}{2} \zvec_1^2 \Lambda_{11}^{-1} } \int_{\mathbb{R}} e^{-\frac{1}{2} \zvec_2^2 \Lambda_{22}^{-1} } \dots \int_{\mathbb{R}} e^{-\frac{1}{2} \zvec_\eta^2 \Lambda_{\eta\eta}^{-1} } \diff \zvec_\eta d\zvec_{\eta-1} \dots \diff \zvec_1 =\\
 	&= \prod_{k=0}^\eta \sqrt{2 \pi \Lambda_{kk}} = \sqrt{(2 \pi)^\eta \f{det}(C)},
 \end{align*}
 where $\eta$ is the number of dimensions, and we use Equation \ref{eq:gaussian_integral} and the fact that the determinant is equal to the product of the eigenvalues. To summarise
@@ -242,7 +245,7 @@ where $\eta$ is the number of dimensions, and we use Equation \ref{eq:gaussian_i
 Plugging that back into Equation \ref{eq:fourier_only_gauss_int_left} gives us
 \begin{align*}
 	(\F\f{g}(\vr{x}, C))(\frac{\xi}{-2 \pi i})
-	&= e^{\frac{1}{2} \xivec^T C \xivec} \int_{\mathbb{R}^n} e^{-\frac{1}{2} \yvec^T C^{-1} \yvec}  d\yvec = \\
+	&= e^{\frac{1}{2} \xivec^T C \xivec} \int_{\mathbb{R}^n} e^{-\frac{1}{2} \yvec^T C^{-1} \yvec}  \diff \yvec = \\
 	&= e^{\frac{1}{2} \xivec^T C \xivec} \sqrt{(2 \pi)^\eta \f{det}(C)}
 \end{align*}
 and, after recovering $\omega$ and friends
