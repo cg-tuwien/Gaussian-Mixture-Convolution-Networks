@@ -89,18 +89,21 @@ class GmConvolution(torch.nn.modules.Module):
         for i in range(self.n_layers_out):
             A = self.covariance_factors[i]
             covariances = A @ A.transpose(-1, -2) + torch.eye(self.n_dims, dtype=torch.float32, device=A.device) * self.covariance_epsilon
-            eigenvalues = torch.symeig(covariances, eigenvectors=False).eigenvalues
+            eigenvalues = torch.symeig(covariances, eigenvectors=True).eigenvalues
             largest_eigenvalue = eigenvalues[:, :, :, -1]
             smallest_eigenvalue = eigenvalues[:, :, :, 0]
             cov_cost: Tensor = 0.1 * largest_eigenvalue / smallest_eigenvalue - 1
             cov_cost = cov_cost.where(cov_cost > torch.zeros_like(cost), torch.zeros_like(cost))
 
+            cov_cost2: Tensor = largest_eigenvalue - self.position_range
+            cov_cost2 = cov_cost.where(cov_cost2 > torch.zeros_like(cost), torch.zeros_like(cost))
+
             positions = self.positions[i]
             distances = (positions ** 2).sum(dim=-1).sqrt()
-            distance_cost = distances - largest_eigenvalue * 2
+            distance_cost = distances - torch.ones_like(cost) * self.position_range
             distance_cost = distance_cost.where(distance_cost > torch.zeros_like(cost), torch.zeros_like(cost))
 
-            cost = cost + cov_cost.sum() + distance_cost.sum()
+            cost = cost + cov_cost.sum() + cov_cost2.sum() + distance_cost.sum()
 
         return cost
 
@@ -113,7 +116,7 @@ class GmConvolution(torch.nn.modules.Module):
         for i in range(self.n_layers_out):
             kernel = self.kernel(i)
             assert kernel.shape[0] == 1
-            kernel_rendering = gm.render(kernel, x_low=-position_range, x_high=position_range, y_low=-position_range, y_high=position_range, width=image_size, height=image_size)
+            kernel_rendering = gm.render(kernel, x_low=-position_range*1.25, x_high=position_range*1.25, y_low=-position_range*1.25, y_high=position_range*1.25, width=image_size, height=image_size)
             images.append(kernel_rendering)
         images = torch.cat(images, dim=1)
         images = madam_imagetools.colour_mapped(images.cpu().numpy(), clamp[0], clamp[1])
