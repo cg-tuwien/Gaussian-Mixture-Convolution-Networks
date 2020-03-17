@@ -59,8 +59,10 @@ def ad_algorithm(pointclouds: Tensor, n_components: int, n_iterations: int = 8, 
     #Ist das ganze eine PDF, so müssen die Weights 1 sein, siehe Notizbuch S.164
     positions = gm.positions(mixture)
     positions += 0.5
-    positions *= torch.tensor(extends, dtype=torch.float32, device=device)
-    positions += bbmin
+    #Nicht hier skalieren! Schließlich haben wir ja die ganze Punktwolke extra runter skaliert,
+    #so dass das nicht nötig ist.
+    #positions *= torch.tensor(extends, dtype=torch.float32, device=device)
+    #positions += bbmin
 
     fitting_start = time.time()
 
@@ -75,7 +77,6 @@ def ad_algorithm(pointclouds: Tensor, n_components: int, n_iterations: int = 8, 
     optimiser = optim.Adam([weights, positions, icov_factor], lr=0.005)
 
     for k in range(n_iterations):
-        print (f"{k}th iteration")
         if k == n_iterations / 2:
             optimiser = optim.Adam([weights, positions, icov_factor], lr=0.0005)
         optimiser.zero_grad()
@@ -92,13 +93,18 @@ def ad_algorithm(pointclouds: Tensor, n_components: int, n_iterations: int = 8, 
         mixture_with_inversed_cov = gm.pack_mixture(weights, positions, inversed_covariances)
         # shape first (m,1,s), then after view (m,s)
         output = gm.evaluate_inversed(mixture_with_inversed_cov, sample_points_in).view(batch_size, -1)
-        loss = -torch.mean(torch.sum(torch.log(output), dim=1)) + abs(gm.integrate(mixture_with_inversed_cov) - 1)
+        loss1 = -torch.mean(torch.sum(torch.log(output), dim=1))
+        loss2 = 0.01 * torch.abs(gm.integrate(mixture_with_inversed_cov) - 1)
+        loss = loss1 + loss2
+
+        #Neues Problem: Loss wird beim ersten mal größer statt kleiner.
+        #Und: Es kommt wieder zu nan-Kovarianzen
 
         loss.backward()
         optimiser.step()
 
-        if k % 100 == 0:
-            print(f"iterations {k}: loss = {loss.item()}, min det = {torch.min(torch.det(inversed_covariances.detach()))}")
+        print(f"iterations {k}: loss = {loss.item()}, loss1={loss1.item()}, loss2={loss2.item()}, min det = {torch.min(torch.det(inversed_covariances.detach()))}")
+        if k % 10 == 0:
             _weights = weights.detach()
             _positions = positions.detach()
             _covariances = inversed_covariances.detach().inverse().transpose(-1, -2)
