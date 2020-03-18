@@ -57,7 +57,7 @@ def ad_algorithm(pointclouds: Tensor, n_components: int, n_iterations: int = 8, 
     #ist, indem wir sicherstellen, dass das ganze eine PDF ist (Amplituden > 0, Integral = 1)
     #und das machen wir während des Trainings durch den Penalty Term
     #Ist das ganze eine PDF, so müssen die Weights 1 sein, siehe Notizbuch S.164
-    positions = gm.positions(mixture)
+    positions = gm.positions(mixture) #shape: (m,1,n,3)
     positions += 0.5
     #Nicht hier skalieren! Schließlich haben wir ja die ganze Punktwolke extra runter skaliert,
     #so dass das nicht nötig ist.
@@ -66,19 +66,22 @@ def ad_algorithm(pointclouds: Tensor, n_components: int, n_iterations: int = 8, 
 
     fitting_start = time.time()
 
-    weights = gm.weights(mixture)
+    weights = gm.weights(mixture) #shape: (m,1,n)
 
-    inversed_covariances = gm.covariances(mixture).inverse()
+    weights.requires_grad = True
+    positions.requires_grad = True
+
+    inversed_covariances = gm.covariances(mixture).inverse() #shape: (m,1,n,3,3)
     (eigvals, eigvecs) = torch.symeig(inversed_covariances, eigenvectors=True)
     eigvals = torch.max(eigvals, torch.tensor([0.01], dtype=torch.float32, device=device))
     icov_factor = torch.matmul(eigvecs, eigvals.sqrt().diag_embed())
     icov_factor.requires_grad = True
 
-    optimiser = optim.Adam([weights, positions, icov_factor], lr=0.005)
+    optimiser = optim.Adam([weights, positions, icov_factor], lr=0.0001)
 
     for k in range(n_iterations):
         if k == n_iterations / 2:
-            optimiser = optim.Adam([weights, positions, icov_factor], lr=0.0005)
+            optimiser = optim.Adam([weights, positions, icov_factor], lr=0.00005)
         optimiser.zero_grad()
 
         #TODO: Check epsilon for covariances
@@ -94,20 +97,27 @@ def ad_algorithm(pointclouds: Tensor, n_components: int, n_iterations: int = 8, 
         # shape first (m,1,s), then after view (m,s)
         output = gm.evaluate_inversed(mixture_with_inversed_cov, sample_points_in).view(batch_size, -1)
         loss1 = -torch.mean(torch.sum(torch.log(output), dim=1))
-        loss2 = 0.01 * torch.abs(gm.integrate(mixture_with_inversed_cov) - 1)
+        if math.isinf(loss1):
+            print("uiuiui")
+        loss2 = torch.abs(gm.integrate(mixture_with_inversed_cov) - 1)
+        #loss2 = torch.tensor(0)
         loss = loss1 + loss2
-
-        #Neues Problem: Loss wird beim ersten mal größer statt kleiner.
-        #Und: Es kommt wieder zu nan-Kovarianzen
 
         loss.backward()
         optimiser.step()
 
         print(f"iterations {k}: loss = {loss.item()}, loss1={loss1.item()}, loss2={loss2.item()}, min det = {torch.min(torch.det(inversed_covariances.detach()))}")
         if k % 10 == 0:
-            _weights = weights.detach()
-            _positions = positions.detach()
-            _covariances = inversed_covariances.detach().inverse().transpose(-1, -2)
+            print(f"  Mean: {positions[0,0,0,0].item()}, {positions[0,0,0,1].item()}, {positions[0,0,0,2].item()}")
+            cov = gm.covariances(mixture)
+            print(f"  Cov:  {cov[0,0,0,0,0].item()}, {cov[0,0,0,0,1].item()}, {cov[0,0,0,0,2].item()}")
+            print(f"        {cov[0,0,0,1,0].item()}, {cov[0,0,0,1,1].item()}, {cov[0,0,0,1,2].item()}")
+            print(f"        {cov[0,0,0,2,0].item()}, {cov[0,0,0,2,1].item()}, {cov[0,0,0,2,2].item()}")
+            pik = weights.item() * (15.74960995 * cov.det().sqrt().item())
+            print(f"  Ampl: {weights.item()}, Weight: {pik}")
+            _weights = weights.detach().clone()
+            _positions = positions.detach().clone()
+            _covariances = inversed_covariances.detach().inverse().transpose(-1, -2).clone()
             _positions *= scale
             #Scaling of covariance by f@s@f', where f is the diagonal matrix of scalings
             #if all diag entries of f are the same, then this just results in times x^2, where x is the element of f
@@ -127,8 +137,10 @@ def ad_algorithm(pointclouds: Tensor, n_components: int, n_iterations: int = 8, 
     return gm.pack_mixture(weights, positions, covariances)
 
 def test():
-    pc = pointcloud.load_pc_from_off("D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/da-gm-1/da-gm-1/data/chair_0030.off")
-    m1 = ad_algorithm(pc, n_components=20000, n_iterations=1000, device='cuda')
+    #pc = pointcloud.load_pc_from_off("D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/da-gm-1/da-gm-1/data/chair_0030.off")
+    #m1 = ad_algorithm(pc, n_components=20000, n_iterations=1000, device='cuda')
+    pc = pointcloud.load_pc_from_off("D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/gmc_net/gmc_net_data/testdata.off")
+    m1 = ad_algorithm(pc, n_components=1, n_iterations=1000, device='cuda')
     #TODO: SAVE IN READABLE FORMAT
     gm.save(m1, "pcgm-final.gm")
 
