@@ -268,28 +268,53 @@ class PointNetWithParallelMLPs(Net):
         return gm.de_normalise(x, normalisation_factors)
 
 
+def _prime_factors(n):
+    """Returns all the prime factors of a positive integer"""
+    factors = []
+    d = 2
+    while n > 1:
+        while n % d == 0:
+            factors.append(d)
+            n /= d
+        d = d + 1
+        if d*d > n:
+            if n > 1: factors.append(n)
+            break
+    return factors
+
+
 class SpaceSubdivider(Net):
-    def __init__(self, generate_fitting_module: typing.Callable, n_input_gaussians: int, n_output_gaussians: int):
-        net: Net = generate_fitting_module(n_input_gaussians, 10)
-        config_name = net.name
+    def __init__(self, generate_fitting_module: typing.Callable, n_input_gaussians: int, n_fitting_module_out_gaussians: int, n_output_gaussians: int):
+        net: Net = generate_fitting_module(n_input_gaussians, n_fitting_module_out_gaussians)
+        config_name = f"subd_{net.name}_out{n_output_gaussians}"
         super(SpaceSubdivider, self).__init__("SpaceSubdivider", config_name, net.n_dims)
 
+        assert n_output_gaussians % n_fitting_module_out_gaussians == 0
+        self.subdivisions = _prime_factors(n_output_gaussians // n_fitting_module_out_gaussians)
+        assert len(self.subdivisions) == 0 or max(self.subdivisions) <= 2  # currently only power of 2 allowed in forward()
+
+        self.n_input_gaussians = n_input_gaussians
+        self.n_fitting_module_out_gaussians = n_fitting_module_out_gaussians
         self.n_output_gaussians = n_output_gaussians
         net.load(strict=False)
         self.add_module("net", net)
         # if not self.net.load(strict=True):
         #     raise Exception(f"Fitting network {self.net.name} not found.")
 
-    def forward(self, x: Tensor, bias_in: Tensor = None, division_axis: int = 0, latent_space_vectors: typing.List[Tensor] = None) -> Tensor:
+    def forward(self, x: Tensor, bias_in: Tensor = None, division_axis: int = 0, latent_space_vectors: typing.List[Tensor] = None, subdivisions: typing.List[int]=None) -> Tensor:
+        if subdivisions is None:
+            subdivisions = self.subdivisions
+
         n_dimensions = gm.n_dimensions(x)
         n_components = gm.n_components(x)
 
-        if n_components < 134:
+        if len(subdivisions) == 0:
             bias = torch.abs(bias_in)
             if bias.requires_grad is False:
                 bias.requires_grad_(True)  # require gradient for the bias even when learning net weights, otherwise checkpoint doesn't work https://discuss.pytorch.org/t/checkpoint-for-a-whole-subnet/65295/3
             result = torch.utils.checkpoint.checkpoint(self.net, x, bias)
         else:
+            # currently only power of 2 allowed
             sorted_indices = torch.argsort(gm.positions(x.detach())[:, :, :, division_axis])
             sorted_mixture = mat_tools.my_index_select(x, sorted_indices)
 
@@ -297,8 +322,10 @@ class SpaceSubdivider(Net):
             next_division_axis = (division_axis + 1) % n_dimensions
 
             # todo concatenate latent space vecotr if is not null:: that is actually easy, but we the resorting will foo things up. do we need a safe guard? the result would be only usefull for drawing latent space
-            fitted_left = self.forward(sorted_mixture[:, :, :division_index], bias_in=bias_in, division_axis=next_division_axis)
-            fitted_right = self.forward(sorted_mixture[:, :, division_index:], bias_in=bias_in, division_axis=next_division_axis)
+            subdivisions = subdivisions.copy()
+            subdivisions.pop(-1)
+            fitted_left = self.forward(sorted_mixture[:, :, :division_index], bias_in=bias_in, division_axis=next_division_axis, subdivisions=subdivisions)
+            fitted_right = self.forward(sorted_mixture[:, :, division_index:], bias_in=bias_in, division_axis=next_division_axis, subdivisions=subdivisions)
 
             result = torch.cat((fitted_left, fitted_right), dim=2)
 

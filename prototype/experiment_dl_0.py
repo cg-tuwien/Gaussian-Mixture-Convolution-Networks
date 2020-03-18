@@ -15,10 +15,13 @@ def generate_fitting_module_inner(n_input_gaussians: int, n_output_gaussians: in
 
 def generate_fitting_module(n_input_gaussians: int, n_output_gaussians: int) -> gm_fitting.Net:
     assert n_output_gaussians > 0
-    return gm_fitting.SpaceSubdivider(generate_fitting_module_inner, n_input_gaussians, n_output_gaussians)
+    return gm_fitting.SpaceSubdivider(generate_fitting_module_inner,
+                                      n_input_gaussians=n_input_gaussians,
+                                      n_fitting_module_out_gaussians=6,
+                                      n_output_gaussians=n_output_gaussians)
 
 
-experiment_gm_mnist.experiment_alternating(device='cuda:0', n_epochs=100, desc_string="default",
+experiment_gm_mnist.experiment_alternating(device='cuda:0', n_epochs=100, desc_string="subdiv6",
                                            layer1_m2m_fitting=generate_fitting_module,
                                            layer2_m2m_fitting=generate_fitting_module,
                                            layer3_m2m_fitting=generate_fitting_module)
