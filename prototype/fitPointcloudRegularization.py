@@ -2,7 +2,6 @@ import torch
 import math
 import matplotlib.pyplot as plt
 import numpy as np
-import os
 import time
 import torch.optim as optim
 import torchvision.datasets
@@ -12,6 +11,7 @@ import torch.utils.tensorboard
 import datetime
 import typing
 import madam_imagetools
+import os
 
 import gm
 import mat_tools
@@ -35,7 +35,7 @@ def ad_algorithm(pointclouds: Tensor, n_components: int, n_iterations: int = 8, 
     save = True
 
     if name == '':
-        name = f'fitPointcloud_{datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}'
+        name = f'fitPointcloudRegularized_{datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}'
 
     tensor_board_writer = torch.utils.tensorboard.SummaryWriter(
         config.data_base_path / 'tensorboard' / name)
@@ -82,17 +82,17 @@ def ad_algorithm(pointclouds: Tensor, n_components: int, n_iterations: int = 8, 
     icov_factor = torch.matmul(eigvecs, eigvals.sqrt().diag_embed())
     icov_factor.requires_grad = True
 
-    # weights = gm.weights(mixture)
-    pi_relative = gm.weights(mixture) #shape: (m,1,n)
-    pi_relative.requires_grad = True
+    weights = gm.weights(mixture) #shape: (m,1,n)
+    weights = weights / gm.integrate(mixture)
+    weights.requires_grad = True
 
     fitting_start = time.time()
 
-    optimiser = optim.Adam([pi_relative, positions, icov_factor], lr=0.0001)
+    optimiser = optim.Adam([weights, positions, icov_factor], lr=0.0001)
 
     for k in range(n_iterations):
         if k == n_iterations / 2:
-            optimiser = optim.Adam([pi_relative, positions, icov_factor], lr=0.00005)
+            optimiser = optim.Adam([weights, positions, icov_factor], lr=0.00005)
         optimiser.zero_grad()
 
         #TODO: Check epsilon for covariances
@@ -105,55 +105,44 @@ def ad_algorithm(pointclouds: Tensor, n_components: int, n_iterations: int = 8, 
         assert not torch.isnan(inversed_covariances).any()
         assert not torch.isinf(inversed_covariances).any()
 
-        pi_sum = pi_relative.sum(dim=2).view(batch_size, 1, 1)  # shape: (m,1) -> (m,1,1)
-        pi_normalized = pi_relative / pi_sum  # shape (m,1,n)
         covariances = inversed_covariances.inverse()
-        amplitudes = pi_normalized / (covariances.det().sqrt() * 15.74960995)
-
-        mixture_with_inversed_cov = gm.pack_mixture(amplitudes, positions, inversed_covariances)
+        mixture_with_inversed_cov = gm.pack_mixture(weights, positions, inversed_covariances)
+        mixture_with_regular_cov = gm.pack_mixture(weights, positions, covariances.detach().clone())
         # shape first (m,1,s), then after view (m,s)
         output = gm.evaluate_inversed(mixture_with_inversed_cov, sample_points_in).view(batch_size, -1)
-        loss = -torch.mean(torch.log(output), dim=1)
-        #loss2 = torch.abs(gm.integrate(mixture_with_inversed_cov) - 1)
-        #loss2 = torch.tensor(0)
-
-        #mixture_with_regular_cov = gm.pack_mixture(amplitudes, positions, covariances.detach().clone())
-        #integ = gm.integrate(mixture_with_regular_cov)
-        #print(f"This should be one: {integ}")
+        loss1 = -torch.mean(torch.log(output), dim=1)
+        loss2 = torch.abs(gm.integrate(mixture_with_regular_cov) - 1)
+        #loss2 = point_count * torch.exp(2 + torch.abs(gm.integrate(mixture_with_regular_cov) - 1))
+        loss = loss1 + loss2
 
         loss.backward()
         optimiser.step()
 
         tensor_board_writer.add_scalar("0. training loss", loss.item(), k)
-        tensor_board_writer.add_scalar("1. likelihood loss", loss.item(), k)
+        tensor_board_writer.add_scalar("1. likelihood loss", loss1.item(), k)
+        tensor_board_writer.add_scalar("2. integral loss", loss2.item(), k)
 
-        print(f"iterations {k}: loss = {loss.item()}")
+        print(f"iterations {k}: loss = {loss.item()}, loss1={loss1.item()}, loss2={loss2.item()}")
         if save and k % 10 == 0:
-
-            # print(f"  Mean: {positions[0,0,0,0].item()}, {positions[0,0,0,1].item()}, {positions[0,0,0,2].item()}")
-            # cov = _covariances
-            # print(f"  Cov:  {cov[0,0,0,0,0].item()}, {cov[0,0,0,0,1].item()}, {cov[0,0,0,0,2].item()}")
-            # print(f"        {cov[0,0,0,1,0].item()}, {cov[0,0,0,1,1].item()}, {cov[0,0,0,1,2].item()}")
-            # print(f"        {cov[0,0,0,2,0].item()}, {cov[0,0,0,2,1].item()}, {cov[0,0,0,2,2].item()}")
-            # print(f"  Ampl: {_weights.item()}, Weight: {_pi.item()}")
-
             _positions = positions.detach().clone()
             _positions -= 0.5
             _positions *= scale
 
+            _weights = weights.detach().clone()
+            _weights *= covariances.det().sqrt() * 15.74960995
+
             _covariances = inversed_covariances.detach().inverse().transpose(-1, -2).clone()
-            #Scaling of covariance by f@s@f', where f is the diagonal matrix of scalings
-            #if all diag entries of f are the same, then this just results in times x^2, where x is the element of f
+            # #Scaling of covariance by f@s@f', where f is the diagonal matrix of scalings
+            # #if all diag entries of f are the same, then this just results in times x^2, where x is the element of f
             _covariances *= scale2
 
-            _weights = pi_normalized / (covariances.det().sqrt() * 15.74960995)
+            #_weights /= covariances.det().sqrt()
 
-            #_mixture = gm.pack_mixture(_weights, _positions, _covariances)
-            #gm.save(_mixture, "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/gmc_net/pcgm-" + str(k).zfill(5) + ".gm")
+            gm.write_gm_to_ply(_weights, _positions, _covariances, 0,
+                               f"{gm_path}/pcgmm-" + str(k).zfill(5) + ".ply")
 
-            #save in readable format
-            gm.write_gm_to_ply(pi_normalized, _positions, _covariances, 0,
-                                f"{gm_path}/pcgmm-" + str(k).zfill(5) + ".ply")
+            # _mixture = gm.pack_mixture(_weights, _positions, _covariances)
+            # gm.save(_mixture, "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/gmc_net/pcgm-" + str(k).zfill(5) + ".gm")
 
     fitting_end = time.time()
     print(f"fitting time: {fitting_end - fitting_start}")
@@ -162,14 +151,13 @@ def ad_algorithm(pointclouds: Tensor, n_components: int, n_iterations: int = 8, 
     #scaling
     positions -= 0.5
     positions *= scale
+    weights *= covariances.det().sqrt()
     covariances *= scale2
-    pi_sum = pi_relative.sum(dim=2).view(batch_size, 1, 1)  # shape: (m,1) -> (m,1,1)
-    pi_normalized = pi_relative / pi_sum  # shape (m,1,n)
-    amplitudes = pi_normalized / covariances.det()
     if save:
-        gm.write_gm_to_ply(pi_normalized, positions, covariances, 0,
-                        f"{gm_path}/pcgmm-final.ply")
-    return gm.pack_mixture(amplitudes, positions, covariances)
+        gm.write_gm_to_ply(weights * 15.74960995, positions, covariances, 0,
+                           f"{gm_path}/pcgmm-final.ply")
+    weights /= covariances.det().sqrt()
+    return gm.pack_mixture(weights, positions, covariances)
 
 def test():
     pc = pointcloud.load_pc_from_off("D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/da-gm-1/da-gm-1/data/chair_0030.off")
