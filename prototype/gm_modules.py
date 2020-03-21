@@ -88,7 +88,10 @@ class GmConvolution(torch.nn.modules.Module):
         cost = torch.zeros(1, dtype=torch.float32, device=self.weights[0].device)
         for i in range(self.n_layers_out):
             A = self.covariance_factors[i]
-            covariances = A @ A.transpose(-1, -2) + torch.eye(self.n_dims, dtype=torch.float32, device=A.device) * self.covariance_epsilon
+            # problem: symeig becomes instable in backward pass  when the eigenvalues are similar) (NaNs if they are the same)
+            # add a small random value to circumvent. instability doesn't hurt, because we have grad zero in that case.
+
+            covariances = A @ A.transpose(-1, -2) + torch.diag(torch.randn(self.n_dims) * 2 - 1) * self.covariance_epsilon
             eigenvalues = torch.symeig(covariances, eigenvectors=True).eigenvalues
             largest_eigenvalue = eigenvalues[:, :, :, -1]
             smallest_eigenvalue = eigenvalues[:, :, :, 0]
