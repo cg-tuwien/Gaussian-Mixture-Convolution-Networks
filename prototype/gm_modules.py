@@ -166,8 +166,8 @@ class GmBiasAndRelu(torch.nn.modules.Module):
         # todo: fix it
         self.gm_fitting_net_666: gm_fitting.Net = generate_fitting_module(n_input_gaussians, n_output_gaussians)
 
-        self.train_fitting_flag = False
-        self.train_fitting(self.train_fitting_flag)
+        self.gm_fitting_net_666.requires_grad_(True)
+        self.bias.requires_grad_(True)
 
         self.name = f"GmBiasAndRelu_{layer_id}"
         self.storage_path = config.data_base_path / "weights" / f"GmBiasAndRelu_{layer_id}_{self.gm_fitting_net_666.name}"
@@ -175,28 +175,24 @@ class GmBiasAndRelu(torch.nn.modules.Module):
         self.last_in = None
         self.last_out = None
 
+        self.fitting_sampler = gm_fitting.Sampler(self, n_training_samples=400)
+
         print(self.gm_fitting_net_666)
 
-    def train_fitting(self, flag: bool):
-        self.train_fitting_flag = flag
-        if flag:
-            self.gm_fitting_net_666.requires_grad_(True)
-            self.bias.requires_grad_(False)
-        else:
-            self.gm_fitting_net_666.requires_grad_(False)
-            self.bias.requires_grad_(True)
+    # def train_fitting(self, flag: bool):
+    #     self.train_fitting_flag = flag
+    #     if flag:
+    #         self.gm_fitting_net_666.requires_grad_(True)
+    #         self.bias.requires_grad_(False)
+    #     else:
+    #         self.gm_fitting_net_666.requires_grad_(False)
+    #         self.bias.requires_grad_(True)
 
-    def forward(self, x: Tensor, overwrite_bias: Tensor = None, division_axis: int = 0, latent_space_vectors: typing.List[Tensor] = None) -> Tensor:
+    def forward(self, x: Tensor, overwrite_bias: Tensor = None) -> Tensor:
         bias = self.bias if overwrite_bias is None else overwrite_bias
         bias = torch.abs(bias)
-        result = self.gm_fitting_net_666(x, bias, latent_space_vectors=latent_space_vectors)
-        # if self.train_fitting_flag:
-        #     wrapper = _NetCheckpointWrapper(self.gm_fitting_net_666, x, bias)
-        #     net_params = tuple(self.gm_fitting_net_666.parameters())
-        #     result = torch.utils.checkpoint.checkpoint(wrapper, *net_params)[0]
-        #
-        # else:
-        #     result = torch.utils.checkpoint.checkpoint(self.gm_fitting_net_666, x, bias)[0]
+
+        result = self.gm_fitting_net_666(x, bias)
 
         self.last_in = x.detach()
         self.last_out = result.detach()

@@ -386,8 +386,9 @@ class Sampler:
         if tensor_board_writer is not None:
             tensor_board_writer.add_scalar(f"{self.net.name}_fitting 1. whole time", time.perf_counter() - start_time, epoch)
             tensor_board_writer.add_scalar(f"{self.net.name}_fitting 2. eval_time", eval_time, epoch)
-            tensor_board_writer.add_scalar(f"{self.net.name}_fitting 3. eval_time", network_time, epoch)
-            tensor_board_writer.add_scalar(f"{self.net.name}_fitting 3. backward_time", backward_time, epoch)
+            tensor_board_writer.add_scalar(f"{self.net.name}_fitting 3. network_time", network_time, epoch)
+            if train:
+                tensor_board_writer.add_scalar(f"{self.net.name}_fitting 3. backward_time", backward_time, epoch)
 
         return loss
 
