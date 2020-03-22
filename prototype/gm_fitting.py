@@ -359,101 +359,91 @@ class Sampler:
         tensor_board_writer.add_image(tag, images, epoch, dataformats='NHWC')
 
     def run_on(self, mixture_in: Tensor, bias_in: Tensor, epoch: int = None, train: bool = True, tensor_board_writer: torch.utils.tensorboard.SummaryWriter = None) -> float:
+        start_time = time.perf_counter()
+
         mixture_in = mixture_in.detach()
         bias_in = bias_in.detach()
         assert gm.is_valid_mixture_and_bias(mixture_in, bias_in)
 
         mixture_in, bias_in, _ = gm.normalise(mixture_in, bias_in)  # we normalise twice, but that shouldn't hurt (but performance). normalisation here is needed due to regularisation
-        # gm.debug_show_with_activation_fun(mixture_in, bias_in, batch_i=0, layer_i=0, x_low=-1.2, y_low=-1.2, x_high=1.2, y_high=1.2, step=0.02)
-        batch_size = gm.n_batch(mixture_in)
-        n_dims = gm.n_dimensions(mixture_in)
-        batch_start_time = time.perf_counter()
-        self.optimiser.zero_grad()
-
-        sampling_positions = torch.rand((1, 1, self.n_training_samples, n_dims), dtype=torch.float32, device=mixture_in.device) * 3 - 1.5
-        target_sampling_values = gm.evaluate_with_activation_fun(mixture_in, bias_in, sampling_positions)
 
         network_start_time = time.perf_counter()
-        net_result = self.net(mixture_in, bias_in)
-
+        output_gm = self.net(mixture_in, bias_in)
         network_time = time.perf_counter() - network_start_time
 
-        if isinstance(net_result, tuple):
-            output_gm, latent_vector = net_result
-        else:
-            output_gm = net_result
-            latent_vector = torch.zeros(1, 1)
-
         eval_start_time = time.perf_counter()
-        output_gm_sampling_values = gm.evaluate(output_gm, sampling_positions)
+        loss = self.sample_loss_on(mixture_in, bias_in, output_gm, epoch, tensor_board_writer)
+        eval_time = time.perf_counter() - eval_start_time
+
+        backward_time = 0
+        if train:
+            self.optimiser.zero_grad()
+            backward_start_time = time.perf_counter()
+            loss.backward()
+            backward_time = time.perf_counter() - backward_start_time
+            self.optimiser.step()
+
+        if tensor_board_writer is not None:
+            tensor_board_writer.add_scalar(f"{self.net.name}_fitting 1. whole time", time.perf_counter() - start_time, epoch)
+            tensor_board_writer.add_scalar(f"{self.net.name}_fitting 2. eval_time", eval_time, epoch)
+            tensor_board_writer.add_scalar(f"{self.net.name}_fitting 3. eval_time", network_time, epoch)
+            tensor_board_writer.add_scalar(f"{self.net.name}_fitting 3. backward_time", backward_time, epoch)
+
+        return loss
+
+    def sample_loss_on(self, mixture_in_normalised: Tensor, bias_in_normalised: Tensor, mixture_out_normalised: Tensor,
+                       epoch: int = None, tensor_board_writer: torch.utils.tensorboard.SummaryWriter = None) -> float:
+        assert gm.is_valid_mixture_and_bias(mixture_in_normalised, bias_in_normalised)
+        device = mixture_in_normalised.device
+
+        n_dims = gm.n_dimensions(mixture_in_normalised)
+
+        sampling_positions = torch.rand((1, 1, self.n_training_samples, n_dims), dtype=torch.float32, device=device) * 3 - 1.5
+        target_sampling_values = gm.evaluate_with_activation_fun(mixture_in_normalised, bias_in_normalised, sampling_positions)
+
+        output_gm_sampling_values = gm.evaluate(mixture_out_normalised, sampling_positions)
         criterion = self.criterion(output_gm_sampling_values, target_sampling_values) * 2
 
         # the network was moving gaussians out of the sampling radius
-        p = (gm.positions(output_gm).abs() - 1)
-        p = p.where(p > torch.zeros(1, device=p.device), torch.zeros(1, device=p.device))
+        p = (gm.positions(mixture_out_normalised).abs() - 1)
+        p = p.where(p > torch.zeros(1, device=device), torch.zeros(1, device=device))
         regularisation = p.mean()
-        
+
         # use positive gaussians only (seems to be better)
-        w = gm.weights(output_gm)
-        w = w.where(w < torch.zeros(1, device=p.device), torch.zeros(1, device=p.device))
+        w = gm.weights(mixture_out_normalised)
+        w = w.where(w < torch.zeros(1, device=device), torch.zeros(1, device=device))
         w = w.abs()
         w = w * w
         w = w.mean()
         regularisation = regularisation + w
 
-        eval_time = time.perf_counter() - eval_start_time
-
-        backward_start_time = time.perf_counter()
         loss = criterion + regularisation
 
-        backward_time = 0
-        if train:
-            loss.backward()
-            backward_time = time.perf_counter() - backward_start_time
-
-            self.optimiser.step()
-
         if tensor_board_writer is not None:
-            # if not self.tensor_board_graph_written:
-            #     tensor_board_graph_written = True
-            #     tensor_board_writer.add_graph(self.net, data_in)
-            tensor_board_writer.add_scalar(f"{self.net.name}_fitting 0. batch_loss", loss.item(), epoch)
-            # tensor_board_writer.add_scalar(f"{self.net.name}_fitting 1. criterion", criterion.item(), epoch)
-            # tensor_board_writer.add_scalar(f"fitting 3. regularisation_aggr_prod", regularisation_aggr_prod.item(), epoch)
-            tensor_board_writer.add_scalar(f"{self.net.name}_fitting 4. whole time", time.perf_counter() - batch_start_time, epoch)
-            # tensor_board_writer.add_scalar(f"{self.net.name}_fitting 5. network_time", network_time, epoch)
-            tensor_board_writer.add_scalar(f"{self.net.name}_fitting 6. eval_time", eval_time, epoch)
-            # tensor_board_writer.add_scalar(f"{self.net.name}_fitting 7. backward_time", backward_time, epoch)
+            tensor_board_writer.add_scalar(f"{self.net.name}_fitting 0. fitting_loss", loss.item(), epoch)
 
             if epoch is None or (epoch % 10 == 0 and epoch < 100) or (epoch % 100 == 0 and epoch < 1000) or (epoch % 1000 == 0 and epoch < 10000) or (epoch % 10000 == 0):
                 image_size = 80
-                xv, yv = torch.meshgrid([torch.arange(-1.2, 1.2, 2.4 / image_size, dtype=torch.float, device=mixture_in.device),
-                                         torch.arange(-1.2, 1.2, 2.4 / image_size, dtype=torch.float, device=mixture_in.device)])
+                xv, yv = torch.meshgrid([torch.arange(-1.2, 1.2, 2.4 / image_size, dtype=torch.float, device=device),
+                                         torch.arange(-1.2, 1.2, 2.4 / image_size, dtype=torch.float, device=device)])
                 xes = torch.cat((xv.reshape(-1, 1), yv.reshape(-1, 1)), 1).view(1, 1, -1, 2)
 
                 n_shown_images = 10
-                n_batches_eval = n_shown_images // gm.n_layers(mixture_in) + 1
-                n_batches_eval = min(n_batches_eval, gm.n_batch(mixture_in))
-                n_layers_eval = min(gm.n_layers(mixture_in), n_shown_images)
-                mixture_eval = mixture_in.detach()[:n_batches_eval, :n_layers_eval, :, :]
-                bias_eval = bias_in.detach()[:n_batches_eval, :n_layers_eval]
+                n_batches_eval = n_shown_images // gm.n_layers(mixture_in_normalised) + 1
+                n_batches_eval = min(n_batches_eval, gm.n_batch(mixture_in_normalised))
+                n_layers_eval = min(gm.n_layers(mixture_in_normalised), n_shown_images)
+                mixture_eval = mixture_in_normalised.detach()[:n_batches_eval, :n_layers_eval, :, :]
+                bias_eval = bias_in_normalised.detach()[:n_batches_eval, :n_layers_eval]
 
                 image_target = gm.evaluate_with_activation_fun(mixture_eval, bias_eval, xes).view(-1, image_size, image_size)
-                fitted_mixture_image = gm.evaluate(output_gm.detach(), xes).view(-1, image_size, image_size)
+                fitted_mixture_image = gm.evaluate(mixture_out_normalised.detach(), xes).view(-1, image_size, image_size)
                 self.log_images(tensor_board_writer,
                                 f"{self.net.name}_fitting target_prediction",
                                 [image_target[:n_shown_images, :, :].transpose(0, 1).reshape(image_size, -1),
                                  fitted_mixture_image[:n_shown_images, :, :].transpose(0, 1).reshape(image_size, -1)],
                                 epoch, [-0.5, 2])
-                # self.log_image("latent_space", latent_vector.detach(), epoch, (-5, 5))
 
-        info = (f"gm_fitting.Trainer: epoch = {epoch}:"
-                f"batch loss {loss.item():.4f} (crit: {criterion.item()} (rest is regularisation)), "
-                f"batch time = {time.perf_counter() - batch_start_time :.2f}s, "
-                f"size = {batch_size}, "
-                f"(forward: {network_time :.2f}s (per layer: {network_time / batch_size :.4f}s), eval: {eval_time :.3f}s, backward: {backward_time :.4f}s) ")
-        print(info)
-        return criterion.item()
+        return loss
 
     def to_(self, device: torch.device):
         for state in self.optimiser.state.values():
