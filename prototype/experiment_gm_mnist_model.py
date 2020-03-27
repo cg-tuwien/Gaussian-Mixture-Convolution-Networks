@@ -37,28 +37,29 @@ class Net(nn.Module):
                                              position_range=2, covariance_range=0.5,
                                              learn_positions=learn_positions, learn_covariances=learn_covariances,
                                              weight_sd=0.4)
-        self.relu1 = gm_modules.GmBiasAndRelu(layer_id="1c", n_layers=n_layers_1, generate_fitting_module=layer1_m2m_fitting, n_input_gaussians=n_in_g * n_kernel_components, n_output_gaussians=n_out_g_1)
         # self.maxPool1 = gm_modules.MaxPooling(10)
 
         self.gmc2 = gm_modules.GmConvolution(n_layers_in=n_layers_1, n_layers_out=n_layers_2, n_kernel_components=n_kernel_components,
                                              position_range=4, covariance_range=2,
                                              learn_positions=learn_positions, learn_covariances=learn_covariances,
                                              weight_sd=0.04)
-        self.relu2 = gm_modules.GmBiasAndRelu(layer_id="2c", n_layers=n_layers_2, generate_fitting_module=layer2_m2m_fitting, n_input_gaussians=n_out_g_1 * n_layers_1 * n_kernel_components,
-                                              n_output_gaussians=n_out_g_2)
         # self.maxPool2 = gm_modules.MaxPooling(10)
 
         self.gmc3 = gm_modules.GmConvolution(n_layers_in=n_layers_2, n_layers_out=10, n_kernel_components=n_kernel_components,
                                              position_range=8, covariance_range=4,
                                              learn_positions=learn_positions, learn_covariances=learn_covariances,
                                              weight_sd=0.025)
-        self.relu3 = gm_modules.GmBiasAndRelu(layer_id="3c", n_layers=10, generate_fitting_module=layer3_m2m_fitting, n_input_gaussians=n_out_g_2 * n_layers_2 * n_kernel_components,
-                                              n_output_gaussians=n_out_g_3)
         # self.maxPool3 = gm_modules.MaxPooling(2)
 
         self.bn0 = gm_modules.BatchNorm(per_gaussian_norm=True)
         self.bn = gm_modules.BatchNorm(per_gaussian_norm=False)
 
+        # initialise these last, so all the kernels should have the same random seed
+        self.relu1 = gm_modules.GmBiasAndRelu(layer_id="1c", n_layers=n_layers_1, generate_fitting_module=layer1_m2m_fitting, n_input_gaussians=n_in_g * n_kernel_components, n_output_gaussians=n_out_g_1)
+        self.relu2 = gm_modules.GmBiasAndRelu(layer_id="2c", n_layers=n_layers_2, generate_fitting_module=layer2_m2m_fitting, n_input_gaussians=n_out_g_1 * n_layers_1 * n_kernel_components,
+                                              n_output_gaussians=n_out_g_2)
+        self.relu3 = gm_modules.GmBiasAndRelu(layer_id="3c", n_layers=10, generate_fitting_module=layer3_m2m_fitting, n_input_gaussians=n_out_g_2 * n_layers_2 * n_kernel_components,
+                                              n_output_gaussians=n_out_g_3)
         self.relu1.fitting_sampler.load()
         self.relu2.fitting_sampler.load()
         self.relu3.fitting_sampler.load()
