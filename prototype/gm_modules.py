@@ -176,7 +176,7 @@ class GmBiasAndRelu(torch.nn.modules.Module):
         self.last_in = None
         self.last_out = None
 
-        self.fitting_sampler = gm_fitting.Sampler(self, n_training_samples=400)
+        self.fitting_sampler = gm_fitting.Sampler(self, n_training_samples=1000)
 
         print(self.gm_fitting_net_666)
 
