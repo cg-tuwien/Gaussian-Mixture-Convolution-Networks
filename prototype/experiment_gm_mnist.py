@@ -84,7 +84,7 @@ def train(args, model: experiment_gm_mnist_model.Net, device, train_loader, opti
                 optimizer.step()
             elif not only_simulate:
                 model.set_fitting_training(True)
-                fitting_loss = model.run_fitting_sampling(data, sampling_layers=combined_fitting_layer_training, train=False, epoch=i, tensor_board_writer=tensorboard_writer_option)
+                fitting_loss = 10 * model.run_fitting_sampling(data, sampling_layers=combined_fitting_layer_training, train=False, epoch=i, tensor_board_writer=tensorboard_writer_option)
                 model.set_fitting_training(False)
                 training_loss = (loss + regularisation_loss + fitting_loss)
                 training_loss.backward()
@@ -216,7 +216,7 @@ def experiment_combined_loss(device: str = 'cuda', n_epochs: int = 20, learning_
 
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
-    tensor_board_writer = torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard' / f'spltGrd_{desc_string}_{datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}')
+    tensor_board_writer = torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard' / f'spltGrd10_mfs_{desc_string}_{datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}')
     # scheduler = StepLR(optimizer, step_size=1, gamma=args.gamma)
     train(args, model, device, train_loader, optimizer, 0, only_simulate=True, train_fitting_layers={1, 2, 3}, combined_fitting_layer_training=None, tensor_board_writer=tensor_board_writer)
     train(args, model, device, train_loader, optimizer, 1, only_simulate=True, train_fitting_layers={1, 2, 3}, combined_fitting_layer_training=None, tensor_board_writer=tensor_board_writer)
