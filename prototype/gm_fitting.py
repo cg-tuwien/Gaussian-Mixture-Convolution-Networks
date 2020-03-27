@@ -297,7 +297,7 @@ class SpaceSubdivider(Net):
         self.n_fitting_module_out_gaussians = n_fitting_module_out_gaussians
         self.n_output_gaussians = n_output_gaussians
         net.load(strict=False)
-        self.add_module("net", net)
+        self.net = net
         # if not self.net.load(strict=True):
         #     raise Exception(f"Fitting network {self.net.name} not found.")
 

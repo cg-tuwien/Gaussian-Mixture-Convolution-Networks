@@ -63,10 +63,10 @@ class Net(nn.Module):
         self.relu2.fitting_sampler.load()
         self.relu3.fitting_sampler.load()
 
-    # def set_fitting_training(self, flag: bool):
-    #     self.relu1.train_fitting(flag)
-    #     self.relu2.train_fitting(flag)
-    #     self.relu3.train_fitting(flag)
+    def set_fitting_training(self, flag: bool):
+        self.relu1.train_fitting(flag)
+        self.relu2.train_fitting(flag)
+        self.relu3.train_fitting(flag)
 
     def run_fitting_sampling(self, in_x: torch.Tensor, sampling_layers, train: bool, epoch: int, tensor_board_writer: torch.utils.tensorboard.SummaryWriter) -> torch.Tensor:
         assert sampling_layers is not None and self.training

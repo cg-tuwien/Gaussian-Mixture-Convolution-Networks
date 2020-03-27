@@ -168,6 +168,7 @@ class GmBiasAndRelu(torch.nn.modules.Module):
 
         self.gm_fitting_net_666.requires_grad_(True)
         self.bias.requires_grad_(True)
+        # self.train_fitting(False)
 
         self.name = f"GmBiasAndRelu_{layer_id}"
         self.storage_path = config.data_base_path / "weights" / f"GmBiasAndRelu_{layer_id}_{self.gm_fitting_net_666.name}"
@@ -179,14 +180,9 @@ class GmBiasAndRelu(torch.nn.modules.Module):
 
         print(self.gm_fitting_net_666)
 
-    # def train_fitting(self, flag: bool):
-    #     self.train_fitting_flag = flag
-    #     if flag:
-    #         self.gm_fitting_net_666.requires_grad_(True)
-    #         self.bias.requires_grad_(False)
-    #     else:
-    #         self.gm_fitting_net_666.requires_grad_(False)
-    #         self.bias.requires_grad_(True)
+    def train_fitting(self, flag: bool):
+        self.gm_fitting_net_666.requires_grad_(flag)
+        self.bias.requires_grad_(not flag)
 
     def forward(self, x: Tensor, overwrite_bias: Tensor = None) -> Tensor:
         bias = self.bias if overwrite_bias is None else overwrite_bias
