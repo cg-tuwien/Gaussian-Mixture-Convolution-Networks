@@ -62,7 +62,7 @@ class GmConvolution(torch.nn.modules.Module):
             # initialise with a rather round covariance matrix
             # a psd matrix can be generated with A A'. we learn A and generate a pd matrix via  A A' + eye * epsilon
             covariance_factors = torch.rand(1, n_layers_in, n_kernel_components, n_dims, n_dims, dtype=torch.float32) * 2 - 1
-            cov_rand_factor = 0.1 if self.learn_covariances else 0.0
+            cov_rand_factor = 0.1  # should prevent NaNs by symeig and for non cov learning runs should make too much of a difference.
             covariance_factors = covariance_factors * cov_rand_factor + torch.eye(self.n_dims)
             covariance_factors = covariance_factors * math.sqrt(covariance_range)
             self.covariance_factors.append(torch.nn.Parameter(covariance_factors))
