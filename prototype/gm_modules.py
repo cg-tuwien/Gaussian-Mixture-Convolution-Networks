@@ -46,8 +46,8 @@ class GmConvolution(torch.nn.modules.Module):
         for i in range(self.n_layers_out):
             # positive mean produces a rather positive gm. i believe this is a better init
             weights = torch.randn(1, n_layers_in, n_kernel_components, 1, dtype=torch.float32) * weight_sd + weight_mean
-
             self.weights.append(torch.nn.Parameter(weights))
+
             if self.learn_positions:
                 positions = torch.rand(1, n_layers_in, n_kernel_components, n_dims, dtype=torch.float32) * 2 * position_range - position_range
             else:
