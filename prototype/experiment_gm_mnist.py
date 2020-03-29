@@ -57,35 +57,35 @@ def train(args, model: experiment_gm_mnist_model.Net, device, train_loader, opti
 
         data_all, target_all = data_all.to(device), target_all.to(device)
 
+        # original batch length: 100
         batch_divisor = 4
+        divided_batch_length = 25
 
         for k in range(batch_divisor):
             i = epoch * len(train_loader.dataset) * batch_divisor + batch_idx * batch_divisor + k
             tensorboard_writer_option = None
             if i % args.log_interval == 0:
                 tensorboard_writer_option = tensor_board_writer
-            divided_batch_length = 25
             data = data_all[k * divided_batch_length:(k + 1) * divided_batch_length]
             target = target_all[k * divided_batch_length:(k + 1) * divided_batch_length]
 
             if train_fitting_layers is not None:
-                model.set_fitting_training(True)
                 model.run_fitting_sampling(data, sampling_layers=train_fitting_layers, train=True, epoch=i, tensor_board_writer=tensorboard_writer_option)
-                model.set_fitting_training(False)
 
-            optimizer.zero_grad()
             output = model(data)
             loss = F.nll_loss(output, target)
             regularisation_loss = model.regularisation_loss()
             training_loss = (loss + regularisation_loss)
 
             if not only_simulate and combined_fitting_layer_training is None:
+                optimizer.zero_grad()
                 training_loss.backward()
                 optimizer.step()
             elif not only_simulate:
-                model.set_fitting_training(True)
+                optimizer.zero_grad()
+                # model.set_fitting_training(True)
                 fitting_loss = 10 * model.run_fitting_sampling(data, sampling_layers=combined_fitting_layer_training, train=False, epoch=i, tensor_board_writer=tensorboard_writer_option)
-                model.set_fitting_training(False)
+                # model.set_fitting_training(False)
                 training_loss = (loss + regularisation_loss + fitting_loss)
                 training_loss.backward()
                 optimizer.step()
@@ -164,13 +164,21 @@ def experiment_alternating(device: str = 'cuda', n_epochs: int = 20, learning_ra
     args = Args()
     args.save_model = True
     args.log_interval = log_interval
+    args.save_model = False
 
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
     tensor_board_writer = torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard' / f'altr_{desc_string}_{datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}')
     # scheduler = StepLR(optimizer, step_size=1, gamma=args.gamma)
+
+    # do not train kernels during initial phase.
+    model.set_fitting_training(True)
+    train(args, model, device, train_loader, optimizer, 0, only_simulate=True, train_fitting_layers={1, 2, 3}, combined_fitting_layer_training=None, tensor_board_writer=tensor_board_writer)
+
     for epoch in range(0, n_epochs):
+        model.set_fitting_training(True)
         train(args, model, device, train_loader, optimizer, epoch * 2, only_simulate=True, train_fitting_layers={1, 2, 3}, combined_fitting_layer_training=None, tensor_board_writer=tensor_board_writer)
+        model.set_fitting_training(False)
         train(args, model, device, train_loader, optimizer, epoch * 2 + 1, only_simulate=False, train_fitting_layers=None, combined_fitting_layer_training=None, tensor_board_writer=tensor_board_writer)
         test(args, model, device, test_loader, epoch, tensor_board_writer=tensor_board_writer)
         # scheduler.step()
@@ -204,22 +212,25 @@ def experiment_combined_loss(device: str = 'cuda', n_epochs: int = 20, learning_
                                           learn_positions=learn_positions,
                                           learn_covariances=learn_covariances,
                                           n_kernel_components=n_kernel_components)
-    model.load()
+    # model.load()
     model = model.to(device)
 
     class Args:
         pass
 
     args = Args()
-    args.save_model = True
+    args.save_model = False
     args.log_interval = log_interval
 
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
-    tensor_board_writer = torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard' / f'spltGrd10_mfs_{desc_string}_{datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}')
+    tensor_board_writer = torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard' / f'cmbGrd10_mfs_{desc_string}_{datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}')
     # scheduler = StepLR(optimizer, step_size=1, gamma=args.gamma)
+    # do not train kernels during initial phase.
+    model.set_fitting_training(True)
     train(args, model, device, train_loader, optimizer, 0, only_simulate=True, train_fitting_layers={1, 2, 3}, combined_fitting_layer_training=None, tensor_board_writer=tensor_board_writer)
     train(args, model, device, train_loader, optimizer, 1, only_simulate=True, train_fitting_layers={1, 2, 3}, combined_fitting_layer_training=None, tensor_board_writer=tensor_board_writer)
+    model.set_combined_training()
     for epoch in range(2, n_epochs):
         train(args, model, device, train_loader, optimizer, epoch, only_simulate=False, train_fitting_layers=None, combined_fitting_layer_training={1, 2, 3}, tensor_board_writer=tensor_board_writer)
         test(args, model, device, test_loader, epoch, tensor_board_writer=tensor_board_writer)

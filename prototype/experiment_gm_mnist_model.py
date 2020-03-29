@@ -68,40 +68,55 @@ class Net(nn.Module):
         self.relu1.train_fitting(flag)
         self.relu2.train_fitting(flag)
         self.relu3.train_fitting(flag)
+        self.gmc1.set_requires_grad(not flag)
+        self.gmc2.set_requires_grad(not flag)
+        self.gmc3.set_requires_grad(not flag)
+
+    def set_combined_training(self):
+        self.relu1.set_requires_grad(True)
+        self.relu2.set_requires_grad(True)
+        self.relu3.set_requires_grad(True)
+        self.gmc1.set_requires_grad(True)
+        self.gmc2.set_requires_grad(True)
+        self.gmc3.set_requires_grad(True)
 
     def run_fitting_sampling(self, in_x: torch.Tensor, sampling_layers, train: bool, epoch: int, tensor_board_writer: torch.utils.tensorboard.SummaryWriter) -> torch.Tensor:
         assert sampling_layers is not None and self.training
         loss = torch.zeros(1, dtype=torch.float32, device=in_x.device)
         x = self.bn0(in_x)
-        x = self.gmc1(x.detach())
+        x = self.gmc1(x)
         if 1 in sampling_layers:
             # dirty hack: also train with random bias
-            training_bias = self.relu1.bias.detach().clone()
-            random_selection = torch.rand_like(training_bias, dtype=torch.float32) > 0.5  # no hay rand_like con dtype=torch.bool
-            training_bias[random_selection] = torch.rand(int(random_selection.sum().item()), dtype=torch.float32, device=training_bias.device) * gm.weights(x.detach()).max()
-            loss = loss + self.relu1.fitting_sampler.run_on(x.detach(), training_bias, epoch, train=train, tensor_board_writer=tensor_board_writer)
+            training_bias = self.relu1.bias
+            random_selection = torch.rand_like(training_bias, dtype=torch.float32) > 0.3  # no hay rand_like con dtype=torch.bool
+            training_bias = training_bias.where(random_selection, torch.rand_like(training_bias) * gm.weights(x.detach()).max())
+            loss = loss + self.relu1.fitting_sampler.run_on(x, training_bias, epoch, train=train, tensor_board_writer=tensor_board_writer)
 
         x = self.relu1(x)
+        if train:
+            x = x.detach()
         x = self.bn(x)
         # x = self.maxPool1(x)
         x = self.gmc2(x)
 
         if 2 in sampling_layers:
-            training_bias = self.relu2.bias.detach().clone()
-            random_selection = torch.rand_like(training_bias, dtype=torch.float32) > 0.5  # no hay rand_like con dtype=torch.bool
-            training_bias[random_selection] = torch.rand(int(random_selection.sum().item()), dtype=torch.float32, device=training_bias.device) * gm.weights(x.detach()).max()
-            loss = loss + self.relu2.fitting_sampler.run_on(x.detach(), training_bias, epoch, train=train, tensor_board_writer=tensor_board_writer)
+            training_bias = self.relu2.bias
+            random_selection = torch.rand_like(training_bias, dtype=torch.float32) > 0.3  # no hay rand_like con dtype=torch.bool
+            training_bias = training_bias.where(random_selection, torch.rand_like(training_bias) * gm.weights(x.detach()).max())
+            loss = loss + self.relu2.fitting_sampler.run_on(x, training_bias, epoch, train=train, tensor_board_writer=tensor_board_writer)
 
         x = self.relu2(x)
+        if train:
+            x = x.detach()
         x = self.bn(x)
         # x = self.maxPool2(x)
         x = self.gmc3(x)
 
         if 3 in sampling_layers:
-            training_bias = self.relu3.bias.detach().clone()
-            random_selection = torch.rand_like(training_bias, dtype=torch.float32) > 0.5  # no hay rand_like con dtype=torch.bool
-            training_bias[random_selection] = torch.rand(int(random_selection.sum().item()), dtype=torch.float32, device=training_bias.device) * gm.weights(x.detach()).max()
-            loss = loss + self.relu3.fitting_sampler.run_on(x.detach(), training_bias, epoch, train=train, tensor_board_writer=tensor_board_writer)
+            training_bias = self.relu3.bias
+            random_selection = torch.rand_like(training_bias, dtype=torch.float32) > 0.3  # no hay rand_like con dtype=torch.bool
+            training_bias = training_bias.where(random_selection, torch.rand_like(training_bias) * gm.weights(x.detach()).max())
+            loss = loss + self.relu3.fitting_sampler.run_on(x, training_bias, epoch, train=train, tensor_board_writer=tensor_board_writer)
 
         return loss
 

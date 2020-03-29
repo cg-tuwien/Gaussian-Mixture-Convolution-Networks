@@ -358,11 +358,9 @@ class Sampler:
         images = np.concatenate(images, axis=0)
         tensor_board_writer.add_image(tag, images, epoch, dataformats='NHWC')
 
-    def run_on(self, mixture_in: Tensor, bias_in: Tensor, epoch: int = None, train: bool = True, tensor_board_writer: torch.utils.tensorboard.SummaryWriter = None) -> float:
+    def run_on(self, mixture_in: Tensor, bias_in: Tensor, epoch: int = None, train: bool = True, tensor_board_writer: torch.utils.tensorboard.SummaryWriter = None) -> Tensor:
         start_time = time.perf_counter()
 
-        mixture_in = mixture_in.detach()
-        bias_in = bias_in.detach()
         assert gm.is_valid_mixture_and_bias(mixture_in, bias_in)
 
         mixture_in, bias_in, _ = gm.normalise(mixture_in, bias_in)  # we normalise twice, but that shouldn't hurt (but performance). normalisation here is needed due to regularisation

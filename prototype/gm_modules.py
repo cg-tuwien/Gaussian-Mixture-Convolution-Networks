@@ -67,13 +67,17 @@ class GmConvolution(torch.nn.modules.Module):
             covariance_factors = covariance_factors * math.sqrt(covariance_range)
             self.covariance_factors.append(torch.nn.Parameter(covariance_factors))
 
-        if not self.learn_positions:
-            for t in self.positions:
-                t.requires_grad = False
+        self.set_requires_grad(True)
 
-        if not self.learn_covariances:
-            for t in self.covariance_factors:
-                t.requires_grad = False
+    def set_requires_grad(self, flag: bool):
+        for t in self.weights:
+            t.requires_grad = flag
+
+        for t in self.positions:
+            t.requires_grad = self.learn_positions and flag
+
+        for t in self.covariance_factors:
+            t.requires_grad = self.learn_covariances and flag
 
     def kernel(self, index: int):
         # a psd matrix can be generated with A A'. we learn A and generate a pd matrix via  A A' + eye * epsilon
@@ -183,6 +187,10 @@ class GmBiasAndRelu(torch.nn.modules.Module):
     def train_fitting(self, flag: bool):
         self.gm_fitting_net_666.requires_grad_(flag)
         self.bias.requires_grad_(not flag)
+
+    def set_requires_grad(self, flag: bool):
+        self.gm_fitting_net_666.requires_grad_(flag)
+        self.bias.requires_grad_(flag)
 
     def forward(self, x: Tensor, overwrite_bias: Tensor = None) -> Tensor:
         bias = self.bias if overwrite_bias is None else overwrite_bias
