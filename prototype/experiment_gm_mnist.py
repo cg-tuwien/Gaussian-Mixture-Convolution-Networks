@@ -172,20 +172,19 @@ def experiment_alternating(device: str = 'cuda', n_epochs: int = 20, learning_ra
     model.set_fitting_training(True)
     train(args, model, device, train_loader, optimizer, 0, train_kernels=False, train_fitting_layers=True, tensor_board_writer=tensor_board_writer)
 
-    for epoch in range(0, n_epochs):
+    for epoch in range(1, n_epochs):
         model.set_position_learning(epoch >= learn_positions_after)
         model.set_covariance_learning(epoch >= learn_covariances_after)
-        model.set_fitting_training(True)
-        train(args, model, device, train_loader, optimizer, epoch * 2, train_kernels=False, train_fitting_layers=True, tensor_board_writer=tensor_board_writer)
-        model.set_fitting_training(False)
-        train(args, model, device, train_loader, optimizer, epoch * 2 + 1, train_kernels=True, train_fitting_layers=False, tensor_board_writer=tensor_board_writer)
-        test(args, model, device, test_loader, epoch, tensor_board_writer=tensor_board_writer)
+        train_kernels = epoch % 2 == 0  # starts with epoch 1 / fitting
+        model.set_fitting_training(not train_kernels)
+        train(args, model, device, train_loader, optimizer, epoch, train_kernels=train_kernels, train_fitting_layers=not train_kernels, tensor_board_writer=tensor_board_writer)
+
+        if train_kernels:
+            test(args, model, device, test_loader, epoch, tensor_board_writer=tensor_board_writer)
         # scheduler.step()
 
         if args.save_model:
             model.save_model()
-
-        if args.save_model:
             model.save_fitting_parameters()
             model.save_fitting_optimiser_state()
 
