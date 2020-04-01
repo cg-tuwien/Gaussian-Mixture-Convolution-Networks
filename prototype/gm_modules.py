@@ -48,7 +48,7 @@ class GmConvolution(torch.nn.modules.Module):
             weights = torch.randn(1, n_layers_in, n_kernel_components, 1, dtype=torch.float32) * weight_sd + weight_mean
             self.weights.append(torch.nn.Parameter(weights))
 
-            if self.learn_positions:
+            if self.learn_positions and False:
                 positions = torch.rand(1, n_layers_in, n_kernel_components, n_dims, dtype=torch.float32) * 2 * position_range - position_range
             else:
                 assert (self.n_dims == 2)
@@ -62,7 +62,7 @@ class GmConvolution(torch.nn.modules.Module):
             # initialise with a rather round covariance matrix
             # a psd matrix can be generated with A A'. we learn A and generate a pd matrix via  A A' + eye * epsilon
             covariance_factors = torch.rand(1, n_layers_in, n_kernel_components, n_dims, n_dims, dtype=torch.float32) * 2 - 1
-            cov_rand_factor = 0.1  # should prevent NaNs by symeig and for non cov learning runs should make too much of a difference.
+            cov_rand_factor = 0.1  # should prevent NaNs by symeig (just in case) and for non cov learning runs should make little difference.
             covariance_factors = covariance_factors * cov_rand_factor + torch.eye(self.n_dims)
             covariance_factors = covariance_factors * math.sqrt(covariance_range)
             self.covariance_factors.append(torch.nn.Parameter(covariance_factors))
@@ -92,10 +92,22 @@ class GmConvolution(torch.nn.modules.Module):
         cost = torch.zeros(1, dtype=torch.float32, device=self.weights[0].device)
         for i in range(self.n_layers_out):
             A = self.covariance_factors[i]
-            # problem: symeig becomes instable in backward pass  when the eigenvalues are similar) (NaNs if they are the same)
-            # add a small random value to circumvent. instability doesn't hurt, because we have grad zero in that case.
 
-            covariances = A @ A.transpose(-1, -2) + torch.diag(torch.randn(self.n_dims, dtype=torch.float32, device=self.weights[0].device) * 2 - 1) * self.covariance_epsilon
+            # problem: symeig produces NaN gradients when the eigenvalues are the same (symmetric gaussian).
+            # this shouldn't be a problem because we mask them out anyways. however, pytorch doesn't differentiate between zero and no gradient. and so 0 * NaN = NaN
+            # the only possibility to avoid this is masking the offending data before the NaN producing operation (and that's what we do, hence the 2 iterations)
+            # tracked in here; https://github.com/pytorch/pytorch/issues/23156#issuecomment-528663523
+
+            covariances = A @ A.transpose(-1, -2)
+            # eigenvalues = torch.symeig(covariances, eigenvectors=True).eigenvalues.detach()
+            # largest_eigenvalue = eigenvalues[:, :, :, -1]
+            # smallest_eigenvalue = eigenvalues[:, :, :, 0]
+            # cov_cost: Tensor = 0.1 * largest_eigenvalue / smallest_eigenvalue - 1
+            # # t o d o: this will not work for 3d (round disk)
+            # covariances = covariances.where(cov_cost.view(1, self.n_layers_in, self.n_kernel_components, 1, 1) > torch.zeros_like(cost),
+            #                                 torch.tensor([[[[[2, 0], [0, 1]]]]], dtype=torch.float32, device=self.weights[0].device))
+            # well, well. I can't provoke this problem. it should be there but it isn't. maybe they fixed it in the meanwhile without documenting.
+
             eigenvalues = torch.symeig(covariances, eigenvectors=True).eigenvalues
             largest_eigenvalue = eigenvalues[:, :, :, -1]
             smallest_eigenvalue = eigenvalues[:, :, :, 0]
@@ -106,7 +118,7 @@ class GmConvolution(torch.nn.modules.Module):
             cov_cost2 = cov_cost.where(cov_cost2 > torch.zeros_like(cost), torch.zeros_like(cost))
 
             positions = self.positions[i]
-            distances = (positions ** 2).sum(dim=-1).sqrt()
+            distances = ((positions ** 2).sum(dim=-1) + self.position_range * 0.001).sqrt()
             distance_cost = distances - torch.ones_like(cost) * self.position_range
             distance_cost = distance_cost.where(distance_cost > torch.zeros_like(cost), torch.zeros_like(cost))
 
