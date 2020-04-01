@@ -91,6 +91,9 @@ def train(args, model: experiment_gm_mnist_model.Net, device, train_loader, opti
                 tensor_board_writer.add_scalar("3. mnist training regularisation loss", regularisation_loss.item(), i)
                 if train_fitting_layers:  # save some computatinos and memory
                     tensor_board_writer.add_scalar("4. mnist fitting loss", fitting_loss.item(), i)
+                tensor_board_writer.add_scalar("5. model layer 1 avg(abs(bias))", model.relu1.bias.abs().mean().item(), i)
+                tensor_board_writer.add_scalar("5. model layer 2 avg(abs(bias))", model.relu2.bias.abs().mean().item(), i)
+                tensor_board_writer.add_scalar("5. model layer 3 avg(abs(bias))", model.relu3.bias.abs().mean().item(), i)
                 render_debug_images_to_tensorboard(model, i, tensor_board_writer)
 
                 print(f'Train Epoch: {epoch} [{(batch_idx * batch_divisor + k) * len(data)}/{len(train_loader.dataset) * len(data_all)} '
