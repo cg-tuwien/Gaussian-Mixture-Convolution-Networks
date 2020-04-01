@@ -71,42 +71,43 @@ def train(args, model: experiment_gm_mnist_model.Net, device, train_loader, opti
 
             if train_fitting_layers: # save some computatinos and memory
                 fitting_loss = model.run_fitting_sampling(data, train=train_fitting_layers, epoch=i, tensor_board_writer=tensorboard_writer_option, tensor_board_prefix="train_")
+                if i % args.log_interval == 0:
+                    tensor_board_writer.add_scalar("4. mnist fitting loss", fitting_loss.item(), i)
 
-            output = model(data)
-            loss = F.nll_loss(output, target)
-            regularisation_loss = model.regularisation_loss()
-            training_loss = (loss + regularisation_loss)
+                    if args.save_model:
+                        model.save_fitting_parameters()
+                        model.save_fitting_optimiser_state()
 
             if train_kernels:
+                output = model(data)
+                loss = F.nll_loss(output, target)
+                regularisation_loss = model.regularisation_loss()
+                training_loss = (loss + regularisation_loss)
+
                 optimizer.zero_grad()
                 training_loss.backward()
                 optimizer.step()
 
-            if i % args.log_interval == 0:
-                pred = output.detach().argmax(dim=1, keepdim=True)  # get the index of the max log-probability
-                correct = pred.eq(target.view_as(pred)).sum().item()
-                tensor_board_writer.add_scalar("0. mnist training loss", training_loss.item(), i)
-                tensor_board_writer.add_scalar("1. mnist training accuracy", 100 * correct / len(data), i)
-                tensor_board_writer.add_scalar("2. mnist kernel loss", loss.item(), i)
-                tensor_board_writer.add_scalar("3. mnist training regularisation loss", regularisation_loss.item(), i)
-                if train_fitting_layers:  # save some computatinos and memory
-                    tensor_board_writer.add_scalar("4. mnist fitting loss", fitting_loss.item(), i)
-                tensor_board_writer.add_scalar("5. model layer 1 avg(abs(bias))", model.relu1.bias.abs().mean().item(), i)
-                tensor_board_writer.add_scalar("5. model layer 2 avg(abs(bias))", model.relu2.bias.abs().mean().item(), i)
-                tensor_board_writer.add_scalar("5. model layer 3 avg(abs(bias))", model.relu3.bias.abs().mean().item(), i)
-                render_debug_images_to_tensorboard(model, i, tensor_board_writer)
+                if i % args.log_interval == 0:
+                    pred = output.detach().argmax(dim=1, keepdim=True)  # get the index of the max log-probability
+                    correct = pred.eq(target.view_as(pred)).sum().item()
+                    tensor_board_writer.add_scalar("0. mnist training loss", training_loss.item(), i)
+                    tensor_board_writer.add_scalar("1. mnist training accuracy", 100 * correct / len(data), i)
+                    tensor_board_writer.add_scalar("2. mnist kernel loss", loss.item(), i)
+                    tensor_board_writer.add_scalar("3. mnist training regularisation loss", regularisation_loss.item(), i)
+                    tensor_board_writer.add_scalar("5. model layer 1 avg(abs(bias))", model.relu1.bias.abs().mean().item(), i)
+                    tensor_board_writer.add_scalar("5. model layer 2 avg(abs(bias))", model.relu2.bias.abs().mean().item(), i)
+                    tensor_board_writer.add_scalar("5. model layer 3 avg(abs(bias))", model.relu3.bias.abs().mean().item(), i)
+                    render_debug_images_to_tensorboard(model, i, tensor_board_writer)
 
-                print(f'Train Epoch: {epoch} [{(batch_idx * batch_divisor + k) * len(data)}/{len(train_loader.dataset) * len(data_all)} '
-                      f'({100. * batch_idx / len(train_loader):.0f}%)]\tLoss: {loss.item():.6f} (accuracy: {100 * correct / len(data)})')
+                    print(f'Train Epoch: {epoch} [{(batch_idx * batch_divisor + k) * len(data)}/{len(train_loader.dataset) * len(data_all)} '
+                          f'({100. * batch_idx / len(train_loader):.0f}%)]\tLoss: {loss.item():.6f} (accuracy: {100 * correct / len(data)})')
 
-        if args.save_model and batch_idx % args.log_interval == 0 and train_kernels:
-            model.save_model()
-            # print(f"experiment_gm_mnist.tain: saving optimiser state to {model.storage_path}.optimiser")
-            # torch.save(optimizer.state_dict(), f"{model.storage_path}.optimiser")
+                    if args.save_model:
+                        model.save_model()
+                    # print(f"experiment_gm_mnist.tain: saving optimiser state to {model.storage_path}.optimiser")
+                    # torch.save(optimizer.state_dict(), f"{model.storage_path}.optimiser")
 
-        if args.save_model and batch_idx % args.log_interval == 0 and train_fitting_layers:
-            model.save_fitting_parameters()
-            model.save_fitting_optimiser_state()
 
 
 def test(args, model, device, test_loader, epoch, tensor_board_writer):
