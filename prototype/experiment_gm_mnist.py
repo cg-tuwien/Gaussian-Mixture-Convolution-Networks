@@ -51,7 +51,7 @@ def render_debug_images_to_tensorboard(model, epoch, tensor_board_writer):
     tensor_board_writer.add_image("mnist relu 3", model.relu3.debug_render(position_range=[-14, -14, 42, 42], clamp=[-6 / (28 ** 2), 24.0 / (28 ** 2)]), epoch, dataformats='HWC')
 
 
-def train(args, model: experiment_gm_mnist_model.Net, device, train_loader, optimizer, epoch, only_simulate, train_fitting_layers, combined_fitting_layer_training, tensor_board_writer):
+def train(args, model: experiment_gm_mnist_model.Net, device, train_loader, optimizer, epoch, only_simulate, train_fitting_layers, tensor_board_writer):
     model.train()
     for batch_idx, (data_all, target_all) in enumerate(train_loader):
 
@@ -77,16 +77,8 @@ def train(args, model: experiment_gm_mnist_model.Net, device, train_loader, opti
             regularisation_loss = model.regularisation_loss()
             training_loss = (loss + regularisation_loss)
 
-            if not only_simulate and combined_fitting_layer_training is None:
+            if not only_simulate:
                 optimizer.zero_grad()
-                training_loss.backward()
-                optimizer.step()
-            elif not only_simulate:
-                optimizer.zero_grad()
-                # model.set_fitting_training(True)
-                fitting_loss = 10 * model.run_fitting_sampling(data, sampling_layers=combined_fitting_layer_training, train=False, epoch=i, tensor_board_writer=tensorboard_writer_option)
-                # model.set_fitting_training(False)
-                training_loss = (loss + regularisation_loss + fitting_loss)
                 training_loss.backward()
                 optimizer.step()
 
@@ -97,8 +89,7 @@ def train(args, model: experiment_gm_mnist_model.Net, device, train_loader, opti
                 tensor_board_writer.add_scalar("1. mnist training accuracy", 100 * correct / len(data), i)
                 tensor_board_writer.add_scalar("2. mnist kernel loss", loss.item(), i)
                 tensor_board_writer.add_scalar("3. mnist training regularisation loss", regularisation_loss.item(), i)
-                if combined_fitting_layer_training is not None:
-                    tensor_board_writer.add_scalar("4. mnist fitting loss", fitting_loss.item(), i)
+                tensor_board_writer.add_scalar("4. mnist fitting loss", fitting_loss.item(), i)
                 render_debug_images_to_tensorboard(model, i, tensor_board_writer)
 
                 print(f'Train Epoch: {epoch} [{(batch_idx * batch_divisor + k) * len(data)}/{len(train_loader.dataset) * len(data_all)} '
@@ -112,9 +103,6 @@ def train(args, model: experiment_gm_mnist_model.Net, device, train_loader, opti
         if args.save_model and batch_idx % args.log_interval == 0 and train_fitting_layers is not None:
             model.save_fitting_parameters()
             model.save_fitting_optimiser_state()
-
-        if args.save_model and batch_idx % args.log_interval == 0 and combined_fitting_layer_training is not None:
-            model.save_fitting_parameters()
 
 
 def test(args, model, device, test_loader, epoch, tensor_board_writer):
@@ -177,9 +165,9 @@ def experiment_alternating(device: str = 'cuda', n_epochs: int = 20, learning_ra
 
     for epoch in range(0, n_epochs):
         model.set_fitting_training(True)
-        train(args, model, device, train_loader, optimizer, epoch * 2, only_simulate=True, train_fitting_layers={1, 2, 3}, combined_fitting_layer_training=None, tensor_board_writer=tensor_board_writer)
+        train(args, model, device, train_loader, optimizer, epoch * 2, only_simulate=True, train_fitting_layers={1, 2, 3}, tensor_board_writer=tensor_board_writer)
         model.set_fitting_training(False)
-        train(args, model, device, train_loader, optimizer, epoch * 2 + 1, only_simulate=False, train_fitting_layers=None, combined_fitting_layer_training=None, tensor_board_writer=tensor_board_writer)
+        train(args, model, device, train_loader, optimizer, epoch * 2 + 1, only_simulate=False, train_fitting_layers=None, tensor_board_writer=tensor_board_writer)
         test(args, model, device, test_loader, epoch, tensor_board_writer=tensor_board_writer)
         # scheduler.step()
 
@@ -189,56 +177,6 @@ def experiment_alternating(device: str = 'cuda', n_epochs: int = 20, learning_ra
         if args.save_model:
             model.save_fitting_parameters()
             model.save_fitting_optimiser_state()
-
-
-def experiment_combined_loss(device: str = 'cuda', n_epochs: int = 20, learning_rate: float = 0.01, log_interval: int = 100,
-                             layer1_m2m_fitting: typing.Callable = gm_modules.generate_default_fitting_module,
-                             layer2_m2m_fitting: typing.Callable = gm_modules.generate_default_fitting_module,
-                             layer3_m2m_fitting: typing.Callable = gm_modules.generate_default_fitting_module,
-                             learn_positions: bool = False,
-                             learn_covariances: bool = False,
-                             seed: int = 0,
-                             desc_string: str = ""):
-    # Training settings
-
-    train_loader = torch.utils.data.DataLoader(GmMnistDataSet('mnist/train_', begin=0, end=600), batch_size=None, collate_fn=lambda x: x)
-    test_loader = torch.utils.data.DataLoader(GmMnistDataSet('mnist/test_', begin=0, end=100), batch_size=None, collate_fn=lambda x: x)
-    torch.manual_seed(seed)
-
-    model = experiment_gm_mnist_model.Net(name=desc_string,
-                                          layer1_m2m_fitting=layer1_m2m_fitting,
-                                          layer2_m2m_fitting=layer2_m2m_fitting,
-                                          layer3_m2m_fitting=layer3_m2m_fitting,
-                                          learn_positions=learn_positions,
-                                          learn_covariances=learn_covariances,
-                                          n_kernel_components=n_kernel_components)
-    # model.load()
-    model = model.to(device)
-
-    class Args:
-        pass
-
-    args = Args()
-    args.save_model = False
-    args.log_interval = log_interval
-
-    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
-
-    tensor_board_writer = torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard' / f'cmbGrd10_mfs_{desc_string}_{datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}')
-    # scheduler = StepLR(optimizer, step_size=1, gamma=args.gamma)
-    # do not train kernels during initial phase.
-    model.set_fitting_training(True)
-    train(args, model, device, train_loader, optimizer, 0, only_simulate=True, train_fitting_layers={1, 2, 3}, combined_fitting_layer_training=None, tensor_board_writer=tensor_board_writer)
-    train(args, model, device, train_loader, optimizer, 1, only_simulate=True, train_fitting_layers={1, 2, 3}, combined_fitting_layer_training=None, tensor_board_writer=tensor_board_writer)
-    model.set_combined_training()
-    for epoch in range(2, n_epochs):
-        train(args, model, device, train_loader, optimizer, epoch, only_simulate=False, train_fitting_layers=None, combined_fitting_layer_training={1, 2, 3}, tensor_board_writer=tensor_board_writer)
-        test(args, model, device, test_loader, epoch, tensor_board_writer=tensor_board_writer)
-        # scheduler.step()
-
-        if args.save_model:
-            model.save_model()
-            model.save_fitting_parameters()
 
 
 def main():

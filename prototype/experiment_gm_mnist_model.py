@@ -72,13 +72,6 @@ class Net(nn.Module):
         self.gmc2.set_requires_grad(not flag)
         self.gmc3.set_requires_grad(not flag)
 
-    def set_combined_training(self):
-        self.relu1.set_requires_grad(True)
-        self.relu2.set_requires_grad(True)
-        self.relu3.set_requires_grad(True)
-        self.gmc1.set_requires_grad(True)
-        self.gmc2.set_requires_grad(True)
-        self.gmc3.set_requires_grad(True)
 
     def run_fitting_sampling(self, in_x: torch.Tensor, sampling_layers, train: bool, epoch: int, tensor_board_writer: torch.utils.tensorboard.SummaryWriter) -> torch.Tensor:
         assert sampling_layers is not None and self.training
