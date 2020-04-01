@@ -72,6 +72,15 @@ class Net(nn.Module):
         self.gmc2.set_requires_grad(not flag)
         self.gmc3.set_requires_grad(not flag)
 
+    def set_position_learning(self, flag: bool):
+        self.gmc1.learn_positions = flag
+        self.gmc2.learn_positions = flag
+        self.gmc3.learn_positions = flag
+
+    def set_covariance_learning(self, flag: bool):
+        self.gmc1.learn_covariances = flag
+        self.gmc2.learn_covariances = flag
+        self.gmc3.learn_covariances = flag
 
     def run_fitting_sampling(self, in_x: torch.Tensor, sampling_layers, train: bool, epoch: int, tensor_board_writer: torch.utils.tensorboard.SummaryWriter) -> torch.Tensor:
         assert sampling_layers is not None and self.training

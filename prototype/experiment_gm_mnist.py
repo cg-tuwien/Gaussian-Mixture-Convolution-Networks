@@ -70,7 +70,7 @@ def train(args, model: experiment_gm_mnist_model.Net, device, train_loader, opti
             target = target_all[k * divided_batch_length:(k + 1) * divided_batch_length]
 
             if train_fitting_layers is not None:
-                model.run_fitting_sampling(data, sampling_layers=train_fitting_layers, train=True, epoch=i, tensor_board_writer=tensorboard_writer_option)
+                fitting_loss = model.run_fitting_sampling(data, sampling_layers=train_fitting_layers, train=True, epoch=i, tensor_board_writer=tensorboard_writer_option)
 
             output = model(data)
             loss = F.nll_loss(output, target)
@@ -89,7 +89,8 @@ def train(args, model: experiment_gm_mnist_model.Net, device, train_loader, opti
                 tensor_board_writer.add_scalar("1. mnist training accuracy", 100 * correct / len(data), i)
                 tensor_board_writer.add_scalar("2. mnist kernel loss", loss.item(), i)
                 tensor_board_writer.add_scalar("3. mnist training regularisation loss", regularisation_loss.item(), i)
-                tensor_board_writer.add_scalar("4. mnist fitting loss", fitting_loss.item(), i)
+                if train_fitting_layers is not None:
+                    tensor_board_writer.add_scalar("4. mnist fitting loss", fitting_loss.item(), i)
                 render_debug_images_to_tensorboard(model, i, tensor_board_writer)
 
                 print(f'Train Epoch: {epoch} [{(batch_idx * batch_divisor + k) * len(data)}/{len(train_loader.dataset) * len(data_all)} '
@@ -127,8 +128,8 @@ def experiment_alternating(device: str = 'cuda', n_epochs: int = 20, learning_ra
                            layer1_m2m_fitting: typing.Callable = gm_modules.generate_default_fitting_module,
                            layer2_m2m_fitting: typing.Callable = gm_modules.generate_default_fitting_module,
                            layer3_m2m_fitting: typing.Callable = gm_modules.generate_default_fitting_module,
-                           learn_positions: bool = False,
-                           learn_covariances: bool = False,
+                           learn_positions_after: int = 0,
+                           learn_covariances_after: int = 0,
                            desc_string: str = ""):
     # Training settings
     torch.manual_seed(0)
@@ -140,8 +141,8 @@ def experiment_alternating(device: str = 'cuda', n_epochs: int = 20, learning_ra
                                           layer1_m2m_fitting=layer1_m2m_fitting,
                                           layer2_m2m_fitting=layer2_m2m_fitting,
                                           layer3_m2m_fitting=layer3_m2m_fitting,
-                                          learn_positions=learn_positions,
-                                          learn_covariances=learn_covariances,
+                                          learn_positions=learn_positions_after == 0,
+                                          learn_covariances=learn_covariances_after == 0,
                                           n_kernel_components=n_kernel_components)
     model.load()
     model = model.to(device)
@@ -164,6 +165,8 @@ def experiment_alternating(device: str = 'cuda', n_epochs: int = 20, learning_ra
     train(args, model, device, train_loader, optimizer, 0, only_simulate=True, train_fitting_layers={1, 2, 3}, combined_fitting_layer_training=None, tensor_board_writer=tensor_board_writer)
 
     for epoch in range(0, n_epochs):
+        model.set_position_learning(epoch >= learn_positions_after)
+        model.set_covariance_learning(epoch >= learn_covariances_after)
         model.set_fitting_training(True)
         train(args, model, device, train_loader, optimizer, epoch * 2, only_simulate=True, train_fitting_layers={1, 2, 3}, tensor_board_writer=tensor_board_writer)
         model.set_fitting_training(False)

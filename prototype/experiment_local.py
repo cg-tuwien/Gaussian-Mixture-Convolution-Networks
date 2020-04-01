@@ -24,8 +24,8 @@ def generate_fitting_module(n_input_gaussians: int, n_output_gaussians: int) -> 
 # experiment_gm_mnist.experiment_alternating(device='cuda:0', n_epochs=15, desc_string="learn_all", learning_rate=0.001,
 #                                            learn_covariances=False, learn_positions=False)
 
-experiment_gm_mnist.experiment_combined_loss(device='cuda:0', n_epochs=70, desc_string="learn_all", learning_rate=0.001,
+experiment_gm_mnist.experiment_alternating(device='cuda:0', n_epochs=70, desc_string="test", learning_rate=0.001,
                                            layer1_m2m_fitting=generate_fitting_module,
                                            layer2_m2m_fitting=generate_fitting_module,
                                            layer3_m2m_fitting=generate_fitting_module,
-                                           learn_covariances=False, learn_positions=False)
+                                           learn_covariances_after=15, learn_positions_after=15)

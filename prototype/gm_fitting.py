@@ -401,7 +401,7 @@ class Sampler:
         target_sampling_values = gm.evaluate_with_activation_fun(mixture_in_normalised, bias_in_normalised, sampling_positions)
 
         output_gm_sampling_values = gm.evaluate(mixture_out_normalised, sampling_positions)
-        criterion = self.criterion(output_gm_sampling_values, target_sampling_values) * 2
+        criterion = self.criterion(output_gm_sampling_values, target_sampling_values)
 
         # the network was moving gaussians out of the sampling radius
         p = (gm.positions(mixture_out_normalised).abs() - 1)
