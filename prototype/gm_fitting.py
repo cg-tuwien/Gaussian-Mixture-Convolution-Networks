@@ -358,7 +358,7 @@ class Sampler:
         images = np.concatenate(images, axis=0)
         tensor_board_writer.add_image(tag, images, epoch, dataformats='NHWC')
 
-    def run_on(self, mixture_in: Tensor, bias_in: Tensor, epoch: int = None, train: bool = True, tensor_board_writer: torch.utils.tensorboard.SummaryWriter = None) -> Tensor:
+    def run_on(self, mixture_in: Tensor, bias_in: Tensor, epoch: int = None, train: bool = True, tensor_board_writer: torch.utils.tensorboard.SummaryWriter = None, tensor_board_prefix: str = "") -> Tensor:
         start_time = time.perf_counter()
 
         assert gm.is_valid_mixture_and_bias(mixture_in, bias_in)
@@ -370,7 +370,7 @@ class Sampler:
         network_time = time.perf_counter() - network_start_time
 
         eval_start_time = time.perf_counter()
-        loss = self.sample_loss_on(mixture_in, bias_in, output_gm, epoch, tensor_board_writer)
+        loss = self.sample_loss_on(mixture_in, bias_in, output_gm, epoch, tensor_board_writer, tensor_board_prefix)
         eval_time = time.perf_counter() - eval_start_time
 
         backward_time = 0
@@ -382,16 +382,16 @@ class Sampler:
             self.optimiser.step()
 
         if tensor_board_writer is not None:
-            tensor_board_writer.add_scalar(f"{self.net.name}_fitting 1. whole time", time.perf_counter() - start_time, epoch)
-            tensor_board_writer.add_scalar(f"{self.net.name}_fitting 2. eval_time", eval_time, epoch)
-            tensor_board_writer.add_scalar(f"{self.net.name}_fitting 3. network_time", network_time, epoch)
+            tensor_board_writer.add_scalar(f"{tensor_board_prefix}{self.net.name}_fitting 1. whole time", time.perf_counter() - start_time, epoch)
+            tensor_board_writer.add_scalar(f"{tensor_board_prefix}{self.net.name}_fitting 2. eval_time", eval_time, epoch)
+            tensor_board_writer.add_scalar(f"{tensor_board_prefix}{self.net.name}_fitting 3. network_time", network_time, epoch)
             if train:
-                tensor_board_writer.add_scalar(f"{self.net.name}_fitting 3. backward_time", backward_time, epoch)
+                tensor_board_writer.add_scalar(f"{tensor_board_prefix}{self.net.name}_fitting 3. backward_time", backward_time, epoch)
 
         return loss
 
     def sample_loss_on(self, mixture_in_normalised: Tensor, bias_in_normalised: Tensor, mixture_out_normalised: Tensor,
-                       epoch: int = None, tensor_board_writer: torch.utils.tensorboard.SummaryWriter = None) -> float:
+                       epoch: int = None, tensor_board_writer: torch.utils.tensorboard.SummaryWriter = None, tensor_board_prefix: str = "") -> float:
         assert gm.is_valid_mixture_and_bias(mixture_in_normalised, bias_in_normalised)
         device = mixture_in_normalised.device
 
@@ -419,7 +419,7 @@ class Sampler:
         loss = criterion + regularisation
 
         if tensor_board_writer is not None:
-            tensor_board_writer.add_scalar(f"{self.net.name}_fitting 0. fitting_loss", loss.item(), epoch)
+            tensor_board_writer.add_scalar(f"{tensor_board_prefix}{self.net.name}_fitting 0. fitting_loss", loss.item(), epoch)
 
             if epoch is None or (epoch % 10 == 0 and epoch < 100) or (epoch % 100 == 0 and epoch < 1000) or (epoch % 1000 == 0 and epoch < 10000) or (epoch % 10000 == 0):
                 image_size = 80
@@ -437,7 +437,7 @@ class Sampler:
                 image_target = gm.evaluate_with_activation_fun(mixture_eval, bias_eval, xes).view(-1, image_size, image_size)
                 fitted_mixture_image = gm.evaluate(mixture_out_normalised.detach(), xes).view(-1, image_size, image_size)
                 self.log_images(tensor_board_writer,
-                                f"{self.net.name}_fitting target_prediction",
+                                f"{tensor_board_prefix}{self.net.name}_fitting target_prediction",
                                 [image_target[:n_shown_images, :, :].transpose(0, 1).reshape(image_size, -1),
                                  fitted_mixture_image[:n_shown_images, :, :].transpose(0, 1).reshape(image_size, -1)],
                                 epoch, [-0.5, 2])
