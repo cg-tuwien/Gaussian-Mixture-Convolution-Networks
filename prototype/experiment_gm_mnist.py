@@ -180,14 +180,16 @@ def experiment_alternating(device: str = 'cuda', n_epochs: int = 20, kernel_lear
 
     # do not train kernels during initial phase.
     model.set_fitting_training(True)
-    train(args, model, device, train_loader, kernel_optimiser, fitting_optimiser, 0, train_kernels=False, train_fitting_layers=True, tensor_board_writer=tensor_board_writer)
+    train(args, model, device, train_loader, kernel_optimiser=kernel_optimiser, fitting_optimiser=fitting_optimiser,
+          epoch=0, train_kernels=False, train_fitting_layers=True, tensor_board_writer=tensor_board_writer)
 
     for epoch in range(1, n_epochs):
         model.set_position_learning(epoch >= learn_positions_after)
         model.set_covariance_learning(epoch >= learn_covariances_after)
         train_kernels = epoch % 2 == 0  # starts with epoch 1 / fitting
         model.set_fitting_training(not train_kernels)
-        train(args, model, device, train_loader, kernel_optimiser, fitting_optimiser, epoch, train_kernels=train_kernels, train_fitting_layers=not train_kernels, tensor_board_writer=tensor_board_writer)
+        train(args, model, device, train_loader, kernel_optimiser=kernel_optimiser, fitting_optimiser=fitting_optimiser,
+              epoch=epoch, train_kernels=train_kernels, train_fitting_layers=not train_kernels, tensor_board_writer=tensor_board_writer)
 
         if train_kernels:
             test(args, model, device, test_loader, epoch, tensor_board_writer=tensor_board_writer)
@@ -319,14 +321,17 @@ def experiment_probabalistic(device: str = 'cuda', n_epochs: int = 20, kernel_le
     # do not train kernels during initial phase.
     model.set_fitting_training(True)
     probDta = Args
-    train(args, model, device, train_loader, kernel_optimiser, fitting_optimiser, 0, train_kernels=False, train_fitting_layers=True, tensor_board_writer=tensor_board_writer)
-    probDta.averaged_fitting_loss = train(args, model, device, train_loader, kernel_optimiser, fitting_optimiser, 1, train_kernels=False, train_fitting_layers=True, tensor_board_writer=tensor_board_writer)
+    train(args, model, device, train_loader, kernel_optimiser=kernel_optimiser, fitting_optimiser=fitting_optimiser,
+          epoch=0, train_kernels=False, train_fitting_layers=True, tensor_board_writer=tensor_board_writer)
+    probDta.averaged_fitting_loss = train(args, model, device, train_loader, kernel_optimiser=kernel_optimiser, fitting_optimiser=fitting_optimiser,
+                                          epoch=1, train_kernels=False, train_fitting_layers=True, tensor_board_writer=tensor_board_writer)
     probDta.best_fitting_loss = probDta.averaged_fitting_loss
 
     for epoch in range(2, n_epochs):
         model.set_position_learning(epoch >= learn_positions_after)
         model.set_covariance_learning(epoch >= learn_covariances_after)
-        train_probabalistic(args, model, device, train_loader, kernel_optimiser, fitting_optimiser, epoch, probDta, tensor_board_writer=tensor_board_writer)
+        train_probabalistic(args, model, device, train_loader, kernel_optimiser=kernel_optimiser, fitting_optimiser=fitting_optimiser,
+                            epoch=epoch, probDta=probDta, tensor_board_writer=tensor_board_writer)
 
         test(args, model, device, test_loader, epoch, tensor_board_writer=tensor_board_writer)
         # scheduler.step()
