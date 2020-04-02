@@ -1,0 +1,8 @@
+dl1 and dl2 -> jc
+dl3 -> probably pk, but not used much
+dl4 -> pe
+
+screen
+ssh dl*
+source /dl_data/anaconda3/etc/profile.d/conda.sh
+conda activate acelarek

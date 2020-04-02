@@ -1,0 +1,70 @@
+
+1) von TU internem rechner aus ssh login auf den login-host einloggen
+   somewhere$  ssh tst1@lbd.zserv.tuwien.ac.at
+                    uid / passwd    tst1 / t11s12t13114
+2) auf dl[1-4] weiter einloggen
+   [tst1@lbd: ~]$ ssh dl1 -l tst1   ( gleiches passwort wie oben )
+3) [tst1@dl1 ~]$ pwd
+/home/dlmain/tst1        ( nfs home ist permanent, Daten hier sollten
+                           immer verfuegbar bleiben  )
+4) [tst1@dl1 ~]$ cd /scratch
+   [tst1@dl1 scratch]$   mkdir mytrialdir    ( hier auf ssd arbeiten,
+                                               allerdings gehen die Daten
+                                               bei jedem reboot verloren ! )
+5) fuer daten transfer, besser pull on dl[1-4] hosts,
+
+    [tst1@dl1 scratch]$ scp -r perler@zwirn.cg.tuwien.ac.at:meshnet ./
+
+    push analog von dl[1-4] hosts zu Zielrechner (zwirn im Beispiel)
+
+    rsync -avPltz perler@zwirn.cg.tuwien.ac.at:meshnet ./
+
+6) benoetigt wird anaconda3, tmux,
+
+... at first start tensorboard on the machine running some job, e.g. 'dl3'
+
+[tst1@dl3 ~]$  source /dl_data/anaconda3/etc/profile.d/conda.sh
+[tst1@dl3 ~]$  conda activate perler_dl
+(perler_dl) [tst1@dl3 ~]$  cd meshnet/
+(perler_dl) [tst1@dl3 meshnet]$  tensorboard --logdir="/home/dlmain/tst1/meshnet/logs" --port 6006 > /dev/null
+
+... where for the actual launch of tensorboard we may perhaps want to redirect stdio/stderr somewhere
+    and put the whole thing into background, perhaps prefixed with 'nohup' ...
+    command > /dev/null
+
+... in a second xterm on the local machine, set up the ssh-tunnel and watch tensorboard output ...
+
+my_machine>  ssh -L 12345:localhost:23456 lbd.zserv.tuwien.ac.at -l tst1
+my_machine>  ssh -L 23456:localhost:6006 dl4 -l tst1
+my_machine>  firefox localhost:12345
+
+source /dl_data/anaconda3/etc/profile.d/conda.sh
+conda activate perler_dl
+
+pkill tensorboard
+
+watch -d -n 0.5 nvidia-smi
+
+lscpu
+Intel(R) Xeon(R) Gold 6128 CPU @ 3.40GHz
+
+on dl[1-4]
+rsync -avrPltz perler@zwirn.cg.tuwien.ac.at:meshnet /home/dlmain/tst1
+rsync -avrPltz /home/dlmain/tst1/meshnet/ perler@zwirn.cg.tuwien.ac.at:~/
+
+CUDA_VISIBLE_DEVICES=0,1,2,3 watch -d -n 0.5 nvidia-smi
+tensorboard --logdir="/home/dlmain/tst1/meshnet/logs" --port 6006 > /dev/null
+
+cp -r * /target
+cp -a /scratch/meshnet/logs/implicit_surf_7* ~/meshnet/logs/
+rsync -avz ~/meshnet/ /scratch/meshnet/
+rsync -rtuv ~/meshnet/ /scratch/meshnet/
+rsync -rtuv /scratch/meshnet/ ~/meshnet/
+rsync -rtuv /scratch/meshnet/logs/ ~/meshnet/logs/
+rsync -rtuv /scratch/meshnet/models/ ~/meshnet/models/
+rsync -rtuv /scratch/meshnet/results/ ~/meshnet/results/
+while inotifywait -r -e modify,create,delete,move /directory; do
+    rsync -avz /directory /target
+done
+https://stackoverflow.com/questions/12460279/how-to-keep-two-folders-automatically-synchronized
+ 
