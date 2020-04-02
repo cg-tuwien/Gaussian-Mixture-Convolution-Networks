@@ -71,17 +71,17 @@ def train(args, model: experiment_gm_mnist_model.Net, device, train_loader, kern
             target = target_all[k * divided_batch_length:(k + 1) * divided_batch_length]
 
             if train_fitting_layers: # save some computatinos and memory
-                fitting_loss = model.run_fitting_sampling(data, train=False, epoch=i, tensor_board_writer=tensorboard_writer_option, tensor_board_prefix="train_")
-                fitting_optimiser.zero_grad()
-                backward_start_time = time.perf_counter()
-                fitting_loss.backward()
-                backward_time = time.perf_counter() - backward_start_time
-                fitting_optimiser.step()
+                fitting_loss = model.run_fitting_sampling(data, train=True, epoch=i, tensor_board_writer=tensorboard_writer_option, tensor_board_prefix="train_")
+                # fitting_optimiser.zero_grad()
+                # backward_start_time = time.perf_counter()
+                # fitting_loss.backward()
+                # backward_time = time.perf_counter() - backward_start_time
+                # fitting_optimiser.step()
                 cummulative_fitting_loss += fitting_loss.item()
 
                 if i % args.log_interval == 0:
                     tensor_board_writer.add_scalar("4. mnist fitting loss", fitting_loss.item(), i)
-                    tensor_board_writer.add_scalar(f"train_fitting 3. backward_time_all", backward_time, epoch)
+                    # tensor_board_writer.add_scalar(f"train_fitting 3. backward_time_all", backward_time, epoch)
 
                     if args.save_model:
                         model.save_fitting_parameters()
@@ -230,19 +230,19 @@ def train_probabalistic(args, model: experiment_gm_mnist_model.Net, device, trai
             model.set_fitting_training(not train_kernels)
 
             if not train_kernels:
-                fitting_loss = model.run_fitting_sampling(data, train=False, epoch=i, tensor_board_writer=tensorboard_writer_option, tensor_board_prefix="train_")
-                fitting_optimiser.zero_grad()
-                backward_start_time = time.perf_counter()
-                fitting_loss.backward()
-                backward_time = time.perf_counter() - backward_start_time
-                fitting_optimiser.step()
+                fitting_loss = model.run_fitting_sampling(data, train=True, epoch=i, tensor_board_writer=tensorboard_writer_option, tensor_board_prefix="train_")
+                # fitting_optimiser.zero_grad()
+                # backward_start_time = time.perf_counter()
+                # fitting_loss.backward()
+                # backward_time = time.perf_counter() - backward_start_time
+                # fitting_optimiser.step()
 
                 probDta.averaged_fitting_loss += (fitting_loss.item() - probDta.averaged_fitting_loss) * 0.001 * divided_batch_length
                 probDta.best_fitting_loss = min(probDta.best_fitting_loss, probDta.averaged_fitting_loss)
 
                 if i % args.log_interval == 0:
                     tensor_board_writer.add_scalar("4. mnist fitting loss", fitting_loss.item(), i)
-                    tensor_board_writer.add_scalar(f"train_fitting 3. backward_time_all", backward_time, epoch)
+                    # tensor_board_writer.add_scalar(f"train_fitting 3. backward_time_all", backward_time, epoch)
 
                     if args.save_model:
                         model.save_fitting_parameters()
