@@ -82,6 +82,11 @@ class Net(nn.Module):
         self.gmc2.learn_covariances = flag
         self.gmc3.learn_covariances = flag
 
+    def fitting_parameters(self):
+        return list(self.relu1.gm_fitting_net_666.parameters()) + \
+               list(self.relu2.gm_fitting_net_666.parameters()) + \
+               list(self.relu3.gm_fitting_net_666.parameters())
+
     def run_fitting_sampling(self, in_x: torch.Tensor, train: bool, epoch: int, tensor_board_writer: torch.utils.tensorboard.SummaryWriter, tensor_board_prefix: str = "") -> torch.Tensor:
         loss = torch.zeros(1, dtype=torch.float32, device=in_x.device)
         x = self.bn0(in_x)

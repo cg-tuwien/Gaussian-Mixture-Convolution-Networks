@@ -140,7 +140,7 @@ def test(args, model, device, test_loader, epoch, tensor_board_writer):
     print(f'\nTest set: Average loss: {test_loss:.4f}, Accuracy: {correct}/{len(test_loader.dataset) * len(data)} ({100. * correct / (len(test_loader.dataset) * len(data)):.0f}%)\n')
 
 
-def experiment_alternating(device: str = 'cuda', n_epochs: int = 20, learning_rate: float = 0.01, log_interval: int = 100,
+def experiment_alternating(device: str = 'cuda', n_epochs: int = 20, kernel_learning_rate: float = 0.001, fitting_learning_rate: float = 0.001, log_interval: int = 100,
                            layer1_m2m_fitting: typing.Callable = gm_modules.generate_default_fitting_module,
                            layer2_m2m_fitting: typing.Callable = gm_modules.generate_default_fitting_module,
                            layer3_m2m_fitting: typing.Callable = gm_modules.generate_default_fitting_module,
@@ -171,8 +171,8 @@ def experiment_alternating(device: str = 'cuda', n_epochs: int = 20, learning_ra
     args.log_interval = log_interval
     args.save_model = False
 
-    kernel_optimiser = optim.Adam(model.parameters(), lr=learning_rate)
-    fitting_optimiser = optim.Adam(model.parameters(), lr=learning_rate)
+    kernel_optimiser = optim.Adam(model.parameters(), lr=kernel_learning_rate)
+    fitting_optimiser = optim.Adam(model.fitting_parameters(), lr=fitting_learning_rate)
 
     tensor_board_writer = torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard' / f'altr_{desc_string}_{datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}')
     # scheduler = StepLR(kernel_optimiser, step_size=1, gamma=args.gamma)
