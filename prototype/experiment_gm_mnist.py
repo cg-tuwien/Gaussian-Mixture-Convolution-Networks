@@ -209,8 +209,8 @@ def train_probabalistic(args, model: experiment_gm_mnist_model.Net, device, trai
         data_all, target_all = data_all.to(device), target_all.to(device)
 
         # original batch length: 100
-        batch_divisor = 10
-        divided_batch_length = 10
+        batch_divisor = 4
+        divided_batch_length = 25
 
         for k in range(batch_divisor):
             i = epoch * len(train_loader.dataset) * batch_divisor + batch_idx * batch_divisor + k
