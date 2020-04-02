@@ -1,0 +1,42 @@
+#version 450
+
+//Accelerated Density Visualization
+//Post-Processing-Step. Transforms the sums per pixel into colors.
+
+layout(local_size_x = 32, local_size_y = 32, local_size_z = 1) in;
+/* Image to write into */
+layout(rgba32f) uniform image2D img_output;
+
+/* Image from which to read the calculated sums per pixel */
+layout(r32f) uniform image2D img_sum;
+/* Image which contains previous vizualations, i.e. point clouds and ellipsoids (if any) */
+layout(rgba32f) uniform image2D img_pre;
+
+/* Viewport width */
+uniform int width;
+/* Viewport height */
+uniform int height;
+/* Blending parameter in [0,1]. If 1, only the new image is visible, if lower it is blended with img_pre*/
+uniform float blend;
+/* Texture which contains the transfer function */
+uniform sampler1D transferTex;
+/* Value that maps to the first color from transferTex */
+uniform float densitymin;
+/* Value that maps to the last color from transferTex */
+uniform float densitymax;
+
+
+void main() {
+	ivec2 pixel_coords = ivec2(gl_GlobalInvocationID.xy);
+
+	float sum = imageLoad(img_sum, pixel_coords).r;
+
+	sum = (sum - densitymin)/(densitymax - densitymin);
+	vec3 color = texture(transferTex, sum).rgb;
+	
+	vec4 pixel = vec4(color, 1.0f);
+
+	pixel = blend * pixel + (1-blend) * vec4(imageLoad(img_pre, pixel_coords).rgb, 1.0f);
+
+	imageStore(img_output, pixel_coords, pixel);
+}

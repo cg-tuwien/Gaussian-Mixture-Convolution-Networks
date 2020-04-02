@@ -65,7 +65,7 @@ def ad_algorithm(pointclouds: Tensor, n_components: int, n_iterations: int = 8, 
 
     #-- INITIALIZE GM(M) --
     mixture = gm.generate_random_mixtures(n_layers=batch_size, n_components=n_components, n_dims=3,
-                                          pos_radius=0.5, cov_radius=5 / (n_components**(1/3)),
+                                          pos_radius=0.5, cov_radius=0.01 / (n_components**(1/3)),
                                           weight_min=0, weight_max=1, device=device)
     #Achtung: Weights hier sind nicht Weights, sondern Amplituden.
     #Wir können also nur sicherstellen, dass die Summe der tatsächlichen Weights = 1
@@ -90,14 +90,16 @@ def ad_algorithm(pointclouds: Tensor, n_components: int, n_iterations: int = 8, 
 
     optimiser = optim.Adam([weights, positions, icov_factor], lr=0.0001)
 
-    for k in range(n_iterations):
+    # for k in range(n_iterations):
+    k = -1
+    while True:
+        k+=1
         if k == n_iterations / 2:
             optimiser = optim.Adam([weights, positions, icov_factor], lr=0.00005)
         optimiser.zero_grad()
 
-        #TODO: Check epsilon for covariances
-        #Evaluate quality by taking -sum(log(p(x)) + penalty
-        #Indizes of sample points. Shape: (s), where s is #samples
+        # TODO: Check epsilon for covariances
+        # Indizes of sample points. Shape: (s), where s is #samples
         sample_point_idz = (torch.rand(config.eval_pc_n_sample_points, device=device, dtype=torch.float32) * point_count).long()
         sample_points = target[:, sample_point_idz, :]  #shape: (m,s,3)
         sample_points_in = sample_points.view(batch_size, 1, config.eval_pc_n_sample_points, 3) #shape: (m,1,s,3)
@@ -110,7 +112,7 @@ def ad_algorithm(pointclouds: Tensor, n_components: int, n_iterations: int = 8, 
         mixture_with_regular_cov = gm.pack_mixture(weights, positions, covariances.detach().clone())
         # shape first (m,1,s), then after view (m,s)
         output = gm.evaluate_inversed(mixture_with_inversed_cov, sample_points_in).view(batch_size, -1)
-        loss1 = -torch.mean(torch.log(output), dim=1)
+        loss1 = -torch.mean(torch.log(output + 0.001), dim=1) #0.001 to avoid infinite loss
         loss2 = torch.abs(gm.integrate(mixture_with_regular_cov) - 1)
         #loss2 = point_count * torch.exp(2 + torch.abs(gm.integrate(mixture_with_regular_cov) - 1))
         loss = loss1 + loss2
@@ -151,7 +153,7 @@ def ad_algorithm(pointclouds: Tensor, n_components: int, n_iterations: int = 8, 
     #scaling
     positions -= 0.5
     positions *= scale
-    weights *= covariances.det().sqrt()
+    weights *= covariances.detach().det().sqrt()   # todo make sure that sum of weights is 1(currently happening in vis)
     covariances *= scale2
     if save:
         gm.write_gm_to_ply(weights * 15.74960995, positions, covariances, 0,
@@ -162,7 +164,7 @@ def ad_algorithm(pointclouds: Tensor, n_components: int, n_iterations: int = 8, 
 def test():
     pc = pointcloud.load_pc_from_off("D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/da-gm-1/da-gm-1/data/chair_0030.off")
     name = input('Name for this training (or empty for auto): ')
-    m1 = ad_algorithm(pc, n_components=20000, n_iterations=1000, device='cuda', name=name)
+    m1 = ad_algorithm(pc, n_components=2000, n_iterations=1000, device='cuda', name=name)
     #pc = pointcloud.load_pc_from_off("D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/gmc_net/gmc_net_data/testdata.off")
     #m1 = ad_algorithm(pc, n_components=1, n_iterations=1000, device='cuda')
     #gm.save(m1, "pcgm-final.gm")

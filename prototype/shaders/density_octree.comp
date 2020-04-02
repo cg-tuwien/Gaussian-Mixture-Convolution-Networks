@@ -1,0 +1,132 @@
+#version 450
+
+// Density Visualization with Octree
+
+layout(local_size_x = 32, local_size_y = 32, local_size_z = 1) in;
+layout(r32f, binding = 0) uniform image2D img_output;
+
+layout(location=1) uniform int width;
+layout(location=2) uniform int height;
+layout(location=3) uniform mat4 invViewMatrix;
+layout(location=4) uniform float fov;
+layout(location=5) uniform sampler1D gaussTex;
+
+struct Gaussian {
+	vec4 mu_beta;
+	mat4 invsigma;
+};
+
+struct Node {
+	vec4 aabb[2];
+		//0 = min
+		//1 = max
+	ivec4 content;
+		//x = children-bits
+		//y = children-start index
+		//z = gaussian start index
+		//w = gaussian end index
+};
+
+layout(std430, binding=0) buffer GaussianMixture {
+	Gaussian gaussians[];
+} mixture;
+
+layout(std430, binding=1) buffer Octree {
+	Node nodes[];
+} octree;
+
+//inspired by: https://www.scratchapixel.com/lessons/3d-basic-rendering/minimal-ray-tracer-rendering-simple-shapes/ray-box-intersection
+bool rayInsectsAABB(vec3 rorig, vec3 rdir, vec4 aabb[2]) {
+	vec3 invrdir = 1 / rdir;
+	uvec3 sgn = uvec3(invrdir.x >= 0, invrdir.y >= 0, invrdir.z >= 0);
+
+	float txmin = (aabb[1-sgn.x].x - rorig.x) * invrdir.x;
+	float txmax = (aabb[sgn.x].x - rorig.x) * invrdir.x;
+	float tymin = (aabb[1-sgn.y].y - rorig.y) * invrdir.y;
+	float tymax = (aabb[sgn.y].y - rorig.y) * invrdir.y;
+	
+	if (txmin > tymax || tymin > txmax) {
+		return false;
+	}
+	if (tymin > txmin) {
+		txmin = tymin;
+	}
+	if (tymax < txmax) {
+		txmax = tymax;
+	}
+
+	float tzmin = (aabb[1-sgn.z].z - rorig.z) * invrdir.z;
+	float tzmax = (aabb[sgn.z].z - rorig.z) * invrdir.z;
+
+	if (txmin > tzmax || tzmin > txmax) {
+		return false;
+	}
+
+	return true;
+}
+
+float evalGaussian(vec3 rorig, vec3 rdir, Gaussian gauss) {
+	mat3 inv = mat3(gauss.invsigma);
+	vec3 rs = rdir*inv;
+	float sig2 = 1.0 / dot(rs, rdir);
+	float mu = dot(rs, gauss.mu_beta.xyz-rorig) * sig2;
+	float sig = sqrt(sig2);
+	vec3 pivec = rorig + mu*rdir- gauss.mu_beta.xyz;
+	float pik = sig * gauss.mu_beta.w * exp(-0.5*dot(pivec*inv, pivec));
+	return pik * texture(gaussTex, mu / sig).r;
+}
+
+void main() {
+	ivec2 pixel_coords = ivec2(gl_GlobalInvocationID.xy);
+	vec2 pixel_center = vec2(pixel_coords) + vec2(0.5);
+	vec2 pixel_uv = pixel_center / vec2(width, height);
+	vec2 d = pixel_uv * 2.0 - 1.0;
+	float aspectRatio = float(width) / float(height);
+
+	vec3 origin = vec3(0, 0, 0.0);
+	vec3 direction = normalize(vec3(d.x * aspectRatio, d.y, -1/tan(fov/2.0)));
+	vec4 p1 = vec4(origin, 1.0);
+	vec4 p2 = vec4(origin + direction, 1.0);
+	vec4 vp1 = invViewMatrix * p1;
+	vec4 vp2 = invViewMatrix * p2;
+	origin = vec3(vp1);
+	direction = vec3(normalize(vp2 - vp1));
+
+	//convert system
+	origin = vec3(origin.x, -origin.z, origin.y);
+	direction = vec3(direction.x, -direction.z, direction.y);
+
+	float sum = 0;
+
+	//Acceleration Structure Traversal
+	int nodesToCheck[25];	//25 is maximum we need for 5 levels (l-1)*8 - l + 2
+	nodesToCheck[0] = 0;
+	int remainingNodeCount = 1;
+	while (remainingNodeCount > 0) {
+		int nodeidx = nodesToCheck[remainingNodeCount-1];
+		remainingNodeCount -= 1;
+		Node node = octree.nodes[nodeidx];
+		bool intersect = rayInsectsAABB(origin, direction, node.aabb);
+		if (intersect) {
+			//Check Gaussians
+			if (node.content.z >= 0) {
+				for (int gidx = node.content.z; gidx <= node.content.w; gidx++) {
+					Gaussian gauss = mixture.gaussians[gidx];
+					sum += evalGaussian(origin, direction, gauss);
+				}
+			}
+			//Check Child Nodes
+			int children = node.content.x;
+			int currentchildindex = node.content.y;
+			for (int i = 7; i >= 0; i--) {
+				if ((children & (1 << i)) != 0) {
+					nodesToCheck[remainingNodeCount] = currentchildindex;
+					remainingNodeCount += 1;
+					currentchildindex += 1;
+				}
+			}
+		}
+	}
+
+	imageStore(img_output, pixel_coords, vec4(sum));
+}
