@@ -130,7 +130,7 @@ def test(args, model, device, test_loader, epoch, tensor_board_writer):
             test_loss += F.nll_loss(output, target, reduction='sum').item()  # sum up batch loss
             pred = output.argmax(dim=1, keepdim=True)  # get the index of the max log-probability
             correct += pred.eq(target.view_as(pred)).sum().item()
-            test_fitting_loss += model.run_fitting_sampling(data, train=False, epoch=i, tensor_board_writer=tensor_board_writer, tensor_board_prefix="test_").item()
+            test_fitting_loss += model.run_fitting_sampling(data, train=False, epoch=epoch, tensor_board_writer=tensor_board_writer, tensor_board_prefix="test_").item()
 
     test_loss /= len(test_loader.dataset)
     test_fitting_loss /= len(test_loader.dataset)
