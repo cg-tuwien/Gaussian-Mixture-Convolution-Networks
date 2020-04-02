@@ -16,7 +16,8 @@ import mat_tools
 from torch import Tensor
 
 
-def debug_render(mixture: Tensor, orig_size: typing.Tuple[int, int] = (800, 600), image_size: typing.Tuple[int, int] = (800, 600), clamp: typing.Tuple[float, float] = (0, 1)):
+def debug_render(mixture: Tensor, orig_size: typing.Tuple[int, int] = (28, 28), image_size: typing.Tuple[int, int] = (200, 200), clamp: typing.Tuple[float, float] = (0, 1.5)):
+    mixture = mixture.view(1, gm.n_batch(mixture), gm.n_components(mixture), -1)
     images = gm.render(mixture, x_low=0, x_high=orig_size[0], y_low=0, y_high=orig_size[1], width=image_size[0], height=image_size[1])
     images = madam_imagetools.colour_mapped(images.cpu().numpy(), clamp[0], clamp[1])
     return images[:, :, :3]
@@ -195,7 +196,7 @@ def ad_algorithm(image: Tensor, n_components: int, n_iterations: int = 8, device
         loss.backward()
         optimiser.step()
 
-        if k % 200 == 0:
+        if k % 40 == 0:
             print(f"iterations {k}: loss = {loss.item()}, min det = {torch.min(torch.det(inversed_covariances.detach()))}")
             _weights = weights.detach()
             _positions = positions.detach()
@@ -204,8 +205,8 @@ def ad_algorithm(image: Tensor, n_components: int, n_iterations: int = 8, device
             mixture = gm.pack_mixture(_weights, _positions, _covariances)
             # gm.debug_show(mixture, x_low=0, y_low=0, x_high=width, y_high=height, step=min(width, height) / 256)
 
-            rendering = debug_render(mixture, (width, height), (480, 270))
-            plt.imsave("/home/madam/cloud/celarek/Photos/auto_rendering.png", rendering)
+            # rendering = debug_render(mixture)
+            # plt.imsave("/home/madam/temp/prototype/rendering.png", rendering)
             # input("Press enter to continue!")
 
     fitting_end = time.time()
@@ -214,7 +215,10 @@ def ad_algorithm(image: Tensor, n_components: int, n_iterations: int = 8, device
     positions = positions.detach()
     # torch inverse returns a transposed matrix (v 1.3.1). our matrix is symmetric however, and we want to take a view, so the transpose avoids a copy.
     covariances = inversed_covariances.detach().inverse().transpose(-1, -2)
-    return gm.pack_mixture(weights, positions, covariances)
+    final_mixture = gm.pack_mixture(weights, positions, covariances)
+    # rendering = debug_render(final_mixture)
+    # plt.imsave("/home/madam/temp/prototype/rendering.png", rendering)
+    return final_mixture
 
 
 def test():
@@ -236,9 +240,10 @@ def test():
 
 # todo test_mnist() doesn't work but test() does. WHY?
 def test_mnist():
-    batch_size = 100
+    batch_size = 50
     width = 28
     height = 28
+    n_components = 25
     # train_loader = torch.utils.data.DataLoader(
     #     datasets.MNIST('../data', train=True, download=True,
     #                    transform=transforms.Compose([
@@ -251,13 +256,14 @@ def test_mnist():
     data_generator = torch.utils.data.DataLoader(mnist_test,
                                                  batch_size=batch_size,
                                                  shuffle=False,
-                                                 num_workers=16)
+                                                 num_workers=0)
     for i, (local_batch, local_labels) in enumerate(data_generator):
         assert local_batch.shape[1] == 1
         images = local_batch.view(batch_size, height, width)
-        gms = ad_algorithm(images, n_components=25, n_iterations=121, device='cuda')
+        gms = ad_algorithm(images, n_components=n_components, n_iterations=121, device='cuda')
         # gm.debug_show(gms, x_low=0, y_low=0, x_high=28, y_high=28, step=28 / 200)
-        gm.save(gms, f"mnist/test_{i}", local_labels)
+        for j in range(0, batch_size):
+            gm.save(gms[j].view(1, 1, n_components, -1), f"mnist/test_{i*batch_size + j}", local_labels[j])
         print(f"mnist/test_{i}")
 
     mnist_training = torchvision.datasets.MNIST("/home/madam/temp/mnist/", train=True, transform=torchvision.transforms.ToTensor(),
@@ -269,8 +275,9 @@ def test_mnist():
     for i, (local_batch, local_labels) in enumerate(data_generator):
         assert local_batch.size()[1] == 1
         images = local_batch.view(batch_size, height, width)
-        gms = ad_algorithm(images, n_components=25, n_iterations=121, device='cuda')
-        gm.save(gms, f"mnist/train_{i}", local_labels)
+        gms = ad_algorithm(images, n_components=n_components, n_iterations=121, device='cuda')
+        for j in range(0, batch_size):
+            gm.save(gms[j].view(1, 1, n_components, -1), f"mnist/train_{i*batch_size + j}", local_labels[j])
         print(f"mnist/train_{i}")
 
         # for i in range(20):
@@ -283,4 +290,4 @@ def test_mnist():
         #     plt.show()
 
 
-test()
+test_mnist()
