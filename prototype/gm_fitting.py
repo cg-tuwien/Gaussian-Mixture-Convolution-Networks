@@ -382,11 +382,11 @@ class Sampler:
             self.optimiser.step()
 
         if tensor_board_writer is not None:
-            tensor_board_writer.add_scalar(f"{tensor_board_prefix}{self.net.name}_fitting 1. whole time", time.perf_counter() - start_time, epoch)
-            tensor_board_writer.add_scalar(f"{tensor_board_prefix}{self.net.name}_fitting 2. eval_time", eval_time, epoch)
-            tensor_board_writer.add_scalar(f"{tensor_board_prefix}{self.net.name}_fitting 3. network_time", network_time, epoch)
+            tensor_board_writer.add_scalar(f"{tensor_board_prefix}fitting 1. whole time_{self.net.name}", time.perf_counter() - start_time, epoch)
+            tensor_board_writer.add_scalar(f"{tensor_board_prefix}fitting 2. eval_time_{self.net.name}", eval_time, epoch)
+            tensor_board_writer.add_scalar(f"{tensor_board_prefix}fitting 3. network_time_{self.net.name}", network_time, epoch)
             if train:
-                tensor_board_writer.add_scalar(f"{tensor_board_prefix}{self.net.name}_fitting 3. backward_time", backward_time, epoch)
+                tensor_board_writer.add_scalar(f"{tensor_board_prefix}fitting 3. backward_time_{self.net.name}", backward_time, epoch)
 
         return loss
 
@@ -419,7 +419,7 @@ class Sampler:
         loss = criterion + regularisation
 
         if tensor_board_writer is not None:
-            tensor_board_writer.add_scalar(f"{tensor_board_prefix}{self.net.name}_fitting 0. fitting_loss", loss.item(), epoch)
+            tensor_board_writer.add_scalar(f"{tensor_board_prefix}fitting 0. fitting_loss_{self.net.name}", loss.item(), epoch)
 
             if epoch is None or (epoch % 10 == 0 and epoch < 100) or (epoch % 100 == 0 and epoch < 1000) or (epoch % 1000 == 0 and epoch < 10000) or (epoch % 10000 == 0):
                 image_size = 80
@@ -437,7 +437,7 @@ class Sampler:
                 image_target = gm.evaluate_with_activation_fun(mixture_eval, bias_eval, xes).view(-1, image_size, image_size)
                 fitted_mixture_image = gm.evaluate(mixture_out_normalised.detach(), xes).view(-1, image_size, image_size)
                 self.log_images(tensor_board_writer,
-                                f"{tensor_board_prefix}{self.net.name}_fitting target_prediction",
+                                f"{tensor_board_prefix}fitting target_prediction_{self.net.name}",
                                 [image_target[:n_shown_images, :, :].transpose(0, 1).reshape(image_size, -1),
                                  fitted_mixture_image[:n_shown_images, :, :].transpose(0, 1).reshape(image_size, -1)],
                                 epoch, [-0.5, 2])

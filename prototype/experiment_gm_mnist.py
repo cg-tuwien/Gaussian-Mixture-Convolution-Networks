@@ -1,6 +1,7 @@
 from __future__ import print_function
 import argparse
 import datetime
+import time
 import math
 import pathlib
 
@@ -51,7 +52,7 @@ def render_debug_images_to_tensorboard(model, epoch, tensor_board_writer):
     tensor_board_writer.add_image("mnist relu 3", model.relu3.debug_render(position_range=[-14, -14, 42, 42], clamp=[-6 / (28 ** 2), 24.0 / (28 ** 2)]), epoch, dataformats='HWC')
 
 
-def train(args, model: experiment_gm_mnist_model.Net, device, train_loader, optimizer, epoch, train_kernels, train_fitting_layers, tensor_board_writer):
+def train(args, model: experiment_gm_mnist_model.Net, device, train_loader, kernel_optimiser, fitting_optimiser, epoch, train_kernels, train_fitting_layers, tensor_board_writer):
     model.train()
     for batch_idx, (data_all, target_all) in enumerate(train_loader):
 
@@ -70,9 +71,17 @@ def train(args, model: experiment_gm_mnist_model.Net, device, train_loader, opti
             target = target_all[k * divided_batch_length:(k + 1) * divided_batch_length]
 
             if train_fitting_layers: # save some computatinos and memory
-                fitting_loss = model.run_fitting_sampling(data, train=train_fitting_layers, epoch=i, tensor_board_writer=tensorboard_writer_option, tensor_board_prefix="train_")
+                fitting_loss = model.run_fitting_sampling(data, train=False, epoch=i, tensor_board_writer=tensorboard_writer_option, tensor_board_prefix="train_")
+                fitting_optimiser.zero_grad()
+                backward_start_time = time.perf_counter()
+                fitting_loss.backward()
+                backward_time = time.perf_counter() - backward_start_time
+                fitting_optimiser.step()
+
+
                 if i % args.log_interval == 0:
                     tensor_board_writer.add_scalar("4. mnist fitting loss", fitting_loss.item(), i)
+                    tensor_board_writer.add_scalar(f"train_fitting 3. backward_time_all", backward_time, epoch)
 
                     if args.save_model:
                         model.save_fitting_parameters()
@@ -84,9 +93,9 @@ def train(args, model: experiment_gm_mnist_model.Net, device, train_loader, opti
                 regularisation_loss = model.regularisation_loss()
                 training_loss = (loss + regularisation_loss)
 
-                optimizer.zero_grad()
+                kernel_optimiser.zero_grad()
                 training_loss.backward()
-                optimizer.step()
+                kernel_optimiser.step()
 
                 if i % args.log_interval == 0:
                     pred = output.detach().argmax(dim=1, keepdim=True)  # get the index of the max log-probability
@@ -106,8 +115,7 @@ def train(args, model: experiment_gm_mnist_model.Net, device, train_loader, opti
                     if args.save_model:
                         model.save_model()
                     # print(f"experiment_gm_mnist.tain: saving optimiser state to {model.storage_path}.optimiser")
-                    # torch.save(optimizer.state_dict(), f"{model.storage_path}.optimiser")
-
+                    # torch.save(kernel_optimiser.state_dict(), f"{model.storage_path}.optimiser")
 
 
 def test(args, model, device, test_loader, epoch, tensor_board_writer):
@@ -163,21 +171,22 @@ def experiment_alternating(device: str = 'cuda', n_epochs: int = 20, learning_ra
     args.log_interval = log_interval
     args.save_model = False
 
-    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+    kernel_optimiser = optim.Adam(model.parameters(), lr=learning_rate)
+    fitting_optimiser = optim.Adam(model.parameters(), lr=learning_rate)
 
     tensor_board_writer = torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard' / f'altr_{desc_string}_{datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}')
-    # scheduler = StepLR(optimizer, step_size=1, gamma=args.gamma)
+    # scheduler = StepLR(kernel_optimiser, step_size=1, gamma=args.gamma)
 
     # do not train kernels during initial phase.
     model.set_fitting_training(True)
-    train(args, model, device, train_loader, optimizer, 0, train_kernels=False, train_fitting_layers=True, tensor_board_writer=tensor_board_writer)
+    train(args, model, device, train_loader, kernel_optimiser, fitting_optimiser, 0, train_kernels=False, train_fitting_layers=True, tensor_board_writer=tensor_board_writer)
 
     for epoch in range(1, n_epochs):
         model.set_position_learning(epoch >= learn_positions_after)
         model.set_covariance_learning(epoch >= learn_covariances_after)
         train_kernels = epoch % 2 == 0  # starts with epoch 1 / fitting
         model.set_fitting_training(not train_kernels)
-        train(args, model, device, train_loader, optimizer, epoch, train_kernels=train_kernels, train_fitting_layers=not train_kernels, tensor_board_writer=tensor_board_writer)
+        train(args, model, device, train_loader, kernel_optimiser, fitting_optimiser, epoch, train_kernels=train_kernels, train_fitting_layers=not train_kernels, tensor_board_writer=tensor_board_writer)
 
         if train_kernels:
             test(args, model, device, test_loader, epoch, tensor_board_writer=tensor_board_writer)
@@ -233,7 +242,7 @@ def main():
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
     tensor_board_writer = torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard' / f'gm_mnist_{datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}')
-    # scheduler = StepLR(optimizer, step_size=1, gamma=args.gamma)
+    # scheduler = StepLR(kernel_optimiser, step_size=1, gamma=args.gamma)
     for epoch in range(0, args.epochs):
         train(args, model, device, train_loader, optimizer, epoch, only_simulate=not train_mnist, train_fitting_layers=train_fitting_layers, tensor_board_writer=tensor_board_writer)
         test(args, model, device, test_loader, epoch, tensor_board_writer=tensor_board_writer)
