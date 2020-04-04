@@ -5,5 +5,5 @@ experiment_gm_mnist.experiment_probabalistic(device=list(sys.argv)[1], n_epochs=
                                              layer1_m2m_fitting=generate_subdivide_fitting_module(6, generate_fitting_module_S),
                                              layer2_m2m_fitting=generate_subdivide_fitting_module(6, generate_fitting_module_S),
                                              layer3_m2m_fitting=generate_subdivide_fitting_module(6, generate_fitting_module_S),
-                                             learn_covariances_after=25, learn_positions_after=25,
-                                             log_interval=50)
+                                             learn_covariances_after=30, learn_positions_after=30,
+                                             log_interval=7000)

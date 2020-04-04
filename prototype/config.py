@@ -1,5 +1,7 @@
 import pathlib
 data_base_path = pathlib.Path("/home/madam/temp/prototype/")
+num_dataloader_workers = 0
+batch_size = 10
 
 mnist_n_in_g = 25
 mnist_n_layers_1 = 5
