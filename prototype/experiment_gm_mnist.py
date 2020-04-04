@@ -321,7 +321,7 @@ def experiment_probabalistic(device: str = 'cuda', n_epochs: int = 20, n_epochs_
     # do not train kernels during initial phase.
     model.set_fitting_training(True)
     probDta = Args
-    assert probDta.averaged_fitting_loss > 0
+    assert n_epochs_fitting_training > 0
     for epoch in range(0, n_epochs_fitting_training):
         probDta.averaged_fitting_loss = train(args, model, device, train_loader, kernel_optimiser=kernel_optimiser, fitting_optimiser=fitting_optimiser,
                                               epoch=epoch, train_kernels=False, train_fitting_layers=True, tensor_board_writer=tensor_board_writer)
