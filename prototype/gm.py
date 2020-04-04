@@ -259,6 +259,7 @@ def export_as_image(mixture: Tensor) -> None:
 
 
 def save(mixture: Tensor, file_name: str, meta_info=None) -> None:
+    assert is_valid_mixture(mixture)
     dictionary = {
         "type": "gm.Mixture",
         "version": 5,
