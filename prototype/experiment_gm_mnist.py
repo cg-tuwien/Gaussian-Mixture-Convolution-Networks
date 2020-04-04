@@ -281,7 +281,7 @@ def train_probabalistic(args, model: experiment_gm_mnist_model.Net, device, trai
                     # torch.save(kernel_optimiser.state_dict(), f"{model.storage_path}.optimiser")
 
 
-def experiment_probabalistic(device: str = 'cuda', n_epochs: int = 20, kernel_learning_rate: float = 0.001, fitting_learning_rate: float = 0.001, log_interval: int = 100,
+def experiment_probabalistic(device: str = 'cuda', n_epochs: int = 20, n_epochs_fitting_training : int = 10, kernel_learning_rate: float = 0.001, fitting_learning_rate: float = 0.001, log_interval: int = 100,
                            layer1_m2m_fitting: typing.Callable = gm_modules.generate_default_fitting_module,
                            layer2_m2m_fitting: typing.Callable = gm_modules.generate_default_fitting_module,
                            layer3_m2m_fitting: typing.Callable = gm_modules.generate_default_fitting_module,
@@ -321,13 +321,13 @@ def experiment_probabalistic(device: str = 'cuda', n_epochs: int = 20, kernel_le
     # do not train kernels during initial phase.
     model.set_fitting_training(True)
     probDta = Args
-    train(args, model, device, train_loader, kernel_optimiser=kernel_optimiser, fitting_optimiser=fitting_optimiser,
-          epoch=0, train_kernels=False, train_fitting_layers=True, tensor_board_writer=tensor_board_writer)
-    probDta.averaged_fitting_loss = train(args, model, device, train_loader, kernel_optimiser=kernel_optimiser, fitting_optimiser=fitting_optimiser,
-                                          epoch=1, train_kernels=False, train_fitting_layers=True, tensor_board_writer=tensor_board_writer)
+    assert probDta.averaged_fitting_loss > 0
+    for epoch in range(0, n_epochs_fitting_training):
+        probDta.averaged_fitting_loss = train(args, model, device, train_loader, kernel_optimiser=kernel_optimiser, fitting_optimiser=fitting_optimiser,
+                                              epoch=epoch, train_kernels=False, train_fitting_layers=True, tensor_board_writer=tensor_board_writer)
     probDta.best_fitting_loss = probDta.averaged_fitting_loss
 
-    for epoch in range(2, n_epochs):
+    for epoch in range(n_epochs_fitting_training, n_epochs):
         model.set_position_learning(epoch >= learn_positions_after)
         model.set_covariance_learning(epoch >= learn_covariances_after)
         train_probabalistic(args, model, device, train_loader, kernel_optimiser=kernel_optimiser, fitting_optimiser=fitting_optimiser,

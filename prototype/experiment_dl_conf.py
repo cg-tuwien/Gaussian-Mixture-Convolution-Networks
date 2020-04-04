@@ -26,6 +26,16 @@ def generate_fitting_module_S(n_input_gaussians: int, n_output_gaussians: int) -
                                                aggregations=1, batch_norm=True)
 
 
+def generate_fitting_module_M(n_input_gaussians: int, n_output_gaussians: int) -> gm_fitting.Net:
+    assert n_output_gaussians > 0
+    n_dimensions = 2
+    return gm_fitting.PointNetWithParallelMLPs([32, 64, 128, 256, n_output_gaussians * 32],
+                                               [256, 128, 64, 32],
+                                               n_output_gaussians=n_output_gaussians,
+                                               n_dims=n_dimensions,
+                                               aggregations=1, batch_norm=True)
+
+
 def generate_subdivide_fitting_module(n_gaussians_per_fitting_module, fitting_module):
     def generate_fitting_module(n_input_gaussians: int, n_output_gaussians: int) -> gm_fitting.Net:
         assert n_output_gaussians > 0
