@@ -209,7 +209,7 @@ def train_probabalistic(args, model: experiment_gm_mnist_model.Net, device, trai
 
         assert probDta.best_fitting_loss <= probDta.averaged_fitting_loss
         kernel_training_probability = probDta.best_fitting_loss / probDta.averaged_fitting_loss
-        kernel_training_probability = min(0.8, max(0.1, kernel_training_probability))
+        kernel_training_probability = min(0.9, max(0.1, kernel_training_probability))
         train_kernels = random.uniform(0, 1) < kernel_training_probability
         tensor_board_writer.add_scalar("6.1. kernel_train_probability", kernel_training_probability, i)
         tensor_board_writer.add_scalar("6.2. learning_kernel", train_kernels, i)
