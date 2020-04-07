@@ -83,7 +83,9 @@ def train(args, model: experiment_gm_mnist_model.Net, device: torch.device, trai
             train_fitting_layers = not train_kernels
 
         if train_fitting_layers:  # save some computatinos and memory
-            fitting_loss = model.run_fitting_sampling(data, train=True, epoch=i, tensor_board_writer=tensorboard_writer_option, tensor_board_prefix="train_")
+            fitting_inputs = list()
+            model.forward(data, fitting_inputs=fitting_inputs)
+            fitting_loss = model.run_fitting_sampling(fitting_inputs, train=True, epoch=i, tensor_board_writer=tensorboard_writer_option, tensor_board_prefix="train_")
             # fitting_optimiser.zero_grad()
             # backward_start_time = time.perf_counter()
             # fitting_loss.backward()
@@ -140,19 +142,20 @@ def train(args, model: experiment_gm_mnist_model.Net, device: torch.device, trai
         return cummulative_fitting_loss / (len(train_loader.dataset))
 
 
-def test(args, model, device, test_loader, epoch, tensor_board_writer):
+def test(args, model: experiment_gm_mnist_model.Net, device: torch.device, test_loader: torch.utils.data.DataLoader, epoch: int, tensor_board_writer: torch.utils.tensorboard.SummaryWriter):
     model.eval()
     test_loss = 0
     correct = 0
     test_fitting_loss = 0
     with torch.no_grad():
         for data, target in test_loader:
+            fitting_inputs = list()
             data, target = data.to(device), target.to(device)
-            output = model(data)
+            output = model(data, fitting_inputs=fitting_inputs)
             test_loss += F.nll_loss(output, target, reduction='sum').item()  # sum up batch loss
             pred = output.argmax(dim=1, keepdim=True)  # get the index of the max log-probability
             correct += pred.eq(target.view_as(pred)).sum().item()
-            test_fitting_loss += model.run_fitting_sampling(data, train=False, epoch=epoch, tensor_board_writer=tensor_board_writer, tensor_board_prefix="test_").item()
+            test_fitting_loss += model.run_fitting_sampling(fitting_inputs, train=False, epoch=epoch, tensor_board_writer=tensor_board_writer, tensor_board_prefix="test_").item()
 
     test_loss /= len(test_loader.dataset)
     test_fitting_loss /= len(test_loader.dataset)

@@ -55,19 +55,17 @@ class Net(nn.Module):
         self.bn = gm_modules.BatchNorm(per_gaussian_norm=False)
 
         # initialise these last, so all the kernels should have the same random seed
-        self.relu1 = gm_modules.GmBiasAndRelu(layer_id="1c", n_layers=n_layers_1, generate_fitting_module=layer1_m2m_fitting, n_input_gaussians=n_in_g * n_kernel_components, n_output_gaussians=n_out_g_1)
-        self.relu2 = gm_modules.GmBiasAndRelu(layer_id="2c", n_layers=n_layers_2, generate_fitting_module=layer2_m2m_fitting, n_input_gaussians=n_out_g_1 * n_layers_1 * n_kernel_components,
-                                              n_output_gaussians=n_out_g_2)
-        self.relu3 = gm_modules.GmBiasAndRelu(layer_id="3c", n_layers=10, generate_fitting_module=layer3_m2m_fitting, n_input_gaussians=n_out_g_2 * n_layers_2 * n_kernel_components,
-                                              n_output_gaussians=n_out_g_3)
-        self.relu1.fitting_sampler.load()
-        self.relu2.fitting_sampler.load()
-        self.relu3.fitting_sampler.load()
+        self.relus = torch.nn.modules.ModuleList()
+        self.relus.append(gm_modules.GmBiasAndRelu(layer_id="1c", n_layers=n_layers_1, generate_fitting_module=layer1_m2m_fitting, n_input_gaussians=n_in_g * n_kernel_components, n_output_gaussians=n_out_g_1))
+        self.relus.append(gm_modules.GmBiasAndRelu(layer_id="2c", n_layers=n_layers_2, generate_fitting_module=layer2_m2m_fitting, n_input_gaussians=n_out_g_1 * n_layers_1 * n_kernel_components, n_output_gaussians=n_out_g_2))
+        self.relus.append(gm_modules.GmBiasAndRelu(layer_id="3c", n_layers=10, generate_fitting_module=layer3_m2m_fitting, n_input_gaussians=n_out_g_2 * n_layers_2 * n_kernel_components, n_output_gaussians=n_out_g_3))
+        self.relus[0].fitting_sampler.load()
+        self.relus[1].fitting_sampler.load()
+        self.relus[2].fitting_sampler.load()
 
     def set_fitting_training(self, flag: bool):
-        self.relu1.train_fitting(flag)
-        self.relu2.train_fitting(flag)
-        self.relu3.train_fitting(flag)
+        for relu in self.relus:
+            relu.train_fitting(flag)
         self.gmc1.set_requires_grad(not flag)
         self.gmc2.set_requires_grad(not flag)
         self.gmc3.set_requires_grad(not flag)
@@ -83,65 +81,47 @@ class Net(nn.Module):
         self.gmc3.learn_covariances = flag
 
     def fitting_parameters(self):
-        return list(self.relu1.gm_fitting_net_666.parameters()) + \
-               list(self.relu2.gm_fitting_net_666.parameters()) + \
-               list(self.relu3.gm_fitting_net_666.parameters())
+        return list(self.relus[0].gm_fitting_net_666.parameters()) + \
+               list(self.relus[1].gm_fitting_net_666.parameters()) + \
+               list(self.relus[2].gm_fitting_net_666.parameters())
 
-    def run_fitting_sampling(self, in_x: torch.Tensor, train: bool, epoch: int, tensor_board_writer: torch.utils.tensorboard.SummaryWriter, tensor_board_prefix: str = "") -> torch.Tensor:
-        loss = torch.zeros(1, dtype=torch.float32, device=in_x.device)
-        x = self.bn0(in_x)
-        x = self.gmc1(x)
-
-        # dirty hack: also train with random bias
-        training_bias = self.relu1.bias
-        random_selection = torch.rand_like(training_bias, dtype=torch.float32) > 0.3  # no hay rand_like con dtype=torch.bool
-        training_bias = training_bias.where(random_selection, torch.rand_like(training_bias) * gm.weights(x.detach()).max())
-        loss = loss + self.relu1.fitting_sampler.run_on(x, training_bias, epoch, train=train, tensor_board_writer=tensor_board_writer, tensor_board_prefix=tensor_board_prefix)
-
-        x = self.relu1(x)
-        if train:
-            x = x.detach()
-        x = self.bn(x)
-        # x = self.maxPool1(x)
-        x = self.gmc2(x)
-
-        training_bias = self.relu2.bias
-        random_selection = torch.rand_like(training_bias, dtype=torch.float32) > 0.3  # no hay rand_like con dtype=torch.bool
-        training_bias = training_bias.where(random_selection, torch.rand_like(training_bias) * gm.weights(x.detach()).max())
-        loss = loss + self.relu2.fitting_sampler.run_on(x, training_bias, epoch, train=train, tensor_board_writer=tensor_board_writer, tensor_board_prefix=tensor_board_prefix)
-
-        x = self.relu2(x)
-        if train:
-            x = x.detach()
-        x = self.bn(x)
-        # x = self.maxPool2(x)
-        x = self.gmc3(x)
-
-        training_bias = self.relu3.bias
-        random_selection = torch.rand_like(training_bias, dtype=torch.float32) > 0.3  # no hay rand_like con dtype=torch.bool
-        training_bias = training_bias.where(random_selection, torch.rand_like(training_bias) * gm.weights(x.detach()).max())
-        loss = loss + self.relu3.fitting_sampler.run_on(x, training_bias, epoch, train=train, tensor_board_writer=tensor_board_writer, tensor_board_prefix=tensor_board_prefix)
+    def run_fitting_sampling(self, fitting_inputs: typing.List[torch.Tensor], train: bool, epoch: int, tensor_board_writer: torch.utils.tensorboard.SummaryWriter, tensor_board_prefix: str = "") -> torch.Tensor:
+        device=fitting_inputs[0].device
+        loss = torch.zeros(1, dtype=torch.float32, device=device)
+        for i, relu in enumerate(self.relus):
+            fitting_input = fitting_inputs[i]
+            training_bias_shape = list(relu.bias.shape)
+            training_bias_shape[0] = gm.n_batch(fitting_input)
+            std_dev = (gm.weights(fitting_input).abs().mean().item() + gm.weights(fitting_input).max().abs().item()) / 2
+            training_bias = torch.normal(mean=0, std=std_dev, size=training_bias_shape, device=device).abs()
+            loss = loss + relu.fitting_sampler.run_on(fitting_input, training_bias, epoch, train=train, tensor_board_writer=tensor_board_writer, tensor_board_prefix=tensor_board_prefix)
 
         return loss
 
     def regularisation_loss(self):
         return self.gmc1.regularisation_loss() + self.gmc2.regularisation_loss() + self.gmc3.regularisation_loss()
 
-    def forward(self, in_x: torch.Tensor):
+    def forward(self, in_x: torch.Tensor, fitting_inputs: typing.List[torch.Tensor] = None):
         x = self.bn0(in_x)
 
         x = self.gmc1(x)
-        x = self.relu1(x)
+        if fitting_inputs is not None:
+            fitting_inputs.append(x.detach())
+        x = self.relus[0](x)
         x = self.bn(x)
         # x = self.maxPool1(x)
 
         x = self.gmc2(x)
-        x = self.relu2(x)
+        if fitting_inputs is not None:
+            fitting_inputs.append(x.detach())
+        x = self.relus[1](x)
         x = self.bn(x)
         # x = self.maxPool2(x)
 
         x = self.gmc3(x)
-        x = self.relu3(x)
+        if fitting_inputs is not None:
+            fitting_inputs.append(x.detach())
+        x = self.relus[2](x)
         x = self.bn(x)
         # x = self.maxPool3(x)
 
@@ -160,15 +140,13 @@ class Net(nn.Module):
 
     def save_fitting_parameters(self):
         print(f"experiment_gm_mnist_model.Net.save: saving fitting parameters")
-        self.relu1.save_fitting_parameters()
-        self.relu2.save_fitting_parameters()
-        self.relu3.save_fitting_parameters()
+        for relu in self.relus:
+            relu.save_fitting_parameters()
 
     def save_fitting_optimiser_state(self):
         print(f"experiment_gm_mnist_model.Net.save: saving fitting parameters")
-        self.relu1.fitting_sampler.save_optimiser_state()
-        self.relu2.fitting_sampler.save_optimiser_state()
-        self.relu3.fitting_sampler.save_optimiser_state()
+        for relu in self.relus:
+            relu.fitting_sampler.save_optimiser_state()
 
     # will load kernels and biases and fitting net params (if available)
     def load(self):
@@ -188,12 +166,10 @@ class Net(nn.Module):
         # warning, fitting must be loaded after the the state dict! this will overwrite the fitting params. so different
         # fitting params can be tested with the same kernels, biases and other params (if any)
         print("experiment_gm_mnist_model.Net.load: trying to load fitting params now")
-        self.relu1.load_fitting_parameters()
-        self.relu2.load_fitting_parameters()
-        self.relu3.load_fitting_parameters()
+        for relu in self.relus:
+            relu.load_fitting_parameters()
 
     def to(self, device: torch.device):
-        self.relu1.fitting_sampler.to_(device)
-        self.relu2.fitting_sampler.to_(device)
-        self.relu3.fitting_sampler.to_(device)
+        for relu in self.relus:
+            relu.fitting_sampler.to_(device)
         return super(Net, self).to(device)
