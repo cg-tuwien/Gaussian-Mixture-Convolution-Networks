@@ -85,18 +85,19 @@ class Net(nn.Module):
                list(self.relus[1].gm_fitting_net_666.parameters()) + \
                list(self.relus[2].gm_fitting_net_666.parameters())
 
-    def run_fitting_sampling(self, fitting_inputs: typing.List[torch.Tensor], train: bool, epoch: int, tensor_board_writer: torch.utils.tensorboard.SummaryWriter, tensor_board_prefix: str = "") -> torch.Tensor:
+    def run_fitting_sampling(self, fitting_inputs: typing.List[torch.Tensor], train: bool, epoch: int,
+                             tensor_board_writer: torch.utils.tensorboard.SummaryWriter, tensor_board_prefix: str = "") -> typing.List[torch.Tensor]:
         device=fitting_inputs[0].device
-        loss = torch.zeros(1, dtype=torch.float32, device=device)
+        losses = list()
         for i, relu in enumerate(self.relus):
             fitting_input = fitting_inputs[i]
             training_bias_shape = list(relu.bias.shape)
             training_bias_shape[0] = gm.n_batch(fitting_input)
-            std_dev = (gm.weights(fitting_input).abs().mean().item() + gm.weights(fitting_input).max().abs().item()) / 2
+            std_dev = 0.8 * gm.weights(fitting_input).abs().mean().item() + 0.2 * gm.weights(fitting_input).max().abs().item()
             training_bias = torch.normal(mean=0, std=std_dev, size=training_bias_shape, device=device).abs()
-            loss = loss + relu.fitting_sampler.run_on(fitting_input, training_bias, epoch, train=train, tensor_board_writer=tensor_board_writer, tensor_board_prefix=tensor_board_prefix)
+            losses.append(relu.fitting_sampler.run_on(fitting_input, training_bias, epoch, train=train, tensor_board_writer=tensor_board_writer, tensor_board_prefix=tensor_board_prefix))
 
-        return loss
+        return losses
 
     def regularisation_loss(self):
         return self.gmc1.regularisation_loss() + self.gmc2.regularisation_loss() + self.gmc3.regularisation_loss()

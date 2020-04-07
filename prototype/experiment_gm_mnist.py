@@ -30,6 +30,16 @@ n_kernel_components = 5
 # torch.autograd.set_detect_anomaly(True)
 
 
+def sum_losses(losses: typing.List[torch.Tensor]):
+    loss_sum = None
+    for loss in losses:
+        if loss_sum is None:
+            loss_sum = loss;
+        else:
+            loss_sum = loss_sum + loss
+    return loss_sum
+
+
 class GmMnistDataSet(torch.utils.data.Dataset):
     def __init__(self, prefix: str, begin: int, end: int):
         self.prefix = prefix
@@ -49,35 +59,44 @@ def render_debug_images_to_tensorboard(model, epoch, tensor_board_writer):
     tensor_board_writer.add_image("mnist conv 2", model.gmc2.debug_render(clamp=[-0.32, 0.32]), epoch, dataformats='HWC')
     tensor_board_writer.add_image("mnist conv 3", model.gmc3.debug_render(clamp=[-0.20, 0.20]), epoch, dataformats='HWC')
 
-    tensor_board_writer.add_image("mnist relu 1", model.relu1.debug_render(position_range=[-14, -14, 42, 42], clamp=[-4 / (28 ** 2), 16.0 / (28 ** 2)]), epoch, dataformats='HWC')
-    tensor_board_writer.add_image("mnist relu 2", model.relu2.debug_render(position_range=[-14, -14, 42, 42], clamp=[-20 / (28 ** 2), 80.0 / (28 ** 2)]), epoch, dataformats='HWC')
-    tensor_board_writer.add_image("mnist relu 3", model.relu3.debug_render(position_range=[-14, -14, 42, 42], clamp=[-6 / (28 ** 2), 24.0 / (28 ** 2)]), epoch, dataformats='HWC')
+    tensor_board_writer.add_image("mnist relu 1", model.relus[0].debug_render(position_range=[-14, -14, 42, 42], clamp=[-4 / (28 ** 2), 16.0 / (28 ** 2)]), epoch, dataformats='HWC')
+    tensor_board_writer.add_image("mnist relu 2", model.relus[1].debug_render(position_range=[-14, -14, 42, 42], clamp=[-20 / (28 ** 2), 80.0 / (28 ** 2)]), epoch, dataformats='HWC')
+    tensor_board_writer.add_image("mnist relu 3", model.relus[2].debug_render(position_range=[-14, -14, 42, 42], clamp=[-6 / (28 ** 2), 24.0 / (28 ** 2)]), epoch, dataformats='HWC')
 
 
 def train(args, model: experiment_gm_mnist_model.Net, device: torch.device, train_loader: torch.utils.data.DataLoader,
           kernel_optimiser: optim.Optimizer, fitting_optimiser: optim.Optimizer,
           epoch: int, train_kernels: bool = None, train_fitting_layers: bool = None, probDta=None,
           tensor_board_writer: torch.utils.tensorboard.SummaryWriter = None):
-    cummulative_fitting_loss = 0
+    if probDta is not None:
+        assert train_fitting_layers is None
+        assert train_kernels is None
+
+    cummulative_fitting_losses = list()
+    for i in range(3):
+        cummulative_fitting_losses.append(0)
     model.train()
     for batch_idx, (data, target) in enumerate(train_loader):
         data, target = data.to(device), target.to(device)
-        i = epoch * len(train_loader.dataset) + batch_idx * len(data)
+        step = epoch * len(train_loader.dataset) + batch_idx * len(data)
         tensorboard_writer_option = None
-        if i % args.log_interval == 0:
+        if step % args.log_interval == 0:
             tensorboard_writer_option = tensor_board_writer
 
         if probDta is not None:
-            assert train_fitting_layers is None
-            assert train_kernels is None
-            assert probDta.best_fitting_loss <= probDta.averaged_fitting_loss
-            kernel_training_probability = probDta.best_fitting_loss / probDta.averaged_fitting_loss
+            kernel_training_probability = 1
+            for i, averaged_fitting_loss in enumerate(probDta.averaged_fitting_losses):
+                best_fitting_loss = probDta.best_fitting_losses[i]
+                assert best_fitting_loss <= averaged_fitting_loss
+                probability = best_fitting_loss / averaged_fitting_loss
+                kernel_training_probability = min(kernel_training_probability, probability)
+                tensor_board_writer.add_scalar(f"6.2. probDta.best_fitting_losses[{i}]", probDta.best_fitting_losses[i], step)
+                tensor_board_writer.add_scalar(f"6.2. probDta.averaged_fitting_losses[{i}]", probDta.averaged_fitting_losses[i], step)
+
             kernel_training_probability = min(0.9, max(0.1, kernel_training_probability))
             train_kernels = random.uniform(0, 1) < kernel_training_probability
-            tensor_board_writer.add_scalar("6.1. kernel_train_probability", kernel_training_probability, i)
-            tensor_board_writer.add_scalar("6.2. learning_kernel", train_kernels, i)
-            tensor_board_writer.add_scalar("6.2. best_fitting_loss", probDta.best_fitting_loss, i)
-            tensor_board_writer.add_scalar("6.2. averaged_fitting_loss", probDta.averaged_fitting_loss, i)
+            tensor_board_writer.add_scalar("6.1. kernel_train_probability", kernel_training_probability, step)
+            tensor_board_writer.add_scalar("6.2. learning_kernel", train_kernels, step)
 
             model.set_fitting_training(not train_kernels)
             train_fitting_layers = not train_kernels
@@ -85,24 +104,27 @@ def train(args, model: experiment_gm_mnist_model.Net, device: torch.device, trai
         if train_fitting_layers:  # save some computatinos and memory
             fitting_inputs = list()
             model.forward(data, fitting_inputs=fitting_inputs)
-            fitting_loss = model.run_fitting_sampling(fitting_inputs, train=True, epoch=i, tensor_board_writer=tensorboard_writer_option, tensor_board_prefix="train_")
+            fitting_losses = model.run_fitting_sampling(fitting_inputs, train=True, epoch=step, tensor_board_writer=tensorboard_writer_option, tensor_board_prefix="train_")
             # fitting_optimiser.zero_grad()
             # backward_start_time = time.perf_counter()
             # fitting_loss.backward()
             # backward_time = time.perf_counter() - backward_start_time
             # fitting_optimiser.step()
-            cummulative_fitting_loss += fitting_loss.item()
+            for i, loss in enumerate(fitting_losses):
+                cummulative_fitting_losses[i] += loss.item()
 
             if probDta is not None:
-                probDta.averaged_fitting_loss += (fitting_loss.item() - probDta.averaged_fitting_loss) * 0.0005 * len(data)
-                probDta.best_fitting_loss = min(probDta.best_fitting_loss, probDta.averaged_fitting_loss)
+                for i, loss in enumerate(fitting_losses):
+                    probDta.averaged_fitting_losses[i] += (loss.item() - probDta.averaged_fitting_losses[i]) * 0.0005 * len(data)
+                    probDta.best_fitting_losses[i] = min(probDta.best_fitting_losses[i], probDta.averaged_fitting_losses[i])
 
-            if i % args.log_interval == 0:
-                tensor_board_writer.add_scalar("4. mnist fitting loss", fitting_loss.item(), i)
+            if step % args.log_interval == 0:
+                fitting_loss_sum = sum_losses(fitting_losses).item()
+                tensor_board_writer.add_scalar("4. mnist fitting loss sum", fitting_loss_sum, step)
                 # tensor_board_writer.add_scalar(f"train_fitting 3. backward_time_all", backward_time, epoch)
 
-                print(f'Training fitting: {epoch}/{i} [{batch_idx}/{len(train_loader)} '
-                      f'({100. * batch_idx / len(train_loader):.0f}%)]\tMSE loss: {fitting_loss.item():.6f}')
+                print(f'Training fitting: {epoch}/{step} [{batch_idx}/{len(train_loader)} '
+                      f'({100. * batch_idx / len(train_loader):.0f}%)]\tMSE loss: {fitting_loss_sum:.6f}')
 
                 if args.save_model:
                     model.save_fitting_parameters()
@@ -118,19 +140,19 @@ def train(args, model: experiment_gm_mnist_model.Net, device: torch.device, trai
             training_loss.backward()
             kernel_optimiser.step()
 
-            if i % args.log_interval == 0:
+            if step % args.log_interval == 0:
                 pred = output.detach().argmax(dim=1, keepdim=True)  # get the index of the max log-probability
                 correct = pred.eq(target.view_as(pred)).sum().item()
-                tensor_board_writer.add_scalar("0. mnist training loss", training_loss.item(), i)
-                tensor_board_writer.add_scalar("1. mnist training accuracy", 100 * correct / len(data), i)
-                tensor_board_writer.add_scalar("2. mnist kernel loss", loss.item(), i)
-                tensor_board_writer.add_scalar("3. mnist training regularisation loss", regularisation_loss.item(), i)
-                tensor_board_writer.add_scalar("5. model layer 1 avg(abs(bias))", model.relu1.bias.abs().mean().item(), i)
-                tensor_board_writer.add_scalar("5. model layer 2 avg(abs(bias))", model.relu2.bias.abs().mean().item(), i)
-                tensor_board_writer.add_scalar("5. model layer 3 avg(abs(bias))", model.relu3.bias.abs().mean().item(), i)
-                render_debug_images_to_tensorboard(model, i, tensor_board_writer)
+                tensor_board_writer.add_scalar("0. mnist training loss", training_loss.item(), step)
+                tensor_board_writer.add_scalar("1. mnist training accuracy", 100 * correct / len(data), step)
+                tensor_board_writer.add_scalar("2. mnist kernel loss", loss.item(), step)
+                tensor_board_writer.add_scalar("3. mnist training regularisation loss", regularisation_loss.item(), step)
+                tensor_board_writer.add_scalar("5. model layer 1 avg(abs(bias))", model.relus[0].bias.abs().mean().item(), step)
+                tensor_board_writer.add_scalar("5. model layer 2 avg(abs(bias))", model.relus[1].bias.abs().mean().item(), step)
+                tensor_board_writer.add_scalar("5. model layer 3 avg(abs(bias))", model.relus[2].bias.abs().mean().item(), step)
+                render_debug_images_to_tensorboard(model, step, tensor_board_writer)
 
-                print(f'Training kernels: {epoch}/{i} [{batch_idx}/{len(train_loader)} '
+                print(f'Training kernels: {epoch}/{step} [{batch_idx}/{len(train_loader)} '
                       f'({100. * batch_idx / len(train_loader):.0f}%)]\tClassification loss: {loss.item():.6f} (accuracy: {100 * correct / len(data)})')
 
                 if args.save_model:
@@ -139,14 +161,16 @@ def train(args, model: experiment_gm_mnist_model.Net, device: torch.device, trai
                 # torch.save(kernel_optimiser.state_dict(), f"{model.storage_path}.optimiser")
 
     if probDta is None:
-        return cummulative_fitting_loss / (len(train_loader.dataset))
+        for loss in cummulative_fitting_losses:
+            loss = loss / (len(train_loader.dataset))
+    return cummulative_fitting_losses
 
 
 def test(args, model: experiment_gm_mnist_model.Net, device: torch.device, test_loader: torch.utils.data.DataLoader, epoch: int, tensor_board_writer: torch.utils.tensorboard.SummaryWriter):
     model.eval()
     test_loss = 0
     correct = 0
-    test_fitting_loss = 0
+    fitting_loss_sum = 0
     with torch.no_grad():
         for data, target in test_loader:
             fitting_inputs = list()
@@ -155,14 +179,15 @@ def test(args, model: experiment_gm_mnist_model.Net, device: torch.device, test_
             test_loss += F.nll_loss(output, target, reduction='sum').item()  # sum up batch loss
             pred = output.argmax(dim=1, keepdim=True)  # get the index of the max log-probability
             correct += pred.eq(target.view_as(pred)).sum().item()
-            test_fitting_loss += model.run_fitting_sampling(fitting_inputs, train=False, epoch=epoch, tensor_board_writer=tensor_board_writer, tensor_board_prefix="test_").item()
+            fitting_losses = model.run_fitting_sampling(fitting_inputs, train=False, epoch=epoch, tensor_board_writer=tensor_board_writer, tensor_board_prefix="test_")
+            fitting_loss_sum += sum_losses(fitting_losses).item()
 
     test_loss /= len(test_loader.dataset)
-    test_fitting_loss /= len(test_loader.dataset)
+    fitting_loss_sum /= len(test_loader.dataset)
     tensor_board_writer.add_scalar("99. mnist test loss", test_loss, epoch)
-    tensor_board_writer.add_scalar("98. mnist test accuracy", 100. * correct / (len(test_loader.dataset) * len(data)), epoch)
-    tensor_board_writer.add_scalar("97. mnist test fitting loss", test_fitting_loss, epoch)
-    print(f'\nTest set: Average loss: {test_loss:.4f}, Accuracy: {correct}/{len(test_loader.dataset) * len(data)} ({100. * correct / (len(test_loader.dataset) * len(data)):.0f}%)\n')
+    tensor_board_writer.add_scalar("98. mnist test accuracy", 100. * correct / len(test_loader.dataset), epoch)
+    tensor_board_writer.add_scalar("97. mnist test fitting loss", fitting_loss_sum, epoch)
+    print(f'\nTest set: Average loss: {test_loss:.4f}, Accuracy: {correct}/{len(test_loader.dataset)} ({100. * correct / len(test_loader.dataset):.0f}%)\n')
 
 
 def experiment_alternating(device: str = 'cuda', n_epochs: int = 20, kernel_learning_rate: float = 0.001, fitting_learning_rate: float = 0.001, log_interval: int = 100,
@@ -266,9 +291,9 @@ def experiment_probabalistic(device: str = 'cuda', n_epochs: int = 20, n_epochs_
     probDta = Args
     assert n_epochs_fitting_training > 0
     for epoch in range(0, n_epochs_fitting_training):
-        probDta.averaged_fitting_loss = train(args, model, device, train_loader, kernel_optimiser=kernel_optimiser, fitting_optimiser=fitting_optimiser,
+        probDta.averaged_fitting_losses = train(args, model, device, train_loader, kernel_optimiser=kernel_optimiser, fitting_optimiser=fitting_optimiser,
                                               epoch=epoch, train_kernels=False, train_fitting_layers=True, tensor_board_writer=tensor_board_writer)
-    probDta.best_fitting_loss = probDta.averaged_fitting_loss
+    probDta.best_fitting_losses = probDta.averaged_fitting_losses
 
     for epoch in range(n_epochs_fitting_training, n_epochs):
         model.set_position_learning(epoch >= learn_positions_after)
