@@ -226,7 +226,7 @@ def train_probabalistic(args, model: experiment_gm_mnist_model.Net, device, trai
             # backward_time = time.perf_counter() - backward_start_time
             # fitting_optimiser.step()
 
-            probDta.averaged_fitting_loss += (fitting_loss.item() - probDta.averaged_fitting_loss) * 0.001 * len(data)
+            probDta.averaged_fitting_loss += (fitting_loss.item() - probDta.averaged_fitting_loss) * 0.0001 * len(data)
             probDta.best_fitting_loss = min(probDta.best_fitting_loss, probDta.averaged_fitting_loss)
 
             if i % args.log_interval == 0:
