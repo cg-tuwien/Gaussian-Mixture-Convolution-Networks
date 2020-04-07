@@ -13,7 +13,7 @@ layout(location=4) uniform float fov;
 layout(location=5) uniform sampler1D gaussTex;
 
 struct Gaussian {
-	vec4 mu_beta;
+	vec4 mu_alpha;
 	mat4 invsigma;
 };
 
@@ -85,9 +85,9 @@ void main() {
 				if (node.content.z >= 0) {
 					for (int gidx = node.content.z; gidx <= node.content.w; gidx++) {
 						Gaussian gauss = mixture.gaussians[gidx];
-						vec3 relpos = samplingPoint - gauss.mu_beta.xyz;
+						vec3 relpos = samplingPoint - gauss.mu_alpha.xyz;
 						float ex = exp(-0.5 * dot(relpos*mat3(gauss.invsigma),relpos));
-						alpha += gauss.mu_beta.w * ex * 0.3989422804;	//a = b/sqrt(2pi)
+						alpha += gauss.mu_alpha.w * ex;
 					}
 				}
 				//Check Child Nodes

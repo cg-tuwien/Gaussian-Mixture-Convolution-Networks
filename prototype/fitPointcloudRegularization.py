@@ -22,6 +22,8 @@ import config
 
 from torch import Tensor
 
+import pygmvis
+
 """
 pointclouds:    [m,n,3]-Tensor where n is the number of points
                 and m the batch size. All pcs have to have the
@@ -39,6 +41,11 @@ def ad_algorithm(pointclouds: Tensor, n_components: int, n_iterations: int = 8, 
 
     tensor_board_writer = torch.utils.tensorboard.SummaryWriter(
         config.data_base_path / 'tensorboard' / name)
+
+    vis3d = pygmvis.create_visualizer(async=False, width=500, height=500)
+    vis3d.set_camera_auto(True)
+    vis3d.set_pointclouds(pointclouds)
+    vis3d.set_density_rendering(True, pygmvis.GMDensityRenderMode.ADDITIVE_ACC_PROJECTED)
 
     gm_path = config.data_base_path / 'models' / name
     os.mkdir(gm_path)
@@ -64,7 +71,7 @@ def ad_algorithm(pointclouds: Tensor, n_components: int, n_iterations: int = 8, 
     target = target / scale
 
     #-- INITIALIZE GM(M) --
-    mixture = gm.generate_random_mixtures(n_layers=batch_size, n_components=n_components, n_dims=3,
+    mixture = gm.generate_random_mixtures(n_batch=batch_size, n_layers=1, n_components=n_components, n_dims=3,
                                           pos_radius=0.5, cov_radius=0.01 / (n_components**(1/3)),
                                           weight_min=0, weight_max=1, device=device)
     #Achtung: Weights hier sind nicht Weights, sondern Amplituden.
@@ -83,7 +90,7 @@ def ad_algorithm(pointclouds: Tensor, n_components: int, n_iterations: int = 8, 
     icov_factor.requires_grad = True
 
     weights = gm.weights(mixture) #shape: (m,1,n)
-    weights = weights / gm.integrate(mixture)
+    weights = weights / gm.integrate(mixture).view(batch_size,1,1)
     weights.requires_grad = True
 
     fitting_start = time.time()
@@ -125,13 +132,13 @@ def ad_algorithm(pointclouds: Tensor, n_components: int, n_iterations: int = 8, 
         tensor_board_writer.add_scalar("2. integral loss", loss2.item(), k)
 
         print(f"iterations {k}: loss = {loss.item()}, loss1={loss1.item()}, loss2={loss2.item()}")
-        if save and k % 10 == 0:
+        if save and k % 100 == 0:
             _positions = positions.detach().clone()
             _positions -= 0.5
             _positions *= scale
 
             _weights = weights.detach().clone()
-            _weights *= covariances.det().sqrt() * 15.74960995
+            _gmmweights = _weights * covariances.det().sqrt() * 15.74960995
 
             _covariances = inversed_covariances.detach().inverse().transpose(-1, -2).clone()
             # #Scaling of covariance by f@s@f', where f is the diagonal matrix of scalings
@@ -140,10 +147,15 @@ def ad_algorithm(pointclouds: Tensor, n_components: int, n_iterations: int = 8, 
 
             #_weights /= covariances.det().sqrt()
 
-            gm.write_gm_to_ply(_weights, _positions, _covariances, 0,
+            gm.write_gm_to_ply(_gmmweights, _positions, _covariances, 0,
                                f"{gm_path}/pcgmm-" + str(k).zfill(5) + ".ply")
 
-            # _mixture = gm.pack_mixture(_weights, _positions, _covariances)
+            _mixture = gm.pack_mixture(_weights, _positions, _covariances)
+            vis3d.set_gaussian_mixtures(_mixture.cpu(), isgmm=False)
+            res = vis3d.render(k)
+            for i in range(res.shape[0]):
+                tensor_board_writer.add_image(f"GM {i}, Ellipsoids", res[i, 0, :, :, :], k, dataformats="HWC")
+                tensor_board_writer.add_image(f"GM {i}, Density", res[i, 1, :, :, :], k, dataformats="HWC")
             # gm.save(_mixture, "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/gmc_net/pcgm-" + str(k).zfill(5) + ".gm")
 
     fitting_end = time.time()
@@ -162,9 +174,13 @@ def ad_algorithm(pointclouds: Tensor, n_components: int, n_iterations: int = 8, 
     return gm.pack_mixture(weights, positions, covariances)
 
 def test():
-    pc = pointcloud.load_pc_from_off("D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/da-gm-1/da-gm-1/data/chair_0030.off")
+    pc1 = pointcloud.load_pc_from_off("D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/da-gm-1/da-gm-1/data/chair_0030.off")
+    pc2 = pointcloud.load_pc_from_off("D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/da-gm-1/da-gm-1/data/chair_0042.off")
+    pcs = torch.empty((2, 20000, 3));
+    pcs[0,:,:] = pc1
+    pcs[1,:,:] = pc2
     name = input('Name for this training (or empty for auto): ')
-    m1 = ad_algorithm(pc, n_components=2000, n_iterations=1000, device='cuda', name=name)
+    m1 = ad_algorithm(pcs, n_components=2000, n_iterations=1000, device='cuda', name=name)
     #pc = pointcloud.load_pc_from_off("D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/gmc_net/gmc_net_data/testdata.off")
     #m1 = ad_algorithm(pc, n_components=1, n_iterations=1000, device='cuda')
     #gm.save(m1, "pcgm-final.gm")

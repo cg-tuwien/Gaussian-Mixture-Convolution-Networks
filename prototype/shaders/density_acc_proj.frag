@@ -14,8 +14,10 @@ uniform int height;
 uniform float fov;
 uniform sampler1D gaussTex;
 
+float sqrt2pi = 2.506628275;
+
 struct Gaussian {
-	vec4 mu_beta;
+	vec4 mu_alpha;
 	mat4 invsigma;
 };
 
@@ -27,11 +29,11 @@ float evalGaussian(vec3 rorig, vec3 rdir, Gaussian gauss) {
 	mat3 inv = mat3(gauss.invsigma);
 	vec3 rs = rdir*inv;
 	float sig2 = 1.0 / dot(rs, rdir);
-	float mu = dot(rs, gauss.mu_beta.xyz-rorig) * sig2;
+	float mu = dot(rs, gauss.mu_alpha.xyz-rorig) * sig2;
 	float sig = sqrt(sig2);
-	vec3 pivec = rorig + mu*rdir- gauss.mu_beta.xyz;
-	float pik = sig * gauss.mu_beta.w * exp(-0.5*dot(pivec*inv, pivec));
-	return pik * texture(gaussTex, mu / sig).r;
+	vec3 pivec = rorig + mu*rdir- gauss.mu_alpha.xyz;
+	float gammak = sqrt2pi * gauss.mu_alpha.w * sig * exp(-0.5*dot(pivec*inv, pivec));
+	return gammak * texture(gaussTex, mu / sig).r;
 }
 
 
