@@ -94,7 +94,7 @@ def train(args, model: experiment_gm_mnist_model.Net, device: torch.device, trai
             cummulative_fitting_loss += fitting_loss.item()
 
             if probDta is not None:
-                probDta.averaged_fitting_loss += (fitting_loss.item() - probDta.averaged_fitting_loss) * 0.0001 * len(data)
+                probDta.averaged_fitting_loss += (fitting_loss.item() - probDta.averaged_fitting_loss) * 0.0005 * len(data)
                 probDta.best_fitting_loss = min(probDta.best_fitting_loss, probDta.averaged_fitting_loss)
 
             if i % args.log_interval == 0:
