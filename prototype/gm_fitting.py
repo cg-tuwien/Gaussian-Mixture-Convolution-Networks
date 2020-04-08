@@ -397,7 +397,7 @@ class Sampler:
 
         n_dims = gm.n_dimensions(mixture_in_normalised)
 
-        sampling_positions = torch.rand((1, 1, self.n_training_samples, n_dims), dtype=torch.float32, device=device) * 3 - 1.5
+        sampling_positions = (torch.rand((1, 1, self.n_training_samples, n_dims), dtype=torch.float32, device=device) - 0.5) * 2.5
         target_sampling_values = gm.evaluate_with_activation_fun(mixture_in_normalised, bias_in_normalised, sampling_positions)
 
         output_gm_sampling_values = gm.evaluate(mixture_out_normalised, sampling_positions)
