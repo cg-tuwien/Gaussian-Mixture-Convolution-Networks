@@ -93,7 +93,7 @@ class Net(nn.Module):
             fitting_input = fitting_inputs[i]
             training_bias_shape = list(relu.bias.shape)
             training_bias_shape[0] = gm.n_batch(fitting_input)
-            std_dev = 0.8 * gm.weights(fitting_input).abs().mean().item() + 0.2 * gm.weights(fitting_input).max().abs().item()
+            std_dev = gm.weights(fitting_input).abs().mean().item()
             training_bias = torch.normal(mean=0, std=std_dev, size=training_bias_shape, device=device).abs()
             losses.append(relu.fitting_sampler.run_on(fitting_input, training_bias, epoch, train=train, tensor_board_writer=tensor_board_writer, tensor_board_prefix=tensor_board_prefix))
 
