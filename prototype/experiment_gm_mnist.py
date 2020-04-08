@@ -93,7 +93,7 @@ def train(args, model: experiment_gm_mnist_model.Net, device: torch.device, trai
                 tensor_board_writer.add_scalar(f"6.2. probDta.best_fitting_losses[{i}]", probDta.best_fitting_losses[i], step)
                 tensor_board_writer.add_scalar(f"6.2. probDta.averaged_fitting_losses[{i}]", probDta.averaged_fitting_losses[i], step)
 
-            kernel_training_probability = min(0.9, max(0.1, kernel_training_probability))
+            kernel_training_probability = min(0.8, max(0.1, kernel_training_probability))
             train_kernels = random.uniform(0, 1) < kernel_training_probability
             tensor_board_writer.add_scalar("6.1. kernel_train_probability", kernel_training_probability, step)
             tensor_board_writer.add_scalar("6.2. learning_kernel", train_kernels, step)
@@ -115,7 +115,7 @@ def train(args, model: experiment_gm_mnist_model.Net, device: torch.device, trai
 
             if probDta is not None:
                 for i, loss in enumerate(fitting_losses):
-                    probDta.averaged_fitting_losses[i] += (loss.item() - probDta.averaged_fitting_losses[i]) * 0.0005 * len(data)
+                    probDta.averaged_fitting_losses[i] += (loss.item() - probDta.averaged_fitting_losses[i]) * 0.01 * len(data)
                     probDta.best_fitting_losses[i] = min(probDta.best_fitting_losses[i], probDta.averaged_fitting_losses[i])
 
             if step % args.log_interval == 0:
