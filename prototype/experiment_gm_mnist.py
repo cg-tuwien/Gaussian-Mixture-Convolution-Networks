@@ -293,7 +293,7 @@ def experiment_probabalistic(device: str = 'cuda', n_epochs: int = 20, n_epochs_
     for epoch in range(0, n_epochs_fitting_training):
         probDta.averaged_fitting_losses = train(args, model, device, train_loader, kernel_optimiser=kernel_optimiser, fitting_optimiser=fitting_optimiser,
                                               epoch=epoch, train_kernels=False, train_fitting_layers=True, tensor_board_writer=tensor_board_writer)
-    probDta.best_fitting_losses = probDta.averaged_fitting_losses
+    probDta.best_fitting_losses = probDta.averaged_fitting_losses.copy()
 
     for epoch in range(n_epochs_fitting_training, n_epochs):
         model.set_position_learning(epoch >= learn_positions_after)
