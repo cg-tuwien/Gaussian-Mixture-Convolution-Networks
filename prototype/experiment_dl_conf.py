@@ -4,6 +4,7 @@ import sys
 
 learning_rate_kernels = 0.0005
 learning_rate_fitting = 0.001
+log_interval = 1000
 
 
 def generate_fitting_module_XS(n_input_gaussians: int, n_output_gaussians: int) -> gm_fitting.Net:
