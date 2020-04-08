@@ -161,8 +161,8 @@ def train(args, model: experiment_gm_mnist_model.Net, device: torch.device, trai
                 # torch.save(kernel_optimiser.state_dict(), f"{model.storage_path}.optimiser")
 
     if probDta is None:
-        for loss in cummulative_fitting_losses:
-            loss = loss / (len(train_loader.dataset))
+        for i, loss in enumerate(cummulative_fitting_losses):
+            cummulative_fitting_losses[i] = loss / (len(train_loader))
     return cummulative_fitting_losses
 
 
