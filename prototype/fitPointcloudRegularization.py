@@ -33,6 +33,8 @@ mixture:        [m,1,n_components,13]-Tensor to initialize the
                 is preferred. Useful if previous training wants
                 to be continued. 
 """
+
+
 def ad_algorithm(pointclouds: Tensor, n_components: int, mixture: Tensor = None, n_iterations: int = 8, device: torch.device = 'cpu', name: str = '') -> Tensor:
     assert len(pointclouds.shape) == 3
     assert pointclouds.shape[2] == 3
@@ -67,6 +69,7 @@ def ad_algorithm(pointclouds: Tensor, n_components: int, mixture: Tensor = None,
     scale = scale.view(batch_size, 1, 1)    # shape: (m,1,1)
     scale2 = scale ** 2
     target = target / scale
+    target += 0.5
     scale = scale.view(batch_size, 1, 1, 1)  # shape: (m,1,1,1)
     scale2 = scale2.view(batch_size, 1, 1, 1, 1)  # shape: (m,1,1,1,1)
 
@@ -145,7 +148,7 @@ def ad_algorithm(pointclouds: Tensor, n_components: int, mixture: Tensor = None,
             _positions *= scale
 
             _weights = weights.detach().clone()
-            _weights *= covariances.det().sqrt()   # Correct scaling requires probabilities to stay the same
+            _weights *= covariances.detach().det().sqrt()   # Correct scaling requires probabilities to stay the same
 
             _covariances = inversed_covariances.detach().inverse().transpose(-1, -2).clone()
             # Scaling of covariance by f@s@f', where f is the diagonal matrix of scalings
@@ -160,6 +163,7 @@ def ad_algorithm(pointclouds: Tensor, n_components: int, mixture: Tensor = None,
             for i in range(res.shape[0]):
                 tensor_board_writer.add_image(f"GM {i}, Ellipsoids", res[i, 0, :, :, :], k, dataformats="HWC")
                 tensor_board_writer.add_image(f"GM {i}, Density", res[i, 1, :, :, :], k, dataformats="HWC")
+            gm.write_gm_to_ply(_weights, _positions, _covariances, i, f"{gm_path}/pcgmm-" + str(k).zfill(5) + ".ply")
             gm.save(_mixture, f"{gm_path}/pcgmm-" + str(k).zfill(5) + ".gm")
 
     fitting_end = time.time()
@@ -169,22 +173,29 @@ def ad_algorithm(pointclouds: Tensor, n_components: int, mixture: Tensor = None,
     #scaling
     positions -= 0.5
     positions *= scale
+    weights = weights.detach()
     weights *= covariances.det().sqrt()
     covariances *= scale2
-    gm.write_gm_to_ply(weights * 15.74960995, positions, covariances, 0,
-                       f"{gm_path}/pcgmm-final.ply") # GMM-Weights!
+    # write gmM: gm.write_gm_to_ply(weights * 15.74960995, positions, covariances, 0,
+    #                   f"{gm_path}/pcgmm-final.ply") # GMM-Weights!
     weights /= covariances.det().sqrt()
     _mixture = gm.pack_mixture(weights, positions, covariances)
+    for i in range(batch_size):
+        gm.write_gm_to_ply(weights, positions, covariances, i, f"{gm_path}/pcgmm-{i}-final.ply")
     gm.save(_mixture, f"{gm_path}/pcgmm-final.gm")
     return _mixture
 
 def test():
-    pc1 = pointcloud.load_pc_from_off("D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/da-gm-1/da-gm-1/data/chair_0030.off")
-    pc2 = pointcloud.load_pc_from_off("D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/da-gm-1/da-gm-1/data/chair_0042.off")
-    pcs = torch.empty((2, 20000, 3))
-    pcs[0,:,:] = pc1
-    pcs[1,:,:] = pc2
+    pcs = pointcloud.load_pc_from_off("D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/da-gm-1/da-gm-1/data/chair_0030.off")
+    # pcs = pointcloud.load_pc_from_off("D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/ModelNet10/pointcloud-lores/ModelNet10/chair/train/chair_0030.off")
+    # gms = gm.load(
+    #    "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/gmc_net/gmc_net_data/models/2020-04-08-30-42-train-cont/pcgmm-36100.gm")[0]
+    # gms = gms[0,:,:,:].view(1,1,2000,13)#[m,1,n_components,13]
+    gms = gm.load("D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/gmc_net/gmc_net_data/models/2020-04-09-30LRv2-translfixed/pcgmm-75600.gm")[0]
+    gms = gms[0, :, :, :].view(1, 1, 100, 13)  # [m,1,n_components,13]
+    #pcs[0,:,:] = pc1
+    #pcs[1,:,:] = pc2
     name = input('Name for this training (or empty for auto): ')
-    m1 = ad_algorithm(pcs, n_components=2000, n_iterations=1000, device='cuda', name=name)
+    m1 = ad_algorithm(pcs, n_components=100, n_iterations=1000000, device='cuda', name=name)
 
 test();
