@@ -35,7 +35,7 @@ mixture:        [m,1,n_components,13]-Tensor to initialize the
 """
 
 
-def ad_algorithm(pointclouds: Tensor, n_components: int, mixture: Tensor = None, n_iterations: int = 8, device: torch.device = 'cpu', name: str = '') -> Tensor:
+def ad_algorithm(pointclouds: Tensor, n_components: int, mixture: Tensor = None, n_iterations: int = 8, device: torch.device = 'cpu', name: str = '', startepoch=0) -> Tensor:
     assert len(pointclouds.shape) == 3
     assert pointclouds.shape[2] == 3
     assert n_components > 0
@@ -63,10 +63,6 @@ def ad_algorithm(pointclouds: Tensor, n_components: int, mixture: Tensor = None,
     bbmin = torch.min(target, dim=1)[0]     #shape: (m, 3)
     bbmax = torch.max(target, dim=1)[0]     #shape: (m, 3)
     extends = bbmax - bbmin                 #shape: (m, 3)
-
-    #Maybe: normalize point cloud to certain area
-
-    # FROM NOW ON FOR NOW I ASSUME THAT batch_size == 1
 
     #Scale point clouds to [0,1] in the smallest dimension
     scale = torch.min(extends, dim=1)[0]    #shape: (m)
@@ -111,7 +107,7 @@ def ad_algorithm(pointclouds: Tensor, n_components: int, mixture: Tensor = None,
 
     optimiser = optim.Adam([pi_relative, positions, icov_factor], lr=0.0001)
 
-    for k in range(n_iterations):
+    for k in range(startepoch, n_iterations):
         if k == n_iterations / 2:
             optimiser = optim.Adam([pi_relative, positions, icov_factor], lr=0.00005)
         optimiser.zero_grad()
@@ -166,8 +162,8 @@ def ad_algorithm(pointclouds: Tensor, n_components: int, mixture: Tensor = None,
             for i in range(res.shape[0]):
                 tensor_board_writer.add_image(f"GM {i}, Ellipsoids", res[i, 0, :, :, :], k, dataformats="HWC")
                 tensor_board_writer.add_image(f"GM {i}, Density", res[i, 1, :, :, :], k, dataformats="HWC")
-            gm.write_gm_to_ply(_amplitudes, _positions, _covariances, i, f"{gm_path}/pcgmm-" + str(k).zfill(5) + ".ply")
-            gm.save(_mixture, f"{gm_path}/pcgmm-" + str(k).zfill(5) + ".gm")
+            gm.write_gm_to_ply(_amplitudes, _positions, _covariances, i, f"{gm_path}/pcgm-" + str(k).zfill(5) + ".ply")
+            gm.save(_mixture, f"{gm_path}/pcgm-" + str(k).zfill(5) + ".gm")
 
     fitting_end = time.time()
     print(f"fitting time: {fitting_end - fitting_start}")
@@ -182,14 +178,18 @@ def ad_algorithm(pointclouds: Tensor, n_components: int, mixture: Tensor = None,
     amplitudes = pi_normalized / covariances.det()
     _mixture = gm.pack_mixture(amplitudes, positions, covariances)
     for i in range(batch_size):
-        gm.write_gm_to_ply(amplitudes, positions, covariances, i, f"{gm_path}/pcgmm-{i}-final.ply")
-    gm.save(_mixture, f"{gm_path}/pcgmm-final.gm")
+        gm.write_gm_to_ply(amplitudes, positions, covariances, i, f"{gm_path}/pcgm-{i}-final.ply")
+    gm.save(_mixture, f"{gm_path}/pcgm-final.gm")
     return _mixture
 
 def test():
     pcs = pointcloud.load_pc_from_off(
         "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/ModelNet10/pointcloud-lores/ModelNet10/chair/train/chair_0030.off")
+    gms = gm.load(
+        "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/gmc_net/gmc_net_data/models/fitPointcloud_2020-04-09_18-56-05/pcgmm-22200.gm")[
+        0]
+    gms = gms[0, :, :, :].view(1, 1, 100, 13)  # [m,1,n_components,13]
     name = input('Name for this training (or empty for auto): ')
-    m1 = ad_algorithm(pcs, n_components=100, n_iterations=1000000, device='cuda', name=name)
+    m1 = ad_algorithm(pcs, n_components=100, n_iterations=1000000, device='cuda', name=name, mixture=gms, startepoch=22201)
 
 test()
