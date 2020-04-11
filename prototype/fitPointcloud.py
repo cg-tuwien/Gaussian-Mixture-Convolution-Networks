@@ -32,6 +32,9 @@ mixture:        [m,1,n_components,13]-Tensor to initialize the
                 Mixture with. Or None, if random initialization
                 is preferred. Useful if previous training wants
                 to be continued. 
+validation_pc:  Pointclouds used for validating the result.  
+                [m,k,3]-Tensor where k is the number of points
+                and m the batch size.
 """
 
 
@@ -42,10 +45,12 @@ def ad_algorithm(pointclouds: Tensor,
                  name: str = '',
                  mixture: Tensor = None,
                  start_epoch: int = 0,
+                 validation_pc: Tensor = None,
                  init_positions_from_pointcloud: bool = False,
                  init_weights_equal: bool = False,
                  penalize_long_gaussians: bool = False,
                  penalize_amplitude_differences: bool = False,
+                 penalize_small_extends: bool = False,
                  learn_rate: float = 0.0001) -> Tensor:
 
     assert len(pointclouds.shape) == 3
@@ -58,10 +63,13 @@ def ad_algorithm(pointclouds: Tensor,
     vis3d.set_pointclouds(pointclouds)
     vis3d.set_density_rendering(True, pygmvis.GMDensityRenderMode.ADDITIVE_ACC_PROJECTED)
 
-    batch_size = pointclouds.size()[0]
-    point_count = pointclouds.size()[1]
+    batch_size = pointclouds.shape[0]
+    point_count = pointclouds.shape[1]
 
     target = pointclouds.to(device)
+
+    if validation_pc is not None:
+        validation_pc = validation_pc.view(batch_size, 1, -1, 3).to(device)
 
     # Find AABBs for each point cloud such that we can initialize the gm in the right area
     bbmin = torch.min(target, dim=1)[0]     #shape: (m, 3)
@@ -89,7 +97,7 @@ def ad_algorithm(pointclouds: Tensor,
             mixture = gm.pack_mixture(gm.weights(mixture), positions, gm.covariances(mixture))
 
         if init_weights_equal:
-            weights = torch.ones((batch_size, 1, n_components))
+            weights = torch.ones((batch_size, 1, n_components)).to(device)
             mixture = gm.pack_mixture(weights, gm.positions(mixture), gm.covariances(mixture))
     else:
         mixture = mixture.to(device)
@@ -156,23 +164,30 @@ def ad_algorithm(pointclouds: Tensor,
 
         cov_cost = torch.tensor(0)
         if penalize_long_gaussians:
-            eigenvalues: Tensor = torch.symeig(covariances, eigenvectors=True).eigenvalues
-            largest_eigenvalue: Tensor = eigenvalues[:, :, :, -1]
-            smallest_eigenvalue: Tensor = eigenvalues[:, :, :, 0]
+            # Wait this does not just penalize long gaussians, but also flat ones. Maybe take -1 and 1, instead of -1 and 0.
+            eigenvalues = torch.symeig(covariances, eigenvectors=True).eigenvalues
+            largest_eigenvalue = eigenvalues[:, :, :, -1]
+            smaller_eigenvalue = eigenvalues[:, :, :, -2]
             #cov_cost: Tensor = (0.1 * torch.log(1 + torch.exp(largest_eigenvalue / smallest_eigenvalue - 10))).sum() (leads to nan)
-            cov_cost: Tensor = 0.1 * largest_eigenvalue / smallest_eigenvalue - 1
-            cov_cost = cov_cost.where(cov_cost > torch.zeros_like(cov_cost), torch.zeros_like(cov_cost)).sum()
+            cov_cost = 0.1 * largest_eigenvalue / smaller_eigenvalue - 1
+            cov_cost = cov_cost.where(cov_cost > torch.zeros_like(cov_cost), torch.zeros_like(cov_cost)).mean() #changed from sum, so it's comparable
 
         amp_cost = torch.tensor(0)
         if penalize_amplitude_differences:
             amp_cost = amplitudes.max() / amplitudes.min()
-            amp_cost = torch.max(amp_cost - 100, 0)[0]
+            amp_cost = amp_cost.where(amp_cost > torch.zeros_like(amp_cost), torch.zeros_like(amp_cost)).sum()
+
+        ext_cost = torch.tensor(0)
+        if penalize_small_extends:
+            eigenvalues: Tensor = torch.symeig(covariances, eigenvectors=True).eigenvalues
+            largest_eigenvalue = eigenvalues[:, :, :, -1]
+            ext_cost = -largest_eigenvalue.mean()
 
         #mixture_with_regular_cov = gm.pack_mixture(amplitudes, positions, covariances.detach().clone())
         #integ = gm.integrate(mixture_with_regular_cov)
         #print(f"This should be one: {integ}")
 
-        loss = loss1 + cov_cost + amp_cost
+        loss = loss1 + cov_cost + amp_cost + ext_cost
 
         loss.backward()
         optimiser.step()
@@ -183,8 +198,16 @@ def ad_algorithm(pointclouds: Tensor,
             tensor_board_writer.add_scalar("2. length loss", cov_cost.item(), k)
         if penalize_amplitude_differences:
             tensor_board_writer.add_scalar("3. ampl loss", amp_cost.item(), k)
+        if penalize_small_extends:
+            tensor_board_writer.add_scalar("4. extend loss", ext_cost.item(), k)
 
         print(f"iterations {k}: loss = {loss.item()}")
+
+        if validation_pc is not None and k % 500 == 0:
+            v_output = gm.evaluate_inversed(mixture_with_inversed_cov, validation_pc).view(batch_size, -1)
+            v_loss = -torch.mean(torch.log(output + 0.001), dim=1)
+            tensor_board_writer.add_scalar("Validation Likelihood Loss", v_loss.item(), k)
+
         if k % 100 == 0:
             _positions = positions.detach().clone()
             _positions -= 0.5
@@ -203,6 +226,7 @@ def ad_algorithm(pointclouds: Tensor,
             for i in range(res.shape[0]):
                 tensor_board_writer.add_image(f"GM {i}, Ellipsoids", res[i, 0, :, :, :], k, dataformats="HWC")
                 tensor_board_writer.add_image(f"GM {i}, Density", res[i, 1, :, :, :], k, dataformats="HWC")
+                tensor_board_writer.flush()
                 gm.write_gm_to_ply(_amplitudes, _positions, _covariances, i, f"{gm_path}/pcgm-{i}.ply")
             gm.save(_mixture, f"{gm_path}/pcgm-.gm")
 
@@ -229,10 +253,14 @@ def test():
 
     pcs = pointcloud.load_pc_from_off(
         "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/ModelNet10/pointcloud-lores/ModelNet10/chair/train/chair_0030.off")
+    validation = pointcloud.load_pc_from_off(
+        "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/ModelNet10/pointcloud-lores-validation/ModelNet10/chair/train/chair_0030.off")
+
     # gms = gm.load(
     #     "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/gmc_net/gmc_net_data/models/fitPointcloud_2020-04-09_18-56-05/pcgmm-22200.gm")[
     #     0]
     # gms = gms[0, :, :, :].view(1, 1, 100, 13)  # [m,1,n_components,13]
+
     name = input('Name for this training (or empty for auto): ')
     ad_algorithm(
         pointclouds=pcs,
@@ -242,11 +270,13 @@ def test():
         name=name,
         # mixture=gms,
         # start_epoch=22201,
-        init_positions_from_pointcloud=False,
+        validation_pc=validation,
+        init_positions_from_pointcloud=True,
         init_weights_equal=False,
-        penalize_long_gaussians=False,
+        penalize_long_gaussians=True,
         penalize_amplitude_differences=False,
-        learn_rate=0.0001
+        penalize_small_extends=False,
+        learn_rate=0.01
     )
 
 test()
