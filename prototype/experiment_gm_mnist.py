@@ -133,7 +133,7 @@ def train(args, model: experiment_gm_mnist_model.Net, device: torch.device, trai
         if train_kernels:
             output = model(data)
             loss = F.nll_loss(output, target)
-            regularisation_loss = model.regularisation_loss()
+            regularisation_loss = model.regularisation_loss() * len(data)
             training_loss = (loss + regularisation_loss)
 
             kernel_optimiser.zero_grad()
