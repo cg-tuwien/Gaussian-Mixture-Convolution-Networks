@@ -1,6 +1,7 @@
 import torch.utils.tensorboard
 import numpy as np
 import pygmvis
+import gm
 
 """
 Demonstrated features
@@ -10,15 +11,21 @@ Demonstrated features
 * Getting render result as return result (only possible in single threaded mode, when no callback is registered)
 """
 
-tensor_board_writer = torch.utils.tensorboard.SummaryWriter("D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/gmc_net/gmc_net_data/tensorboard/pylibtest2")
+tensor_board_writer = torch.utils.tensorboard.SummaryWriter("D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/gmc_net/gmc_net_data/tensorboard/pylibtest3")
 
 vis = pygmvis.create_visualizer(async=False, width=500, height=500)
 vis.set_camera_auto(True)
 vis.set_pointclouds_from_paths(["D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/da-gm-1/da-gm-1/data/chair_0030.off",
-                                "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/da-gm-1/da-gm-1/data/chair_0128HR.off"])
+                               "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/da-gm-1/da-gm-1/data/chair_0128HR.off"])
 vis.set_gaussian_mixtures_from_paths(["D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/da-gm-1/da-gm-1/data/c_30fix.ply",
-                                      "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/da-gm-1/da-gm-1/data/c1228.ply"],
-                                     isgmm=True)
+                                     "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/da-gm-1/da-gm-1/data/c1228.ply"],
+                                    isgmm=True)
+vis.set_pointclouds_from_paths(["D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dummy/train.off"])
+# mixture = gm.generate_random_mixtures(n_batch=1, n_layers=1, n_components=1, n_dims=3,
+#                                               pos_radius=0.1, cov_radius=0.01,
+#                                               weight_min=0, weight_max=1, device='cpu')
+# vis.set_gaussian_mixtures(mixture, isgmm=False)
+
 res = vis.render(11)
 assert len(res.shape) == 5
 assert res.shape[0] == 2 # amount of gms

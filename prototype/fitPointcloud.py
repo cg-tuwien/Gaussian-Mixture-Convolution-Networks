@@ -62,14 +62,13 @@ def ad_algorithm(pointclouds: Tensor,
     vis3d.set_camera_auto(True)
     vis3d.set_pointclouds(pointclouds)
     vis3d.set_density_rendering(True, pygmvis.GMDensityRenderMode.ADDITIVE_ACC_PROJECTED)
+    vis3d.set_positions_rendering(True, True)
+    vis3d.set_positions_coloring(pygmvis.GMColoringRenderMode.COLOR_AMPLITUDE, pygmvis.GMColorRangeMode.RANGE_MEDMED)
 
     batch_size = pointclouds.shape[0]
     point_count = pointclouds.shape[1]
 
     target = pointclouds.to(device)
-
-    if validation_pc is not None:
-        validation_pc = validation_pc.view(batch_size, 1, -1, 3).to(device)
 
     # Find AABBs for each point cloud such that we can initialize the gm in the right area
     bbmin = torch.min(target, dim=1)[0]     #shape: (m, 3)
@@ -84,6 +83,11 @@ def ad_algorithm(pointclouds: Tensor,
     target += 0.5
     scale = scale.view(batch_size, 1, 1, 1)  # shape: (m,1,1,1)
     scale2 = scale2.view(batch_size, 1, 1, 1, 1)  # shape: (m,1,1,1,1)
+
+    if validation_pc is not None:
+        validation_pc = validation_pc.view(batch_size, 1, -1, 3).to(device)
+        validation_pc = validation_pc / scale
+        validation_pc += 0.5
 
     # Initialize Gaussian Mixture
     create_new_mixture = (mixture is None)
@@ -145,7 +149,7 @@ def ad_algorithm(pointclouds: Tensor,
         #Indizes of sample points. Shape: (s), where s is #samples
         sample_point_idz = torch.randperm(point_count)[0:config.eval_pc_n_sample_points]
         sample_points = target[:, sample_point_idz, :]  #shape: (m,s,3)
-        sample_points_in = sample_points.view(batch_size, 1, config.eval_pc_n_sample_points, 3) #shape: (m,1,s,3)
+        sample_points_in = sample_points.view(batch_size, 1, min(point_count, config.eval_pc_n_sample_points), 3) #shape: (m,1,s,3)
         inversed_covariances = icov_factor @ icov_factor.transpose(-2, -1) + torch.eye(3, 3, device=mixture.device) * 0.001 #eps
         assert not torch.isnan(inversed_covariances).any()
         assert not torch.isinf(inversed_covariances).any()
@@ -155,6 +159,10 @@ def ad_algorithm(pointclouds: Tensor,
         pi_normalized = pi_relative.abs() / pi_sum  # shape (m,1,n)
         covariances = inversed_covariances.inverse()
         amplitudes = pi_normalized / (covariances.det().sqrt() * 15.74960995)
+
+        tensor_board_writer.add_scalar("x. pi min", pi_relative.abs().min(), k)
+        tensor_board_writer.add_scalar("y. pi max", pi_relative.abs().max(), k)
+        tensor_board_writer.add_scalar("z. pi std", pi_relative.abs().std(), k)
 
         # Main Loss
         mixture_with_inversed_cov = gm.pack_mixture(amplitudes, positions, inversed_covariances)
@@ -203,9 +211,9 @@ def ad_algorithm(pointclouds: Tensor,
 
         print(f"iterations {k}: loss = {loss.item()}")
 
-        if validation_pc is not None and k % 500 == 0:
+        if validation_pc is not None and k % 250 == 0:
             v_output = gm.evaluate_inversed(mixture_with_inversed_cov, validation_pc).view(batch_size, -1)
-            v_loss = -torch.mean(torch.log(output + 0.001), dim=1)
+            v_loss = -torch.mean(torch.log(v_output + 0.001), dim=1)
             tensor_board_writer.add_scalar("Validation Likelihood Loss", v_loss.item(), k)
 
         if k % 100 == 0:
@@ -225,10 +233,11 @@ def ad_algorithm(pointclouds: Tensor,
             res = vis3d.render(k)
             for i in range(res.shape[0]):
                 tensor_board_writer.add_image(f"GM {i}, Ellipsoids", res[i, 0, :, :, :], k, dataformats="HWC")
-                tensor_board_writer.add_image(f"GM {i}, Density", res[i, 1, :, :, :], k, dataformats="HWC")
+                tensor_board_writer.add_image(f"GM {i}, Positions", res[i, 1, :, :, :], k, dataformats="HWC")
+                tensor_board_writer.add_image(f"GM {i}, Density", res[i, 2, :, :, :], k, dataformats="HWC")
                 tensor_board_writer.flush()
                 gm.write_gm_to_ply(_amplitudes, _positions, _covariances, i, f"{gm_path}/pcgm-{i}.ply")
-            gm.save(_mixture, f"{gm_path}/pcgm-.gm")
+            gm.save(_mixture, f"{gm_path}/pcgm-{i}.gm")
 
     fitting_end = time.time()
     print(f"fitting time: {fitting_end - fitting_start}")
@@ -254,12 +263,18 @@ def test():
     pcs = pointcloud.load_pc_from_off(
         "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/ModelNet10/pointcloud-lores/ModelNet10/chair/train/chair_0030.off")
     validation = pointcloud.load_pc_from_off(
-        "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/ModelNet10/pointcloud-lores-validation/ModelNet10/chair/train/chair_0030.off")
+       "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/ModelNet10/pointcloud-lores-validation/ModelNet10/chair/train/chair_0030.off")
 
-    # gms = gm.load(
-    #     "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/gmc_net/gmc_net_data/models/fitPointcloud_2020-04-09_18-56-05/pcgmm-22200.gm")[
-    #     0]
-    # gms = gms[0, :, :, :].view(1, 1, 100, 13)  # [m,1,n_components,13]
+    # pcs = pointcloud.load_pc_from_off(
+    #     "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dummy/train.off"
+    # )
+    # validation = pointcloud.load_pc_from_off(
+    #     "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dummy/test.off"
+    # )
+
+    gms = gm.load(
+        "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/gmc_net/gmc_net_data/models/exvs-lr-0.001/pcgm-.gm")[0]
+    gms = gms[0, :, :, :].view(1, 1, 100, 13)  # [m,1,n_components,13]
 
     name = input('Name for this training (or empty for auto): ')
     ad_algorithm(
@@ -268,15 +283,15 @@ def test():
         n_iterations=1000000,
         device='cuda',
         name=name,
-        # mixture=gms,
-        # start_epoch=22201,
+        #mixture=gms,
+        #start_epoch=0,
         validation_pc=validation,
         init_positions_from_pointcloud=True,
         init_weights_equal=False,
-        penalize_long_gaussians=True,
+        penalize_long_gaussians=False,
         penalize_amplitude_differences=False,
         penalize_small_extends=False,
-        learn_rate=0.01
+        learn_rate=0.02
     )
 
 test()
