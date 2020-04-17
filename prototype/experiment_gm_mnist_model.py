@@ -91,10 +91,11 @@ class Net(nn.Module):
         losses = list()
         for i, relu in enumerate(self.relus):
             fitting_input = fitting_inputs[i]
-            training_bias_shape = list(relu.bias.shape)
-            training_bias_shape[0] = gm.n_batch(fitting_input)
-            std_dev = gm.weights(fitting_input).abs().mean().item()
-            training_bias = torch.normal(mean=0, std=std_dev, size=training_bias_shape, device=device).abs()
+            # training_bias_shape = list(relu.bias.shape)
+            # training_bias_shape[0] = gm.n_batch(fitting_input)
+            # std_dev = gm.weights(fitting_input).abs().mean().item()
+            # training_bias = torch.normal(mean=0, std=std_dev, size=training_bias_shape, device=device).abs()
+            training_bias = relu.bias.abs()
             losses.append(relu.fitting_sampler.run_on(fitting_input, training_bias, epoch, train=train, tensor_board_writer=tensor_board_writer, tensor_board_prefix=tensor_board_prefix))
 
         return losses
