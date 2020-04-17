@@ -84,19 +84,19 @@ def train(args, model: experiment_gm_mnist_model.Net, device: torch.device, trai
             tensorboard_writer_option = tensor_board_writer
 
         if probDta is not None:
-            kernel_training_probability = 1
-            for i, averaged_fitting_loss in enumerate(probDta.averaged_fitting_losses):
-                best_fitting_loss = probDta.best_fitting_losses[i]
-                assert best_fitting_loss <= averaged_fitting_loss
-                probability = best_fitting_loss / averaged_fitting_loss
-                kernel_training_probability = min(kernel_training_probability, probability)
-                tensor_board_writer.add_scalar(f"6.2. probDta.best_fitting_losses[{i}]", probDta.best_fitting_losses[i], step)
-                tensor_board_writer.add_scalar(f"6.2. probDta.averaged_fitting_losses[{i}]", probDta.averaged_fitting_losses[i], step)
-
-            kernel_training_probability = min(0.8, max(0.1, kernel_training_probability))
+            kernel_training_probability = 0.5
+            # for i, averaged_fitting_loss in enumerate(probDta.averaged_fitting_losses):
+            #     best_fitting_loss = probDta.best_fitting_losses[i]
+            #     assert best_fitting_loss <= averaged_fitting_loss
+            #     probability = best_fitting_loss / averaged_fitting_loss
+            #     kernel_training_probability = min(kernel_training_probability, probability)
+            #     tensor_board_writer.add_scalar(f"6.2. probDta.best_fitting_losses[{i}]", probDta.best_fitting_losses[i], step)
+            #     tensor_board_writer.add_scalar(f"6.2. probDta.averaged_fitting_losses[{i}]", probDta.averaged_fitting_losses[i], step)
+            #
+            # kernel_training_probability = min(0.8, max(0.1, kernel_training_probability))
             train_kernels = random.uniform(0, 1) < kernel_training_probability
-            tensor_board_writer.add_scalar("6.1. kernel_train_probability", kernel_training_probability, step)
-            tensor_board_writer.add_scalar("6.2. learning_kernel", train_kernels, step)
+            # tensor_board_writer.add_scalar("6.1. kernel_train_probability", kernel_training_probability, step)
+            # tensor_board_writer.add_scalar("6.2. learning_kernel", train_kernels, step)
 
             model.set_fitting_training(not train_kernels)
             train_fitting_layers = not train_kernels
