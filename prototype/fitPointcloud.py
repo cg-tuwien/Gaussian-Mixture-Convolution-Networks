@@ -51,6 +51,9 @@ def ad_algorithm(pointclouds: Tensor,
                  penalize_long_gaussians: bool = False,
                  penalize_amplitude_differences: bool = False,
                  penalize_small_extends: bool = False,
+                 weight_softmax: bool = False,
+                 constant_weights: bool = False,
+                 log_positions: bool = False,
                  learn_rate: float = 0.0001) -> Tensor:
 
     assert len(pointclouds.shape) == 3
@@ -114,10 +117,14 @@ def ad_algorithm(pointclouds: Tensor,
 
     covariances = gm.covariances(mixture)
 
-    pi_relative = gm.weights(mixture)  # shape: (m,1,n)
-    if not create_new_mixture:
-        pi_relative *= covariances.detach().det().sqrt() * 15.74960995  # calculate priors from amplitudes
-    pi_relative.requires_grad = True
+    if constant_weights:
+        pi_relative = torch.ones((batch_size, 1, n_components))
+        pi_normalized = torch.nn.functional.softmax(pi_relative,dim=2).to(device)
+    else:
+        pi_relative = gm.weights(mixture)  # shape: (m,1,n)
+        if not create_new_mixture:
+            pi_relative *= covariances.detach().det().sqrt() * 15.74960995  # calculate priors from amplitudes
+        pi_relative.requires_grad = True
 
     if not create_new_mixture:
         covariances /= scale2   # Covariances need to be downscaled
@@ -126,7 +133,6 @@ def ad_algorithm(pointclouds: Tensor,
     eigvals = torch.max(eigvals, torch.tensor([0.01], dtype=torch.float32, device=device))
     icov_factor = torch.matmul(eigvecs, eigvals.sqrt().diag_embed())
     icov_factor.requires_grad = True
-
 
     # Prepare directories
     if name == '':
@@ -138,10 +144,22 @@ def ad_algorithm(pointclouds: Tensor,
     gm_path = config.data_base_path / 'models' / name
     os.mkdir(gm_path)
 
+    if log_positions:
+        pos_log = torch.zeros((batch_size,n_components,500,3))
+        for b in range(batch_size):
+            for g in range(n_components):
+                f = open(f"{gm_path}/pos-b{b}-g{g}.txt", "w+")
+                f.close()
+
     fitting_start = time.time()
     print(datetime.datetime.now().strftime("%H:%M:%S"))
 
-    optimiser = optim.Adam([pi_relative, positions, icov_factor], lr=learn_rate)
+    if constant_weights:
+        optimiser = optim.Adam([positions, icov_factor], lr=learn_rate)
+        #optimiser = optim.SGD([positions, icov_factor], lr=learn_rate)
+    else:
+        #optimiser = optim.Adam([pi_relative, positions, icov_factor], betas=(0.9, 0.9), lr=learn_rate)
+        optimiser = optim.Adam([pi_relative, positions, icov_factor], lr=learn_rate)
 
     for k in range(start_epoch, n_iterations):
         optimiser.zero_grad()
@@ -155,14 +173,39 @@ def ad_algorithm(pointclouds: Tensor,
         assert not torch.isinf(inversed_covariances).any()
 
         # Calculate amplitudes from priors
-        pi_sum = pi_relative.abs().sum(dim=2).view(batch_size, 1, 1)  # shape: (m,1) -> (m,1,1)
-        pi_normalized = pi_relative.abs() / pi_sum  # shape (m,1,n)
+        if not constant_weights:
+            if weight_softmax:
+                pi_normalized = torch.nn.functional.softmax(pi_relative, dim=2)
+            else:
+                pi_sum = pi_relative.abs().sum(dim=2).view(batch_size, 1, 1)  # shape: (m,1) -> (m,1,1)
+                pi_normalized = pi_relative.abs() / pi_sum  # shape (m,1,n)
+
         covariances = inversed_covariances.inverse()
         amplitudes = pi_normalized / (covariances.det().sqrt() * 15.74960995)
 
-        tensor_board_writer.add_scalar("x. pi min", pi_relative.abs().min(), k)
-        tensor_board_writer.add_scalar("y. pi max", pi_relative.abs().max(), k)
-        tensor_board_writer.add_scalar("z. pi std", pi_relative.abs().std(), k)
+        # This is only temporarely here.
+        if k == 0:
+            _amplitudes, _positions, _covariances = rescale_igmm_to_gm(pi_normalized, positions, inversed_covariances,
+                                                                    scale, scale2)
+            gm.write_gm_to_ply(_amplitudes, _positions, _covariances, 0, f"{gm_path}/pcgmm-{0}-initial.ply")
+
+        # Create Positions Statistics
+        # Positions shape: (m,1,n,3), Scale shape: (m,1,1,1), Extends shape: (m,3)
+        # beb = extends.view(batch_size, 1, 1, 3) / scale
+        # relpos = positions / beb
+        # tensor_board_writer.add_scalar("o. pos min", relpos.min(), k)
+        # tensor_board_writer.add_scalar("p. pos max", relpos.max(), k)
+        # tensor_board_writer.add_scalar("q. pos mean", relpos.mean(), k)
+        # ev = torch.symeig(covariances).eigenvalues
+        # tensor_board_writer.add_scalar("r. covevmin min", ev[:, :, :, 0].min(), k)
+        # tensor_board_writer.add_scalar("s. covevmin max", ev[:, :, :, 0].max(), k)
+        # tensor_board_writer.add_scalar("t. covevmin std", ev[:, :, :, 0].std(), k)
+        # tensor_board_writer.add_scalar("u. covevmax min", ev[:, :, :, -1].min(), k)
+        # tensor_board_writer.add_scalar("v. covevmax max", ev[:, :, :, -1].max(), k)
+        # tensor_board_writer.add_scalar("w. covevmax std", ev[:, :, :, -1].std(), k)
+        # tensor_board_writer.add_scalar("x. pi min", pi_relative.abs().min(), k)
+        # tensor_board_writer.add_scalar("y. pi max", pi_relative.abs().max(), k)
+        # tensor_board_writer.add_scalar("z. pi std", pi_relative.abs().std(), k)
 
         # Main Loss
         mixture_with_inversed_cov = gm.pack_mixture(amplitudes, positions, inversed_covariances)
@@ -191,14 +234,27 @@ def ad_algorithm(pointclouds: Tensor,
             largest_eigenvalue = eigenvalues[:, :, :, -1]
             ext_cost = -largest_eigenvalue.mean()
 
-        #mixture_with_regular_cov = gm.pack_mixture(amplitudes, positions, covariances.detach().clone())
-        #integ = gm.integrate(mixture_with_regular_cov)
-        #print(f"This should be one: {integ}")
+        # mixture_with_regular_cov = gm.pack_mixture(amplitudes, positions, covariances.detach().clone())
+        # integ = gm.integrate(mixture_with_regular_cov)
+        # print(f"This should be one: {integ}")
 
         loss = loss1 + cov_cost + amp_cost + ext_cost
 
+        beb = extends.view(batch_size, 1, 1, 3) / scale
+        oldrelpos = positions.detach().clone() / beb
+
         loss.backward()
         optimiser.step()
+
+        newrelpos = positions.detach().clone() / beb
+        posdiffs = (newrelpos - oldrelpos)
+
+        tensor_board_writer.add_scalar("m. max pos diff", posdiffs.abs().max(), k)
+        argidx = int(posdiffs.abs().argmax().item() / 3)
+        print(f"{k}  posdiffargmax: {argidx}, pos: {newrelpos[0,0,argidx,:]}")
+
+        #tensor_board_writer.add_scalar("m. pos grad min", positions.grad.abs().min(), k)
+        #tensor_board_writer.add_scalar("n. pos grad max", positions.grad.abs().max(), k)
 
         tensor_board_writer.add_scalar("0. training loss", loss.item(), k)
         tensor_board_writer.add_scalar("1. likelihood loss", loss1.item(), k)
@@ -216,17 +272,26 @@ def ad_algorithm(pointclouds: Tensor,
             v_loss = -torch.mean(torch.log(v_output + 0.001), dim=1)
             tensor_board_writer.add_scalar("Validation Likelihood Loss", v_loss.item(), k)
 
-        if k % 100 == 0:
+        if log_positions:
             _positions = positions.detach().clone()
             _positions -= 0.5
             _positions *= scale
+            pos_log[:,:,k%500,:] = _positions.view(batch_size, n_components, 3)
+            if _positions.max() > bbmax.max():
+                print(f"{int(_positions.argmax() / 3)} is far oustide");
+            if _positions.min() < bbmin.min():
+                print(f"{int(_positions.argmin() / 3)} is far outside");
 
-            _covariances = inversed_covariances.detach().inverse().transpose(-1, -2).clone()
-            #Scaling of covariance by f@s@f', where f is the diagonal matrix of scalings
-            #if all diag entries of f are the same, then this just results in times x^2, where x is the element of f
-            _covariances *= scale2
+        if log_positions and (k+1) % 500 == 0:
+            for b in range(batch_size):
+                for g in range(n_components):
+                    f = open(f"{gm_path}/pos-b{b}-g{g}.txt", "a+")
+                    np.savetxt(f, pos_log[b,g,:,:].detach().numpy(), delimiter=" ")
+                    f.close()
 
-            _amplitudes = pi_normalized / (_covariances.det().sqrt() * 15.74960995)
+        if k % 1000 == 0:
+            _amplitudes, _positions, _covariances = rescale_igmm_to_gm(pi_normalized, positions, inversed_covariances,
+                                                                    scale, scale2)
 
             _mixture = gm.pack_mixture(_amplitudes, _positions, _covariances)
             vis3d.set_gaussian_mixtures(_mixture.detach().cpu(), isgmm=False)
@@ -236,7 +301,8 @@ def ad_algorithm(pointclouds: Tensor,
                 tensor_board_writer.add_image(f"GM {i}, Positions", res[i, 1, :, :, :], k, dataformats="HWC")
                 tensor_board_writer.add_image(f"GM {i}, Density", res[i, 2, :, :, :], k, dataformats="HWC")
                 tensor_board_writer.flush()
-                gm.write_gm_to_ply(_amplitudes, _positions, _covariances, i, f"{gm_path}/pcgm-{i}.ply")
+                #gm.write_gm_to_ply(_amplitudes, _positions, _covariances, i, f"{gm_path}/pcgm-{i}.ply")
+                gm.write_gm_to_ply(_amplitudes, _positions, _covariances, i, f"{gm_path}/pcgmm-{i}-" + str(k).zfill(5) + ".ply")
             gm.save(_mixture, f"{gm_path}/pcgm-{i}.gm")
 
     fitting_end = time.time()
@@ -255,6 +321,21 @@ def ad_algorithm(pointclouds: Tensor,
         gm.write_gm_to_ply(amplitudes, positions, covariances, i, f"{gm_path}/pcgm-{i}.ply")
     gm.save(_mixture, f"{gm_path}/pcgm.gm")
     return _mixture
+
+# This function has suboptimal usability
+def rescale_igmm_to_gm(pi_normalized: Tensor, positions: Tensor, inversed_covariances: Tensor, scale: Tensor, scale2: Tensor):
+    _positions = positions.detach().clone()
+    _positions -= 0.5
+    _positions *= scale
+
+    _covariances = inversed_covariances.detach().inverse().transpose(-1, -2).clone()
+    # Scaling of covariance by f@s@f', where f is the diagonal matrix of scalings
+    # if all diag entries of f are the same, then this just results in times x^2, where x is the element of f
+    _covariances *= scale2
+
+    _amplitudes = pi_normalized / (_covariances.det().sqrt() * 15.74960995)
+
+    return _amplitudes, _positions, _covariances
 
 def test():
     torch.manual_seed(0)
@@ -291,6 +372,9 @@ def test():
         penalize_long_gaussians=False,
         penalize_amplitude_differences=False,
         penalize_small_extends=False,
+        weight_softmax=False,
+        constant_weights=False,
+        log_positions=True,
         learn_rate=0.02
     )
 
