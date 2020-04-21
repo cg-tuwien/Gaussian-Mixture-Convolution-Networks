@@ -230,13 +230,18 @@ def experiment_alternating(device: str = 'cuda', n_epochs: int = 20, kernel_lear
 
     # do not train kernels during initial phase.
     model.set_fitting_training(True)
-    train(args, model, device, train_loader, kernel_optimiser=kernel_optimiser, fitting_optimiser=fitting_optimiser,
-          epoch=0, train_kernels=False, train_fitting_layers=True, tensor_board_writer=tensor_board_writer)
+    for epoch in range(n_epochs_fitting_training):
+        train(args, model, device, train_loader, kernel_optimiser=kernel_optimiser, fitting_optimiser=fitting_optimiser,
+              epoch=epoch, train_kernels=False, train_fitting_layers=True, tensor_board_writer=tensor_board_writer)
 
-    for epoch in range(1, n_epochs):
+    if n_epochs_fitting_training < 1:
+        print("### n_epochs_fitting_training must be >= 1")
+        return
+
+    for epoch in range(n_epochs_fitting_training, n_epochs):
         model.set_position_learning(epoch >= learn_positions_after)
         model.set_covariance_learning(epoch >= learn_covariances_after)
-        train_kernels = epoch % 2 == 0  # starts with epoch 1 / fitting
+        train_kernels = epoch % 2 == 0
         model.set_fitting_training(not train_kernels)
         train(args, model, device, train_loader, kernel_optimiser=kernel_optimiser, fitting_optimiser=fitting_optimiser,
               epoch=epoch, train_kernels=train_kernels, train_fitting_layers=not train_kernels, tensor_board_writer=tensor_board_writer)
