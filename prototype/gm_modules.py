@@ -49,13 +49,13 @@ class GmConvolution(torch.nn.modules.Module):
             self.weights.append(torch.nn.Parameter(weights))
 
             if self.learn_positions and False:
-                positions = torch.rand(1, n_layers_in, n_kernel_components, n_dims, dtype=torch.float32) * 2 * position_range - position_range
+                positions = torch.rand(1, n_layers_in, n_kernel_components, n_dims, dtype=torch.float32) * 2 - 1
             else:
                 assert (self.n_dims == 2)
                 angles = torch.arange(0, 2 * math.pi, 2 * math.pi / (n_kernel_components - 1))
                 xes = torch.cat((torch.zeros(1, dtype=torch.float), torch.sin(angles)), dim=0)
                 yes = torch.cat((torch.zeros(1, dtype=torch.float), torch.cos(angles)), dim=0)
-                positions = torch.cat((xes.view(-1, 1), yes.view(-1, 1)), dim=1) * position_range
+                positions = torch.cat((xes.view(-1, 1), yes.view(-1, 1)), dim=1)
                 positions = positions.view(1, 1, n_kernel_components, 2).repeat((1, n_layers_in, 1, 1))
             self.positions.append(torch.nn.Parameter(positions))
 
@@ -64,10 +64,12 @@ class GmConvolution(torch.nn.modules.Module):
             covariance_factors = torch.rand(1, n_layers_in, n_kernel_components, n_dims, n_dims, dtype=torch.float32) * 2 - 1
             cov_rand_factor = 0
             covariance_factors = covariance_factors * cov_rand_factor + torch.eye(self.n_dims)
-            covariance_factors = covariance_factors * math.sqrt(covariance_range)
+            covariance_factors = covariance_factors
             self.covariance_factors.append(torch.nn.Parameter(covariance_factors))
             assert(gm.is_valid_mixture(
-                gm.pack_mixture(weights, positions, covariance_factors @ covariance_factors.transpose(-1, -2) + torch.eye(self.n_dims, dtype=torch.float32, device=covariance_factors.device) * self.covariance_epsilon)))
+                gm.pack_mixture(weights,
+                                positions,
+                                covariance_factors @ covariance_factors.transpose(-1, -2) + torch.eye(self.n_dims, dtype=torch.float32, device=covariance_factors.device) * self.covariance_epsilon)))
 
         self.set_requires_grad(True)
 
@@ -86,7 +88,7 @@ class GmConvolution(torch.nn.modules.Module):
         A = self.covariance_factors[index]
         covariances = A @ A.transpose(-1, -2) + torch.eye(self.n_dims, dtype=torch.float32, device=A.device) * self.covariance_epsilon
         # kernel = torch.cat((self.weights[index], self.positions[index], covariances.view(1, self.n_layers_in, self.n_kernel_components, self.n_dims * self.n_dims)), dim=-1)
-        kernel = gm.pack_mixture(self.weights[index], self.positions[index], covariances)
+        kernel = gm.pack_mixture(self.weights[index], self.positions[index] * self.position_range, covariances * self.covariance_range)
         assert gm.is_valid_mixture(kernel)
         return kernel
 
