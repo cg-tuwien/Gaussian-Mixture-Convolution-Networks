@@ -1,6 +1,7 @@
 from __future__ import annotations
 import math
 import typing
+import  numpy as np
 
 import torch
 from torch import Tensor
@@ -267,6 +268,11 @@ def save(mixture: Tensor, file_name: str, meta_info=None) -> None:
         "meta_info": meta_info
     }
     torch.save(dictionary, config.data_base_path / file_name)
+    numpy_mixture = mixture.detach().cpu().numpy()
+    for batch in range(n_batch(mixture)):
+        for layer in range(n_layers(mixture)):
+            np.savetxt(config.data_base_path / f"{file_name}_b{batch}_l{layer}.csv", numpy_mixture[batch, layer])
+    np.save(config.data_base_path / f"{file_name}", numpy_mixture)
 
 
 def load(file_name: str) -> typing.Tuple[Tensor, typing.Any]:

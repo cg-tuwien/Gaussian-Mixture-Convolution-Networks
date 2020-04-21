@@ -67,7 +67,8 @@ def render_debug_images_to_tensorboard(model, epoch, tensor_board_writer):
 def train(args, model: experiment_gm_mnist_model.Net, device: torch.device, train_loader: torch.utils.data.DataLoader,
           kernel_optimiser: optim.Optimizer, fitting_optimiser: optim.Optimizer,
           epoch: int, train_kernels: bool = None, train_fitting_layers: bool = None, probDta=None,
-          tensor_board_writer: torch.utils.tensorboard.SummaryWriter = None):
+          tensor_board_writer: torch.utils.tensorboard.SummaryWriter = None,
+          debug_write: bool = False):
     if probDta is not None:
         assert train_fitting_layers is None
         assert train_kernels is None
@@ -97,6 +98,8 @@ def train(args, model: experiment_gm_mnist_model.Net, device: torch.device, trai
             train_kernels = random.uniform(0, 1) < kernel_training_probability
             # tensor_board_writer.add_scalar("6.1. kernel_train_probability", kernel_training_probability, step)
             # tensor_board_writer.add_scalar("6.2. learning_kernel", train_kernels, step)
+            if debug_write:
+                train_kernels = False
 
             model.set_fitting_training(not train_kernels)
             train_fitting_layers = not train_kernels
@@ -104,6 +107,9 @@ def train(args, model: experiment_gm_mnist_model.Net, device: torch.device, trai
         if train_fitting_layers:  # save some computatinos and memory
             fitting_inputs = list()
             model.forward(data, fitting_inputs=fitting_inputs)
+            if debug_write:
+                for i, mixture in enumerate(fitting_inputs):
+                    gm.save(mixture, f"fitting_input_netlayer{i}_batch{batch_idx}")
             fitting_losses = model.run_fitting_sampling(fitting_inputs, train=True, epoch=step, tensor_board_writer=tensorboard_writer_option, tensor_board_prefix="train_")
             # fitting_optimiser.zero_grad()
             # backward_start_time = time.perf_counter()
@@ -196,7 +202,8 @@ def experiment_alternating(device: str = 'cuda', n_epochs: int = 20, kernel_lear
                            layer3_m2m_fitting: typing.Callable = gm_modules.generate_default_fitting_module,
                            learn_positions_after: int = 0,
                            learn_covariances_after: int = 0,
-                           desc_string: str = ""):
+                           desc_string: str = "",
+                           n_epochs_fitting_training: int = 2):
     # Training settings
     torch.manual_seed(0)
 
@@ -299,8 +306,9 @@ def experiment_probabalistic(device: str = 'cuda', n_epochs: int = 20, n_epochs_
         model.set_position_learning(epoch >= learn_positions_after)
         model.set_covariance_learning(epoch >= learn_covariances_after)
         train(args, model, device, train_loader, kernel_optimiser=kernel_optimiser, fitting_optimiser=fitting_optimiser,
-              epoch=epoch, probDta=probDta, tensor_board_writer=tensor_board_writer)
+              epoch=epoch, probDta=probDta, tensor_board_writer=tensor_board_writer, debug_write=True)
 
+        break
         test(args, model, device, test_loader, epoch, tensor_board_writer=tensor_board_writer)
         # scheduler.step()
 
