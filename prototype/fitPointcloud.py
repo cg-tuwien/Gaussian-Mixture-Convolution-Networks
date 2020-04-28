@@ -76,6 +76,8 @@ def ad_algorithm(pointclouds: Tensor,
 
     target = pointclouds.to(device)
 
+    # --SCALING------------------------------------------------------------
+
     # Find AABBs for each point cloud such that we can initialize the gm in the right area
     bbmin = torch.min(target, dim=1)[0]     #shape: (m, 3)
     bbmax = torch.max(target, dim=1)[0]     #shape: (m, 3)
@@ -90,10 +92,13 @@ def ad_algorithm(pointclouds: Tensor,
     scale = scale.view(batch_size, 1, 1, 1)  # shape: (m,1,1,1)
     scale2 = scale2.view(batch_size, 1, 1, 1, 1)  # shape: (m,1,1,1,1)
 
+    # Scale Validation Pointcloud if it exists
     if validation_pc is not None:
         validation_pc = validation_pc.view(batch_size, 1, -1, 3).to(device)
         validation_pc = validation_pc / scale
         validation_pc += 0.5
+
+    # --GM-INITIALIZATION--------------------------------------------------
 
     # Initialize Gaussian Mixture
     create_new_mixture = (mixture is None)
@@ -128,6 +133,11 @@ def ad_algorithm(pointclouds: Tensor,
         if not create_new_mixture:
             pi_relative *= covariances.detach().det().sqrt() * 15.74960995  # calculate priors from amplitudes
         pi_relative.requires_grad = True
+        if weight_softmax:
+            pi_normalized = torch.nn.functional.softmax(pi_relative, dim=2)
+        else:
+            pi_sum = pi_relative.abs().sum(dim=2).view(batch_size, 1, 1)  # shape: (m,1) -> (m,1,1)
+            pi_normalized = pi_relative.abs() / pi_sum  # shape (m,1,n)
 
     if not create_new_mixture:
         covariances /= scale2   # Covariances need to be downscaled
@@ -137,7 +147,20 @@ def ad_algorithm(pointclouds: Tensor,
     icov_factor = torch.matmul(eigvecs, eigvals.sqrt().diag_embed())
     icov_factor.requires_grad = True
 
-    # Prepare directories
+    # --OPTIMIZER-INITIALIZATION----------------------------------------
+
+    optimiser_pos = optim.RMSprop([positions], lr=learn_rate_pos, alpha=0.7, momentum=0.0)
+    LRadap = lambda epoch: 1 / (1 + 0.0001 * epoch)
+    scheduler_pos = optim.lr_scheduler.LambdaLR(optimiser_pos, LRadap)
+
+    if constant_weights:
+        optimiser_picov = optim.Adam([icov_factor], lr=learn_rate_wecov)
+    else:
+        optimiser_picov = optim.Adam([pi_relative, icov_factor], lr=learn_rate_wecov)
+
+
+    # --DIRECTORY-PREPERATION-------------------------------------------
+
     if name == '':
         name = f'fitPointcloud_{datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}'
 
@@ -148,37 +171,34 @@ def ad_algorithm(pointclouds: Tensor,
     os.mkdir(gm_path)
 
     if log_positions:
+        # Create Log Files
         pos_log = torch.zeros((batch_size,n_components,500,3))
         for b in range(batch_size):
             for g in range(n_components):
                 f = open(f"{gm_path}/pos-b{b}-g{g}.txt", "w+")
                 f.close()
 
+    # Log initial gm and positions
+    _amplitudes, _positions, _covariances = rescale_igmm_to_gm(pi_normalized, positions, inversed_covariances,
+                                                               scale, scale2)
+    gm.write_gm_to_ply(_amplitudes, _positions, _covariances, 0, f"{gm_path}/pcgmm-{0}-initial.ply")
+    if log_positions:
+        _positions = positions.detach().clone()
+        _positions -= 0.5
+        _positions *= scale
+        pos_log[:, :, 0, :] = _positions.view(batch_size, n_components, 3)
+
+    # --START FITTING---------------------------------------------------
+
     fitting_start = time.time()
     print(datetime.datetime.now().strftime("%H:%M:%S"))
-
-    if constant_weights:
-        optimiser = optim.Adam([positions, icov_factor], lr=learn_rate)
-        #optimiser = optim.SGD([positions, icov_factor], lr=learn_rate)
-    else:
-        #optimiser = optim.Adam([pi_relative, positions, icov_factor], betas=(0.9, 0.9), lr=learn_rate)
-        #optimiser = optim.Adam([pi_relative, positions, icov_factor], lr=learn_rate)
-        #optimiser = optim.SGD([pi_relative, positions, icov_factor], lr=learn_rate, momentum=0.99)
-        #optimiser = optim.Adadelta([pi_relative, positions, icov_factor])
-        optimiser_pos = optim.RMSprop([positions], lr=learn_rate_pos, alpha=0.7, momentum=0.5)
-        #optimiser_pos = optim.Adam([positions], lr=0.01, betas=(0.5,0.7))
-        LRadap = lambda epoch: 1 / (1 + 0.0001*epoch)
-        #scheduler = optim.lr_scheduler.ExponentialLR(optimiser, 0.9999)
-        scheduler_pos = optim.lr_scheduler.LambdaLR(optimiser_pos, LRadap)
-        optimiser_picov = optim.Adam([pi_relative, icov_factor], lr=learn_rate_wecov)
-        #scheduler_picov = optim.lr_scheduler.LambdaLR(optimiser_picov, LRadap)
 
     for k in range(start_epoch, n_iterations):
         optimiser_pos.zero_grad()
         optimiser_picov.zero_grad()
 
-        #Indizes of sample points. Shape: (s), where s is #samples
-        sample_point_idz = torch.randperm(point_count)[0:config.eval_pc_n_sample_points]
+        # Get Sample Points for Loss Evaluation
+        sample_point_idz = torch.randperm(point_count)[0:config.eval_pc_n_sample_points] #Shape: (s), where s is #samples
         sample_points = target[:, sample_point_idz, :]  #shape: (m,s,3)
         sample_points_in = sample_points.view(batch_size, 1, min(point_count, config.eval_pc_n_sample_points), 3) #shape: (m,1,s,3)
         inversed_covariances = icov_factor @ icov_factor.transpose(-2, -1) + torch.eye(3, 3, device=mixture.device) * 0.001 #eps
@@ -196,48 +216,17 @@ def ad_algorithm(pointclouds: Tensor,
         covariances = inversed_covariances.inverse()
         amplitudes = pi_normalized / (covariances.det().sqrt() * 15.74960995)
 
-        # This is only temporarely here.
-        if k == 0:
-            _amplitudes, _positions, _covariances = rescale_igmm_to_gm(pi_normalized, positions, inversed_covariances,
-                                                                    scale, scale2)
-            gm.write_gm_to_ply(_amplitudes, _positions, _covariances, 0, f"{gm_path}/pcgmm-{0}-initial.ply")
-            if log_positions:
-                _positions = positions.detach().clone()
-                _positions -= 0.5
-                _positions *= scale
-                pos_log[:, :, 0, :] = _positions.view(batch_size, n_components, 3)
-
-        # Create Positions Statistics
-        # Positions shape: (m,1,n,3), Scale shape: (m,1,1,1), Extends shape: (m,3)
-        # beb = extends.view(batch_size, 1, 1, 3) / scale
-        # relpos = positions / beb
-        # tensor_board_writer.add_scalar("o. pos min", relpos.min(), k)
-        # tensor_board_writer.add_scalar("p. pos max", relpos.max(), k)
-        # tensor_board_writer.add_scalar("q. pos mean", relpos.mean(), k)
-        # ev = torch.symeig(covariances).eigenvalues
-        # tensor_board_writer.add_scalar("r. covevmin min", ev[:, :, :, 0].min(), k)
-        # tensor_board_writer.add_scalar("s. covevmin max", ev[:, :, :, 0].max(), k)
-        # tensor_board_writer.add_scalar("t. covevmin std", ev[:, :, :, 0].std(), k)
-        # tensor_board_writer.add_scalar("u. covevmax min", ev[:, :, :, -1].min(), k)
-        # tensor_board_writer.add_scalar("v. covevmax max", ev[:, :, :, -1].max(), k)
-        # tensor_board_writer.add_scalar("w. covevmax std", ev[:, :, :, -1].std(), k)
-        # tensor_board_writer.add_scalar("x. pi min", pi_relative.abs().min(), k)
-        # tensor_board_writer.add_scalar("y. pi max", pi_relative.abs().max(), k)
-        # tensor_board_writer.add_scalar("z. pi std", pi_relative.abs().std(), k)
-
-        # Main Loss
-        mixture_with_inversed_cov = gm.pack_mixture(amplitudes, positions, inversed_covariances)
-        # shape first (m,1,s), then after view (m,s)
+        # Calculate main loss
+        mixture_with_inversed_cov = gm.pack_mixture(amplitudes, positions, inversed_covariances) # shape first (m,1,s), then after view (m,s)
         output = gm.evaluate_inversed(mixture_with_inversed_cov, sample_points_in).view(batch_size, -1)
         loss1 = -torch.mean(torch.log(output + 0.001), dim=1)
 
+        # Calculate possible regularization losses
         cov_cost = torch.tensor(0)
         if penalize_long_gaussians:
-            # Wait this does not just penalize long gaussians, but also flat ones. Maybe take -1 and 1, instead of -1 and 0.
             eigenvalues = torch.symeig(covariances, eigenvectors=True).eigenvalues
             largest_eigenvalue = eigenvalues[:, :, :, -1]
             smaller_eigenvalue = eigenvalues[:, :, :, -2]
-            #cov_cost: Tensor = (0.1 * torch.log(1 + torch.exp(largest_eigenvalue / smallest_eigenvalue - 10))).sum() (leads to nan)
             cov_cost = 0.1 * largest_eigenvalue / smaller_eigenvalue - 1
             cov_cost = cov_cost.where(cov_cost > torch.zeros_like(cov_cost), torch.zeros_like(cov_cost)).mean() #changed from sum, so it's comparable
 
@@ -252,31 +241,14 @@ def ad_algorithm(pointclouds: Tensor,
             largest_eigenvalue = eigenvalues[:, :, :, -1]
             ext_cost = -largest_eigenvalue.mean()
 
-        # mixture_with_regular_cov = gm.pack_mixture(amplitudes, positions, covariances.detach().clone())
-        # integ = gm.integrate(mixture_with_regular_cov)
-        # print(f"This should be one: {integ}")
-
         loss = loss1 + cov_cost + amp_cost + ext_cost
-
-        #beb = extends.view(batch_size, 1, 1, 3) / scale
-        #oldrelpos = positions.detach().clone() / beb
 
         loss.backward()
         optimiser_pos.step()
         optimiser_picov.step()
         scheduler_pos.step()
-        #scheduler_picov.step()
 
-        #newrelpos = positions.detach().clone() / beb
-        #posdiffs = (newrelpos - oldrelpos)
-
-        #tensor_board_writer.add_scalar("m. max pos diff", posdiffs.abs().max(), k)
-        #argidx = int(posdiffs.abs().argmax().item() / 3)
-        #print(f"{k}  posdiffargmax: {argidx}, pos: {newrelpos[0,0,argidx,:]}")
-
-        #tensor_board_writer.add_scalar("m. pos grad min", positions.grad.abs().min(), k)
-        #tensor_board_writer.add_scalar("n. pos grad max", positions.grad.abs().max(), k)
-
+        # Send values to Tensorboard
         tensor_board_writer.add_scalar("0. training loss", loss.item(), k)
         tensor_board_writer.add_scalar("1. likelihood loss", loss1.item(), k)
         if penalize_long_gaussians:
@@ -288,11 +260,13 @@ def ad_algorithm(pointclouds: Tensor,
 
         print(f"iterations {k}: loss = {loss.item()}")
 
+        # Evaluate Validation Pointcloud
         if validation_pc is not None and k % 250 == 0:
             v_output = gm.evaluate_inversed(mixture_with_inversed_cov, validation_pc).view(batch_size, -1)
             v_loss = -torch.mean(torch.log(v_output + 0.001), dim=1)
             tensor_board_writer.add_scalar("Validation Likelihood Loss", v_loss.item(), k)
 
+        # Log Positions
         if log_positions:
             _positions = positions.detach().clone()
             _positions -= 0.5
@@ -310,6 +284,7 @@ def ad_algorithm(pointclouds: Tensor,
                     np.savetxt(f, pos_log[b,g,:,:].detach().numpy(), delimiter=" ")
                     f.close()
 
+        # Use Visualizer
         if k % 1000 == 0:
             _amplitudes, _positions, _covariances = rescale_igmm_to_gm(pi_normalized, positions, inversed_covariances,
                                                                     scale, scale2)
@@ -328,6 +303,8 @@ def ad_algorithm(pointclouds: Tensor,
 
     fitting_end = time.time()
     print(f"fitting time: {fitting_end - fitting_start}")
+
+    # Save final GM
     positions = positions.detach()
     covariances = inversed_covariances.detach().inverse().transpose(-1,-2)
     #scaling
@@ -363,31 +340,25 @@ def test():
     np.random.seed(0)
 
     pcs = pointcloud.load_pc_from_off(
-        "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/ModelNet10/pointcloud-lores/ModelNet10/chair/train/chair_0030.off")
-    validation = pointcloud.load_pc_from_off(
-       "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/ModelNet10/pointcloud-lores-validation/ModelNet10/chair/train/chair_0030.off")
-
-    # pcs = pointcloud.load_pc_from_off(
-    #     "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dummy/train.off"
-    # )
+        # "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/ModelNet10/pointcloud-lores/ModelNet10/chair/train/chair_0030.off")
+        "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/ModelNet10/pointcloud/ModelNet10/toilet/train/toilet_0001.off")
     # validation = pointcloud.load_pc_from_off(
-    #     "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dummy/test.off"
-    # )
+    #   "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/ModelNet10/pointcloud-lores-validation/ModelNet10/chair/train/chair_0030.off")
 
-    gms = gm.load(
-        "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/gmc_net/gmc_net_data/models/exvs-lr-0.001/pcgm-.gm")[0]
-    gms = gms[0, :, :, :].view(1, 1, 100, 13)  # [m,1,n_components,13]
+    # gms = gm.load(
+    #     "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/gmc_net/gmc_net_data/models/exvs-lr-0.001/pcgm-.gm")[0]
+    # gms = gms[0, :, :, :].view(1, 1, 100, 13)  # [m,1,n_components,13]
 
     name = input('Name for this training (or empty for auto): ')
     ad_algorithm(
         pointclouds=pcs,
-        n_components=100,
+        n_components=500,
         n_iterations=1000000,
         device='cuda',
         name=name,
         #mixture=gms,
         #start_epoch=0,
-        validation_pc=validation,
+        #validation_pc=validation,
         init_positions_from_pointcloud=True,
         init_weights_equal=False,
         penalize_long_gaussians=False,
