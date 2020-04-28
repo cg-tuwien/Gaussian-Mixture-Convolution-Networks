@@ -38,6 +38,8 @@ validation_pc:  Pointclouds used for validating the result.
 """
 
 
+
+
 def ad_algorithm(pointclouds: Tensor,
                  n_components: int,
                  n_iterations: int,
@@ -54,7 +56,8 @@ def ad_algorithm(pointclouds: Tensor,
                  weight_softmax: bool = False,
                  constant_weights: bool = False,
                  log_positions: bool = False,
-                 learn_rate: float = 0.0001) -> Tensor:
+                 learn_rate_pos: float = 0.01,
+                 learn_rate_wecov: float = 0.02) -> Tensor:
 
     assert len(pointclouds.shape) == 3
     assert pointclouds.shape[2] == 3
@@ -159,10 +162,20 @@ def ad_algorithm(pointclouds: Tensor,
         #optimiser = optim.SGD([positions, icov_factor], lr=learn_rate)
     else:
         #optimiser = optim.Adam([pi_relative, positions, icov_factor], betas=(0.9, 0.9), lr=learn_rate)
-        optimiser = optim.Adam([pi_relative, positions, icov_factor], lr=learn_rate)
+        #optimiser = optim.Adam([pi_relative, positions, icov_factor], lr=learn_rate)
+        #optimiser = optim.SGD([pi_relative, positions, icov_factor], lr=learn_rate, momentum=0.99)
+        #optimiser = optim.Adadelta([pi_relative, positions, icov_factor])
+        optimiser_pos = optim.RMSprop([positions], lr=learn_rate_pos, alpha=0.7, momentum=0.5)
+        #optimiser_pos = optim.Adam([positions], lr=0.01, betas=(0.5,0.7))
+        LRadap = lambda epoch: 1 / (1 + 0.0001*epoch)
+        #scheduler = optim.lr_scheduler.ExponentialLR(optimiser, 0.9999)
+        scheduler_pos = optim.lr_scheduler.LambdaLR(optimiser_pos, LRadap)
+        optimiser_picov = optim.Adam([pi_relative, icov_factor], lr=learn_rate_wecov)
+        #scheduler_picov = optim.lr_scheduler.LambdaLR(optimiser_picov, LRadap)
 
     for k in range(start_epoch, n_iterations):
-        optimiser.zero_grad()
+        optimiser_pos.zero_grad()
+        optimiser_picov.zero_grad()
 
         #Indizes of sample points. Shape: (s), where s is #samples
         sample_point_idz = torch.randperm(point_count)[0:config.eval_pc_n_sample_points]
@@ -188,6 +201,11 @@ def ad_algorithm(pointclouds: Tensor,
             _amplitudes, _positions, _covariances = rescale_igmm_to_gm(pi_normalized, positions, inversed_covariances,
                                                                     scale, scale2)
             gm.write_gm_to_ply(_amplitudes, _positions, _covariances, 0, f"{gm_path}/pcgmm-{0}-initial.ply")
+            if log_positions:
+                _positions = positions.detach().clone()
+                _positions -= 0.5
+                _positions *= scale
+                pos_log[:, :, 0, :] = _positions.view(batch_size, n_components, 3)
 
         # Create Positions Statistics
         # Positions shape: (m,1,n,3), Scale shape: (m,1,1,1), Extends shape: (m,3)
@@ -240,18 +258,21 @@ def ad_algorithm(pointclouds: Tensor,
 
         loss = loss1 + cov_cost + amp_cost + ext_cost
 
-        beb = extends.view(batch_size, 1, 1, 3) / scale
-        oldrelpos = positions.detach().clone() / beb
+        #beb = extends.view(batch_size, 1, 1, 3) / scale
+        #oldrelpos = positions.detach().clone() / beb
 
         loss.backward()
-        optimiser.step()
+        optimiser_pos.step()
+        optimiser_picov.step()
+        scheduler_pos.step()
+        #scheduler_picov.step()
 
-        newrelpos = positions.detach().clone() / beb
-        posdiffs = (newrelpos - oldrelpos)
+        #newrelpos = positions.detach().clone() / beb
+        #posdiffs = (newrelpos - oldrelpos)
 
-        tensor_board_writer.add_scalar("m. max pos diff", posdiffs.abs().max(), k)
-        argidx = int(posdiffs.abs().argmax().item() / 3)
-        print(f"{k}  posdiffargmax: {argidx}, pos: {newrelpos[0,0,argidx,:]}")
+        #tensor_board_writer.add_scalar("m. max pos diff", posdiffs.abs().max(), k)
+        #argidx = int(posdiffs.abs().argmax().item() / 3)
+        #print(f"{k}  posdiffargmax: {argidx}, pos: {newrelpos[0,0,argidx,:]}")
 
         #tensor_board_writer.add_scalar("m. pos grad min", positions.grad.abs().min(), k)
         #tensor_board_writer.add_scalar("n. pos grad max", positions.grad.abs().max(), k)
@@ -276,13 +297,13 @@ def ad_algorithm(pointclouds: Tensor,
             _positions = positions.detach().clone()
             _positions -= 0.5
             _positions *= scale
-            pos_log[:,:,k%500,:] = _positions.view(batch_size, n_components, 3)
+            pos_log[:,:,(k+1)%500,:] = _positions.view(batch_size, n_components, 3)
             if _positions.max() > bbmax.max():
                 print(f"{int(_positions.argmax() / 3)} is far oustide");
             if _positions.min() < bbmin.min():
                 print(f"{int(_positions.argmin() / 3)} is far outside");
 
-        if log_positions and (k+1) % 500 == 0:
+        if log_positions and (k+2) % 500 == 0:
             for b in range(batch_size):
                 for g in range(n_components):
                     f = open(f"{gm_path}/pos-b{b}-g{g}.txt", "a+")
@@ -375,7 +396,8 @@ def test():
         weight_softmax=False,
         constant_weights=False,
         log_positions=True,
-        learn_rate=0.02
+        learn_rate_pos=0.01,
+        learn_rate_wecov=0.02
     )
 
 test()
