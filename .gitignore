@@ -12,3 +12,4 @@
 /documentation/*/*.out
 *.synctex.gz
 /documentation/*/*.pdf
+/gmc_net_data/models/*

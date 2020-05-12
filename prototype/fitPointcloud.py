@@ -12,6 +12,7 @@ import torch.utils.tensorboard
 import datetime
 import typing
 import madam_imagetools
+import gc
 
 import gm
 import mat_tools
@@ -68,8 +69,9 @@ def ad_algorithm(pointclouds: Tensor,
     vis3d.set_camera_auto(True)
     vis3d.set_pointclouds(pointclouds)
     vis3d.set_density_rendering(True, pygmvis.GMDensityRenderMode.ADDITIVE_ACC_PROJECTED)
+    vis3d.set_ellipsoid_coloring(pygmvis.GMColoringRenderMode.COLOR_WEIGHT, pygmvis.GMColorRangeMode.RANGE_MEDMED)
     vis3d.set_positions_rendering(True, True)
-    vis3d.set_positions_coloring(pygmvis.GMColoringRenderMode.COLOR_AMPLITUDE, pygmvis.GMColorRangeMode.RANGE_MEDMED)
+    vis3d.set_positions_coloring(pygmvis.GMColoringRenderMode.COLOR_WEIGHT, pygmvis.GMColorRangeMode.RANGE_MEDMED)
 
     batch_size = pointclouds.shape[0]
     point_count = pointclouds.shape[1]
@@ -149,7 +151,9 @@ def ad_algorithm(pointclouds: Tensor,
 
     # --OPTIMIZER-INITIALIZATION----------------------------------------
 
-    optimiser_pos = optim.RMSprop([positions], lr=learn_rate_pos, alpha=0.7, momentum=0.0)
+    #optimiser_pos = optim.RMSprop([positions], lr=learn_rate_pos, alpha=0.7, momentum=0.0)
+    optimiser_pos = optim.Adam([positions], lr=learn_rate_pos)
+    #optimiser_pos = optim.SGD([positions], lr=learn_rate_pos)
     LRadap = lambda epoch: 1 / (1 + 0.0001 * epoch)
     scheduler_pos = optim.lr_scheduler.LambdaLR(optimiser_pos, LRadap)
 
@@ -246,7 +250,7 @@ def ad_algorithm(pointclouds: Tensor,
         loss.backward()
         optimiser_pos.step()
         optimiser_picov.step()
-        scheduler_pos.step()
+        #scheduler_pos.step()
 
         # Send values to Tensorboard
         tensor_board_writer.add_scalar("0. training loss", loss.item(), k)
@@ -265,6 +269,8 @@ def ad_algorithm(pointclouds: Tensor,
             v_output = gm.evaluate_inversed(mixture_with_inversed_cov, validation_pc).view(batch_size, -1)
             v_loss = -torch.mean(torch.log(v_output + 0.001), dim=1)
             tensor_board_writer.add_scalar("Validation Likelihood Loss", v_loss.item(), k)
+            del v_output
+            del v_loss
 
         # Log Positions
         if log_positions:
@@ -300,6 +306,10 @@ def ad_algorithm(pointclouds: Tensor,
                 #gm.write_gm_to_ply(_amplitudes, _positions, _covariances, i, f"{gm_path}/pcgm-{i}.ply")
                 gm.write_gm_to_ply(_amplitudes, _positions, _covariances, i, f"{gm_path}/pcgmm-{i}-" + str(k).zfill(5) + ".ply")
             gm.save(_mixture, f"{gm_path}/pcgm-{i}.gm")
+
+        del output
+        gc.collect()
+        torch.cuda.empty_cache()
 
     fitting_end = time.time()
     print(f"fitting time: {fitting_end - fitting_start}")
@@ -340,10 +350,12 @@ def test():
     np.random.seed(0)
 
     pcs = pointcloud.load_pc_from_off(
-        # "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/ModelNet10/pointcloud-lores/ModelNet10/chair/train/chair_0030.off")
-        "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/ModelNet10/pointcloud/ModelNet10/toilet/train/toilet_0001.off")
+        # "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/daav/face02.off")
+        # "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/ModelNet10/pointcloud/ModelNet10/chair/train/chair_0030.off")
+        "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/ModelNet10/pointcloud-lores-validation/ModelNet10/chair/train/chair_0030.off")
+        # "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/ModelNet10/pointcloud/ModelNet10/toilet/train/toilet_0001.off")
     # validation = pointcloud.load_pc_from_off(
-    #   "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/ModelNet10/pointcloud-lores-validation/ModelNet10/chair/train/chair_0030.off")
+    #    "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/ModelNet10/pointcloud-lores-validation/ModelNet10/chair/train/chair_0030.off")
 
     # gms = gm.load(
     #     "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/gmc_net/gmc_net_data/models/exvs-lr-0.001/pcgm-.gm")[0]
@@ -352,7 +364,7 @@ def test():
     name = input('Name for this training (or empty for auto): ')
     ad_algorithm(
         pointclouds=pcs,
-        n_components=500,
+        n_components=2000,
         n_iterations=1000000,
         device='cuda',
         name=name,
@@ -367,7 +379,7 @@ def test():
         weight_softmax=False,
         constant_weights=False,
         log_positions=True,
-        learn_rate_pos=0.01,
+        learn_rate_pos=0.001,
         learn_rate_wecov=0.02
     )
 

@@ -510,3 +510,36 @@ def write_gm_to_ply(weights: Tensor, positions: Tensor, covariances: Tensor, bat
     #     file.write(f"{_covs[i,1,1].item()}  {_covs[i,1,2].item()}  {_covs[i,2,2].item()}  ")
     #     file.write(f"{_weights[i].item()}\n")
     file.close()
+
+def read_gm_from_ply(filename: str, ismodel: bool) -> Tensor:
+    #THIS IS VERY SIMPLE AND NOT GENERAL
+    fin = open(filename)
+    header = True
+    index = 0
+    for line in fin:
+        if header:
+            if line.startswith("element component "):
+                number = int(line[18:])
+                gmpos = torch.zeros((1, 1, number, 3))
+                gmcov = torch.zeros((1, 1, number, 3, 3))
+                gmwei = torch.zeros((1, 1, number))
+            elif line.startswith("end_header"):
+                header = False
+        else:
+            elements = line.split("  ")
+            gmpos[0, 0, index, :] = torch.tensor([float(e) for e in elements[0:3]])
+            gmcov[0, 0, index, 0, 0] = float(elements[3])
+            gmcov[0, 0, index, 0, 1] = gmcov[0, 0, index, 1, 0] = float(elements[4])
+            gmcov[0, 0, index, 0, 2] = gmcov[0, 0, index, 2, 0] = float(elements[5])
+            gmcov[0, 0, index, 1, 1] = float(elements[6])
+            gmcov[0, 0, index, 1, 2] = gmcov[0, 0, index, 2, 1] = float(elements[7])
+            gmcov[0, 0, index, 2, 2] = float(elements[8])
+            gmwei[0, 0, index] = float(elements[9])
+            index = index + 1
+    fin.close()
+    if ismodel:
+        gmwei /= sum(gmwei)
+        amplitudes = gmwei / gmcov.det()
+        return pack_mixture(amplitudes, gmpos, gmcov)
+    else:
+        return pack_mixture(gmwei, gmpos, gmcov)
