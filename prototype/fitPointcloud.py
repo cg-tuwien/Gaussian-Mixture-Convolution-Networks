@@ -13,6 +13,7 @@ import datetime
 import typing
 import madam_imagetools
 import gc
+import struct
 
 import gm
 import mat_tools
@@ -53,12 +54,13 @@ def ad_algorithm(pointclouds: Tensor,
                  init_weights_equal: bool = False,
                  penalize_long_gaussians: bool = False,
                  penalize_amplitude_differences: bool = False,
-                 penalize_small_extends: bool = False,
+                 penalize_extends_differences: bool = False,
                  weight_softmax: bool = False,
                  constant_weights: bool = False,
                  log_positions: bool = False,
-                 learn_rate_pos: float = 0.01,
-                 learn_rate_wecov: float = 0.02) -> Tensor:
+                 learn_rate_pos: float = 0.001,
+                 learn_rate_cov: float = 0.02,
+                 learn_rate_wei: float = 0.0005) -> Tensor:
 
     assert len(pointclouds.shape) == 3
     assert pointclouds.shape[2] == 3
@@ -69,7 +71,7 @@ def ad_algorithm(pointclouds: Tensor,
     vis3d.set_camera_auto(True)
     vis3d.set_pointclouds(pointclouds)
     vis3d.set_density_rendering(True, pygmvis.GMDensityRenderMode.ADDITIVE_ACC_PROJECTED)
-    vis3d.set_ellipsoid_coloring(pygmvis.GMColoringRenderMode.COLOR_WEIGHT, pygmvis.GMColorRangeMode.RANGE_MEDMED)
+    vis3d.set_ellipsoid_coloring(pygmvis.GMColoringRenderMode.COLOR_WEIGHT, pygmvis.GMColorRangeMode.RANGE_MINMAX)
     vis3d.set_positions_rendering(True, True)
     vis3d.set_positions_coloring(pygmvis.GMColoringRenderMode.COLOR_WEIGHT, pygmvis.GMColorRangeMode.RANGE_MEDMED)
 
@@ -151,16 +153,20 @@ def ad_algorithm(pointclouds: Tensor,
 
     # --OPTIMIZER-INITIALIZATION----------------------------------------
 
-    #optimiser_pos = optim.RMSprop([positions], lr=learn_rate_pos, alpha=0.7, momentum=0.0)
-    optimiser_pos = optim.Adam([positions], lr=learn_rate_pos)
+    #optimiser_pos = optim.RMSprop([positions], lr=learn_rate_pos, alpha=0.99, momentum=0.0)
+    optimiser_pos = optim.RMSprop([positions], lr=learn_rate_pos, alpha=0.7, momentum=0.0)
+    #optimiser_pos = optim.Adam([positions], lr=learn_rate_pos)
     #optimiser_pos = optim.SGD([positions], lr=learn_rate_pos)
     LRadap = lambda epoch: 1 / (1 + 0.0001 * epoch)
     scheduler_pos = optim.lr_scheduler.LambdaLR(optimiser_pos, LRadap)
+    optimiser_cov = optim.Adam([icov_factor], lr=learn_rate_cov)
+    #ptimiser_cov = optim.SGD([icov_factor], lr=learn_rate_cov)
 
     if constant_weights:
-        optimiser_picov = optim.Adam([icov_factor], lr=learn_rate_wecov)
+        optimiser_pi = None
     else:
-        optimiser_picov = optim.Adam([pi_relative, icov_factor], lr=learn_rate_wecov)
+        optimiser_pi = optim.Adam([pi_relative], lr=learn_rate_wei)
+        #optimiser_pi = optim.SGD([pi_relative], lr=learn_rate_wei)
 
 
     # --DIRECTORY-PREPERATION-------------------------------------------
@@ -179,7 +185,7 @@ def ad_algorithm(pointclouds: Tensor,
         pos_log = torch.zeros((batch_size,n_components,500,3))
         for b in range(batch_size):
             for g in range(n_components):
-                f = open(f"{gm_path}/pos-b{b}-g{g}.txt", "w+")
+                f = open(f"{gm_path}/pos-b{b}-g{g}.bin", "w+")
                 f.close()
 
     # Log initial gm and positions
@@ -196,10 +202,15 @@ def ad_algorithm(pointclouds: Tensor,
 
     fitting_start = time.time()
     print(datetime.datetime.now().strftime("%H:%M:%S"))
+    mixture_with_regular_cov = gm.pack_mixture(pi_normalized, positions, covariances.detach().clone())
+    integ = torch.abs(gm.integrate(mixture_with_regular_cov) - 1).view(batch_size).sum()
+    print(f"integral: {integ}")
 
     for k in range(start_epoch, n_iterations):
         optimiser_pos.zero_grad()
-        optimiser_picov.zero_grad()
+        optimiser_cov.zero_grad()
+        if optimiser_pi:
+            optimiser_pi.zero_grad()
 
         # Get Sample Points for Loss Evaluation
         sample_point_idz = torch.randperm(point_count)[0:config.eval_pc_n_sample_points] #Shape: (s), where s is #samples
@@ -236,20 +247,24 @@ def ad_algorithm(pointclouds: Tensor,
 
         amp_cost = torch.tensor(0)
         if penalize_amplitude_differences:
-            amp_cost = amplitudes.max() / amplitudes.min()
-            amp_cost = amp_cost.where(amp_cost > torch.zeros_like(amp_cost), torch.zeros_like(amp_cost)).sum()
+            amp_cost = pi_normalized.std()
+            #amp_cost = pi_normalized.max() / pi_normalized.min()
+            amp_cost = amp_cost.where(amp_cost > torch.ones(amp_cost.shape)*1e-4, torch.zeros_like(amp_cost)).sum()*1000
 
         ext_cost = torch.tensor(0)
-        if penalize_small_extends:
+        if penalize_extends_differences:
             eigenvalues: Tensor = torch.symeig(covariances, eigenvectors=True).eigenvalues
             largest_eigenvalue = eigenvalues[:, :, :, -1]
-            ext_cost = -largest_eigenvalue.mean()
+            ext_cost = largest_eigenvalue.std()
 
         loss = loss1 + cov_cost + amp_cost + ext_cost
+        #loss = loss1 + cov_cost + ext_cost
 
         loss.backward()
         optimiser_pos.step()
-        optimiser_picov.step()
+        optimiser_cov.step()
+        if optimiser_pi:
+            optimiser_pi.step()
         #scheduler_pos.step()
 
         # Send values to Tensorboard
@@ -259,10 +274,13 @@ def ad_algorithm(pointclouds: Tensor,
             tensor_board_writer.add_scalar("2. length loss", cov_cost.item(), k)
         if penalize_amplitude_differences:
             tensor_board_writer.add_scalar("3. ampl loss", amp_cost.item(), k)
-        if penalize_small_extends:
+        if penalize_extends_differences:
             tensor_board_writer.add_scalar("4. extend loss", ext_cost.item(), k)
 
         print(f"iterations {k}: loss = {loss.item()}")
+        # mixture_with_regular_cov = gm.pack_mixture(pi_normalized, positions, covariances.detach().clone())
+        # integ = torch.abs(gm.integrate(mixture_with_regular_cov) - 1).view(batch_size).sum()
+        # print(f"integral: {integ}")
 
         # Evaluate Validation Pointcloud
         if validation_pc is not None and k % 250 == 0:
@@ -286,16 +304,19 @@ def ad_algorithm(pointclouds: Tensor,
         if log_positions and (k+2) % 500 == 0:
             for b in range(batch_size):
                 for g in range(n_components):
-                    f = open(f"{gm_path}/pos-b{b}-g{g}.txt", "a+")
-                    np.savetxt(f, pos_log[b,g,:,:].detach().numpy(), delimiter=" ")
+                    f = open(f"{gm_path}/pos-b{b}-g{g}.bin", "a+b")
+                    pdata = pos_log[b,g,:,:].view(-1)
+                    bin = struct.pack('<' + 'd'*len(pdata),*pdata) #little endian!
+                    f.write(bin)
                     f.close()
 
         # Use Visualizer
-        if k % 1000 == 0:
+        if k % 250 == 0:
             _amplitudes, _positions, _covariances = rescale_igmm_to_gm(pi_normalized, positions, inversed_covariances,
                                                                     scale, scale2)
 
             _mixture = gm.pack_mixture(_amplitudes, _positions, _covariances)
+            vis3d.set_pointclouds(pointclouds)
             vis3d.set_gaussian_mixtures(_mixture.detach().cpu(), isgmm=False)
             res = vis3d.render(k)
             for i in range(res.shape[0]):
@@ -306,6 +327,17 @@ def ad_algorithm(pointclouds: Tensor,
                 #gm.write_gm_to_ply(_amplitudes, _positions, _covariances, i, f"{gm_path}/pcgm-{i}.ply")
                 gm.write_gm_to_ply(_amplitudes, _positions, _covariances, i, f"{gm_path}/pcgmm-{i}-" + str(k).zfill(5) + ".ply")
             gm.save(_mixture, f"{gm_path}/pcgm-{i}.gm")
+
+            # _mixture = gm.pack_mixture(amplitudes.clone(), positions.clone(), covariances.clone())
+            # vis3d.set_pointclouds(target.clone().cpu())
+            # vis3d.set_gaussian_mixtures(_mixture.detach().cpu(), isgmm=False)
+            # res = vis3d.render(k)
+            # for i in range(res.shape[0]):
+            #     tensor_board_writer.add_image(f"GMX {i}, Ellipsoids", res[i, 0, :, :, :], k, dataformats="HWC")
+            #     tensor_board_writer.add_image(f"GMX {i}, Positions", res[i, 1, :, :, :], k, dataformats="HWC")
+            #     tensor_board_writer.add_image(f"GMX {i}, Density", res[i, 2, :, :, :], k, dataformats="HWC")
+            #     tensor_board_writer.flush()
+            #     gm.write_gm_to_ply(amplitudes, positions, covariances, i, f"{gm_path}/pcgmmX-{i}-" + str(k).zfill(5) + ".ply")
 
         del output
         gc.collect()
@@ -351,12 +383,19 @@ def test():
 
     pcs = pointcloud.load_pc_from_off(
         # "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/daav/face02.off")
+        # "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/TEST3.off")
         # "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/ModelNet10/pointcloud/ModelNet10/chair/train/chair_0030.off")
-        "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/ModelNet10/pointcloud-lores-validation/ModelNet10/chair/train/chair_0030.off")
+        # "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/ModelNet10/pointcloud-lores/ModelNet10/chair/train/chair_0030.off")
+        # "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/ModelNet10/pointcloud-lores-validation/ModelNet10/chair/train/chair_0030.off")
+        "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/ModelNet10/pointcloud-hires/ModelNet10/chair/train/chair_0030.off")
         # "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/ModelNet10/pointcloud/ModelNet10/toilet/train/toilet_0001.off")
     # validation = pointcloud.load_pc_from_off(
     #    "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/ModelNet10/pointcloud-lores-validation/ModelNet10/chair/train/chair_0030.off")
 
+    #gms = gm.read_gm_from_ply("D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/TEST3-preiner2.ply", True)
+    #gms = gm.read_gm_from_ply("D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/gmc_net/gmc_net_data/models/TEST3-PREINER3/pcgmm-0-109750.ply", False).cuda()
+    #gms = gm.read_gm_from_ply("D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/da-gm-1/da-gm-1/data/c_30HR.ply", True)
+    #gms = gms[0, :, :, :].view(1, 1, 88, 13)
     # gms = gm.load(
     #     "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/gmc_net/gmc_net_data/models/exvs-lr-0.001/pcgm-.gm")[0]
     # gms = gms[0, :, :, :].view(1, 1, 100, 13)  # [m,1,n_components,13]
@@ -364,7 +403,7 @@ def test():
     name = input('Name for this training (or empty for auto): ')
     ad_algorithm(
         pointclouds=pcs,
-        n_components=2000,
+        n_components=32684,
         n_iterations=1000000,
         device='cuda',
         name=name,
@@ -372,15 +411,16 @@ def test():
         #start_epoch=0,
         #validation_pc=validation,
         init_positions_from_pointcloud=True,
-        init_weights_equal=False,
+        init_weights_equal=True,
         penalize_long_gaussians=False,
         penalize_amplitude_differences=False,
-        penalize_small_extends=False,
+        penalize_extends_differences=False,
         weight_softmax=False,
         constant_weights=False,
-        log_positions=True,
+        log_positions=False,
         learn_rate_pos=0.001,
-        learn_rate_wecov=0.02
+        learn_rate_cov=1.0,
+        learn_rate_wei=0.000
     )
 
 test()

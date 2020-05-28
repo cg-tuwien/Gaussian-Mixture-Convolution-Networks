@@ -538,8 +538,8 @@ def read_gm_from_ply(filename: str, ismodel: bool) -> Tensor:
             index = index + 1
     fin.close()
     if ismodel:
-        gmwei /= sum(gmwei)
-        amplitudes = gmwei / gmcov.det()
+        gmwei /= gmwei.sum()
+        amplitudes = gmwei / (gmcov.det().sqrt() * 15.74960995)
         return pack_mixture(amplitudes, gmpos, gmcov)
     else:
         return pack_mixture(gmwei, gmpos, gmcov)
