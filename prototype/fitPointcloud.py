@@ -66,6 +66,8 @@ def ad_algorithm(pointclouds: Tensor,
     assert pointclouds.shape[2] == 3
     assert n_components > 0
 
+    epsilon = 0.000000001
+
     # Create Visualizer
     vis3d = pygmvis.create_visualizer(async=False, width=500, height=500)
     vis3d.set_camera_auto(True)
@@ -146,7 +148,7 @@ def ad_algorithm(pointclouds: Tensor,
     if not create_new_mixture:
         covariances /= scale2   # Covariances need to be downscaled
     inversed_covariances = covariances.inverse() # shape: (m,1,n,3,3)
-    (eigvals, eigvecs) = torch.symeig(inversed_covariances, eigenvectors=True)
+    (eigvals, eigvecs) = torch.symeig(inversed_covariances - torch.eye(3, 3, device=mixture.device) * epsilon, eigenvectors=True)
     eigvals = torch.max(eigvals, torch.tensor([0.01], dtype=torch.float32, device=device))
     icov_factor = torch.matmul(eigvecs, eigvals.sqrt().diag_embed())
     icov_factor.requires_grad = True
@@ -180,9 +182,11 @@ def ad_algorithm(pointclouds: Tensor,
     gm_path = config.data_base_path / 'models' / name
     os.mkdir(gm_path)
 
+    pos_log_size = 500
+
     if log_positions:
         # Create Log Files
-        pos_log = torch.zeros((batch_size,n_components,500,3))
+        pos_log = torch.zeros((batch_size,n_components,pos_log_size,3))
         for b in range(batch_size):
             for g in range(n_components):
                 f = open(f"{gm_path}/pos-b{b}-g{g}.bin", "w+")
@@ -216,7 +220,7 @@ def ad_algorithm(pointclouds: Tensor,
         sample_point_idz = torch.randperm(point_count)[0:config.eval_pc_n_sample_points] #Shape: (s), where s is #samples
         sample_points = target[:, sample_point_idz, :]  #shape: (m,s,3)
         sample_points_in = sample_points.view(batch_size, 1, min(point_count, config.eval_pc_n_sample_points), 3) #shape: (m,1,s,3)
-        inversed_covariances = icov_factor @ icov_factor.transpose(-2, -1) + torch.eye(3, 3, device=mixture.device) * 0.001 #eps
+        inversed_covariances = icov_factor @ icov_factor.transpose(-2, -1) + torch.eye(3, 3, device=mixture.device) * epsilon
         assert not torch.isnan(inversed_covariances).any()
         assert not torch.isinf(inversed_covariances).any()
 
@@ -231,10 +235,14 @@ def ad_algorithm(pointclouds: Tensor,
         covariances = inversed_covariances.inverse()
         amplitudes = pi_normalized / (covariances.det().sqrt() * 15.74960995)
 
+        # print("icov sym?", (inversed_covariances.transpose(-2,-1) == inversed_covariances).all())
+        # print("cov sym?", (covariances.transpose(-2,-1) == covariances).all())
+        # print("cov pd?", (covariances.det() > 0).all())
+
         # Calculate main loss
         mixture_with_inversed_cov = gm.pack_mixture(amplitudes, positions, inversed_covariances) # shape first (m,1,s), then after view (m,s)
         output = gm.evaluate_inversed(mixture_with_inversed_cov, sample_points_in).view(batch_size, -1)
-        loss1 = -torch.mean(torch.log(output + 0.001), dim=1)
+        loss1 = -torch.mean(torch.log(output + 0.00001), dim=1)
 
         # Calculate possible regularization losses
         cov_cost = torch.tensor(0)
@@ -295,13 +303,13 @@ def ad_algorithm(pointclouds: Tensor,
             _positions = positions.detach().clone()
             _positions -= 0.5
             _positions *= scale
-            pos_log[:,:,(k+1)%500,:] = _positions.view(batch_size, n_components, 3)
+            pos_log[:,:,(k+1)%pos_log_size,:] = _positions.view(batch_size, n_components, 3)
             if _positions.max() > bbmax.max():
                 print(f"{int(_positions.argmax() / 3)} is far oustide");
             if _positions.min() < bbmin.min():
                 print(f"{int(_positions.argmin() / 3)} is far outside");
 
-        if log_positions and (k+2) % 500 == 0:
+        if log_positions and (k+2) % pos_log_size == 0:
             for b in range(batch_size):
                 for g in range(n_components):
                     f = open(f"{gm_path}/pos-b{b}-g{g}.bin", "a+b")
@@ -394,7 +402,9 @@ def test():
 
     #gms = gm.read_gm_from_ply("D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/TEST3-preiner2.ply", True)
     #gms = gm.read_gm_from_ply("D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/gmc_net/gmc_net_data/models/TEST3-PREINER3/pcgmm-0-109750.ply", False).cuda()
-    #gms = gm.read_gm_from_ply("D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/da-gm-1/da-gm-1/data/c_30HR.ply", True)
+    gms = gm.read_gm_from_ply("D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/da-gm-1/da-gm-1/data/c_30HR.ply", True).cuda()
+    #gms = gm.read_gm_from_ply("D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/gmc_net/gmc_net_data/models/GDPREINER-onlyp-0.001-loged/pcgmm-0-initial.ply", False).cuda()
+    #gms = gm.read_gm_from_ply("D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/gmc_net/gmc_net_data/models/gdp-inout/pcgmm-0-initial.ply", False).cuda()
     #gms = gms[0, :, :, :].view(1, 1, 88, 13)
     # gms = gm.load(
     #     "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/gmc_net/gmc_net_data/models/exvs-lr-0.001/pcgm-.gm")[0]
@@ -407,7 +417,7 @@ def test():
         n_iterations=1000000,
         device='cuda',
         name=name,
-        #mixture=gms,
+        mixture=gms,
         #start_epoch=0,
         #validation_pc=validation,
         init_positions_from_pointcloud=True,
@@ -420,7 +430,7 @@ def test():
         log_positions=False,
         learn_rate_pos=0.001,
         learn_rate_cov=1.0,
-        learn_rate_wei=0.000
+        learn_rate_wei=0.0005
     )
 
 test()
