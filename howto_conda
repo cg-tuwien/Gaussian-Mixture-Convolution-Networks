@@ -1,0 +1,10 @@
+add pytorch channel, because they are more up to date
+conda config --add channels pytorch
+
+if you use just the pytorch install command, the channel is not in highest priority and anaconda environment updates might downgrade pytorch
+
+
+conda update --all
+
+pip install --upgrade tensorflow # tf 2.2+
+
