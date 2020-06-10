@@ -2,7 +2,7 @@ import gm_fitting
 import experiment_gm_mnist
 import sys
 
-learning_rate_kernels = 0.0005
+learning_rate_kernels = 0.001
 learning_rate_fitting = 0.001
 log_interval = 1000
 
