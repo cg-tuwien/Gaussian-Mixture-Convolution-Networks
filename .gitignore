@@ -27,3 +27,6 @@
 /prototype/experiment_dl_7.py
 /prototype/experiment_dl_8.py
 /prototype/experiment_dl_9.py
+/cpp_modules/build-gm_evaluate*
+/cpp_modules/gm_evaluate/__pycache__/*
+/cpp_modules/gm_evaluate/CMakeLists.txt.user

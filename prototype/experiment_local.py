@@ -12,4 +12,24 @@ import os
 source_dir = os.path.dirname(__file__)
 sys.path.append(source_dir + '/../cpp_modules')
 
+import time
+
+import torch
 import gm_evaluate.jit
+import gm
+
+mixture = gm.generate_random_mixtures(50, 10, 600, 2)
+xes = torch.rand([50, 10, 600, 2])
+
+start_time = time.perf_counter()
+print("python started")
+ref = gm.evaluate_inversed(mixture, xes)
+ref_time = time.perf_counter()
+print("cpp started")
+out = gm_evaluate.jit.gm_evaluate_inversed_cpu.forward(mixture, xes)
+cpp_time = time.perf_counter()
+
+
+print(f"err: {((ref - out)**2).mean().item()}")
+print(f"python: {ref_time - start_time}")
+print(f"cpp: {cpp_time - ref_time}")
