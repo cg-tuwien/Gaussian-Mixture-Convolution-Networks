@@ -1,0 +1,239 @@
+% ---------------------------------------------------------------------------
+\documentclass{paper}
+
+\usepackage[T1]{fontenc}
+
+%\usepackage{cite}  % comment out for biblatex with backend=biber 
+% ---------------------------
+
+
+
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsthm}
+\usepackage{supertabular}
+%\usepackage{cite}
+%\usepackage[utf8]{inputenc}
+\usepackage[font={it},labelfont={bf,up}]{caption}
+\usepackage[font={small,it}]{subcaption}
+\usepackage{hyperref}
+\hypersetup{
+	colorlinks=true,
+	linkcolor=blue,
+	filecolor=magenta,      
+	urlcolor=blue,
+	citecolor=magenta,
+}
+
+\newtheorem{theorem}{Theorem}
+% end of prologue
+
+\newcommand{\todo}[1]{{\color{red}\textbf{(TODO: {#1})}}} % Comment for the final version, to raise errors.
+\newcommand{\MW}[1]{{\color[rgb]{0,0.7,0}\textbf{(MW: {#1})}}} % Comment for the final version, to raise errors.
+\newcommand{\AC}[1]{{\color{magenta}{#1}}} % Comment for the final version, to raise errors.
+\newcommand{\abs}[1]{\left| #1 \right|}
+\newcommand{\tAbs}[1]{| #1 |}
+\newcommand{\F}{\ensuremath{\mathcal{F}}}
+\newcommand{\vr}[1]{\ensuremath{\boldsymbol{#1}}}
+\newcommand{\mx}[1]{\ensuremath{#1}}
+\newcommand{\tr}[1]{\ensuremath{\boldsymbol{#1}}}
+\newcommand{\T}[1]{\ensuremath{{#1}^T}}
+\newcommand{\f}[1]{\operatorname{#1}}
+\newcommand*\diff{\mathop{}\!\mathrm{d}}
+
+\newcommand{\alphavec}[0]{\ensuremath{\vr{\alpha{}}}}
+\newcommand{\betavec}[0]{\ensuremath{\vr{\beta{}}}}
+\newcommand{\omegavec}[0]{\ensuremath{\vr{\omega{}}}}
+\newcommand{\xivec}[0]{\ensuremath{\vr{\xi{}}}}
+\newcommand{\avec}[0]{\ensuremath{\vr{a}}}
+\newcommand{\bvec}[0]{\ensuremath{\vr{b}}}
+\newcommand{\xvec}[0]{\ensuremath{\vr{x}}}
+\newcommand{\yvec}[0]{\ensuremath{\vr{y}}}
+\newcommand{\zvec}[0]{\ensuremath{\vr{z}}}
+
+\newcommand{\Ctns}[0]{\ensuremath{\tr{C}}}
+\newcommand{\Gammatns}[0]{\ensuremath{\tr{\Gamma}}}
+
+\newcount\colveccount
+\newcommand*\colvec[1]{
+	\global\colveccount#1
+	\begin{pmatrix}
+		\colvecnext
+	}
+	\def\colvecnext#1{
+		#1
+		\global\advance\colveccount-1
+		\ifnum\colveccount>0
+		\\
+		\expandafter\colvecnext
+		\else
+	\end{pmatrix}
+	\fi
+}
+
+% ---------------------------------------------------------------------
+
+\title{Derivatives of Gaussian Mixtures with respect to \vr{x} and the parameters}
+\author{Adam Celarek\\Research Unit of Computer Graphics, TU Wien}
+
+\begin{document}
+\maketitle
+
+%-------------------------------------------------------------------------
+\section{Definitions}
+\subsection*{Notation}
+\begin{center}
+	\begin{supertabular}{rp{8cm}}
+		$a$	& Scalar \\
+		$\vr{a}$	& Column vector \\
+		$\mx{A}$			& Matrix \\ 
+		$\tr{A}$	& Tensor/Array with more than 2 dimensions, e.g. $\tr{A} \in \mathbb{R}^{L \times M \times N}$ \\ 
+		$\tr{A}_{\star, 3, 2}$
+					& Element of an array.
+					The first index is the row, the second a column and the third a slice.
+					"$\star$" selects all elements in that dimension.
+					So in this case the full 3rd column of the second slice. \\ 
+		$A^T, \vr{a}^T$
+					& Transpose of $A$ and row vector $\vr{a}$ \\
+		$i$			& Imaginary unit \\
+		$\vr{x}, \vr{\omega}$
+					& Spatial (time) domain and frequency domain coordinates \\
+		$f(\vr{x})$
+					& Function in spatial space \\
+		$F(\vr{\omega})$
+					& Function in Fourier space \\
+		$F = \F f$
+					& Fourier transform \\
+		$f = \F^{-1} F$
+					& Inverse Fourier transform \\
+	\end{supertabular}
+\end{center}
+Zero based indices are used and summation ends at $N-1$.
+
+\subsection*{Gaussian function and mixture model}
+We define the multi dimensional Gaussian function as
+\begin{align}
+\label{eq:gaussian_definition}
+g(\vr{x}, a, \vr{b}, C) = a e^{-\frac{1}{2}(\vr{x}-\vr{b})^TC(\vr{x}-\vr{b})},
+\end{align}
+where $a$ is the height, $\vr{b}$ the shift, $C$ the inverse of the shape (inverse of the covariance) of the Gaussian, and all parameters are real.
+We use the inverse of the covariance in here, because the inversion is taken care of by our machine learning framework.
+The factor $\frac{1}{2}$ and the inversion of $C$ are there to make convolution simpler.
+This Gaussian would turn into a normal distribution if $a$ were replaced with the inverse of the integral of $e^{-\frac{1}{2}...}$.
+
+A Gaussian mixture is defined as
+\begin{align}
+	m(\vr{x}, \vr{a}, B, \tr{C}) = \sum_{n=0}^{N} g(\vr{x}, \vr{a}_n, B_{\star, n}, C_{\star, \star, n}),
+\end{align}
+where $N$ is the number of Gaussians.
+Our definition does not include any normalisation.
+If desired, this could be included in $\vr{a}$.
+
+\section{Theorems}
+\begin{theorem}
+	\label{th:der_xAx_respect_z}
+	Let the scalar $\alpha$ be defined by the quadratic form
+	\begin{align}
+		\alpha = \vr{x}^T \mx{A} \vr{x},
+	\end{align}
+	where $\vr{x}$ is $n \times 1$, $\mx{A}$ is symmetric $n \times n$, and $\vr{x}$ is a function of the vector $\vr{z}$, while $\mx{A}$ does not depend on $\vr{z}$. Then
+	\begin{align}
+		\frac{\partial \alpha}{\partial \vr{z}} = 2 \vr{x}^T \mx{A}\frac{\partial \vr{x}}{\partial \vr{z}}.
+	\end{align}
+\end{theorem}
+
+\begin{proof}
+	See Barnes \cite{Barnes}, Proposition 14.
+\end{proof}
+
+\begin{theorem}
+	\label{th:der_xAx_respect_A}
+	Let the scalar $\alpha$ be defined by the quadratic form
+	\begin{align}
+	\alpha = \vr{x}^T \mx{A} \vr{x},
+	\end{align}
+	where $\vr{x}$ is $n \times 1$, and $\mx{A}$ is $n \times n$. Then
+	\begin{align}
+	\frac{\partial \alpha}{\partial \mx{C}} = \vr{x} \vr{x}^T.
+	\end{align}
+\end{theorem}
+
+\begin{proof}
+	\begin{align}
+		\alpha &= \vr{x}^T \mx{A} \vr{x} \\
+		&=
+		\begin{pmatrix}
+			x_1 & \ldots & x_n
+		\end{pmatrix}
+		\begin{pmatrix}
+			c_{11} & \ldots & c_{1n} \\
+			\vdots & \ddots & \vdots \\
+			c_{n1} & \ldots & c_{nn}
+		\end{pmatrix}
+		\begin{pmatrix}
+			x_1 \\
+			\vdots \\
+			x_n
+		\end{pmatrix} = \sum_{i=1}^{n} \sum_{j=1}^{n} x_i x_j c_{ij}
+	\end{align}
+	The derivative of $\alpha$ with respect to element $c_{ij}$ in matrix $\mx{C}$ is $x_i x_j$.
+	We can now construct a matrix with derivatives
+	\begin{align}
+		\frac{\partial \alpha}{\partial \mx{C}} =
+		\begin{pmatrix}
+			x_{1}x_{1} & \ldots & x_{1}x_{n} \\
+			\vdots & \ddots & \vdots \\
+			x_{n}x_{1} & \ldots & x_{n}x_{n}
+		\end{pmatrix} = \vr{x} \vr{x}^T.
+	\end{align}
+\end{proof}
+
+\section{Derivative of $g$ with respect to $\vr{x}$}
+\begin{align}
+	\frac{\partial}{\partial \vr{x}} g(\vr{x}, a, \vr{b}, C) =& \frac{\partial}{\partial \vr{x}} \left(a e^{-\frac{1}{2}(\vr{x}-\vr{b})^T C(\vr{x}-\vr{b})} \right) \nonumber \\
+	=& a e^{-\frac{1}{2}(\vr{x}-\vr{b})^TC(\vr{x}-\vr{b})} \frac{\partial}{\partial \vr{x}} \left(-\frac{1}{2}(\vr{x}-\vr{b})^T C(\vr{x}-\vr{b})\right) \nonumber \\
+	=& -\frac{a}{2} e^{-\frac{1}{2}(\vr{x}-\vr{b})^TC(\vr{x}-\vr{b})} \frac{\partial}{\partial \vr{x}} \left((\vr{x}-\vr{b})^T C(\vr{x}-\vr{b})\right) \nonumber \\
+	=& -\frac{a}{2} e^{-\frac{1}{2}(\vr{x}-\vr{b})^TC(\vr{x}-\vr{b})} 2 (\vr{x}-\vr{b})^T C \frac{\partial (\vr{x}-\vr{b})}{\partial \vr{x}} \nonumber \\
+	=& -a e^{-\frac{1}{2}(\vr{x}-\vr{b})^TC(\vr{x}-\vr{b})} (\vr{x}-\vr{b})^T C
+\end{align}
+Theorem \ref{th:der_xAx_respect_z} was used.
+
+\section{Derivative of $g$ with respect to $a$}
+\begin{align}
+\frac{\partial}{\partial a} g(\vr{x}, a, \vr{b}, C) =& \frac{\partial}{\partial a} \left(a e^{-\frac{1}{2}(\vr{x}-\vr{b})^T C(\vr{x}-\vr{b})} \right) \nonumber \\
+=& e^{-\frac{1}{2}(\vr{x}-\vr{b})^TC(\vr{x}-\vr{b})}
+\end{align}
+
+\section{Derivative of $g$ with respect to $\vr{b}$}
+\begin{align}
+\frac{\partial}{\partial \vr{b}} g(\vr{x}, a, \vr{b}, C) =& \frac{\partial}{\partial \vr{b}} \left(a e^{-\frac{1}{2}(\vr{x}-\vr{b})^T C(\vr{x}-\vr{b})} \right) \nonumber \\
+=& a e^{-\frac{1}{2}(\vr{x}-\vr{b})^TC(\vr{x}-\vr{b})} \frac{\partial}{\partial \vr{b}} \left(-\frac{1}{2}(\vr{x}-\vr{b})^T C(\vr{x}-\vr{b})\right) \nonumber \\
+=& -\frac{a}{2} e^{-\frac{1}{2}(\vr{x}-\vr{b})^TC(\vr{x}-\vr{b})} \frac{\partial}{\partial \vr{b}} \left((\vr{x}-\vr{b})^T C(\vr{x}-\vr{b})\right) \nonumber \\
+=& -\frac{a}{2} e^{-\frac{1}{2}(\vr{x}-\vr{b})^TC(\vr{x}-\vr{b})} 2 (\vr{x}-\vr{b})^T C \frac{\partial (\vr{x}-\vr{b})}{\partial \vr{b}} \nonumber \\
+=& a e^{-\frac{1}{2}(\vr{x}-\vr{b})^TC(\vr{x}-\vr{b})} (\vr{x}-\vr{b})^T C
+\end{align}
+Theorem \ref{th:der_xAx_respect_z} was used.
+It is equal to the negative derivative with respect to $\vr{x}$
+
+
+\section{Derivative of $g$ with respect to $\mx{C}$}
+\begin{align}
+\frac{\partial}{\partial \mx{C}} g(\vr{x}, a, \vr{b}, C) =& \frac{\partial}{\partial \mx{C}} \left(a e^{-\frac{1}{2}(\vr{x}-\vr{b})^T C(\vr{x}-\vr{b})} \right) \nonumber \\
+=& a e^{-\frac{1}{2}(\vr{x}-\vr{b})^TC(\vr{x}-\vr{b})} \frac{\partial}{\partial \mx{C}} \left(-\frac{1}{2}(\vr{x}-\vr{b})^T C(\vr{x}-\vr{b})\right) \nonumber \\
+=& -\frac{a}{2} e^{-\frac{1}{2}(\vr{x}-\vr{b})^TC(\vr{x}-\vr{b})} \frac{\partial}{\partial \mx{C}} \left((\vr{x}-\vr{b})^T C(\vr{x}-\vr{b})\right) \nonumber \\
+=& -\frac{a}{2} e^{-\frac{1}{2}(\vr{x}-\vr{b})^TC(\vr{x}-\vr{b})} (\vr{x}-\vr{b}) (\vr{x}-\vr{b})^T
+\end{align}
+Theorem \ref{th:der_xAx_respect_A} was used.
+
+\section{Derivatives of the Gaussian mixture $m$}
+The derivative with respect to $\vr{x}$ is simply the sum of the derivatives for the components.
+
+The derivatives for the parameters of the components can be computed separately with the equations above.
+
+
+\begin{thebibliography}{9}% 2nd arg is the width of the widest label.
+	\bibitem{Barnes} Barnes, Randal J,  Matrix differentiation (and some other stuff) (2006)
+\end{thebibliography}
+
+\end{document}
