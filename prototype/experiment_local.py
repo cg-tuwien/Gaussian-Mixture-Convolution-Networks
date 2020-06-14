@@ -15,21 +15,70 @@ sys.path.append(source_dir + '/../cpp_modules')
 import time
 
 import torch
-import gm_evaluate.jit
+import gm_evaluate.gm_evaluate_inversed
 import gm
+import torch.autograd
 
-mixture = gm.generate_random_mixtures(50, 10, 600, 2)
-xes = torch.rand([50, 10, 600, 2])
+mixture = gm.generate_random_mixtures(50, 10, 1200, 2)
+mixture = gm.pack_mixture(gm.weights(mixture), gm.positions(mixture), gm.covariances(mixture).inverse().transpose(-2, -1))
+xes = torch.rand([50, 10, 300, 2])
 
 start_time = time.perf_counter()
 print("python started")
 ref = gm.evaluate_inversed(mixture, xes)
 ref_time = time.perf_counter()
 print("cpp started")
-out = gm_evaluate.jit.gm_evaluate_inversed_cpu.forward(mixture, xes)
+out = gm_evaluate.gm_evaluate_inversed.apply(mixture, xes)
 cpp_time = time.perf_counter()
 
-
-print(f"err: {((ref - out)**2).mean().item()}")
+print(f"====== requires_grad = False ======")
+print(f"RMSE: {((ref - out)**2).mean().sqrt().item()}")
 print(f"python: {ref_time - start_time}")
 print(f"cpp: {cpp_time - ref_time}")
+
+print(f"====== requires_grad = True ======")
+mixture.requires_grad = True;
+xes.requires_grad = True;
+
+python_start = time.perf_counter()
+print("python forward started")
+ref = gm.evaluate_inversed(mixture, xes)
+python_forward = time.perf_counter()
+print("python backward started")
+ref.sum().backward()
+python_backward = time.perf_counter()
+pyhton_mixture_grad = mixture.grad.clone()
+pyhton_xes_grad = xes.grad.clone()
+xes.grad = None
+mixture.grad = None
+print("cpu forward started")
+cpu_start = time.perf_counter()
+out = gm_evaluate.gm_evaluate_inversed.apply(mixture, xes)
+cpu_forward = time.perf_counter()
+print("cpu backward started")
+out.sum().backward()
+cpu_backward = time.perf_counter()
+cpu_mixture_grad = mixture.grad.clone()
+cpu_xes_grad = xes.grad.clone()
+
+
+print(f"mixture grad RMSE: {((pyhton_mixture_grad - cpu_mixture_grad)**2).mean().sqrt().item()}")
+print(f"xes grad RMSE: {((pyhton_xes_grad - cpu_xes_grad)**2).mean().sqrt().item()}")
+print(f"python forward: {python_forward - python_start}")
+print(f"python backward: {python_backward - python_forward}")
+print(f"cpu forward: {cpu_forward - cpu_start}")
+print(f"cpu backward: {cpu_backward - cpu_forward}")
+
+# gradcheck takes a tuple of tensors as input, check if your gradient
+# evaluated with these tensors are close enough to numerical
+# approximations and returns True if they all verify this condition.
+
+mixture = gm.generate_random_mixtures(1, 1, 60, 2).to(torch.float64)
+xes = torch.rand([1, 1, 60, 2]).to(torch.float64)
+
+mixture.requires_grad = False;
+xes.requires_grad = True;
+
+print(f"====== torch.autograd.gradcheck ======")
+test = torch.autograd.gradcheck(gm_evaluate.gm_evaluate_inversed.apply, (mixture, xes), eps=1e-6, atol=1e-4)
+print(test)
