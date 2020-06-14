@@ -74,7 +74,7 @@
 
 % ---------------------------------------------------------------------
 
-\title{Derivatives of Gaussian Mixtures with respect to \vr{x} and the parameters}
+\title{Gradient of Gaussian Mixtures with respect to \vr{x} and the parameters}
 \author{Adam Celarek\\Research Unit of Computer Graphics, TU Wien}
 
 \begin{document}
@@ -189,7 +189,7 @@ If desired, this could be included in $\vr{a}$.
 	\end{align}
 \end{proof}
 
-\section{Derivative of $g$ with respect to $\vr{x}$}
+\section{Gradient of $g$ with respect to $\vr{x}$}
 \begin{align}
 	\frac{\partial}{\partial \vr{x}} g(\vr{x}, a, \vr{b}, C) =& \frac{\partial}{\partial \vr{x}} \left(a e^{-\frac{1}{2}(\vr{x}-\vr{b})^T C(\vr{x}-\vr{b})} \right) \nonumber \\
 	=& a e^{-\frac{1}{2}(\vr{x}-\vr{b})^TC(\vr{x}-\vr{b})} \frac{\partial}{\partial \vr{x}} \left(-\frac{1}{2}(\vr{x}-\vr{b})^T C(\vr{x}-\vr{b})\right) \nonumber \\
@@ -199,13 +199,13 @@ If desired, this could be included in $\vr{a}$.
 \end{align}
 Theorem \ref{th:der_xAx_respect_z} was used.
 
-\section{Derivative of $g$ with respect to $a$}
+\section{Gradient of $g$ with respect to $a$}
 \begin{align}
 \frac{\partial}{\partial a} g(\vr{x}, a, \vr{b}, C) =& \frac{\partial}{\partial a} \left(a e^{-\frac{1}{2}(\vr{x}-\vr{b})^T C(\vr{x}-\vr{b})} \right) \nonumber \\
 =& e^{-\frac{1}{2}(\vr{x}-\vr{b})^TC(\vr{x}-\vr{b})}
 \end{align}
 
-\section{Derivative of $g$ with respect to $\vr{b}$}
+\section{Gradient of $g$ with respect to $\vr{b}$}
 \begin{align}
 \frac{\partial}{\partial \vr{b}} g(\vr{x}, a, \vr{b}, C) =& \frac{\partial}{\partial \vr{b}} \left(a e^{-\frac{1}{2}(\vr{x}-\vr{b})^T C(\vr{x}-\vr{b})} \right) \nonumber \\
 =& a e^{-\frac{1}{2}(\vr{x}-\vr{b})^TC(\vr{x}-\vr{b})} \frac{\partial}{\partial \vr{b}} \left(-\frac{1}{2}(\vr{x}-\vr{b})^T C(\vr{x}-\vr{b})\right) \nonumber \\
@@ -217,7 +217,7 @@ Theorem \ref{th:der_xAx_respect_z} was used.
 It is equal to the negative derivative with respect to $\vr{x}$
 
 
-\section{Derivative of $g$ with respect to $\mx{C}$}
+\section{Gradient of $g$ with respect to $\mx{C}$}
 \begin{align}
 \frac{\partial}{\partial \mx{C}} g(\vr{x}, a, \vr{b}, C) =& \frac{\partial}{\partial \mx{C}} \left(a e^{-\frac{1}{2}(\vr{x}-\vr{b})^T C(\vr{x}-\vr{b})} \right) \nonumber \\
 =& a e^{-\frac{1}{2}(\vr{x}-\vr{b})^TC(\vr{x}-\vr{b})} \frac{\partial}{\partial \mx{C}} \left(-\frac{1}{2}(\vr{x}-\vr{b})^T C(\vr{x}-\vr{b})\right) \nonumber \\
@@ -226,10 +226,10 @@ It is equal to the negative derivative with respect to $\vr{x}$
 \end{align}
 Theorem \ref{th:der_xAx_respect_A} was used.
 
-\section{Derivatives of the Gaussian mixture $m$}
-The derivative with respect to $\vr{x}$ is simply the sum of the derivatives for the components.
+\section{Gradients of the Gaussian mixture $m$}
+The gradient with respect to $\vr{x}$ is simply the sum of the gradient for the components.
 
-The derivatives for the parameters of the components can be computed separately with the equations above.
+The gradients for the parameters of the components can be computed separately with the equations above.
 
 
 \begin{thebibliography}{9}% 2nd arg is the width of the widest label.
