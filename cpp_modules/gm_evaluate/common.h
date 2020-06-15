@@ -7,6 +7,15 @@
 #define GLM_FORCE_INLINE
 #include <glm/glm.hpp>
 
+#ifndef __CUDACC__
+#define __device__
+#define __host__
+#endif
+
+#ifndef __forceinline__
+#define __forceinline__ inline
+#endif
+
 namespace gm {
 
 
@@ -55,19 +64,19 @@ struct Ns {
     int xes = 0;
 };
 
-int n_batch(torch::Tensor mixture) {
+inline int n_batch(torch::Tensor mixture) {
     return mixture.size(0);
 }
 
-int n_layers(torch::Tensor mixture) {
+inline int n_layers(torch::Tensor mixture) {
     return mixture.size(1);
 }
 
-int n_components(torch::Tensor mixture) {
+inline int n_components(torch::Tensor mixture) {
     return mixture.size(2);
 }
 
-int n_dimensions(torch::Tensor mixture) {
+inline int n_dimensions(torch::Tensor mixture) {
     auto vector_length = mixture.size(3);
     if (vector_length == 7)
         return 2;
@@ -78,17 +87,17 @@ int n_dimensions(torch::Tensor mixture) {
     return 0;
 }
 
-torch::Tensor weights(torch::Tensor mixture) {
+inline torch::Tensor weights(torch::Tensor mixture) {
     using namespace torch::indexing;
     return mixture.index({Slice(), Slice(), Slice(), 0});
 }
 
-torch::Tensor positions(torch::Tensor mixture) {
+inline torch::Tensor positions(torch::Tensor mixture) {
     using namespace torch::indexing;
     return mixture.index({Slice(), Slice(), Slice(), Slice(1, n_dimensions(mixture) + 1)});
 }
 
-torch::Tensor covariances(torch::Tensor mixture) {
+inline torch::Tensor covariances(torch::Tensor mixture) {
     using namespace torch::indexing;
     auto n_dims = n_dimensions(mixture);
     std::vector<int64_t> new_shape = mixture.sizes().vec();
@@ -100,32 +109,33 @@ torch::Tensor covariances(torch::Tensor mixture) {
 
 
 template <int DIMS, typename scalar_t>
-typename std::conditional<std::is_const<scalar_t>::value, const glm::vec<DIMS, std::remove_cv_t<scalar_t>>, glm::vec<DIMS, scalar_t>>::type& vec(scalar_t& memory_location) {
+__forceinline__ __host__ __device__ typename std::conditional<std::is_const<scalar_t>::value, const glm::vec<DIMS, std::remove_cv_t<scalar_t>>, glm::vec<DIMS, scalar_t>>::type& vec(scalar_t& memory_location) {
     return reinterpret_cast<typename std::conditional<std::is_const<scalar_t>::value, const glm::vec<DIMS, std::remove_cv_t<scalar_t>>, glm::vec<DIMS, scalar_t>>::type&>(memory_location);
 }
 
 template <int DIMS, typename scalar_t>
-typename std::conditional<std::is_const<scalar_t>::value, const glm::mat<DIMS, DIMS, std::remove_cv_t<scalar_t>>, glm::mat<DIMS, DIMS, scalar_t>>::type& mat(scalar_t& memory_location) {
+__forceinline__ __host__ __device__ typename std::conditional<std::is_const<scalar_t>::value, const glm::mat<DIMS, DIMS, std::remove_cv_t<scalar_t>>, glm::mat<DIMS, DIMS, scalar_t>>::type& mat(scalar_t& memory_location) {
     return reinterpret_cast<typename std::conditional<std::is_const<scalar_t>::value, const glm::mat<DIMS, DIMS, std::remove_cv_t<scalar_t>>, glm::mat<DIMS, DIMS, scalar_t>>::type&>(memory_location);
 }
 
 
 template <typename Gaussian>
-auto weight(Gaussian gaussian) -> decltype (gaussian[0]) {
+__forceinline__ __host__ __device__ auto weight(Gaussian&& gaussian) -> decltype (gaussian[0]) {
     return gaussian[0];
 }
 
 template <int DIMS, typename Gaussian>
-auto position(Gaussian gaussian) -> decltype (vec<DIMS>(gaussian[1])) {
+__forceinline__ __host__ __device__ auto position(Gaussian&& gaussian) -> decltype (vec<DIMS>(gaussian[1])) {
     return vec<DIMS>(gaussian[1]);
 }
 
 template <int DIMS, typename Gaussian>
-auto covariance(Gaussian gaussian) -> decltype (mat<DIMS>(gaussian[1 + DIMS])) {
+__forceinline__ __host__ __device__ auto covariance(Gaussian&& gaussian) -> decltype (mat<DIMS>(gaussian[1 + DIMS])) {
     return mat<DIMS>(gaussian[1 + DIMS]);
 }
 
-void check_mixture(torch::Tensor mixture) {
+inline void check_mixture(torch::Tensor mixture) {
+    TORCH_CHECK(mixture.is_contiguous(), "mixture must be contiguous")
     TORCH_CHECK(!torch::isnan(mixture).any().item<bool>(), "mixture contains NaNs");
     TORCH_CHECK(!torch::isinf(mixture).any().item<bool>(), "mixture contains infinities");
     TORCH_CHECK(mixture.dim() == 4, "mixture must have 4 dimensions");
@@ -135,7 +145,7 @@ void check_mixture(torch::Tensor mixture) {
 }
 
 
-gm::Ns check_input_and_get_ns(torch::Tensor mixture, torch::Tensor xes) {
+inline gm::Ns check_input_and_get_ns(torch::Tensor mixture, torch::Tensor xes) {
 
     gm::check_mixture(mixture);
 
@@ -144,6 +154,7 @@ gm::Ns check_input_and_get_ns(torch::Tensor mixture, torch::Tensor xes) {
     int n_components = gm::n_components(mixture);
     int n_dims = gm::n_dimensions(mixture);
 
+    TORCH_CHECK(xes.is_contiguous(), "mixture must be contiguous")
     TORCH_CHECK(xes.dim() == 4, "xes must have 4 dimensions");
     TORCH_CHECK(xes.dtype() == mixture.dtype(), "mixture and xes must have the same dtype");
     TORCH_CHECK(xes.device() == mixture.device(), "mixture and xes must have the same device");

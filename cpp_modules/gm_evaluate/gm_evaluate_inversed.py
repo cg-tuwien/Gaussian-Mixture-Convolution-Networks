@@ -5,21 +5,25 @@ import torch.autograd
 source_dir = os.path.dirname(__file__)
 print(source_dir)
 
-#gm_evaluate_inversed_cuda = load(
-    #'gm_evaluate_inversed_cuda', ['gm_evaluate_inversed_cuda.cpp', 'gm_evaluate_inversed_cuda.cu'], verbose=True)
-#help(gm_evaluate_inversed_cuda)
+
 
 extra_include_paths = [source_dir + "/../glm/"]
 
+cuda = load('gm_evaluate_inversed_cuda', [source_dir + '/gm_evaluate_inversed_cuda.cpp', source_dir + '/gm_evaluate_inversed_cuda.cu'],
+                                extra_include_paths=extra_include_paths,
+                                verbose=True)
 cpu = load('gm_evaluate_inversed_cpu', [source_dir + '/gm_evaluate_inversed_cpu.cpp'],
                                 extra_include_paths=extra_include_paths,
                                 verbose=True, extra_cflags=["-fopenmp", "-O4", "-ffast-math"], extra_ldflags=["-lpthread"])
 
 class EvaluateInversed(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, mixture, xes):
+    def forward(ctx, mixture: torch.Tensor, xes: torch.Tensor):
         ctx.save_for_backward(mixture, xes)
-        output = cpu.forward(mixture, xes)
+        if mixture.is_cuda:
+            output = cuda.forward(mixture, xes)
+        else:
+            output = cpu.forward(mixture, xes)
         return output
 
     @staticmethod

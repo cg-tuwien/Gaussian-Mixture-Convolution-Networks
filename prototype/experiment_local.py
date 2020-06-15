@@ -19,11 +19,13 @@ import gm_evaluate.gm_evaluate_inversed
 import gm
 import torch.autograd
 
-mixture = gm.generate_random_mixtures(50, 5, 1200, 3)
-mixture = gm.pack_mixture(gm.weights(mixture), gm.positions(mixture), gm.covariances(mixture).inverse().transpose(-2, -1))
-xes = torch.rand([50, 5, 300, 3])
+mixture = gm.generate_random_mixtures(5, 1, 2, 2)
+mixture = gm.pack_mixture(gm.weights(mixture), gm.positions(mixture), gm.covariances(mixture).inverse().transpose(-2, -1)).cuda()
+xes = torch.rand([5, 1, 5, 2]).cuda()
 
 ref = gm.evaluate_inversed(mixture, xes)
+out = gm_evaluate.gm_evaluate_inversed.apply(mixture, xes)
+
 start_time = time.perf_counter()
 print("python started")
 ref = gm.evaluate_inversed(mixture, xes)
@@ -36,6 +38,8 @@ print(f"====== requires_grad = False ======")
 print(f"RMSE: {((ref - out)**2).mean().sqrt().item()}")
 print(f"python: {ref_time - start_time}")
 print(f"cpp: {cpp_time - ref_time}")
+
+exit()
 
 print(f"====== requires_grad = True ======")
 mixture.requires_grad = True;

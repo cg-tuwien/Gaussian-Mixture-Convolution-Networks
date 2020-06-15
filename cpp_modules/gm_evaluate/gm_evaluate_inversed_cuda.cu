@@ -4,171 +4,145 @@
 #include <cuda_runtime.h>
 
 #include <vector>
+#include <algorithm>
 
-namespace {
-template <typename scalar_t>
-__device__ __forceinline__ scalar_t sigmoid(scalar_t z) {
-  return 1.0 / (1.0 + exp(-z));
+#include "common.h"
+
+template <typename scalar_t, int DIMS>
+__global__ void kernel_forward(const torch::PackedTensorAccessor32<scalar_t, 3, torch::RestrictPtrTraits> mixture_a,
+                      const torch::PackedTensorAccessor32<scalar_t, 3, torch::RestrictPtrTraits> xes_a,
+                      torch::PackedTensorAccessor32<scalar_t, 2, torch::RestrictPtrTraits> sum_a,
+                      const gm::Ns n) {
+
+    const auto nComps_x_nXes = n.components * n.xes;
+    auto index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index >= n.batch * n.layers * nComps_x_nXes)
+        return;
+
+    const auto batch_layer_index = index / (nComps_x_nXes);
+    index -= batch_layer_index * nComps_x_nXes;
+    const auto xes_index = index / n.xes;
+    index -= xes_index * n.xes;
+    const auto component_index = index;
+
+    const auto& x_pos = gm::vec<DIMS>(xes_a[batch_layer_index][xes_index][0]);
+
+    const auto& c_weight = gm::weight(mixture_a[batch_layer_index][component_index]);
+    const auto& c_pos = gm::position<DIMS>(mixture_a[batch_layer_index][component_index]);
+    const auto& c_cov = gm::covariance<DIMS>(mixture_a[batch_layer_index][component_index]);
+    const auto t = x_pos - c_pos;
+    const auto v = scalar_t(-0.5) * glm::dot(t, (c_cov * t));
+    const auto w = c_weight * std::exp(v);
+
+    atomicAdd(&sum_a[batch_layer_index][xes_index], w);
+
 }
 
-template <typename scalar_t>
-__device__ __forceinline__ scalar_t d_sigmoid(scalar_t z) {
-  const auto s = sigmoid(z);
-  return (1.0 - s) * s;
+torch::Tensor cuda_evaluate_inversed_forward(torch::Tensor mixture, torch::Tensor xes) {
+    using namespace torch::indexing;
+    auto n = gm::check_input_and_get_ns(mixture, xes);
+
+    mixture = mixture.view({n.batch * n.layers, n.components, -1});
+    xes = xes.view({n.batch_xes * n.layers_xes, n.xes, n.dims});
+    torch::Tensor sum = torch::zeros({n.batch * n.layers, n.xes}, torch::dtype(mixture.dtype()).device(mixture.device()));
+
+    TORCH_CHECK(mixture.device().is_cuda(), "mixture must be a CUDA tensor");
+
+
+    const int n_total = n.batch * n.layers * n.components * n.xes;
+    const int n_threads = 1024;
+    const int n_blocks = (n_total + n_threads - 1) / n_threads;
+
+    AT_DISPATCH_FLOATING_TYPES(mixture.scalar_type(), "eval_inversed_omp", ([&] {
+        auto mixture_a = mixture.packed_accessor32<scalar_t, 3, torch::RestrictPtrTraits>();
+        auto xes_a = xes.packed_accessor32<scalar_t, 3, torch::RestrictPtrTraits>();
+        auto sum_a = sum.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>();
+
+        if (n.dims == 2)
+            kernel_forward<scalar_t, 2><<<n_blocks, n_threads>>>(mixture_a, xes_a, sum_a, n);
+        else
+            kernel_forward<scalar_t, 3><<<n_blocks, n_threads>>>(mixture_a, xes_a, sum_a, n);
+    }));
+    return sum.view({n.batch, n.layers, n.xes});
 }
 
-template <typename scalar_t>
-__device__ __forceinline__ scalar_t d_tanh(scalar_t z) {
-  const auto t = tanh(z);
-  return 1 - (t * t);
+
+template <typename scalar_t, int DIMS>
+void execute_parallel_backward(const torch::PackedTensorAccessor32<scalar_t, 3, torch::RestrictPtrTraits>& mixture_a,
+                      const torch::PackedTensorAccessor32<scalar_t, 3, torch::RestrictPtrTraits>& xes_a,
+                      torch::PackedTensorAccessor32<scalar_t, 3, torch::RestrictPtrTraits>& grad_mixture_a,
+                      torch::PackedTensorAccessor32<scalar_t, 3, torch::RestrictPtrTraits>& grad_xes_a,
+                      torch::PackedTensorAccessor32<scalar_t, 2, torch::RestrictPtrTraits>& grad_output_a,
+                      const gm::Ns& n, bool requires_grad_mixture, bool requires_grad_xes) {
+
+//    #pragma omp parallel for num_threads(16)
+//    for (int i = 0; i < n.batch * n.layers * n.xes; ++i) {
+//        auto batch_layer_index = i / n.xes;
+//        auto xes_index = i % n.xes;
+
+//        const auto& x_pos = gm::vec<DIMS>(xes_a[batch_layer_index][xes_index][0]);
+
+//        auto& grad_xes = gm::vec<DIMS>(grad_xes_a[batch_layer_index][xes_index][0]);
+//        for (int c = 0; c < n.components; ++c) {
+//            auto& grad_c_weight = gm::weight(grad_mixture_a[batch_layer_index][c]);
+//            auto& grad_c_pos = gm::position<DIMS>(grad_mixture_a[batch_layer_index][c]);
+//            auto& grad_c_cov = gm::covariance<DIMS>(grad_mixture_a[batch_layer_index][c]);
+
+//            const auto& c_weight = gm::weight(mixture_a[batch_layer_index][c]);
+//            const auto& c_pos = gm::position<DIMS>(mixture_a[batch_layer_index][c]);
+//            const auto& c_cov = gm::covariance<DIMS>(mixture_a[batch_layer_index][c]);
+
+//            const auto t = x_pos - c_pos;
+//            const auto v = scalar_t(-0.5) * glm::dot(t, (c_cov * t));
+//            const auto exp = std::exp(v);
+//            const auto weighted_exp = c_weight * exp;
+//            const auto local_grad_c_pos = weighted_exp * t * c_cov;
+
+//            if (requires_grad_xes) {
+//                grad_xes += -local_grad_c_pos;
+//            }
+//            if (requires_grad_mixture) {
+//                grad_c_weight += exp * grad_output_a[batch_layer_index][xes_index];
+//                grad_c_pos += local_grad_c_pos * grad_output_a[batch_layer_index][xes_index];
+//                grad_c_cov += - c_weight * scalar_t(0.5) * exp * grad_output_a[batch_layer_index][xes_index] * glm::outerProduct(t, t);
+//            }
+//        }
+//        grad_xes *= grad_output_a[batch_layer_index][xes_index];
+//    }
 }
 
-template <typename scalar_t>
-__device__ __forceinline__ scalar_t elu(scalar_t z, scalar_t alpha = 1.0) {
-  return fmaxf(0.0, z) + fminf(0.0, alpha * (exp(z) - 1.0));
-}
+std::vector<torch::Tensor> cuda_evaluate_inversed_backward(torch::Tensor grad_output, torch::Tensor mixture, torch::Tensor xes, bool requires_grad_mixture, bool requires_grad_xes) {
+    gm::check_mixture(mixture);
+    auto n = gm::check_input_and_get_ns(mixture, xes);
 
-template <typename scalar_t>
-__device__ __forceinline__ scalar_t d_elu(scalar_t z, scalar_t alpha = 1.0) {
-  const auto e = exp(z);
-  const auto d_relu = z < 0.0 ? 0.0 : 1.0;
-  return d_relu + (((alpha * (e - 1.0)) < 0.0) ? (alpha * e) : 0.0);
-}
-
-template <typename scalar_t>
-__global__ void lltm_cuda_forward_kernel(
-    const torch::PackedTensorAccessor<scalar_t,3,torch::RestrictPtrTraits,size_t> gates,
-    const torch::PackedTensorAccessor<scalar_t,2,torch::RestrictPtrTraits,size_t> old_cell,
-    torch::PackedTensorAccessor<scalar_t,2,torch::RestrictPtrTraits,size_t> new_h,
-    torch::PackedTensorAccessor<scalar_t,2,torch::RestrictPtrTraits,size_t> new_cell,
-    torch::PackedTensorAccessor<scalar_t,2,torch::RestrictPtrTraits,size_t> input_gate,
-    torch::PackedTensorAccessor<scalar_t,2,torch::RestrictPtrTraits,size_t> output_gate,
-    torch::PackedTensorAccessor<scalar_t,2,torch::RestrictPtrTraits,size_t> candidate_cell) {
-  //batch index
-  const int n = blockIdx.y;
-  // column index
-  const int c = blockIdx.x * blockDim.x + threadIdx.x;
-  if (c < gates.size(2)){
-    input_gate[n][c] = sigmoid(gates[n][0][c]);
-    output_gate[n][c] = sigmoid(gates[n][1][c]);
-    candidate_cell[n][c] = elu(gates[n][2][c]);
-    new_cell[n][c] =
-        old_cell[n][c] + candidate_cell[n][c] * input_gate[n][c];
-    new_h[n][c] = tanh(new_cell[n][c]) * output_gate[n][c];
-  }
-}
-
-template <typename scalar_t>
-__global__ void lltm_cuda_backward_kernel(
-    torch::PackedTensorAccessor<scalar_t,2,torch::RestrictPtrTraits,size_t> d_old_cell,
-    torch::PackedTensorAccessor<scalar_t,3,torch::RestrictPtrTraits,size_t> d_gates,
-    const torch::PackedTensorAccessor<scalar_t,2,torch::RestrictPtrTraits,size_t> grad_h,
-    const torch::PackedTensorAccessor<scalar_t,2,torch::RestrictPtrTraits,size_t> grad_cell,
-    const torch::PackedTensorAccessor<scalar_t,2,torch::RestrictPtrTraits,size_t> new_cell,
-    const torch::PackedTensorAccessor<scalar_t,2,torch::RestrictPtrTraits,size_t> input_gate,
-    const torch::PackedTensorAccessor<scalar_t,2,torch::RestrictPtrTraits,size_t> output_gate,
-    const torch::PackedTensorAccessor<scalar_t,2,torch::RestrictPtrTraits,size_t> candidate_cell,
-    const torch::PackedTensorAccessor<scalar_t,3,torch::RestrictPtrTraits,size_t> gate_weights) {
-  //batch index
-  const int n = blockIdx.y;
-  // column index
-  const int c = blockIdx.x * blockDim.x + threadIdx.x;
-  if (c < d_gates.size(2)){
-    const auto d_output_gate = tanh(new_cell[n][c]) * grad_h[n][c];
-    const auto d_tanh_new_cell = output_gate[n][c] * grad_h[n][c];
-    const auto d_new_cell =
-        d_tanh(new_cell[n][c]) * d_tanh_new_cell + grad_cell[n][c];
+    TORCH_CHECK(mixture.device().is_cuda(), "mixture must be a CUDA tensor")
+    TORCH_CHECK(grad_output.device().is_cuda(), "grad_output must be a CUDA tensor");
+    TORCH_CHECK(grad_output.dim() == 3, "grad_output has wrong number of dimensions");
+    TORCH_CHECK(grad_output.size(0) == n.batch, "grad_output has wrong batch dimension");
+    TORCH_CHECK(grad_output.size(1) == n.layers, "grad_output has wrong layer dimension");
+    TORCH_CHECK(grad_output.size(2) == n.xes, "grad_output has wrong xes dimension");
+    TORCH_CHECK(grad_output.dtype() == mixture.dtype(), "grad_output dtype does not match with mixture dtype")
 
 
-    d_old_cell[n][c] = d_new_cell;
-    const auto d_candidate_cell = input_gate[n][c] * d_new_cell;
-    const auto d_input_gate = candidate_cell[n][c] * d_new_cell;
+    torch::Tensor grad_mixture = torch::zeros({n.batch * n.layers, n.components, mixture.size(3)}, torch::dtype(mixture.dtype()).device(mixture.device()));
+    torch::Tensor grad_xes = torch::zeros({n.batch_xes * n.layers_xes, n.xes, n.dims}, torch::dtype(mixture.dtype()).device(mixture.device()));
 
-    d_gates[n][0][c] =
-        d_input_gate * d_sigmoid(gate_weights[n][0][c]);
-    d_gates[n][1][c] =
-        d_output_gate * d_sigmoid(gate_weights[n][1][c]);
-    d_gates[n][2][c] =
-        d_candidate_cell * d_elu(gate_weights[n][2][c]);
-  }
-}
-} // namespace
+    grad_output = grad_output.view({n.batch * n.layers, n.xes});
+    mixture = mixture.view({n.batch * n.layers, n.components, -1});
+    xes = xes.view({n.batch_xes * n.layers_xes, n.xes, n.dims});
 
-std::vector<torch::Tensor> lltm_cuda_forward(
-    torch::Tensor input,
-    torch::Tensor weights,
-    torch::Tensor bias,
-    torch::Tensor old_h,
-    torch::Tensor old_cell) {
-  auto X = torch::cat({old_h, input}, /*dim=*/1);
-  auto gate_weights = torch::addmm(bias, X, weights.transpose(0, 1));
+//    AT_DISPATCH_FLOATING_TYPES(mixture.scalar_type(), "eval_inversed_omp_backward", ([&] {
+//        auto mixture_a = mixture.packed_accessor32<scalar_t, 3, torch::RestrictPtrTraits>();
+//        auto xes_a = xes.packed_accessor32<scalar_t, 3, torch::RestrictPtrTraits>();
+//        auto grad_mixture_a = grad_mixture.packed_accessor32<scalar_t, 3, torch::RestrictPtrTraits>();
+//        auto grad_xes_a = grad_xes.packed_accessor32<scalar_t, 3, torch::RestrictPtrTraits>();
+//        auto grad_output_a = grad_output.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>();
 
-  const auto batch_size = old_cell.size(0);
-  const auto state_size = old_cell.size(1);
+//        if (n.dims == 2)
+//            execute_parallel_backward<scalar_t, 2>(mixture_a, xes_a, grad_mixture_a, grad_xes_a, grad_output_a, n, requires_grad_mixture, requires_grad_xes);
+//        else
+//            execute_parallel_backward<scalar_t, 3>(mixture_a, xes_a, grad_mixture_a, grad_xes_a, grad_output_a, n, requires_grad_mixture, requires_grad_xes);
+//    }));
 
-  auto gates = gate_weights.reshape({batch_size, 3, state_size});
-  auto new_h = torch::zeros_like(old_cell);
-  auto new_cell = torch::zeros_like(old_cell);
-  auto input_gate = torch::zeros_like(old_cell);
-  auto output_gate = torch::zeros_like(old_cell);
-  auto candidate_cell = torch::zeros_like(old_cell);
-
-  const int threads = 1024;
-  const dim3 blocks((state_size + threads - 1) / threads, batch_size);
-
-  AT_DISPATCH_FLOATING_TYPES(gates.type(), "lltm_forward_cuda", ([&] {
-    lltm_cuda_forward_kernel<scalar_t><<<blocks, threads>>>(
-        gates.packed_accessor<scalar_t,3,torch::RestrictPtrTraits,size_t>(),
-        old_cell.packed_accessor<scalar_t,2,torch::RestrictPtrTraits,size_t>(),
-        new_h.packed_accessor<scalar_t,2,torch::RestrictPtrTraits,size_t>(),
-        new_cell.packed_accessor<scalar_t,2,torch::RestrictPtrTraits,size_t>(),
-        input_gate.packed_accessor<scalar_t,2,torch::RestrictPtrTraits,size_t>(),
-        output_gate.packed_accessor<scalar_t,2,torch::RestrictPtrTraits,size_t>(),
-        candidate_cell.packed_accessor<scalar_t,2,torch::RestrictPtrTraits,size_t>());
-  }));
-
-  return {new_h, new_cell, input_gate, output_gate, candidate_cell, X, gates};
-}
-
-std::vector<torch::Tensor> lltm_cuda_backward(
-    torch::Tensor grad_h,
-    torch::Tensor grad_cell,
-    torch::Tensor new_cell,
-    torch::Tensor input_gate,
-    torch::Tensor output_gate,
-    torch::Tensor candidate_cell,
-    torch::Tensor X,
-    torch::Tensor gates,
-    torch::Tensor weights) {
-  auto d_old_cell = torch::zeros_like(new_cell);
-  auto d_gates = torch::zeros_like(gates);
-
-  const auto batch_size = new_cell.size(0);
-  const auto state_size = new_cell.size(1);
-
-  const int threads = 1024;
-  const dim3 blocks((state_size + threads - 1) / threads, batch_size);
-
-  AT_DISPATCH_FLOATING_TYPES(X.type(), "lltm_forward_cuda", ([&] {
-    lltm_cuda_backward_kernel<scalar_t><<<blocks, threads>>>(
-        d_old_cell.packed_accessor<scalar_t,2,torch::RestrictPtrTraits,size_t>(),
-        d_gates.packed_accessor<scalar_t,3,torch::RestrictPtrTraits,size_t>(),
-        grad_h.packed_accessor<scalar_t,2,torch::RestrictPtrTraits,size_t>(),
-        grad_cell.packed_accessor<scalar_t,2,torch::RestrictPtrTraits,size_t>(),
-        new_cell.packed_accessor<scalar_t,2,torch::RestrictPtrTraits,size_t>(),
-        input_gate.packed_accessor<scalar_t,2,torch::RestrictPtrTraits,size_t>(),
-        output_gate.packed_accessor<scalar_t,2,torch::RestrictPtrTraits,size_t>(),
-        candidate_cell.packed_accessor<scalar_t,2,torch::RestrictPtrTraits,size_t>(),
-        gates.packed_accessor<scalar_t,3,torch::RestrictPtrTraits,size_t>());
-  }));
-
-  auto d_gate_weights = d_gates.flatten(1, 2);
-  auto d_weights = d_gate_weights.t().mm(X);
-  auto d_bias = d_gate_weights.sum(/*dim=*/0, /*keepdim=*/true);
-
-  auto d_X = d_gate_weights.mm(weights);
-  auto d_old_h = d_X.slice(/*dim=*/1, 0, state_size);
-  auto d_input = d_X.slice(/*dim=*/1, state_size);
-
-  return {d_old_h, d_input, d_weights, d_bias, d_old_cell, d_gates};
+    return {grad_mixture.view({n.batch, n.layers, n.components, -1}), grad_xes.view({n.batch_xes, n.layers_xes, n.xes, n.dims})};
 }
