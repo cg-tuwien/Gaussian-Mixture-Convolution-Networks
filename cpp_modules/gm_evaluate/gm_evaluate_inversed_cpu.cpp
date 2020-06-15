@@ -29,7 +29,6 @@ void execute_parallel_forward(const torch::PackedTensorAccessor32<scalar_t, 3, t
             const auto t = x_pos - c_pos;
             const auto v = scalar_t(-0.5) * glm::dot(t, (c_cov * t));
             sum += c_weight * std::exp(v);
-            /// TODO: templetise for 2d/3d
         }
 
     }
