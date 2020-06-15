@@ -8,6 +8,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(MY_INCLUDE_PATHS
     /home/madam/bin/anaconda3/lib/python3.7/site-packages/torch/include
     /home/madam/bin/anaconda3/lib/python3.7/site-packages/torch/include/torch/csrc/api/include/
+    /home/madam/bin/anaconda3/include/python3.7m/
     ../glm
 )
 

@@ -19,10 +19,11 @@ import gm_evaluate.gm_evaluate_inversed
 import gm
 import torch.autograd
 
-mixture = gm.generate_random_mixtures(50, 10, 1200, 2)
+mixture = gm.generate_random_mixtures(50, 5, 1200, 3)
 mixture = gm.pack_mixture(gm.weights(mixture), gm.positions(mixture), gm.covariances(mixture).inverse().transpose(-2, -1))
-xes = torch.rand([50, 10, 300, 2])
+xes = torch.rand([50, 5, 300, 3])
 
+ref = gm.evaluate_inversed(mixture, xes)
 start_time = time.perf_counter()
 print("python started")
 ref = gm.evaluate_inversed(mixture, xes)
@@ -40,17 +41,6 @@ print(f"====== requires_grad = True ======")
 mixture.requires_grad = True;
 xes.requires_grad = True;
 
-python_start = time.perf_counter()
-print("python forward started")
-ref = gm.evaluate_inversed(mixture, xes)
-python_forward = time.perf_counter()
-print("python backward started")
-ref.sum().backward()
-python_backward = time.perf_counter()
-pyhton_mixture_grad = mixture.grad.clone()
-pyhton_xes_grad = xes.grad.clone()
-xes.grad = None
-mixture.grad = None
 print("cpu forward started")
 cpu_start = time.perf_counter()
 out = gm_evaluate.gm_evaluate_inversed.apply(mixture, xes)
@@ -60,6 +50,19 @@ out.sum().backward()
 cpu_backward = time.perf_counter()
 cpu_mixture_grad = mixture.grad.clone()
 cpu_xes_grad = xes.grad.clone()
+
+xes.grad = None
+mixture.grad = None
+
+print("python forward started")
+python_start = time.perf_counter()
+ref = gm.evaluate_inversed(mixture, xes)
+python_forward = time.perf_counter()
+print("python backward started")
+ref.sum().backward()
+python_backward = time.perf_counter()
+pyhton_mixture_grad = mixture.grad.clone()
+pyhton_xes_grad = xes.grad.clone()
 
 
 print(f"mixture grad RMSE: {((pyhton_mixture_grad - cpu_mixture_grad)**2).mean().sqrt().item()}")
@@ -73,8 +76,8 @@ print(f"cpu backward: {cpu_backward - cpu_forward}")
 # evaluated with these tensors are close enough to numerical
 # approximations and returns True if they all verify this condition.
 
-mixture = gm.generate_random_mixtures(1, 1, 60, 2).to(torch.float64)
-xes = torch.rand([1, 1, 60, 2]).to(torch.float64)
+mixture = gm.generate_random_mixtures(1, 1, 60, 3).to(torch.float64)
+xes = torch.rand([1, 1, 60, 3]).to(torch.float64)
 
 mixture.requires_grad = False;
 xes.requires_grad = True;
