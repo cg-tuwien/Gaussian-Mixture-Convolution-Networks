@@ -1,11 +1,13 @@
 <component name="ProjectDictionaryState">
   <dictionary name="madam">
     <words>
+      <w>cuda</w>
       <w>eigvals</w>
       <w>eigvecs</w>
       <w>gaussians</w>
       <w>inversed</w>
       <w>relu</w>
+      <w>rmse</w>
     </words>
   </dictionary>
 </component>
