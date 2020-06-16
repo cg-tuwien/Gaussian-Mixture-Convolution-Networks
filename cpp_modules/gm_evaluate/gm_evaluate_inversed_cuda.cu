@@ -99,7 +99,7 @@ __global__ void kernel_backward(const torch::PackedTensorAccessor32<scalar_t, 3,
         for (uint i = 0; i < DIMS; ++i) {
             atomicAdd(&grad_mixture_a[batch_layer_index][component_index][1 + i], grad_c_pos_addition[i]);
             for (uint j = 0; j < DIMS; ++j)
-                atomicAdd(&grad_mixture_a[batch_layer_index][component_index][1 + i*DIMS + j], grad_c_cov_addition[i][j]);
+                atomicAdd(&grad_mixture_a[batch_layer_index][component_index][1 + DIMS + i*DIMS + j], grad_c_cov_addition[i][j]);
         }
     }
 
