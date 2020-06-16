@@ -65,7 +65,7 @@ void execute_parallel_forward(const torch::PackedTensorAccessor32<scalar_t, 3, t
     #pragma omp parallel for num_threads(16)
     for (uint i = 0; i < n.batch * n.layers * n.xes; ++i) {
         const auto batch_layer_index = int(i / n.xes);
-        const auto xes_index = int(i % n.xes);
+        const auto xes_index = int(i) - batch_layer_index * int(n.xes);
 
         const auto& x_pos = gm::vec<DIMS>(xes_a[batch_layer_index][xes_index][0]);
 
@@ -118,7 +118,7 @@ void execute_parallel_backward(const torch::PackedTensorAccessor32<scalar_t, 3, 
     #pragma omp parallel for num_threads(16)
     for (uint i = 0; i < n.batch * n.layers * n.xes; ++i) {
         auto batch_layer_index = int(i / n.xes);
-        auto xes_index = int(i % n.xes);
+        const auto xes_index = int(i) - batch_layer_index * int(n.xes);
 
         const auto& x_pos = gm::vec<DIMS>(xes_a[batch_layer_index][xes_index][0]);
 
@@ -142,9 +142,22 @@ void execute_parallel_backward(const torch::PackedTensorAccessor32<scalar_t, 3, 
                 grad_xes += -local_grad_c_pos;
             }
             if (requires_grad_mixture) {
-                grad_c_weight += exp * grad_output_a[batch_layer_index][xes_index];
-                grad_c_pos += local_grad_c_pos * grad_output_a[batch_layer_index][xes_index];
-                grad_c_cov += - c_weight * scalar_t(0.5) * exp * grad_output_a[batch_layer_index][xes_index] * glm::outerProduct(t, t);
+                const auto weight_addition = exp * grad_output_a[batch_layer_index][xes_index];
+                const auto pos_addition = local_grad_c_pos * grad_output_a[batch_layer_index][xes_index];
+                const auto cov_addition = - c_weight * scalar_t(0.5) * exp * grad_output_a[batch_layer_index][xes_index] * glm::outerProduct(t, t);
+
+                #pragma omp atomic
+                grad_c_weight += weight_addition;
+
+                for (int i = 0; i < DIMS; ++i) {
+                    #pragma omp atomic
+                    grad_c_pos[i] += pos_addition[i];
+
+                    for (int j = 0; j < DIMS; ++j) {
+                        #pragma omp atomic
+                        grad_c_cov[i][j] += cov_addition[i][j];
+                    }
+                }
             }
         }
         grad_xes *= grad_output_a[batch_layer_index][xes_index];
