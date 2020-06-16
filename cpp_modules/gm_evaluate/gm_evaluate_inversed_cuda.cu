@@ -8,26 +8,36 @@
 
 #include "common.h"
 
+#ifndef __CUDACC__
+constexpr dim3 blockIdx;
+constexpr dim3 blockDim;
+constexpr dim3 threadIdx;
+#endif
+
+namespace gm {
+__forceinline__ __device__ float exp(float x) {
+    return ::expf(x);
+}
+__forceinline__ __device__ double exp(double x) {
+    return ::exp(x);
+}
+
+}
+
 template <typename scalar_t, int DIMS>
 __global__ void kernel_forward(const torch::PackedTensorAccessor32<scalar_t, 3, torch::RestrictPtrTraits> mixture_a,
                       const torch::PackedTensorAccessor32<scalar_t, 3, torch::RestrictPtrTraits> xes_a,
                       torch::PackedTensorAccessor32<scalar_t, 2, torch::RestrictPtrTraits> sum_a,
                       const gm::Ns n) {
-
-    const auto nComps_x_nXes = n.components * n.xes;
-    auto index = blockIdx.x * blockDim.x + threadIdx.x;
-    if (index >= n.batch * n.layers * nComps_x_nXes)
+    const auto batch_layer_index = blockIdx.z;
+    const auto xes_index = blockIdx.y;
+    const auto component_index = blockIdx.x * blockDim.x + threadIdx.x;;
+    if (component_index >= uint(n.components))
         return;
 
-    const auto batch_layer_index = index / (nComps_x_nXes);
-    index -= batch_layer_index * nComps_x_nXes;
-    const auto xes_index = index / n.components;
-    index -= xes_index * n.components;
-    const auto component_index = index;
-
-//    printf("block %d, thread %d: index=%d, batch_layer_index=%d, xes_index=%d, component_index=%d \n",
-//           blockIdx.x, threadIdx.x,
-//           blockIdx.x * blockDim.x + threadIdx.x, batch_layer_index, xes_index, component_index);
+//    printf("block %d/%d/%d, thread %d: batch_layer_index=%d, xes_index=%d, component_index=%d \n",
+//           blockIdx.x, blockIdx.y, blockIdx.z, threadIdx.x,
+//           batch_layer_index, xes_index, component_index);
 
     const auto& x_pos = gm::vec<DIMS>(xes_a[batch_layer_index][xes_index][0]);
 
@@ -36,40 +46,10 @@ __global__ void kernel_forward(const torch::PackedTensorAccessor32<scalar_t, 3, 
     const auto& c_cov = gm::covariance<DIMS>(mixture_a[batch_layer_index][component_index]);
     const auto t = x_pos - c_pos;
     const auto v = scalar_t(-0.5) * glm::dot(t, (c_cov * t));
-    const auto w = c_weight * std::exp(v);
+    const auto w = c_weight * gm::exp(v);
 
+//    sum_a[batch_layer_index][xes_index] += w; // test performance impact of atomicAdd; but this will give a wrong result.
     atomicAdd(&sum_a[batch_layer_index][xes_index], w);
-}
-
-torch::Tensor cuda_evaluate_inversed_forward(torch::Tensor mixture, torch::Tensor xes) {
-    using namespace torch::indexing;
-    auto n = gm::check_input_and_get_ns(mixture, xes);
-
-    mixture = mixture.view({n.batch * n.layers, n.components, -1});
-    xes = xes.view({n.batch_xes * n.layers_xes, n.xes, n.dims});
-    torch::Tensor sum = torch::zeros({n.batch * n.layers, n.xes}, torch::dtype(mixture.dtype()).device(mixture.device()));
-
-    TORCH_CHECK(mixture.device().is_cuda(), "mixture must be a CUDA tensor");
-
-
-    const int n_total = n.batch * n.layers * n.components * n.xes;
-    const int n_threads = 256;
-    const int n_blocks = (n_total + n_threads - 1) / n_threads;
-
-
-    AT_DISPATCH_FLOATING_TYPES(mixture.scalar_type(), "eval_inversed_omp", ([&] {
-        auto mixture_a = mixture.packed_accessor32<scalar_t, 3, torch::RestrictPtrTraits>();
-        auto xes_a = xes.packed_accessor32<scalar_t, 3, torch::RestrictPtrTraits>();
-        auto sum_a = sum.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>();
-
-        if (n.dims == 2)
-            kernel_forward<scalar_t, 2><<<n_blocks, n_threads>>>(mixture_a, xes_a, sum_a, n);
-        else
-            kernel_forward<scalar_t, 3><<<n_blocks, n_threads>>>(mixture_a, xes_a, sum_a, n);
-
-        cudaDeviceSynchronize();
-    }));
-    return sum.view({n.batch, n.layers, n.xes});
 }
 
 
@@ -81,16 +61,11 @@ __global__ void kernel_backward(const torch::PackedTensorAccessor32<scalar_t, 3,
                       torch::PackedTensorAccessor32<scalar_t, 2, torch::RestrictPtrTraits> grad_output_a,
                       const gm::Ns n, bool requires_grad_mixture, bool requires_grad_xes) {
 
-    const auto nComps_x_nXes = n.components * n.xes;
-    auto index = blockIdx.x * blockDim.x + threadIdx.x;
-    if (index >= n.batch * n.layers * nComps_x_nXes)
+    const auto batch_layer_index = blockIdx.z;
+    const auto xes_index = blockIdx.y;
+    const auto component_index = blockIdx.x * blockDim.x + threadIdx.x;;
+    if (component_index >= uint(n.components))
         return;
-
-    const auto batch_layer_index = index / (nComps_x_nXes);
-    index -= batch_layer_index * nComps_x_nXes;
-    const auto xes_index = index / n.components;
-    index -= xes_index * n.components;
-    const auto component_index = index;
 
     const auto& x_pos = gm::vec<DIMS>(xes_a[batch_layer_index][xes_index][0]);
 
@@ -106,7 +81,7 @@ __global__ void kernel_backward(const torch::PackedTensorAccessor32<scalar_t, 3,
 
     const auto t = x_pos - c_pos;
     const auto v = scalar_t(-0.5) * glm::dot(t, (c_cov * t));
-    const auto exp = std::exp(v);
+    const auto exp = gm::exp(v);
     const auto weighted_exp = c_weight * exp;
     const auto local_grad_c_pos = weighted_exp * t * c_cov;
 
@@ -130,6 +105,41 @@ __global__ void kernel_backward(const torch::PackedTensorAccessor32<scalar_t, 3,
 
 }
 
+torch::Tensor cuda_evaluate_inversed_forward(torch::Tensor mixture, torch::Tensor xes) {
+    using namespace torch::indexing;
+    auto n = gm::check_input_and_get_ns(mixture, xes);
+
+    mixture = mixture.view({n.batch * n.layers, n.components, -1});
+    xes = xes.view({n.batch_xes * n.layers_xes, n.xes, n.dims});
+    torch::Tensor sum = torch::zeros({n.batch * n.layers, n.xes}, torch::dtype(mixture.dtype()).device(mixture.device()));
+
+    TORCH_CHECK(mixture.device().is_cuda(), "mixture must be a CUDA tensor");
+    TORCH_CHECK(n.batch * n.layers < 65535, "n_batch x n_layers must be smaller than 65535 for CUDA");
+    TORCH_CHECK(n.xes < 65535, "number of xes must be smaller than 65535 for CUDA");
+
+
+    constexpr dim3 dimBlock = dim3(1024, 1, 1);
+    const dim3 dimGrid = dim3((n.components + dimBlock.x - 1) / dimBlock.x,
+                              n.xes,
+                              n.batch * n.layers);
+//    std::cout << "forward: dimBlock.x=" << dimBlock.x << ", n_blocks=" << dimGrid.x << "/" << dimGrid.y << "/" << dimGrid.z << std::endl;
+
+
+    AT_DISPATCH_FLOATING_TYPES(mixture.scalar_type(), "eval_inversed_omp", ([&] {
+        auto mixture_a = mixture.packed_accessor32<scalar_t, 3, torch::RestrictPtrTraits>();
+        auto xes_a = xes.packed_accessor32<scalar_t, 3, torch::RestrictPtrTraits>();
+        auto sum_a = sum.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>();
+
+        if (n.dims == 2)
+            kernel_forward<scalar_t, 2><<<dimGrid, dimBlock>>>(mixture_a, xes_a, sum_a, n);
+        else
+            kernel_forward<scalar_t, 3><<<dimGrid, dimBlock>>>(mixture_a, xes_a, sum_a, n);
+
+        cudaDeviceSynchronize();
+    }));
+    return sum.view({n.batch, n.layers, n.xes});
+}
+
 std::vector<torch::Tensor> cuda_evaluate_inversed_backward(torch::Tensor grad_output, torch::Tensor mixture, torch::Tensor xes, bool requires_grad_mixture, bool requires_grad_xes) {
     gm::check_mixture(mixture);
     auto n = gm::check_input_and_get_ns(mixture, xes);
@@ -150,9 +160,11 @@ std::vector<torch::Tensor> cuda_evaluate_inversed_backward(torch::Tensor grad_ou
     mixture = mixture.view({n.batch * n.layers, n.components, -1});
     xes = xes.view({n.batch_xes * n.layers_xes, n.xes, n.dims});
 
-    const int n_total = n.batch * n.layers * n.components * n.xes;
-    const int n_threads = 256;
-    const int n_blocks = (n_total + n_threads - 1) / n_threads;
+    constexpr dim3 dimBlock = dim3(1024, 1, 1);
+    const dim3 dimGrid = dim3((n.components + dimBlock.x - 1) / dimBlock.x,
+                              n.xes,
+                              n.batch * n.layers);
+//    std::cout << "backward: dimBlock.x=" << dimBlock.x << ", n_blocks=" << dimGrid.x << "/" << dimGrid.y << "/" << dimGrid.z << std::endl;
 
     AT_DISPATCH_FLOATING_TYPES(mixture.scalar_type(), "eval_inversed_omp_backward", ([&] {
         auto mixture_a = mixture.packed_accessor32<scalar_t, 3, torch::RestrictPtrTraits>();
@@ -162,9 +174,9 @@ std::vector<torch::Tensor> cuda_evaluate_inversed_backward(torch::Tensor grad_ou
         auto grad_output_a = grad_output.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>();
 
         if (n.dims == 2)
-            kernel_backward<scalar_t, 2><<<n_blocks, n_threads>>>(mixture_a, xes_a, grad_mixture_a, grad_xes_a, grad_output_a, n, requires_grad_mixture, requires_grad_xes);
+            kernel_backward<scalar_t, 2><<<dimGrid, dimBlock>>>(mixture_a, xes_a, grad_mixture_a, grad_xes_a, grad_output_a, n, requires_grad_mixture, requires_grad_xes);
         else
-            kernel_backward<scalar_t, 3><<<n_blocks, n_threads>>>(mixture_a, xes_a, grad_mixture_a, grad_xes_a, grad_output_a, n, requires_grad_mixture, requires_grad_xes);
+            kernel_backward<scalar_t, 3><<<dimGrid, dimBlock>>>(mixture_a, xes_a, grad_mixture_a, grad_xes_a, grad_output_a, n, requires_grad_mixture, requires_grad_xes);
     }));
 
     return {grad_mixture.view({n.batch, n.layers, n.components, -1}), grad_xes.view({n.batch_xes, n.layers_xes, n.xes, n.dims})};

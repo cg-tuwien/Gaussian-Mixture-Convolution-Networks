@@ -55,28 +55,28 @@ fastexp (float p)
 
 
 struct Ns {
-    int batch = 0;
-    int layers = 0;
-    int components = 0;
-    int dims = 0;
-    int batch_xes = 0;
-    int layers_xes = 0;
-    int xes = 0;
+    uint batch = 0;
+    uint layers = 0;
+    uint components = 0;
+    uint dims = 0;
+    uint batch_xes = 0;
+    uint layers_xes = 0;
+    uint xes = 0;
 };
 
-inline int n_batch(torch::Tensor mixture) {
-    return mixture.size(0);
+inline uint n_batch(torch::Tensor mixture) {
+    return uint(mixture.size(0));
 }
 
-inline int n_layers(torch::Tensor mixture) {
-    return mixture.size(1);
+inline uint n_layers(torch::Tensor mixture) {
+    return uint(mixture.size(1));
 }
 
-inline int n_components(torch::Tensor mixture) {
-    return mixture.size(2);
+inline uint n_components(torch::Tensor mixture) {
+    return uint(mixture.size(2));
 }
 
-inline int n_dimensions(torch::Tensor mixture) {
+inline uint n_dimensions(torch::Tensor mixture) {
     auto vector_length = mixture.size(3);
     if (vector_length == 7)
         return 2;
@@ -84,7 +84,6 @@ inline int n_dimensions(torch::Tensor mixture) {
         return 3;
 
     TORCH_CHECK(false, "mixture must have 7 or 13 elements in the last dimension")
-    return 0;
 }
 
 inline torch::Tensor weights(torch::Tensor mixture) {
@@ -149,18 +148,18 @@ inline gm::Ns check_input_and_get_ns(torch::Tensor mixture, torch::Tensor xes) {
 
     gm::check_mixture(mixture);
 
-    int n_batch = gm::n_batch(mixture);
-    int n_layers = gm::n_layers(mixture);
-    int n_components = gm::n_components(mixture);
-    int n_dims = gm::n_dimensions(mixture);
+    uint n_batch = gm::n_batch(mixture);
+    uint n_layers = gm::n_layers(mixture);
+    uint n_components = gm::n_components(mixture);
+    uint n_dims = gm::n_dimensions(mixture);
 
     TORCH_CHECK(xes.is_contiguous(), "mixture must be contiguous")
     TORCH_CHECK(xes.dim() == 4, "xes must have 4 dimensions");
     TORCH_CHECK(xes.dtype() == mixture.dtype(), "mixture and xes must have the same dtype");
     TORCH_CHECK(xes.device() == mixture.device(), "mixture and xes must have the same device");
-    int n_batch_xes = int(xes.size(0));
-    int n_layers_xes = int(xes.size(1));
-    int n_xes = int(xes.size(2));
+    uint n_batch_xes = uint(xes.size(0));
+    uint n_layers_xes = uint(xes.size(1));
+    uint n_xes = uint(xes.size(2));
 
     TORCH_CHECK(/*n_batch_xes == 1 || */n_batch_xes == n_batch, "xes must have a batch dimension equal to the mixture");
     TORCH_CHECK(/*n_layers_xes == 1 || */n_layers_xes == n_layers, "xes must have a layer dimension equal to the mixture");
