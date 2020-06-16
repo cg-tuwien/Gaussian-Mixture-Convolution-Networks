@@ -118,7 +118,7 @@ torch::Tensor cuda_evaluate_inversed_forward(torch::Tensor mixture, torch::Tenso
     TORCH_CHECK(n.xes < 65535, "number of xes must be smaller than 65535 for CUDA");
 
 
-    constexpr dim3 dimBlock = dim3(1024, 1, 1);
+    constexpr dim3 dimBlock = dim3(128, 1, 1);
     const dim3 dimGrid = dim3((n.components + dimBlock.x - 1) / dimBlock.x,
                               n.xes,
                               n.batch * n.layers);
@@ -134,8 +134,6 @@ torch::Tensor cuda_evaluate_inversed_forward(torch::Tensor mixture, torch::Tenso
             kernel_forward<scalar_t, 2><<<dimGrid, dimBlock>>>(mixture_a, xes_a, sum_a, n);
         else
             kernel_forward<scalar_t, 3><<<dimGrid, dimBlock>>>(mixture_a, xes_a, sum_a, n);
-
-        cudaDeviceSynchronize();
     }));
     return sum.view({n.batch, n.layers, n.xes});
 }
@@ -160,7 +158,7 @@ std::vector<torch::Tensor> cuda_evaluate_inversed_backward(torch::Tensor grad_ou
     mixture = mixture.view({n.batch * n.layers, n.components, -1});
     xes = xes.view({n.batch_xes * n.layers_xes, n.xes, n.dims});
 
-    constexpr dim3 dimBlock = dim3(1024, 1, 1);
+    constexpr dim3 dimBlock = dim3(128, 1, 1);
     const dim3 dimGrid = dim3((n.components + dimBlock.x - 1) / dimBlock.x,
                               n.xes,
                               n.batch * n.layers);
