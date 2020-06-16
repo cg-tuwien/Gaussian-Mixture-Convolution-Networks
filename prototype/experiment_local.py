@@ -19,12 +19,12 @@ import gm_evaluate.gm_evaluate_inversed
 import gm
 import torch.autograd
 
-mixture = gm.generate_random_mixtures(5, 1, 2, 2)
+mixture = gm.generate_random_mixtures(3, 2, 60, 2)
 mixture = gm.pack_mixture(gm.weights(mixture), gm.positions(mixture), gm.covariances(mixture).inverse().transpose(-2, -1)).cuda()
-xes = torch.rand([5, 1, 5, 2]).cuda()
+xes = torch.rand([3, 2, 60, 2]).cuda()
 
-ref = gm.evaluate_inversed(mixture, xes)
-out = gm_evaluate.gm_evaluate_inversed.apply(mixture, xes)
+# ref = gm.evaluate_inversed(mixture, xes)
+# out = gm_evaluate.gm_evaluate_inversed.apply(mixture, xes)
 
 start_time = time.perf_counter()
 print("python started")
@@ -38,8 +38,6 @@ print(f"====== requires_grad = False ======")
 print(f"RMSE: {((ref - out)**2).mean().sqrt().item()}")
 print(f"python: {ref_time - start_time}")
 print(f"cpp: {cpp_time - ref_time}")
-
-exit()
 
 print(f"====== requires_grad = True ======")
 mixture.requires_grad = True;
@@ -80,12 +78,12 @@ print(f"cpu backward: {cpu_backward - cpu_forward}")
 # evaluated with these tensors are close enough to numerical
 # approximations and returns True if they all verify this condition.
 
-mixture = gm.generate_random_mixtures(1, 1, 60, 3).to(torch.float64)
-xes = torch.rand([1, 1, 60, 3]).to(torch.float64)
+mixture = gm.generate_random_mixtures(1, 1, 60, 3).to(torch.float64).cuda()
+xes = torch.rand([1, 1, 60, 3]).to(torch.float64).cuda()
 
 mixture.requires_grad = False;
 xes.requires_grad = True;
 
 print(f"====== torch.autograd.gradcheck ======")
-test = torch.autograd.gradcheck(gm_evaluate.gm_evaluate_inversed.apply, (mixture, xes), eps=1e-6, atol=1e-4)
+test = torch.autograd.gradcheck(gm_evaluate.gm_evaluate_inversed.apply, (mixture, xes), eps=1e-6, atol=1e-5, nondet_tol=1e-5)
 print(test)
