@@ -10,14 +10,8 @@ import numpy as np
 import mat_tools
 import config
 
-import os
-import sys
-source_dir = os.path.dirname(__file__)
-sys.path.append(source_dir + '/../cpp_modules')
-
-import gm_vis.pygmvis
 import gm_evaluate.gm_evaluate_inversed
-vis = gm_vis.pygmvis
+
 
 def n_dimensions(mixture: Tensor) -> int:
     vector_length = mixture.shape[-1]
