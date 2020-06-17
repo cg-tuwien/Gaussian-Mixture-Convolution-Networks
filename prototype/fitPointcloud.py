@@ -16,6 +16,7 @@ import gc
 import struct
 
 import gm
+import gm_vis
 import mat_tools
 
 import pointcloud
@@ -70,13 +71,13 @@ def ad_algorithm(pointclouds: Tensor,
     epsilon = 0.000000001
 
     # Create Visualizer
-    vis3d = pygmvis.create_visualizer(async=False, width=500, height=500)
+    vis3d = gm_vis.api.create_visualizer(False, width=500, height=500)
     vis3d.set_camera_auto(True)
     vis3d.set_pointclouds(pointclouds)
-    vis3d.set_density_rendering(True, pygmvis.GMDensityRenderMode.ADDITIVE_ACC_PROJECTED)
-    vis3d.set_ellipsoid_coloring(pygmvis.GMColoringRenderMode.COLOR_WEIGHT, pygmvis.GMColorRangeMode.RANGE_MINMAX)
+    vis3d.set_density_rendering(True, gm_vis.api.GMDensityRenderMode.ADDITIVE_ACC_PROJECTED)
+    vis3d.set_ellipsoid_coloring(gm_vis.api.GMColoringRenderMode.COLOR_WEIGHT, gm_vis.api.GMColorRangeMode.RANGE_MINMAX)
     vis3d.set_positions_rendering(True, True)
-    vis3d.set_positions_coloring(pygmvis.GMColoringRenderMode.COLOR_WEIGHT, pygmvis.GMColorRangeMode.RANGE_MEDMED)
+    vis3d.set_positions_coloring(gm_vis.api.GMColoringRenderMode.COLOR_WEIGHT, gm_vis.api.GMColorRangeMode.RANGE_MEDMED)
 
     batch_size = pointclouds.shape[0]
     point_count = pointclouds.shape[1]
