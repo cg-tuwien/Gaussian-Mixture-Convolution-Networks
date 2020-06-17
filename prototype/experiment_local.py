@@ -32,8 +32,8 @@ cuda_xes = xes.cuda()
 
 print("warming up")
 if enable_python:
-    python_cpu = gm.evaluate_inversed(mixture, xes)
-    python_cuda = gm.evaluate_inversed(cuda_mixture, cuda_xes)
+    python_cpu = gm.old_evaluate_inversed(mixture, xes)
+    python_cuda = gm.old_evaluate_inversed(cuda_mixture, cuda_xes)
 cpp_cpu = gm_evaluate.gm_evaluate_inversed.apply(mixture, xes)
 cpp_cuda = gm_evaluate.gm_evaluate_inversed.apply(cuda_mixture, cuda_xes)
 torch.cuda.synchronize()
@@ -41,12 +41,12 @@ torch.cuda.synchronize()
 if enable_python:
     print("python cpu started")
     python_cpu_start_time = time.perf_counter()
-    python_cpu = gm.evaluate_inversed(mixture, xes)
+    python_cpu = gm.old_evaluate_inversed(mixture, xes)
     python_cpu_end_time = time.perf_counter()
 
     print("python cuda started")
     python_cuda_start_time = time.perf_counter()
-    python_cuda = gm.evaluate_inversed(cuda_mixture, cuda_xes)
+    python_cuda = gm.old_evaluate_inversed(cuda_mixture, cuda_xes)
     torch.cuda.synchronize()
     python_cuda_end_time = time.perf_counter()
 
@@ -80,9 +80,9 @@ cuda_mixture.requires_grad = True;
 cuda_xes.requires_grad = True;
 print("warming up")
 if enable_python:
-    python_cpu = gm.evaluate_inversed(mixture, xes)
+    python_cpu = gm.old_evaluate_inversed(mixture, xes)
     python_cpu.sum().backward()
-    python_cuda = gm.evaluate_inversed(cuda_mixture, cuda_xes)
+    python_cuda = gm.old_evaluate_inversed(cuda_mixture, cuda_xes)
     python_cuda.sum().backward()
 cpp_cpu = gm_evaluate.gm_evaluate_inversed.apply(mixture, xes)
 cpp_cpu.sum().backward()
@@ -98,7 +98,7 @@ cuda_xes.grad = None
 if enable_python:
     print("python cpu started")
     python_cpu_start_time = time.perf_counter()
-    python_cpu = gm.evaluate_inversed(mixture, xes)
+    python_cpu = gm.old_evaluate_inversed(mixture, xes)
     python_cpu_forward_time = time.perf_counter()
     python_cpu.sum().backward()
     python_cpu_end_time = time.perf_counter()
@@ -107,7 +107,7 @@ if enable_python:
 
     print("python cuda started")
     python_cuda_start_time = time.perf_counter()
-    python_cuda = gm.evaluate_inversed(cuda_mixture, cuda_xes)
+    python_cuda = gm.old_evaluate_inversed(cuda_mixture, cuda_xes)
     torch.cuda.synchronize()
     python_cuda_forward_time = time.perf_counter()
     python_cuda.sum().backward()

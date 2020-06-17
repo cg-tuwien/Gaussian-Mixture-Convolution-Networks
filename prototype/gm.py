@@ -10,6 +10,14 @@ import numpy as np
 import mat_tools
 import config
 
+import os
+import sys
+source_dir = os.path.dirname(__file__)
+sys.path.append(source_dir + '/../cpp_modules')
+
+import gm_vis.pygmvis
+import gm_evaluate.gm_evaluate_inversed
+vis = gm_vis.pygmvis
 
 def n_dimensions(mixture: Tensor) -> int:
     vector_length = mixture.shape[-1]
@@ -92,53 +100,10 @@ def is_valid_mixture(mixture: Tensor) -> bool:
     assert torch.all(covariances(mixture).det() > 0)
     return True
 
-def evaluate_few_xes_component_wise(mixture: Tensor, xes: Tensor) -> Tensor:
-    _n_batch = n_batch(mixture)
-    _n_layers = n_layers(mixture)
-    _n_dims = n_dimensions(mixture)
-    _n_comps = n_components(mixture)
-
-    # xes dims: 1. batch (may be 1), 2. layers (may be 1), 3. n_xes, 4. x/y/[z]
-    assert len(xes.shape) == 4
-    assert xes.shape[0] == 1 or xes.shape[0] == _n_batch
-    assert xes.shape[1] == 1 or xes.shape[1] == _n_layers
-    n_xes = xes.shape[2]
-    assert xes.shape[3] == _n_dims
-
-    if _n_batch * _n_layers * _n_comps * n_xes < 100 * 1024 * 1024:
-        # 1. dim: batches, 2. layers, 3. component, 4. xes, 5.+: vector / matrix components
-        xes = xes.view(xes.shape[0], xes.shape[1], 1, n_xes, _n_dims)
-        _positions = positions(mixture).view(_n_batch, _n_layers, _n_comps, 1, _n_dims)
-        values = xes - _positions
-
-        # x^t A x -> quadratic form
-        x_t = values.view(_n_batch, _n_layers, _n_comps, -1, 1, _n_dims)
-        x = values.view(_n_batch, _n_layers, _n_comps, -1, _n_dims, 1)
-        A = covariances(mixture).inverse().view(_n_batch, _n_layers, _n_comps, 1, _n_dims, _n_dims)
-        values = -0.5 * x_t @ A @ x
-        values = values.view(_n_batch, _n_layers, _n_comps, -1)
-    else:
-        # todo: select min of _n_batch and n_components or something?
-        # todo: test
-        batched_values = torch.zeros(_n_batch, _n_layers, _n_comps, n_xes, dtype=torch.float32, device=self.device())
-        for i in range(_n_batch):
-            xes_slice = xes[i, 1, :, :].view(1, 1, -1, _n_dims)
-            _positions = positions(mixture)[i, :, :, :].view(_n_layers, _n_comps, 1, _n_dims)
-            values = xes_slice - _positions
-
-            # x^t A x -> quadratic form
-            x_t = values.view(_n_layers, _n_comps, -1, 1, _n_dims)
-            x = values.view(_n_layers, _n_comps, -1, _n_dims, 1)
-            A = covariances(mixture)[i, :, :, :, :].inverse().view(_n_layers, _n_comps, 1, _n_dims, _n_dims)
-            values = -0.5 * x_t @ A @ x
-            batched_values[i, :, :, :] = values.view(_n_layers, _n_comps, -1)
-        values = batched_values
-
-    values = weights(mixture).view(_n_batch, _n_layers, _n_comps, 1) * torch.exp(values)
-    return values.view(_n_batch, _n_layers, _n_comps, -1)
-
-
 def evaluate_inversed(mixture: Tensor, xes: Tensor) -> Tensor:
+    return gm_evaluate.gm_evaluate_inversed.apply(mixture, xes)
+
+def old_evaluate_inversed(mixture: Tensor, xes: Tensor) -> Tensor:
     _n_batch = n_batch(mixture)
     _n_layers = n_layers(mixture)
     _n_dims = n_dimensions(mixture)

@@ -24,7 +24,7 @@ import config
 
 from torch import Tensor
 
-import pygmvis
+
 
 """
 pointclouds:    [m,n,3]-Tensor where n is the number of points
