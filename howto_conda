@@ -6,5 +6,6 @@ if you use just the pytorch install command, the channel is not in highest prior
 
 conda update --all
 
-pip install --upgrade tensorflow # tf 2.2+
+pip install --upgrade tensorflow # or tensorflow-gpu(?); required for tensorboard, there used to be bugs with tb sin tf; tf 2.2+
+# there is a tf diagnosis script in https://raw.githubusercontent.com/tensorflow/tensorboard/master/tensorboard/tools/diagnose_tensorboard.py
 
