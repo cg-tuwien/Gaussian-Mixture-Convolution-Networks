@@ -19,6 +19,12 @@ cpu = load('gm_evaluate_inversed_cpu', [source_dir + '/gm_evaluate_inversed_cpu.
 class EvaluateInversed(torch.autograd.Function):
     @staticmethod
     def forward(ctx, mixture: torch.Tensor, xes: torch.Tensor):
+        if not mixture.is_contiguous():
+            mixture = mixture.contiguous()
+
+        if not xes.is_contiguous():
+            xes = xes.contiguous()
+
         ctx.save_for_backward(mixture, xes)
         if mixture.is_cuda:
             output = cuda.forward(mixture, xes)
@@ -28,6 +34,9 @@ class EvaluateInversed(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad_output):
+        if not grad_output.is_contiguous():
+            grad_output = grad_output.contiguous()
+
         mixture, xes = ctx.saved_tensors
         if mixture.is_cuda:
             grad_mixture, grad_xes = cuda.backward(grad_output, mixture, xes, ctx.needs_input_grad[0], ctx.needs_input_grad[1])

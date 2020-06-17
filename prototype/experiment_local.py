@@ -19,13 +19,14 @@ import gm_evaluate.gm_evaluate_inversed
 import gm
 import torch.autograd
 
-enable_python = False
+enable_python = True
 
-n_batch = 50
-n_layers = 10
-mixture = gm.generate_random_mixtures(n_batch, n_layers, 600, 3)
+n_batch = 10
+n_layers = 5
+n_dims = 2
+mixture = gm.generate_random_mixtures(n_batch, n_layers, 600, n_dims)
 mixture = gm.pack_mixture(gm.weights(mixture), gm.positions(mixture), gm.covariances(mixture).inverse().transpose(-2, -1))
-xes = torch.rand([n_batch, n_layers, 600, 3])
+xes = torch.rand([n_batch, n_layers, 600, n_dims])
 
 cuda_mixture = mixture.cuda()
 cuda_xes = xes.cuda()
@@ -34,7 +35,7 @@ print("warming up")
 if enable_python:
     python_cpu = gm.old_evaluate_inversed(mixture, xes)
     python_cuda = gm.old_evaluate_inversed(cuda_mixture, cuda_xes)
-cpp_cpu = gm_evaluate.gm_evaluate_inversed.apply(mixture, xes)
+# cpp_cpu = gm_evaluate.gm_evaluate_inversed.apply(mixture, xes)
 cpp_cuda = gm_evaluate.gm_evaluate_inversed.apply(cuda_mixture, cuda_xes)
 torch.cuda.synchronize()
 
@@ -104,6 +105,7 @@ if enable_python:
     python_cpu_end_time = time.perf_counter()
     python_cpu_mixture_grad = mixture.grad.clone()
     python_cpu_xes_grad = xes.grad.clone()
+    python_cpu_time = python_cpu_end_time - python_cpu_start_time
 
     print("python cuda started")
     python_cuda_start_time = time.perf_counter()
@@ -115,6 +117,7 @@ if enable_python:
     python_cuda_end_time = time.perf_counter()
     python_cuda_mixture_grad = cuda_mixture.grad.clone()
     python_cuda_xes_grad = cuda_xes.grad.clone()
+    python_cuda_time = python_cuda_end_time - python_cuda_start_time
 
 mixture.grad = None
 xes.grad = None
@@ -129,6 +132,7 @@ cpp_cpu.sum().backward()
 cpp_cpu_end_time = time.perf_counter()
 cpp_cpu_mixture_grad = mixture.grad.clone()
 cpp_cpu_xes_grad = xes.grad.clone()
+cpp_cpu_time = cpp_cpu_end_time - cpp_cpu_start_time
 
 
 print("cpp cuda started")
@@ -141,6 +145,7 @@ torch.cuda.synchronize()
 cpp_cuda_end_time = time.perf_counter()
 cpp_cuda_mixture_grad = cuda_mixture.grad.clone()
 cpp_cuda_xes_grad = cuda_xes.grad.clone()
+cpp_cuda_time = cpp_cuda_end_time - cpp_cuda_start_time
 
 
 
@@ -166,6 +171,11 @@ print(f"cpp cpu backward:     {cpp_cpu_end_time - cpp_cpu_forward_time}")
 print(f"cpp cuda forward:     {cpp_cuda_forward_time - cpp_cuda_start_time}")
 print(f"cpp cuda backward:    {cpp_cuda_end_time - cpp_cuda_forward_time}")
 
+if enable_python:
+    print(f"python min time / cpp min time = {min(python_cpu_time, python_cuda_time) / min(cpp_cpu_time, cpp_cuda_time)}")
+    print(f"python cpu time / cpp cpu time = {python_cpu_time / cpp_cpu_time}")
+    print(f"python cuda time / cpp cuda time = {python_cuda_time / cpp_cuda_time}")
+print(f"cpp cpu time / cpp cuda time = {cpp_cpu_time / cpp_cuda_time}")
 
 # gradcheck takes a tuple of tensors as input, check if your gradient
 # evaluated with these tensors are close enough to numerical

@@ -161,8 +161,8 @@ inline gm::Ns check_input_and_get_ns(torch::Tensor mixture, torch::Tensor xes) {
     uint n_layers_xes = uint(xes.size(1));
     uint n_xes = uint(xes.size(2));
 
-    TORCH_CHECK(/*n_batch_xes == 1 || */n_batch_xes == n_batch, "xes must have a batch dimension equal to the mixture");
-    TORCH_CHECK(/*n_layers_xes == 1 || */n_layers_xes == n_layers, "xes must have a layer dimension equal to the mixture");
+    TORCH_CHECK(n_batch_xes == 1 || n_batch_xes == n_batch, "xes must have a batch dimension equal to one or the mixture");
+    TORCH_CHECK(n_layers_xes == 1 || n_layers_xes == n_layers, "xes must have a layer dimension equal to one or the mixture");
     TORCH_CHECK(xes.size(3) == n_dims, "xes must have the last dimension equal to the number of dimensions of the mixture");
     return {n_batch, n_layers, n_components, n_dims, n_batch_xes, n_layers_xes, n_xes};
 }
