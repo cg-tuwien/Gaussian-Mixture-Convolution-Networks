@@ -1,0 +1,59 @@
+#version 430
+
+// Exact Density Visualization
+
+layout(local_size_x = 32, local_size_y = 32, local_size_z = 1) in;
+layout(r32f, binding = 0) uniform image2D img_output;
+
+layout(location=1) uniform int width;
+layout(location=2) uniform int height;
+layout(location=3) uniform mat4 invViewMatrix;
+layout(location=4) uniform float fov;
+layout(location=5) uniform sampler1D gaussTex;
+
+float sqrt2pi = 2.506628275;
+
+struct Gaussian {
+	vec4 mu_alpha;
+	mat4 invsigma;
+};
+
+layout(std430, binding=0) buffer GaussianMixture {
+	Gaussian gaussians[];
+} mixture;
+
+void main() {
+	ivec2 pixel_coords = ivec2(gl_GlobalInvocationID.xy);
+	vec2 pixel_center = vec2(pixel_coords) + vec2(0.5);
+	vec2 pixel_uv = pixel_center / vec2(width, height);
+	vec2 d = pixel_uv * 2.0 - 1.0;
+	float aspectRatio = float(width) / float(height);
+
+	vec3 origin = vec3(0, 0, 0.0);
+	vec3 direction = normalize(vec3(d.x * aspectRatio, d.y, -1/tan(fov/2.0)));
+	vec4 p1 = vec4(origin, 1.0);
+	vec4 p2 = vec4(origin + direction, 1.0);
+	vec4 vp1 = invViewMatrix * p1;
+	vec4 vp2 = invViewMatrix * p2;
+	origin = vec3(vp1);
+	direction = vec3(normalize(vp2 - vp1));
+
+	//convert system
+	origin = vec3(origin.x, -origin.z, origin.y);
+	direction = vec3(direction.x, -direction.z, direction.y);
+
+	float sum = 0;
+	for (int i = 0; i < mixture.gaussians.length(); i++) {
+		Gaussian gauss = mixture.gaussians[i];
+		mat3 inv = mat3(gauss.invsigma);
+		vec3 rs = direction*inv;
+		float sig2 = 1.0 / dot(rs, direction);
+		float mu = dot(rs, gauss.mu_alpha.xyz-origin) * sig2;
+		float sig = sqrt(sig2);
+		vec3 pivec = origin + mu*direction - gauss.mu_alpha.xyz;
+		float gammak = sqrt2pi * gauss.mu_alpha.w * sig * exp(-0.5*dot(pivec*inv, pivec));
+		sum += gammak * texture(gaussTex, mu / sig).r;
+	}
+
+	imageStore(img_output, pixel_coords, vec4(sum));
+}

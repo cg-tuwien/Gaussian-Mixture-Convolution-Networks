@@ -13,6 +13,8 @@ import madam_imagetools
 import gm
 import mat_tools
 
+import config
+
 from torch import Tensor
 
 
@@ -179,7 +181,7 @@ def ad_algorithm(image: Tensor, n_components: int, n_iterations: int = 8, device
             optimiser = optim.Adam([weights, positions, icov_factor], lr=0.0005)
         optimiser.zero_grad()
 
-        xes = torch.rand(batch_size, 1, 50*50, 2, device=device, dtype=torch.float32) * torch.tensor([[[width, height]]], device=device, dtype=torch.float32)
+        xes = torch.rand(batch_size, 1, config.eval_img_n_sample_points, 2, device=device, dtype=torch.float32) * torch.tensor([[[width, height]]], device=device, dtype=torch.float32)
         # indices are row * column, while position is x * y, therefore we flip
         xes_indices = xes.type(torch.long).view(batch_size, -1, 2).flip(dims=[-1])
         xes_indices_b = xes_indices

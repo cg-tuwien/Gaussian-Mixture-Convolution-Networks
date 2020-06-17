@@ -12,6 +12,7 @@
 /documentation/*/*.out
 *.synctex.gz
 /documentation/*/*.pdf
+/gmc_net_data/models/*
 /prototype/experiment_dl_1.py
 /prototype/experiment_dl_10.py
 /prototype/experiment_dl_11.py

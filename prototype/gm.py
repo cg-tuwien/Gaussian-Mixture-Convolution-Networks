@@ -1,10 +1,11 @@
-from __future__ import annotations
+#from __future__ import annotations
 import math
 import typing
 
 import torch
 from torch import Tensor
 import matplotlib.pyplot as plt
+import numpy as np
 
 import mat_tools
 import config
@@ -153,8 +154,8 @@ def evaluate_inversed(mixture: Tensor, xes: Tensor) -> Tensor:
     xes = xes.view(xes.shape[0], xes.shape[1], 1, n_xes, _n_dims)
     values_sum = torch.zeros(_n_batch, _n_layers, n_xes, dtype=torch.float32, device=mixture.device)
 
-    total_memory_space = _n_batch * _n_layers * _n_comps * n_xes * _n_dims  # did i forget something?
-    n_memory_slices = max(total_memory_space // (1024 * 1024 * 200), 1)
+    total_memory_space = _n_batch * _n_layers * _n_comps * n_xes * _n_dims * 4  # did i forget something?
+    n_memory_slices = max(total_memory_space // config.eval_slize_size, 1) # SLICING
     comp_slice_size = max(_n_comps // n_memory_slices, 1)
     n_memory_slices = _n_comps // comp_slice_size + int(_n_comps % comp_slice_size != 0)
     for i in range(n_memory_slices):
@@ -462,3 +463,84 @@ def de_normalise(m: Tensor, normalisation: NormalisationFactors) -> Tensor:
     return pack_mixture(weights(m) * inverted_weight_scaling,
                         positions(m) * inverted_position_scaling + inverted_position_translation,
                         inverted_covariance_scaling @ covariances(m) @ inverted_covariance_scaling)
+
+def write_gm_to_ply(weights: Tensor, positions: Tensor, covariances: Tensor, batch: int, filename: str):
+    weight_shape = weights.shape #should be (m,1,n)
+    pos_shape = positions.shape #should be (m,1,n,3)
+    cov_shape = covariances.shape #should be (m,1,n,3,3)
+    assert len(weight_shape) == 3
+    assert len(pos_shape) == 4
+    assert len(cov_shape) == 5
+    assert weight_shape[0] == pos_shape[0] == cov_shape[0]
+    assert weight_shape[1] == pos_shape[1] == cov_shape[1] == 1
+    assert weight_shape[2] == pos_shape[2] == cov_shape[2]
+    assert pos_shape[3] == cov_shape[3] == 3
+    assert cov_shape[4] == 3
+    n = weight_shape[2]
+
+    _weights = weights[batch,0,:].view(n)
+    _positions = positions[batch,0,:,:].view(n,3)
+    _covs = covariances[batch,0,:,:,:].view(n,3,3)
+
+    file = open(filename, "w+")
+    file.write("ply\nformat ascii 1.0\n")
+    file.write(f"element component {n}\n")
+    file.write("property float x\nproperty float y\nproperty float z\n")
+    file.write("property float covxx\nproperty float covxy\nproperty float covxz\n")
+    file.write("property float covyy\nproperty float covyz\nproperty float covzz\n")
+    file.write("property float weight\nend_header\n")
+
+    file.close()
+    file = open(filename, "ab") #open in append mode
+
+    data = torch.zeros(n, 10)
+    data[:, 0:3] = _positions
+    data[:, 3] = _covs[:, 0, 0]
+    data[:, 4] = _covs[:, 0, 1]
+    data[:, 5] = _covs[:, 0, 2]
+    data[:, 6] = _covs[:, 1, 1]
+    data[:, 7] = _covs[:, 1, 2]
+    data[:, 8] = _covs[:, 2, 2]
+    data[:, 9] = _weights
+
+    np.savetxt(file, data.detach().numpy(), delimiter="  ")
+
+    # for i in range(0,n):
+    #     file.write(f"{_positions[i,0].item()}  {_positions[i,1].item()}  {_positions[i,2].item()}  ")
+    #     file.write(f"{_covs[i,0,0].item()}  {_covs[i,0,1].item()}  {_covs[i,0,2].item()}  ")
+    #     file.write(f"{_covs[i,1,1].item()}  {_covs[i,1,2].item()}  {_covs[i,2,2].item()}  ")
+    #     file.write(f"{_weights[i].item()}\n")
+    file.close()
+
+def read_gm_from_ply(filename: str, ismodel: bool) -> Tensor:
+    #THIS IS VERY SIMPLE AND NOT GENERAL
+    fin = open(filename)
+    header = True
+    index = 0
+    for line in fin:
+        if header:
+            if line.startswith("element component "):
+                number = int(line[18:])
+                gmpos = torch.zeros((1, 1, number, 3))
+                gmcov = torch.zeros((1, 1, number, 3, 3))
+                gmwei = torch.zeros((1, 1, number))
+            elif line.startswith("end_header"):
+                header = False
+        else:
+            elements = line.split("  ")
+            gmpos[0, 0, index, :] = torch.tensor([float(e) for e in elements[0:3]])
+            gmcov[0, 0, index, 0, 0] = float(elements[3])
+            gmcov[0, 0, index, 0, 1] = gmcov[0, 0, index, 1, 0] = float(elements[4])
+            gmcov[0, 0, index, 0, 2] = gmcov[0, 0, index, 2, 0] = float(elements[5])
+            gmcov[0, 0, index, 1, 1] = float(elements[6])
+            gmcov[0, 0, index, 1, 2] = gmcov[0, 0, index, 2, 1] = float(elements[7])
+            gmcov[0, 0, index, 2, 2] = float(elements[8])
+            gmwei[0, 0, index] = float(elements[9])
+            index = index + 1
+    fin.close()
+    if ismodel:
+        gmwei /= gmwei.sum()
+        amplitudes = gmwei / (gmcov.det().sqrt() * 15.74960995)
+        return pack_mixture(amplitudes, gmpos, gmcov)
+    else:
+        return pack_mixture(gmwei, gmpos, gmcov)
