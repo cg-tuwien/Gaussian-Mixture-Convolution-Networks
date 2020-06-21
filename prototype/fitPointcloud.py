@@ -283,14 +283,14 @@ def ad_algorithm(pointclouds: Tensor,
         if penalize_small_determinants:
             #det_ref = torch.ones(det_cost.shape).to(device)*1e-12
             #det_cost = (det_ref - det_cost.where(det_cost < det_ref, det_ref)).sum()*1e12
-            det_cost = -(torch.sigmoid(5*determinants/1e-14)-1).sum()*2
+            det_cost = -(torch.sigmoid(5*determinants/1e-12)-1).sum()*2
 
         loss = loss1 + cov_cost + amp_cost + ext_cost + det_cost
         #loss = loss1 + cov_cost + ext_cost
 
         assert not torch.isnan(loss).any()
 
-        if k == 341:
+        if k == 151:
             print()
 
         loss.backward()
@@ -464,6 +464,8 @@ def calculate_covariance_matrices(cov_train_mode: str, data: Tensor, epsilon: fl
         inversed_covariances = data @ data.transpose(-2, -1) + torch.eye(3, 3, device=data.device) * epsilon
         covariances = inversed_covariances.inverse()
         determinants = covariances.det()
+    if torch.isnan(inversed_covariances).any():
+        print()
     assert not torch.isnan(inversed_covariances).any()
     assert not torch.isinf(inversed_covariances).any()
     assert (determinants > 0).all()
@@ -497,7 +499,7 @@ def test():
     name = input('Name for this training (or empty for auto): ')
     ad_algorithm(
         pointclouds=pcs,
-        n_components=500,
+        n_components=32684,
         n_iterations=1000000,
         device='cuda',
         name=name,
@@ -509,13 +511,13 @@ def test():
         penalize_long_gaussians=False,
         penalize_amplitude_differences=False,
         penalize_extends_differences=False,
-        penalize_small_determinants=False,
+        penalize_small_determinants=True,
         weight_softmax=False,
         constant_weights=False,
         log_positions=False,
         cov_train_mode='cholesky',
         learn_rate_pos=0.001,
-        learn_rate_cov=0.001,
+        learn_rate_cov=0.0001,
         learn_rate_wei=0.0005
     )
 
