@@ -168,9 +168,9 @@ class TestGM(unittest.TestCase):
             n_layers = 4
             gm1 = gm.generate_random_mixtures(n_batch=n_batch, n_layers=n_layers, n_components=3, n_dims=n_dims, pos_radius=0.5, cov_radius=0.2)
             gm1_covs = gm.covariances(gm1)
-            gm1_covs += (torch.eye(n_dims) * 0.02).view(1, 1, 1, n_dims, n_dims)
-            n_samples = 2000000
-            integration_area_side_length = 6
+            gm1_covs += (torch.eye(n_dims) * 0.05).view(1, 1, 1, n_dims, n_dims)
+            n_samples = 40000000
+            integration_area_side_length = 10
 
             xes = (torch.rand(1, 1, n_samples, n_dims) - 0.5) * integration_area_side_length
 

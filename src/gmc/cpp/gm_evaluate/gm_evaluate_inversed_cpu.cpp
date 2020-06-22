@@ -174,9 +174,11 @@ void execute_parallel_backward(const torch::PackedTensorAccessor32<scalar_t, 4, 
                 }
             }
         }
-        for (int i = 0; i < DIMS; ++i) {
-            #pragma omp atomic
-            grad_xes[i] *= grad_output_a[batch_index][layer_index][xes_index];
+        if (requires_grad_xes) {
+            for (int i = 0; i < DIMS; ++i) {
+                #pragma omp atomic
+                grad_xes[i] *= grad_output_a[batch_index][layer_index][xes_index];
+            }
         }
     }
 }

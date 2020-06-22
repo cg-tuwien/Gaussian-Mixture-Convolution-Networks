@@ -31,3 +31,7 @@
 /cpp_modules/build-gm_evaluate*
 /cpp_modules/gm_evaluate/__pycache__/*
 /cpp_modules/gm_evaluate/CMakeLists.txt.user
+/src/gmc/__pycache__/*
+/src/gmc/cpp/__pycache__/*
+/src/gmc/cpp/gm_evaluate/CMakeLists.txt.user
+/src/gmc/cpp/gm_evaluate/__pycache__/*

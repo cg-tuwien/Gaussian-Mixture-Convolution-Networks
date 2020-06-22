@@ -8,12 +8,12 @@ import mixture as gm
 enable_python = True
 enable_output = True
 
-n_batch = 10
-n_layers = 5
+n_batch = 1
+n_layers = 4
 n_dims = 2
-mixture = gm.generate_random_mixtures(n_batch, n_layers, 60, n_dims)
+mixture = gm.generate_random_mixtures(n_batch, n_layers, 1, n_dims)
 mixture = gm.pack_mixture(gm.weights(mixture), gm.positions(mixture), gm.covariances(mixture).inverse().transpose(-2, -1))
-xes = torch.rand([n_batch, n_layers, 50, n_dims])
+xes = torch.rand([1, 1, 1, n_dims])
 
 cuda_mixture = mixture.cuda()
 cuda_xes = xes.cuda()
@@ -167,18 +167,3 @@ if enable_python:
     print(f"python cpu time / cpp cpu time = {python_cpu_time / cpp_cpu_time}")
     print(f"python cuda time / cpp cuda time = {python_cuda_time / cpp_cuda_time}")
 print(f"cpp cpu time / cpp cuda time = {cpp_cpu_time / cpp_cuda_time}")
-
-# gradcheck takes a tuple of tensors as input, check if your gradient
-# evaluated with these tensors are close enough to numerical
-# approximations and returns True if they all verify this condition.
-
-mixture = gm.generate_random_mixtures(1, 1, 60, 3).to(torch.float64).cuda()
-xes = torch.rand([1, 1, 60, 3]).to(torch.float64).cuda()
-
-mixture.requires_grad = False;
-xes.requires_grad = True;
-
-exit()
-print(f"====== torch.autograd.gradcheck ======")
-test = torch.autograd.gradcheck(cpp_inversed_eval.apply, (mixture, xes), eps=1e-6, atol=1e-5, nondet_tol=1e-5)
-print(test)
