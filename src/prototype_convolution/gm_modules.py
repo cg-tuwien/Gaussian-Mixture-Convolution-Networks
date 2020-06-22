@@ -16,7 +16,7 @@ from torch import Tensor
 
 import gmc.mixture as gm
 import gmc.mat_tools as mat_tools
-import gmc.imagetools as madam_imagetools
+import gmc.image_tools as madam_imagetools
 import config
 import gm_fitting
 

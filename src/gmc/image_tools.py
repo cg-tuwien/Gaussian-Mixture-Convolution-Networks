@@ -12,7 +12,7 @@ def colour_mapped(mono, low, high):
         raise Exception("colour_map is only applicable for mono matrices")
 
     normaliser = matplotlib.colors.Normalize(vmin=low, vmax=high, clip=True)
-    mapper = matplotlib.cm.ScalarMappable(norm=normaliser, cmap=madam_cm.cm_linSeg)
+    mapper = matplotlib.cm.ScalarMappable(norm=normaliser, cmap=colourmap.cm_linSeg)
     return mapper.to_rgba(mono)
 
 def write_colour_map(width: int, height: int, filename: str):

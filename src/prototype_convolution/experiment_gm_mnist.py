@@ -22,7 +22,7 @@ import gm_modules
 import experiment_gm_mnist_model
 
 # based on https://github.com/pytorch/examples/blob/master/mnist/main.py
-import madam_imagetools
+import gmc.image_tools as madam_imagetools
 
 n_kernel_components = 5
 

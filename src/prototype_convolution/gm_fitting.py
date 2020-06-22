@@ -16,7 +16,7 @@ import torch.utils.tensorboard
 from torch import Tensor
 
 import gmc.mixture as gm
-import gmc.imagetools as madam_imagetools
+import gmc.image_tools as madam_imagetools
 import gmc.mat_tools as mat_tools
 import config
 

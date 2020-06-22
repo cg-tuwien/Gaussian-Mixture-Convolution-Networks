@@ -35,3 +35,4 @@
 /src/gmc/cpp/__pycache__/*
 /src/gmc/cpp/gm_evaluate/CMakeLists.txt.user
 /src/gmc/cpp/gm_evaluate/__pycache__/*
+/src/prototype_convolution/__pycache__/*
