@@ -17,7 +17,7 @@ from torch.optim.lr_scheduler import StepLR
 
 import config
 import gmc.mixture as gm
-import gm_fitting
+import fitting_net
 import gm_modules
 import experiment_gm_mnist_model
 

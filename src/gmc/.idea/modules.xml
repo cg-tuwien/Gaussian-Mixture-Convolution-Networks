@@ -4,6 +4,7 @@
     <modules>
       <module fileurl="file://$PROJECT_DIR$/.idea/gmc.iml" filepath="$PROJECT_DIR$/.idea/gmc.iml" />
       <module fileurl="file://$PROJECT_DIR$/../prototype_convolution/.idea/prototype_convolution.iml" filepath="$PROJECT_DIR$/../prototype_convolution/.idea/prototype_convolution.iml" />
+      <module fileurl="file://$PROJECT_DIR$/../prototype_pcfitting/.idea/prototype_pcfitting.iml" filepath="$PROJECT_DIR$/../prototype_pcfitting/.idea/prototype_pcfitting.iml" />
     </modules>
   </component>
 </project>

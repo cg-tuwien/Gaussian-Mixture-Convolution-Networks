@@ -9,9 +9,9 @@ import torchvision.transforms
 import torch.utils.data
 import typing
 
-import core.gm as gm
-import core.mat_tools as mat_tools
-import core.madam_imagetools as madam_imagetools
+import gmc.mixture as gm
+import gmc.mat_tools as mat_tools
+import gmc.image_tools as madam_imagetools
 
 import config
 

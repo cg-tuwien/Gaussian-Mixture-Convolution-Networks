@@ -10,7 +10,7 @@ import typing
 
 import config
 import gmc.mixture as gm
-import gm_fitting
+import fitting_net
 import gm_modules
 
 

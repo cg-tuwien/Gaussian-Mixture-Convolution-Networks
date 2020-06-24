@@ -18,7 +18,7 @@ import gmc.mixture as gm
 import gmc.mat_tools as mat_tools
 import gmc.image_tools as madam_imagetools
 import config
-import gm_fitting
+import fitting_net
 
 
 class GmConvolution(torch.nn.modules.Module):
@@ -159,19 +159,19 @@ class GmConvolution(torch.nn.modules.Module):
         return torch.cat(out_mixtures, dim=1)
 
 
-def generate_default_fitting_module(n_input_gaussians: int, n_output_gaussians: int) -> gm_fitting.Net:
+def generate_default_fitting_module(n_input_gaussians: int, n_output_gaussians: int) -> fitting_net.Net:
     assert n_output_gaussians > 0
     n_dimensions = 2
-    return gm_fitting.PointNetWithParallelMLPs([64, 128, 256, 512, 512, n_output_gaussians * 25],
-                                               [256, 256, 256, 256, 256, 128],
-                                               n_output_gaussians=n_output_gaussians,
-                                               n_dims=n_dimensions,
-                                               aggregations=1, batch_norm=True)
+    return fitting_net.PointNetWithParallelMLPs([64, 128, 256, 512, 512, n_output_gaussians * 25],
+                                                [256, 256, 256, 256, 256, 128],
+                                                n_output_gaussians=n_output_gaussians,
+                                                n_dims=n_dimensions,
+                                                aggregations=1, batch_norm=True)
 
 
 class GmBiasAndRelu(torch.nn.modules.Module):
     def __init__(self, layer_id: str, n_layers: int, n_output_gaussians: int, n_input_gaussians: int = -1, max_bias: float = 0.0,
-                 generate_fitting_module: typing.Callable[[int, int], gm_fitting.Net] = generate_default_fitting_module):
+                 generate_fitting_module: typing.Callable[[int, int], fitting_net.Net] = generate_default_fitting_module):
         # todo: option to make fitting net have common or seperate weights per module
         super(GmBiasAndRelu, self).__init__()
         self.layer_id = layer_id
@@ -184,7 +184,7 @@ class GmBiasAndRelu(torch.nn.modules.Module):
 
         # WARNING !!!: evil code. the string self.gm_fitting_net_666 is used for filtering in experiment_gm_mnist_model.Net.save_model(). !!! WARNING
         # todo: fix it
-        self.gm_fitting_net_666: gm_fitting.Net = generate_fitting_module(n_input_gaussians, n_output_gaussians)
+        self.gm_fitting_net_666: fitting_net.Net = generate_fitting_module(n_input_gaussians, n_output_gaussians)
 
         self.gm_fitting_net_666.requires_grad_(True)
         self.bias.requires_grad_(True)
@@ -196,7 +196,7 @@ class GmBiasAndRelu(torch.nn.modules.Module):
         self.last_in = None
         self.last_out = None
 
-        self.fitting_sampler = gm_fitting.Sampler(self, n_training_samples=1000)
+        self.fitting_sampler = fitting_net.Sampler(self, n_training_samples=1000)
 
         print(self.gm_fitting_net_666)
 
