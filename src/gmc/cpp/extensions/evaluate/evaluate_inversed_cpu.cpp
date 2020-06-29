@@ -60,7 +60,7 @@ template <typename scalar_t, int DIMS>
 void execute_parallel_forward(const torch::PackedTensorAccessor32<scalar_t, 4, torch::RestrictPtrTraits>& mixture_a,
                       const torch::PackedTensorAccessor32<scalar_t, 4, torch::RestrictPtrTraits>& xes_a,
                       torch::PackedTensorAccessor32<scalar_t, 3, torch::RestrictPtrTraits>& sum_a,
-                      const gm::Ns& n) {
+                      const gm::MixtureAndXesNs& n) {
 
     const auto nXes_x_nLayers = int(n.xes * n.layers);
     #pragma omp parallel for num_threads(16)
@@ -81,9 +81,7 @@ void execute_parallel_forward(const torch::PackedTensorAccessor32<scalar_t, 4, t
             const auto& c_weight = gm::weight(mixture_a[batch_index][layer_index][int(c)]);
             const auto& c_pos = gm::position<DIMS>(mixture_a[batch_index][layer_index][int(c)]);
             const auto& c_cov = gm::covariance<DIMS>(mixture_a[batch_index][layer_index][int(c)]);
-            const auto t = x_pos - c_pos;
-            const auto v = scalar_t(-0.5) * glm::dot(t, (c_cov * t));
-            sum += c_weight * std::exp(v);
+            sum += gm::evaluate_gaussian(x_pos, c_weight, c_pos, c_cov);
         }
 
     }
@@ -118,7 +116,7 @@ void execute_parallel_backward(const torch::PackedTensorAccessor32<scalar_t, 4, 
                       torch::PackedTensorAccessor32<scalar_t, 4, torch::RestrictPtrTraits>& grad_mixture_a,
                       torch::PackedTensorAccessor32<scalar_t, 4, torch::RestrictPtrTraits>& grad_xes_a,
                       torch::PackedTensorAccessor32<scalar_t, 3, torch::RestrictPtrTraits>& grad_output_a,
-                      const gm::Ns& n, bool requires_grad_mixture, bool requires_grad_xes) {
+                      const gm::MixtureAndXesNs& n, bool requires_grad_mixture, bool requires_grad_xes) {
 
     const auto nXes_x_nLayers = int(n.xes * n.layers);
     #pragma omp parallel for num_threads(16)

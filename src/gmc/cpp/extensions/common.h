@@ -53,8 +53,19 @@ fastexp (float p)
   return fastpow2 (1.442695040f * p);
 }
 
+__forceinline__ __device__ float exp(float x) {
+    return ::expf(x);
+}
+__forceinline__ __device__ double exp(double x) {
+    return ::exp(x);
+}
 
-struct Ns {
+template <typename scalar_t>
+scalar_t exp(scalar_t x) {
+    return std::exp(x);
+}
+
+struct MixtureAndXesNs {
     uint batch = 0;
     uint layers = 0;
     uint components = 0;
@@ -62,6 +73,12 @@ struct Ns {
     uint batch_xes = 0;
     uint layers_xes = 0;
     uint xes = 0;
+};
+struct MixtureNs {
+    uint batch = 0;
+    uint layers = 0;
+    uint components = 0;
+    uint dims = 0;
 };
 
 inline uint n_batch(torch::Tensor mixture) {
@@ -108,12 +125,14 @@ inline torch::Tensor covariances(torch::Tensor mixture) {
 
 
 template <int DIMS, typename scalar_t>
-__forceinline__ __host__ __device__ typename std::conditional<std::is_const<scalar_t>::value, const glm::vec<DIMS, std::remove_cv_t<scalar_t>>, glm::vec<DIMS, scalar_t>>::type& vec(scalar_t& memory_location) {
+__forceinline__ __host__ __device__ typename std::conditional<std::is_const<scalar_t>::value, const glm::vec<DIMS, std::remove_cv_t<scalar_t>>, glm::vec<DIMS, scalar_t>>::type&
+vec(scalar_t& memory_location) {
     return reinterpret_cast<typename std::conditional<std::is_const<scalar_t>::value, const glm::vec<DIMS, std::remove_cv_t<scalar_t>>, glm::vec<DIMS, scalar_t>>::type&>(memory_location);
 }
 
 template <int DIMS, typename scalar_t>
-__forceinline__ __host__ __device__ typename std::conditional<std::is_const<scalar_t>::value, const glm::mat<DIMS, DIMS, std::remove_cv_t<scalar_t>>, glm::mat<DIMS, DIMS, scalar_t>>::type& mat(scalar_t& memory_location) {
+__forceinline__ __host__ __device__ typename std::conditional<std::is_const<scalar_t>::value, const glm::mat<DIMS, DIMS, std::remove_cv_t<scalar_t>>, glm::mat<DIMS, DIMS, scalar_t>>::type&
+mat(scalar_t& memory_location) {
     return reinterpret_cast<typename std::conditional<std::is_const<scalar_t>::value, const glm::mat<DIMS, DIMS, std::remove_cv_t<scalar_t>>, glm::mat<DIMS, DIMS, scalar_t>>::type&>(memory_location);
 }
 
@@ -133,6 +152,17 @@ __forceinline__ __host__ __device__ auto covariance(Gaussian&& gaussian) -> decl
     return mat<DIMS>(gaussian[1 + DIMS]);
 }
 
+
+template <typename scalar_t, int DIMS>
+__forceinline__ __host__ __device__ scalar_t evaluate_gaussian(const glm::vec<DIMS, scalar_t>& evalpos,
+                                                               const scalar_t& weight,
+                                                               const glm::vec<DIMS, scalar_t>& pos,
+                                                               const glm::mat<DIMS, DIMS, scalar_t>& inversed_cov) {
+    const auto t = evalpos - pos;
+    const auto v = scalar_t(-0.5) * glm::dot(t, (inversed_cov * t));
+    return weight * gm::exp(v);
+}
+
 inline void check_mixture(torch::Tensor mixture) {
     TORCH_CHECK(mixture.is_contiguous(), "mixture must be contiguous")
     TORCH_CHECK(!torch::isnan(mixture).any().item<bool>(), "mixture contains NaNs");
@@ -144,9 +174,19 @@ inline void check_mixture(torch::Tensor mixture) {
 }
 
 
-inline gm::Ns check_input_and_get_ns(torch::Tensor mixture, torch::Tensor xes) {
+inline MixtureNs get_ns(torch::Tensor mixture) {
+    check_mixture(mixture);
 
-    gm::check_mixture(mixture);
+    uint n_batch = gm::n_batch(mixture);
+    uint n_layers = gm::n_layers(mixture);
+    uint n_components = gm::n_components(mixture);
+    uint n_dims = gm::n_dimensions(mixture);
+
+    return {n_batch, n_layers, n_components, n_dims};
+}
+
+inline MixtureAndXesNs check_input_and_get_ns(torch::Tensor mixture, torch::Tensor xes) {
+    check_mixture(mixture);
 
     uint n_batch = gm::n_batch(mixture);
     uint n_layers = gm::n_layers(mixture);

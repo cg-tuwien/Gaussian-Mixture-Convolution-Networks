@@ -10,7 +10,7 @@ import numpy as np
 import mat_tools
 import config
 
-import cpp.gm_evaluate.gm_evaluate_inversed as gm_evaluate_inversed
+import cpp.extensions.evaluate.evaluate_inversed as gm_evaluate_inversed
 
 
 def n_dimensions(mixture: Tensor) -> int:

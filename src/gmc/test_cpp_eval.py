@@ -2,7 +2,7 @@ import unittest
 import time
 import torch.autograd
 
-import cpp.gm_evaluate.gm_evaluate_inversed as cpp_inversed_eval
+import cpp.extensions.evaluate.evaluate_inversed as cpp_inversed_eval
 import mixture as gm
 
 enable_output = True

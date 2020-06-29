@@ -2,7 +2,6 @@ import unittest
 import time
 import torch.autograd
 
-import cpp.gm_evaluate.gm_evaluate_inversed as cpp_inversed_eval
 import mixture as gm
 
 enable_python = True
@@ -26,8 +25,8 @@ cuda_xes.requires_grad = False;
 if enable_python:
     python_cpu = gm.old_evaluate_inversed(mixture, xes)
     python_cuda = gm.old_evaluate_inversed(cuda_mixture, cuda_xes)
-cpp_cpu = cpp_inversed_eval.apply(mixture, xes)
-cpp_cuda = cpp_inversed_eval.apply(cuda_mixture, cuda_xes)
+cpp_cpu = gm.evaluate_inversed(mixture, xes)
+cpp_cuda = gm.evaluate_inversed(cuda_mixture, cuda_xes)
 torch.cuda.synchronize()
 
 if enable_python:
@@ -44,12 +43,12 @@ if enable_python:
 
 print("cpp cpu started")
 cpp_cpu_start_time = time.perf_counter()
-cpp_cpu = cpp_inversed_eval.apply(mixture, xes)
+cpp_cpu = gm.evaluate_inversed(mixture, xes)
 cpp_cpu_end_time = time.perf_counter()
 
 print("cpp cuda started")
 cpp_cuda_start_time = time.perf_counter()
-cpp_cuda = cpp_inversed_eval.apply(cuda_mixture, cuda_xes)
+cpp_cuda = gm.evaluate_inversed(cuda_mixture, cuda_xes)
 torch.cuda.synchronize()
 cpp_cuda_end_time = time.perf_counter()
 
@@ -76,9 +75,9 @@ if enable_python:
     python_cpu.sum().backward()
     python_cuda = gm.old_evaluate_inversed(cuda_mixture, cuda_xes)
     python_cuda.sum().backward()
-cpp_cpu = cpp_inversed_eval.apply(mixture, xes)
+cpp_cpu = gm.evaluate_inversed(mixture, xes)
 cpp_cpu.sum().backward()
-cpp_cuda = cpp_inversed_eval.apply(cuda_mixture, cuda_xes)
+cpp_cuda = gm.evaluate_inversed(cuda_mixture, cuda_xes)
 cpp_cuda.sum().backward()
 torch.cuda.synchronize()
 mixture.grad = None
@@ -117,7 +116,7 @@ cuda_xes.grad = None
 
 print("cpp cpu started")
 cpp_cpu_start_time = time.perf_counter()
-cpp_cpu = cpp_inversed_eval.apply(mixture, xes)
+cpp_cpu = gm.evaluate_inversed(mixture, xes)
 cpp_cpu_forward_time = time.perf_counter()
 cpp_cpu.sum().backward()
 cpp_cpu_end_time = time.perf_counter()
@@ -128,7 +127,7 @@ cpp_cpu_time = cpp_cpu_end_time - cpp_cpu_start_time
 
 print("cpp cuda started")
 cpp_cuda_start_time = time.perf_counter()
-cpp_cuda = cpp_inversed_eval.apply(cuda_mixture, cuda_xes)
+cpp_cuda = gm.evaluate_inversed(cuda_mixture, cuda_xes)
 torch.cuda.synchronize()
 cpp_cuda_forward_time = time.perf_counter()
 cpp_cuda.sum().backward()

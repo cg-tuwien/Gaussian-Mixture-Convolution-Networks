@@ -7,12 +7,12 @@ print(source_dir)
 
 
 
-extra_include_paths = [source_dir + "/../glm/"]
+extra_include_paths = [source_dir + "/../../glm/", source_dir + "/.."]
 
-cuda = load('gm_evaluate_inversed_cuda', [source_dir + '/gm_evaluate_inversed_cuda.cpp', source_dir + '/gm_evaluate_inversed_cuda.cu'],
+cuda = load('evaluate_inversed_cuda', [source_dir + '/evaluate_inversed_cuda.cpp', source_dir + '/evaluate_inversed_cuda.cu'],
                                 extra_include_paths=extra_include_paths,
                                 verbose=True, extra_cflags=["-O4", "-ffast-math"], extra_cuda_cflags=["-O3",  "--use_fast_math"])
-cpu = load('gm_evaluate_inversed_cpu', [source_dir + '/gm_evaluate_inversed_cpu.cpp'],
+cpu = load('evaluate_inversed_cpu', [source_dir + '/evaluate_inversed_cpu.cpp'],
                                 extra_include_paths=extra_include_paths,
                                 verbose=True, extra_cflags=["-fopenmp", "-O4", "-ffast-math"], extra_ldflags=["-lpthread"])
 
