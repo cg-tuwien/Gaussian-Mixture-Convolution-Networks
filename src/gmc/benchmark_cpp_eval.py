@@ -3,7 +3,7 @@ import time
 import torch.autograd
 
 import update_syspath
-from . import mixture as gm
+import gmc.mixture as gm
 
 enable_python = True
 enable_output = True
