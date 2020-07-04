@@ -1,4 +1,5 @@
-#include <torch/extension.h>
+//#include <torch/extension.h>
+#include <torch/script.h>
 
 #include <cuda.h>
 #include <cuda_runtime.h>
@@ -117,7 +118,7 @@ torch::Tensor cuda_evaluate_inversed_forward(torch::Tensor mixture, torch::Tenso
     TORCH_CHECK(n.xes < 65535, "number of xes must be smaller than 65535 for CUDA");
 
 
-    constexpr dim3 dimBlock = dim3(128);
+    dim3 dimBlock = dim3(128);
     const dim3 dimGrid = dim3(n.batch * n.layers,
                               n.xes,
                               (n.components + dimBlock.z - 1) / dimBlock.z);
@@ -153,7 +154,7 @@ std::vector<torch::Tensor> cuda_evaluate_inversed_backward(torch::Tensor grad_ou
     torch::Tensor grad_mixture = torch::zeros({n.batch, n.layers, n.components, mixture.size(3)}, torch::dtype(mixture.dtype()).device(mixture.device()));
     torch::Tensor grad_xes = torch::zeros({n.batch_xes, n.layers_xes, n.xes, n.dims}, torch::dtype(mixture.dtype()).device(mixture.device()));
 
-    constexpr dim3 dimBlock = dim3(128);
+    dim3 dimBlock = dim3(128);
     const dim3 dimGrid = dim3(n.batch * n.layers,
                               n.xes,
                               (n.components + dimBlock.z - 1) / dimBlock.z);
