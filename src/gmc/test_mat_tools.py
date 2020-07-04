@@ -7,7 +7,7 @@ import numpy.random as nprnd
 from torch import Tensor
 
 import update_syspath
-import gmc.mat_tools
+from gmc import mat_tools
 
 
 def _triangle_mat_data(dims: int) -> (np.array, np.array, Tensor):
