@@ -7,10 +7,9 @@ from torch import Tensor
 import matplotlib.pyplot as plt
 import numpy as np
 
-import mat_tools
-import config
-
-import cpp.extensions.evaluate.evaluate_inversed as gm_evaluate_inversed
+from . import mat_tools
+from . import config
+from .cpp.extensions.evaluate import evaluate_inversed as gm_evaluate_inversed
 
 
 def n_dimensions(mixture: Tensor) -> int:
@@ -94,8 +93,10 @@ def is_valid_mixture(mixture: Tensor) -> bool:
     assert torch.all(covariances(mixture).det() > 0)
     return True
 
+
 def evaluate_inversed(mixture: Tensor, xes: Tensor) -> Tensor:
     return gm_evaluate_inversed.apply(mixture, xes)
+
 
 def old_evaluate_inversed(mixture: Tensor, xes: Tensor) -> Tensor:
     _n_batch = n_batch(mixture)
@@ -143,20 +144,20 @@ def evaluate(mixture: Tensor, xes: Tensor) -> Tensor:
     return evaluate_inversed(pack_mixture(weights(mixture), positions(mixture), covariances(mixture).inverse().transpose(-2, -1)), xes)
 
 
-# todo: untested
-def max_component(mixture: Tensor, xes: Tensor) -> Tensor:
-    assert n_layers(mixture) == 1
-    selected = torch.zeros(xes.size()[1], dtype=torch.long)
-    component_values = evaluate_few_xes_component_wise(mixture, xes)
-    values = component_values[:, :, 0]
-
-    for i in range(n_components(mixture)):
-        component_values = component_values[:, :, 0]
-        mask = component_values > values
-        selected[mask] = i
-        values[mask] = component_values[mask]
-
-    return selected
+# # todo: untested
+# def max_component(mixture: Tensor, xes: Tensor) -> Tensor:
+#     assert n_layers(mixture) == 1
+#     selected = torch.zeros(xes.size()[1], dtype=torch.long)
+#     component_values = evaluate_few_xes_component_wise(mixture, xes)
+#     values = component_values[:, :, 0]
+#
+#     for i in range(n_components(mixture)):
+#         component_values = component_values[:, :, 0]
+#         mask = component_values > values
+#         selected[mask] = i
+#         values[mask] = component_values[mask]
+#
+#     return selected
 
 
 def debug_show(mixture: Tensor, batch_i: int = 0, layer_i: int = 0, x_low: float = -22, y_low: float = -22, x_high: float = 22, y_high: float = 22, step: float = 0.1, imshow=True) -> Tensor:
@@ -211,8 +212,8 @@ def render_bias_and_relu(mixture: Tensor, bias: Tensor,
 def export_as_image(mixture: Tensor) -> None:
     # todo make general on next occasion
     rendering = render(mixture.detach().view(1, -1, 1, 7), x_low=-1.5, x_high=1.5, y_low=-1.5, y_high=1.5).cpu().numpy()
-    import madam_imagetools
-    rendering_cm = madam_imagetools.colour_mapped(rendering, -1, 1)
+    import image_tools
+    rendering_cm = image_tools.colour_mapped(rendering, -1, 1)
     rendering_cm = rendering_cm.reshape(-1, 100, 100, 4)
     for i in range(rendering_cm.shape[0]):
         plt.imsave(f"{i:05}.png", rendering_cm[i, :, :, :])
@@ -423,6 +424,7 @@ def de_normalise(m: Tensor, normalisation: NormalisationFactors) -> Tensor:
                         positions(m) * inverted_position_scaling + inverted_position_translation,
                         inverted_covariance_scaling @ covariances(m) @ inverted_covariance_scaling)
 
+
 def write_gm_to_ply(weights: Tensor, positions: Tensor, covariances: Tensor, batch: int, filename: str):
     weight_shape = weights.shape #should be (m,1,n)
     pos_shape = positions.shape #should be (m,1,n,3)
@@ -470,6 +472,7 @@ def write_gm_to_ply(weights: Tensor, positions: Tensor, covariances: Tensor, bat
     #     file.write(f"{_covs[i,1,1].item()}  {_covs[i,1,2].item()}  {_covs[i,2,2].item()}  ")
     #     file.write(f"{_weights[i].item()}\n")
     file.close()
+
 
 def read_gm_from_ply(filename: str, ismodel: bool) -> Tensor:
     #THIS IS VERY SIMPLE AND NOT GENERAL

@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.cm
 import matplotlib.pyplot as plt
 
-import colourmap
+from . import colourmap
 
 gamma_correction = 1/2.2
 

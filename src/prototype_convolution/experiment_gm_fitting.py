@@ -3,6 +3,8 @@ import torch
 import datetime
 import torch.utils.tensorboard
 from torch import Tensor
+
+import update_syspath
 import config
 import gmc.mixture as gm
 import fitting_net
@@ -32,7 +34,7 @@ for batch_idx in range(10):
     start_time = time.perf_counter()
     for layer_id in range(3):
         m = gm.load(f"fitting_input/fitting_input_netlayer{layer_id}_batch{batch_idx}")[0]
-        m = m.cuda()
+        # m = m.cuda()
         device = m.device
         n_batch = gm.n_batch(m)
         n_layers = gm.n_layers(m)
@@ -45,8 +47,8 @@ for batch_idx in range(10):
         # negative_m = sorted_m[:, :, :, :n_negative_m]
         # positive_m = sorted_m[:, :, :, n_negative_m:]
 
-        m_relu = fitting_em.relu(m)
-        # log(m, m_relu, tensor_board_writer)
+        m_relu = fitting_em.em_algorithm(m, 10, 1)
+        log(m, m_relu, tensor_board_writer)
         print(f"{batch_idx}/{layer_id}")
 
     end_time = time.perf_counter()

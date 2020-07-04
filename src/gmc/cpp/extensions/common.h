@@ -65,6 +65,18 @@ scalar_t exp(scalar_t x) {
     return std::exp(x);
 }
 
+__forceinline__ __device__ float sqrt(float x) {
+    return ::sqrtf(x);
+}
+__forceinline__ __device__ double sqrt(double x) {
+    return ::sqrt(x);
+}
+
+template <typename scalar_t>
+scalar_t sqrt(scalar_t x) {
+    return std::sqrt(x);
+}
+
 struct MixtureAndXesNs {
     uint batch = 0;
     uint layers = 0;
@@ -121,6 +133,24 @@ inline torch::Tensor covariances(torch::Tensor mixture) {
     new_shape.push_back(n_dims);
 
     return mixture.index({Slice(), Slice(), Slice(), Slice(n_dimensions(mixture) + 1, None)}).view(new_shape);
+}
+
+inline torch::Tensor pack_mixture(const torch::Tensor weights, const torch::Tensor positions, const torch::Tensor covariances) {
+    const auto n_batch = weights.size(0);
+    const auto n_layers = weights.size(1);
+    const auto n_components = weights.size(2);
+    TORCH_CHECK(positions.size(0) == n_batch);
+    TORCH_CHECK(covariances.size(0) == n_batch);
+    TORCH_CHECK(positions.size(1) == n_layers);
+    TORCH_CHECK(covariances.size(1) == n_layers);
+    TORCH_CHECK(positions.size(2) == n_components);
+    TORCH_CHECK(covariances.size(2) == n_components);
+
+    const auto n_dims = positions.size(3);
+    TORCH_CHECK(covariances.size(3) == n_dims);
+    TORCH_CHECK(covariances.size(4) == n_dims);
+
+    return torch::cat({weights.view({n_batch, n_layers, n_components, 1}), positions, covariances.view({n_batch, n_layers, n_components, n_dims * n_dims})}, 3);
 }
 
 

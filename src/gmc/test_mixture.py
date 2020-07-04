@@ -1,15 +1,17 @@
 import math
 import unittest
-import torch
+
 import numpy as np
 import numpy.random as nprnd
 import numpy.linalg as npla
 import scipy.signal
 import matplotlib.pyplot as plt
-
-import mixture as gm
-
+import torch
 from torch import Tensor
+
+import update_syspath
+import gmc.mixture as gm
+
 
 
 def _triangle_mat_data(dims: int) -> (np.array, np.array, Tensor):

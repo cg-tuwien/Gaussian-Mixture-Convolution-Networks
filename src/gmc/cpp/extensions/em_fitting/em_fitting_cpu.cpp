@@ -5,7 +5,12 @@
 
 
 #include "common.h"
+#include "em_fitting_common.h"
 
+
+// preiner refers to "Continuous projection for fast L 1 reconstruction" (ACM TOG, 2014)
+
+constexpr int N_VIRTUAL_POINTS = 10000;
 
 template <typename scalar_t, int DIMS>
 void calc_likelihoods(const torch::PackedTensorAccessor32<scalar_t, 4, torch::RestrictPtrTraits>& target_a,
@@ -36,16 +41,16 @@ void calc_likelihoods(const torch::PackedTensorAccessor32<scalar_t, 4, torch::Re
         const auto& fitting_pos = gm::position<DIMS>(fitting_a[batch_index][layer_index][target_component_index]);
         const auto& fitting_cov = gm::covariance<DIMS>(fitting_a[batch_index][layer_index][target_component_index]);
 
-        scalar_t& sum = sum_a[batch_index][layer_index][xes_index];
-        for (uint c = 0; c < n.components; ++c) {
-            const auto& c_weight = gm::weight(mixture_a[batch_index][layer_index][int(c)]);
-            const auto& c_pos = gm::position<DIMS>(mixture_a[batch_index][layer_index][int(c)]);
-            const auto& c_cov = gm::covariance<DIMS>(mixture_a[batch_index][layer_index][int(c)]);
-            const auto t = x_pos - c_pos;
-            const auto v = scalar_t(-0.5) * glm::dot(t, (c_cov * t));
-            sum += c_weight * std::exp(v);
-        }
+        const auto& target_gaussian_amplitude = gaussian_amplitude<scalar_t, DIMS>(target_cov);
+        const auto& target_n_virtual_points = scalar_t(N_VIRTUAL_POINTS) * target_weight / target_gaussian_amplitude;
 
+        const auto& fitting_gaussian_amplitude = gaussian_amplitude<scalar_t, DIMS>(fitting_cov);
+
+        // preiner Equation (9) and multiplied with w_s from Equation (8)
+        const auto& likelihood = fitting_weight * std::pow(gm::evaluate_gaussian(target_pos, fitting_gaussian_amplitude, fitting_pos, fitting_cov)
+                                          * gm::exp(trace(fitting_cov * glm::inverse(target_cov))),
+                                          target_n_virtual_points);
+        likelihoods_a[batch_index][layer_index][target_component_index][fitting_component_index] = likelihood;
     }
 }
 
@@ -64,8 +69,8 @@ std::vector<torch::Tensor> forward(torch::Tensor target, torch::Tensor initial) 
 
     auto likelihoods = torch::zeros({n.batch, n.layers, n.components, n_fitting.components}, torch::dtype(target.dtype()).device(target.device()));
 
-    AT_DISPATCH_FLOATING_TYPES(target.scalar_type(), "eval_inversed_omp", ([&] {
-        /// TODO: some of the covariances need to be inversed
+    AT_DISPATCH_FLOATING_TYPES(target.scalar_type(), "calc_likelihoods", ([&] {
+        /// TODO: some of the covariances are inversed, that can be precomputed
         auto target_a = target.packed_accessor32<scalar_t, 4, torch::RestrictPtrTraits>();
         auto fitting_a = initial.packed_accessor32<scalar_t, 4, torch::RestrictPtrTraits>();
         auto likelihoods_a = likelihoods.packed_accessor32<scalar_t, 4, torch::RestrictPtrTraits>();
@@ -75,80 +80,92 @@ std::vector<torch::Tensor> forward(torch::Tensor target, torch::Tensor initial) 
         else
             calc_likelihoods<scalar_t, 3>(target_a, fitting_a, likelihoods_a, n, n_fitting);
     }));
-    return sum;
+    auto responsibilities = likelihoods / likelihoods.sum({3}); // preiner Equation (8)
+
+    // cont with preiner (10)
+    // index i -> target
+    // index s -> fitting
+    responsibilities = responsibilities * gm::weights(target);
+    const auto newWeights = torch::sum(responsibilities, {2});
+    responsibilities = responsibilities / newWeights.view({n.batch, n.layers, 1, n_fitting.components});
+    const auto newPositions = torch::sum(responsibilities * gm::positions(target), {2});
+    const auto posDiffs = gm::positions(target).view({n.batch, n.layers, n.components, 1, n.dims, 1}) - newPositions.view({n.batch, n.layers, 1, n_fitting.components, n.dims, 1});
+    const auto newCovariances = torch::sum(responsibilities * (gm::covariances(target).inverse().view({n.batch, n.layers, n.components, 1, n.dims, n.dims}) +
+                                                               posDiffs.mm(posDiffs.transpose(-1, -2))), {2}).inverse();
+    return {gm::pack_mixture(newWeights, newPositions, newCovariances)};
 }
 
 
-template <typename scalar_t, int DIMS>
-void execute_parallel_backward(const torch::PackedTensorAccessor32<scalar_t, 4, torch::RestrictPtrTraits>& mixture_a,
-                      const torch::PackedTensorAccessor32<scalar_t, 4, torch::RestrictPtrTraits>& xes_a,
-                      torch::PackedTensorAccessor32<scalar_t, 4, torch::RestrictPtrTraits>& grad_mixture_a,
-                      torch::PackedTensorAccessor32<scalar_t, 4, torch::RestrictPtrTraits>& grad_xes_a,
-                      torch::PackedTensorAccessor32<scalar_t, 3, torch::RestrictPtrTraits>& grad_output_a,
-                      const gm::MixtureNs& n, bool requires_grad_mixture, bool requires_grad_xes) {
+//template <typename scalar_t, int DIMS>
+//void execute_parallel_backward(const torch::PackedTensorAccessor32<scalar_t, 4, torch::RestrictPtrTraits>& mixture_a,
+//                      const torch::PackedTensorAccessor32<scalar_t, 4, torch::RestrictPtrTraits>& xes_a,
+//                      torch::PackedTensorAccessor32<scalar_t, 4, torch::RestrictPtrTraits>& grad_mixture_a,
+//                      torch::PackedTensorAccessor32<scalar_t, 4, torch::RestrictPtrTraits>& grad_xes_a,
+//                      torch::PackedTensorAccessor32<scalar_t, 3, torch::RestrictPtrTraits>& grad_output_a,
+//                      const gm::MixtureNs& n, bool requires_grad_mixture, bool requires_grad_xes) {
 
-    const auto nXes_x_nLayers = int(n.xes * n.layers);
-    #pragma omp parallel for num_threads(16)
-    for (uint i = 0; i < n.batch * n.layers * n.xes; ++i) {
-        const auto batch_index = int(i) / nXes_x_nLayers;
-        const auto remaining = (int(i) - batch_index * nXes_x_nLayers);
-        const auto layer_index = remaining / int(n.xes);
-        const auto batch_xes_index = std::min(batch_index, int(n.batch_xes - 1));
-        const auto layer_xes_index = std::min(layer_index, int(n.layers_xes - 1));
-        const auto xes_index = remaining - layer_index * int(n.xes);
+//    const auto nXes_x_nLayers = int(n.xes * n.layers);
+//    #pragma omp parallel for num_threads(16)
+//    for (uint i = 0; i < n.batch * n.layers * n.xes; ++i) {
+//        const auto batch_index = int(i) / nXes_x_nLayers;
+//        const auto remaining = (int(i) - batch_index * nXes_x_nLayers);
+//        const auto layer_index = remaining / int(n.xes);
+//        const auto batch_xes_index = std::min(batch_index, int(n.batch_xes - 1));
+//        const auto layer_xes_index = std::min(layer_index, int(n.layers_xes - 1));
+//        const auto xes_index = remaining - layer_index * int(n.xes);
 
-        const auto& x_pos = gm::vec<DIMS>(xes_a[batch_xes_index][layer_xes_index][xes_index][0]);
+//        const auto& x_pos = gm::vec<DIMS>(xes_a[batch_xes_index][layer_xes_index][xes_index][0]);
 
-        auto& grad_xes = gm::vec<DIMS>(grad_xes_a[batch_xes_index][layer_xes_index][xes_index][0]);
-        for (int c = 0; c < int(n.components); ++c) {
-            auto& grad_c_weight = gm::weight(grad_mixture_a[batch_index][layer_index][c]);
-            auto& grad_c_pos = gm::position<DIMS>(grad_mixture_a[batch_index][layer_index][c]);
-            auto& grad_c_cov = gm::covariance<DIMS>(grad_mixture_a[batch_index][layer_index][c]);
+//        auto& grad_xes = gm::vec<DIMS>(grad_xes_a[batch_xes_index][layer_xes_index][xes_index][0]);
+//        for (int c = 0; c < int(n.components); ++c) {
+//            auto& grad_c_weight = gm::weight(grad_mixture_a[batch_index][layer_index][c]);
+//            auto& grad_c_pos = gm::position<DIMS>(grad_mixture_a[batch_index][layer_index][c]);
+//            auto& grad_c_cov = gm::covariance<DIMS>(grad_mixture_a[batch_index][layer_index][c]);
 
-            const auto& c_weight = gm::weight(mixture_a[batch_index][layer_index][c]);
-            const auto& c_pos = gm::position<DIMS>(mixture_a[batch_index][layer_index][c]);
-            const auto& c_cov = gm::covariance<DIMS>(mixture_a[batch_index][layer_index][c]);
+//            const auto& c_weight = gm::weight(mixture_a[batch_index][layer_index][c]);
+//            const auto& c_pos = gm::position<DIMS>(mixture_a[batch_index][layer_index][c]);
+//            const auto& c_cov = gm::covariance<DIMS>(mixture_a[batch_index][layer_index][c]);
 
-            const auto t = x_pos - c_pos;
-            const auto v = scalar_t(-0.5) * glm::dot(t, (c_cov * t));
-            const auto exp = std::exp(v);
-            const auto weighted_exp = c_weight * exp;
-            const auto local_grad_c_pos = weighted_exp * t * c_cov;
+//            const auto t = x_pos - c_pos;
+//            const auto v = scalar_t(-0.5) * glm::dot(t, (c_cov * t));
+//            const auto exp = std::exp(v);
+//            const auto weighted_exp = c_weight * exp;
+//            const auto local_grad_c_pos = weighted_exp * t * c_cov;
 
-            if (requires_grad_xes) {
-                // grad_xes causes a race in case of xes having only 1 batch or layer size
-                for (int i = 0; i < DIMS; ++i) {
-                    #pragma omp atomic
-                    grad_xes[i] += -local_grad_c_pos[i];
-                }
-            }
-            if (requires_grad_mixture) {
-                const auto weight_addition = exp * grad_output_a[batch_index][layer_index][xes_index];
-                const auto pos_addition = local_grad_c_pos * grad_output_a[batch_index][layer_index][xes_index];
-                const auto cov_addition = - c_weight * scalar_t(0.5) * exp * grad_output_a[batch_index][layer_index][xes_index] * glm::outerProduct(t, t);
+//            if (requires_grad_xes) {
+//                // grad_xes causes a race in case of xes having only 1 batch or layer size
+//                for (int i = 0; i < DIMS; ++i) {
+//                    #pragma omp atomic
+//                    grad_xes[i] += -local_grad_c_pos[i];
+//                }
+//            }
+//            if (requires_grad_mixture) {
+//                const auto weight_addition = exp * grad_output_a[batch_index][layer_index][xes_index];
+//                const auto pos_addition = local_grad_c_pos * grad_output_a[batch_index][layer_index][xes_index];
+//                const auto cov_addition = - c_weight * scalar_t(0.5) * exp * grad_output_a[batch_index][layer_index][xes_index] * glm::outerProduct(t, t);
 
-                #pragma omp atomic
-                grad_c_weight += weight_addition;
+//                #pragma omp atomic
+//                grad_c_weight += weight_addition;
 
-                for (int i = 0; i < DIMS; ++i) {
-                    #pragma omp atomic
-                    grad_c_pos[i] += pos_addition[i];
+//                for (int i = 0; i < DIMS; ++i) {
+//                    #pragma omp atomic
+//                    grad_c_pos[i] += pos_addition[i];
 
-                    for (int j = 0; j < DIMS; ++j) {
-                        #pragma omp atomic
-                        grad_c_cov[i][j] += cov_addition[i][j];
-                    }
-                }
-            }
-        }
-        if (requires_grad_xes) {
-            for (int i = 0; i < DIMS; ++i) {
-                #pragma omp atomic
-                grad_xes[i] *= grad_output_a[batch_index][layer_index][xes_index];
-            }
-        }
-    }
-}
+//                    for (int j = 0; j < DIMS; ++j) {
+//                        #pragma omp atomic
+//                        grad_c_cov[i][j] += cov_addition[i][j];
+//                    }
+//                }
+//            }
+//        }
+//        if (requires_grad_xes) {
+//            for (int i = 0; i < DIMS; ++i) {
+//                #pragma omp atomic
+//                grad_xes[i] *= grad_output_a[batch_index][layer_index][xes_index];
+//            }
+//        }
+//    }
+//}
 
 std::vector<torch::Tensor> backward(torch::Tensor grad_output, torch::Tensor mixture, torch::Tensor xes, bool requires_grad_mixture, bool requires_grad_xes) {
     gm::check_mixture(mixture);
@@ -165,18 +182,18 @@ std::vector<torch::Tensor> backward(torch::Tensor grad_output, torch::Tensor mix
     torch::Tensor grad_mixture = torch::zeros({n.batch, n.layers, n.components, mixture.size(3)}, torch::dtype(mixture.dtype()).device(mixture.device()));
     torch::Tensor grad_xes = torch::zeros({n.batch_xes, n.layers_xes, n.xes, n.dims}, torch::dtype(mixture.dtype()).device(mixture.device()));
 
-    AT_DISPATCH_FLOATING_TYPES(mixture.scalar_type(), "eval_inversed_omp_backward", ([&] {
-        auto mixture_a = mixture.packed_accessor32<scalar_t, 4, torch::RestrictPtrTraits>();
-        auto xes_a = xes.packed_accessor32<scalar_t, 4, torch::RestrictPtrTraits>();
-        auto grad_mixture_a = grad_mixture.packed_accessor32<scalar_t, 4, torch::RestrictPtrTraits>();
-        auto grad_xes_a = grad_xes.packed_accessor32<scalar_t, 4, torch::RestrictPtrTraits>();
-        auto grad_output_a = grad_output.packed_accessor32<scalar_t, 3, torch::RestrictPtrTraits>();
+//    AT_DISPATCH_FLOATING_TYPES(mixture.scalar_type(), "eval_inversed_omp_backward", ([&] {
+//        auto mixture_a = mixture.packed_accessor32<scalar_t, 4, torch::RestrictPtrTraits>();
+//        auto xes_a = xes.packed_accessor32<scalar_t, 4, torch::RestrictPtrTraits>();
+//        auto grad_mixture_a = grad_mixture.packed_accessor32<scalar_t, 4, torch::RestrictPtrTraits>();
+//        auto grad_xes_a = grad_xes.packed_accessor32<scalar_t, 4, torch::RestrictPtrTraits>();
+//        auto grad_output_a = grad_output.packed_accessor32<scalar_t, 3, torch::RestrictPtrTraits>();
 
-        if (n.dims == 2)
-            execute_parallel_backward<scalar_t, 2>(mixture_a, xes_a, grad_mixture_a, grad_xes_a, grad_output_a, n, requires_grad_mixture, requires_grad_xes);
-        else
-            execute_parallel_backward<scalar_t, 3>(mixture_a, xes_a, grad_mixture_a, grad_xes_a, grad_output_a, n, requires_grad_mixture, requires_grad_xes);
-    }));
+//        if (n.dims == 2)
+//            execute_parallel_backward<scalar_t, 2>(mixture_a, xes_a, grad_mixture_a, grad_xes_a, grad_output_a, n, requires_grad_mixture, requires_grad_xes);
+//        else
+//            execute_parallel_backward<scalar_t, 3>(mixture_a, xes_a, grad_mixture_a, grad_xes_a, grad_output_a, n, requires_grad_mixture, requires_grad_xes);
+//    }));
 
     return {grad_mixture, grad_xes};
 }

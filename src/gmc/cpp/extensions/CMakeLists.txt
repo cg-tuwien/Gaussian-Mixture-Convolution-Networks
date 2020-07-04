@@ -31,6 +31,7 @@ add_executable(gm_evaluate ${HEADERS} ${EVALUATE_SOURCES})
 target_link_libraries(gm_evaluate PUBLIC OpenMP::OpenMP_CXX)
 
 set(EM_FITTING_SOURCES
+    em_fitting/em_fitting_common.h
     em_fitting/em_fitting_cpu.cpp
     em_fitting/em_fitting_cuda.cpp
     em_fitting/em_fitting_cuda.cu

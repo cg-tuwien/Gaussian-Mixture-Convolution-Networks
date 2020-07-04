@@ -38,3 +38,4 @@
 /src/prototype_convolution/__pycache__/*
 /src/gmc/cpp/extensions/__pycache__/*
 /src/gmc/cpp/extensions/evaluate/__pycache__/*
+/src/gmc/cpp/extensions/em_fitting/__pycache__/*

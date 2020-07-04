@@ -6,7 +6,8 @@ import numpy.linalg as npla
 import numpy.random as nprnd
 from torch import Tensor
 
-import mat_tools
+import update_syspath
+import gmc.mat_tools
 
 
 def _triangle_mat_data(dims: int) -> (np.array, np.array, Tensor):
