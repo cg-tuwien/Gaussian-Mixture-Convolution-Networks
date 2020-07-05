@@ -1,7 +1,8 @@
 #ifndef COMMON_H
 #define COMMON_H
 
-#include <torch/extension.h>
+//#include <torch/extension.h>
+#include <torch/script.h>
 #include <vector>
 
 #define GLM_FORCE_INLINE
@@ -15,6 +16,8 @@
 #ifndef __forceinline__
 #define __forceinline__ inline
 #endif
+
+using uint = unsigned int;
 
 namespace gm {
 

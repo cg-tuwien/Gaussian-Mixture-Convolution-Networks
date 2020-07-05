@@ -57,14 +57,14 @@
 //}
 
 template <typename scalar_t, int DIMS>
-void execute_parallel_forward(const torch::PackedTensorAccessor32<scalar_t, 4, torch::RestrictPtrTraits>& mixture_a,
-                      const torch::PackedTensorAccessor32<scalar_t, 4, torch::RestrictPtrTraits>& xes_a,
-                      torch::PackedTensorAccessor32<scalar_t, 3, torch::RestrictPtrTraits>& sum_a,
+void execute_parallel_forward(const torch::PackedTensorAccessor32<scalar_t, 4>& mixture_a,
+                      const torch::PackedTensorAccessor32<scalar_t, 4>& xes_a,
+                      torch::PackedTensorAccessor32<scalar_t, 3>& sum_a,
                       const gm::MixtureAndXesNs& n) {
 
     const auto nXes_x_nLayers = int(n.xes * n.layers);
     #pragma omp parallel for num_threads(16)
-    for (uint i = 0; i < n.batch * n.layers * n.xes; ++i) {
+    for (int i = 0; i < n.batch * n.layers * n.xes; ++i) {
         const auto batch_index = int(i) / nXes_x_nLayers;
         const auto remaining = (int(i) - batch_index * nXes_x_nLayers);
         const auto layer_index = remaining / int(n.xes);
@@ -97,9 +97,9 @@ torch::Tensor evaluate_inversed_forward(torch::Tensor mixture, torch::Tensor xes
 
 
     AT_DISPATCH_FLOATING_TYPES(mixture.scalar_type(), "eval_inversed_omp", ([&] {
-        auto mixture_a = mixture.packed_accessor32<scalar_t, 4, torch::RestrictPtrTraits>();
-        auto xes_a = xes.packed_accessor32<scalar_t, 4, torch::RestrictPtrTraits>();
-        auto sum_a = sum.packed_accessor32<scalar_t, 3, torch::RestrictPtrTraits>();
+        auto mixture_a = mixture.packed_accessor32<scalar_t, 4>();
+        auto xes_a = xes.packed_accessor32<scalar_t, 4>();
+        auto sum_a = sum.packed_accessor32<scalar_t, 3>();
 
         if (n.dims == 2)
             execute_parallel_forward<scalar_t, 2>(mixture_a, xes_a, sum_a, n);
@@ -111,16 +111,16 @@ torch::Tensor evaluate_inversed_forward(torch::Tensor mixture, torch::Tensor xes
 
 
 template <typename scalar_t, int DIMS>
-void execute_parallel_backward(const torch::PackedTensorAccessor32<scalar_t, 4, torch::RestrictPtrTraits>& mixture_a,
-                      const torch::PackedTensorAccessor32<scalar_t, 4, torch::RestrictPtrTraits>& xes_a,
-                      torch::PackedTensorAccessor32<scalar_t, 4, torch::RestrictPtrTraits>& grad_mixture_a,
-                      torch::PackedTensorAccessor32<scalar_t, 4, torch::RestrictPtrTraits>& grad_xes_a,
-                      torch::PackedTensorAccessor32<scalar_t, 3, torch::RestrictPtrTraits>& grad_output_a,
+void execute_parallel_backward(const torch::PackedTensorAccessor32<scalar_t, 4>& mixture_a,
+                      const torch::PackedTensorAccessor32<scalar_t, 4>& xes_a,
+                      torch::PackedTensorAccessor32<scalar_t, 4>& grad_mixture_a,
+                      torch::PackedTensorAccessor32<scalar_t, 4>& grad_xes_a,
+                      torch::PackedTensorAccessor32<scalar_t, 3>& grad_output_a,
                       const gm::MixtureAndXesNs& n, bool requires_grad_mixture, bool requires_grad_xes) {
 
     const auto nXes_x_nLayers = int(n.xes * n.layers);
     #pragma omp parallel for num_threads(16)
-    for (uint i = 0; i < n.batch * n.layers * n.xes; ++i) {
+    for (int i = 0; i < n.batch * n.layers * n.xes; ++i) {
         const auto batch_index = int(i) / nXes_x_nLayers;
         const auto remaining = (int(i) - batch_index * nXes_x_nLayers);
         const auto layer_index = remaining / int(n.xes);
@@ -197,11 +197,11 @@ std::vector<torch::Tensor> evaluate_inversed_backward(torch::Tensor grad_output,
     torch::Tensor grad_xes = torch::zeros({n.batch_xes, n.layers_xes, n.xes, n.dims}, torch::dtype(mixture.dtype()).device(mixture.device()));
 
     AT_DISPATCH_FLOATING_TYPES(mixture.scalar_type(), "eval_inversed_omp_backward", ([&] {
-        auto mixture_a = mixture.packed_accessor32<scalar_t, 4, torch::RestrictPtrTraits>();
-        auto xes_a = xes.packed_accessor32<scalar_t, 4, torch::RestrictPtrTraits>();
-        auto grad_mixture_a = grad_mixture.packed_accessor32<scalar_t, 4, torch::RestrictPtrTraits>();
-        auto grad_xes_a = grad_xes.packed_accessor32<scalar_t, 4, torch::RestrictPtrTraits>();
-        auto grad_output_a = grad_output.packed_accessor32<scalar_t, 3, torch::RestrictPtrTraits>();
+        auto mixture_a = mixture.packed_accessor32<scalar_t, 4>();
+        auto xes_a = xes.packed_accessor32<scalar_t, 4>();
+        auto grad_mixture_a = grad_mixture.packed_accessor32<scalar_t, 4>();
+        auto grad_xes_a = grad_xes.packed_accessor32<scalar_t, 4>();
+        auto grad_output_a = grad_output.packed_accessor32<scalar_t, 3>();
 
         if (n.dims == 2)
             execute_parallel_backward<scalar_t, 2>(mixture_a, xes_a, grad_mixture_a, grad_xes_a, grad_output_a, n, requires_grad_mixture, requires_grad_xes);
