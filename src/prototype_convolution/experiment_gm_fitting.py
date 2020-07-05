@@ -5,10 +5,10 @@ import torch.utils.tensorboard
 from torch import Tensor
 
 import update_syspath
-import config
+import prototype_convolution.config as config
 import gmc.mixture as gm
-import fitting_net
-import fitting_em
+import prototype_convolution.fitting_net as fitting_net
+import prototype_convolution.fitting_em as fitting_em
 
 def log(input: Tensor, output: Tensor, tensor_board_writer):
     device = input.device
@@ -30,10 +30,11 @@ def log(input: Tensor, output: Tensor, tensor_board_writer):
 
 tensor_board_writer = torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard' / f'fitting_{datetime.datetime.now().strftime("%d_%H-%M-%S")}')
 
-for batch_idx in range(10):
+for batch_idx in range(1): # was 10
     start_time = time.perf_counter()
-    for layer_id in range(3):
+    for layer_id in range(1): # was 3
         m = gm.load(f"fitting_input/fitting_input_netlayer{layer_id}_batch{batch_idx}")[0]
+        m = m[0, 0].unsqueeze(0).unsqueeze(0)
         # m = m.cuda()
         device = m.device
         n_batch = gm.n_batch(m)
@@ -47,8 +48,8 @@ for batch_idx in range(10):
         # negative_m = sorted_m[:, :, :, :n_negative_m]
         # positive_m = sorted_m[:, :, :, n_negative_m:]
 
-        m_relu = fitting_em.em_algorithm(m, 10, 1)
-        log(m, m_relu, tensor_board_writer)
+        fitting = fitting_em.em_algorithm(m, 10, 10, tensor_board_writer)
+        log(m, fitting[0], tensor_board_writer)
         print(f"{batch_idx}/{layer_id}")
 
     end_time = time.perf_counter()

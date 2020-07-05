@@ -1,5 +1,6 @@
 from torch.utils.cpp_extension import load
 import os
+import torch
 import torch.autograd
 
 source_dir = os.path.dirname(__file__)
@@ -29,9 +30,9 @@ class EmFitting(torch.autograd.Function):
             assert False
             #output = cuda.forward(mixture, xes)
         else:
-            output, assignments = cpu.forward(target, initial)
-        ctx.save_for_backward(target, assignments)
-        return output
+            likelihoods,  = cpu.forward(target, initial)
+        # ctx.save_for_backward(target, assignments)
+        return likelihoods
 
     @staticmethod
     def backward(ctx, grad_output):
