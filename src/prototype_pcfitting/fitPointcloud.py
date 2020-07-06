@@ -11,17 +11,17 @@ import torch.utils.data
 import torch.utils.tensorboard
 import datetime
 import typing
-import madam_imagetools
+#import madam_imagetools
 import gc
 import struct
 
-import core.gm as gm
-import core.mat_tools as mat_tools
-import core.madam_imagetools as madam_imagetools
+import gmc.mixture as gm
 
 import pointcloud
 
 import config
+
+import gmc.cpp.gm_vis.pygmvis as pygmvis
 
 from torch import Tensor
 
@@ -71,13 +71,13 @@ def ad_algorithm(pointclouds: Tensor,
     epsilon = 0.000000001
 
     # Create Visualizer
-    vis3d = gm_vis.api.create_visualizer(False, width=500, height=500)
+    vis3d = pygmvis.create_visualizer(False, width=500, height=500)
     vis3d.set_camera_auto(True)
     vis3d.set_pointclouds(pointclouds)
-    vis3d.set_density_rendering(True, gm_vis.api.GMDensityRenderMode.ADDITIVE_ACC_PROJECTED)
-    vis3d.set_ellipsoid_coloring(gm_vis.api.GMColoringRenderMode.COLOR_WEIGHT, gm_vis.api.GMColorRangeMode.RANGE_MINMAX)
+    vis3d.set_density_rendering(True, pygmvis.GMDensityRenderMode.ADDITIVE_ACC_PROJECTED)
+    vis3d.set_ellipsoid_coloring(pygmvis.GMColoringRenderMode.COLOR_WEIGHT, pygmvis.GMColorRangeMode.RANGE_MINMAX)
     vis3d.set_positions_rendering(True, True)
-    vis3d.set_positions_coloring(gm_vis.api.GMColoringRenderMode.COLOR_WEIGHT, gm_vis.api.GMColorRangeMode.RANGE_MEDMED)
+    vis3d.set_positions_coloring(pygmvis.GMColoringRenderMode.COLOR_WEIGHT, pygmvis.GMColorRangeMode.RANGE_MEDMED)
 
     batch_size = pointclouds.shape[0]
     point_count = pointclouds.shape[1]
