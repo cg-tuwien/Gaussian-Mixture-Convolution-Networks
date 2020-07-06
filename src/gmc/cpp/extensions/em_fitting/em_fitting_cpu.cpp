@@ -10,7 +10,7 @@
 
 // preiner refers to "Continuous projection for fast L 1 reconstruction" (ACM TOG, 2014)
 
-constexpr int N_VIRTUAL_POINTS = 10000;
+constexpr int N_VIRTUAL_POINTS = 1000;
 
 template <typename scalar_t, int DIMS>
 void calc_likelihoods(const torch::PackedTensorAccessor32<scalar_t, 4, torch::RestrictPtrTraits>& target_a,
@@ -31,25 +31,43 @@ void calc_likelihoods(const torch::PackedTensorAccessor32<scalar_t, 4, torch::Re
         const auto target_component_index = remaining2 / int(n_fitting.components);
         const auto fitting_component_index = remaining2 - target_component_index * int(n_fitting.components);
 
-        std::cout << "b" << batch_index << " l" << layer_index << " tc" << target_component_index << " fc" << fitting_component_index << std::endl;
 
         const auto& target_weight = gm::weight(target_a[batch_index][layer_index][target_component_index]);
         const auto& target_pos = gm::position<DIMS>(target_a[batch_index][layer_index][target_component_index]);
         const auto& target_cov = gm::covariance<DIMS>(target_a[batch_index][layer_index][target_component_index]);
+        if (glm::determinant(target_cov) <= 0) {
+            std::cout << "1 b" << batch_index << " l" << layer_index << " tc" << target_component_index << " fc" << fitting_component_index << std::endl;
+            std::cout << "target_cov: [" << target_cov[0][0] << ", " << target_cov[0][1] << "; \n" << target_cov[1][0] << ", " << target_cov[1][1] << std::endl;
+            std::cout << "target_cov det: " << glm::determinant(target_cov) << std::endl;
+        }
 
-        const auto& fitting_weight = gm::weight(fitting_a[batch_index][layer_index][target_component_index]);
-        const auto& fitting_pos = gm::position<DIMS>(fitting_a[batch_index][layer_index][target_component_index]);
-        const auto& fitting_cov = gm::covariance<DIMS>(fitting_a[batch_index][layer_index][target_component_index]);
+        const auto& fitting_weight = gm::weight(fitting_a[batch_index][layer_index][fitting_component_index]);
+        const auto& fitting_pos = gm::position<DIMS>(fitting_a[batch_index][layer_index][fitting_component_index]);
+        const auto& fitting_cov = gm::covariance<DIMS>(fitting_a[batch_index][layer_index][fitting_component_index]);
 
+        if (glm::determinant(target_cov) <= 0) {
+            std::cout << "2 b" << batch_index << " l" << layer_index << " tc" << target_component_index << " fc" << fitting_component_index << std::endl;
+            std::cout << "target_cov: [" << target_cov[0][0] << ", " << target_cov[0][1] << "; \n" << target_cov[1][0] << ", " << target_cov[1][1] << std::endl;
+            std::cout << "target_cov det: " << glm::determinant(target_cov) << std::endl;
+        }
         const auto& target_gaussian_amplitude = gaussian_amplitude<scalar_t, DIMS>(target_cov);
         const auto& target_n_virtual_points = scalar_t(N_VIRTUAL_POINTS) * target_weight / target_gaussian_amplitude;
 
+        if (glm::determinant(fitting_cov) <= 0) {
+            std::cout << "3 b" << batch_index << " l" << layer_index << " tc" << target_component_index << " fc" << fitting_component_index << std::endl;
+            std::cout << "fitting_cov: [" << fitting_cov[0][0] << ", " << fitting_cov[0][1] << "; \n" << fitting_cov[1][0] << ", " << fitting_cov[1][1] << std::endl;
+            std::cout << "fitting_cov det: " << glm::determinant(fitting_cov) << std::endl;
+        }
         const auto& fitting_gaussian_amplitude = gaussian_amplitude<scalar_t, DIMS>(fitting_cov);
 
         // preiner Equation (9) and multiplied with w_s from Equation (8)
-        const auto& likelihood = fitting_weight * std::pow(gm::evaluate_gaussian(target_pos, fitting_gaussian_amplitude, fitting_pos, fitting_cov)
-                                          * gm::exp(trace(fitting_cov * glm::inverse(target_cov))),
-                                          target_n_virtual_points);
+        const auto gaussianValue = gm::evaluate_gaussian(target_pos, fitting_gaussian_amplitude, fitting_pos, fitting_cov);
+        const auto traceExp = gm::exp(scalar_t(-0.5) * trace(fitting_cov * glm::inverse(target_cov)));
+        const auto likelihood = fitting_weight * std::pow(gaussianValue * traceExp, target_n_virtual_points);
+        if (likelihood > 1000) {
+            std::cout << "3 b" << batch_index << " l" << layer_index << " tc" << target_component_index << " fc" << fitting_component_index << std::endl;
+            std::cout << "gaussianValue=" << gaussianValue << "  traceExp=" << traceExp << "  target_n_virtual_points=" << target_n_virtual_points << std::endl;
+        }
         likelihoods_a[batch_index][layer_index][target_component_index][fitting_component_index] = likelihood;
     }
 }
@@ -80,19 +98,23 @@ std::vector<torch::Tensor> forward(torch::Tensor target, torch::Tensor initial) 
         else
             calc_likelihoods<scalar_t, 3>(target_a, fitting_a, likelihoods_a, n, n_fitting);
     }));
-    auto responsibilities = likelihoods / likelihoods.sum({3}); // preiner Equation (8)
+    return {likelihoods};
+//    auto likelihoods_sum = likelihoods.sum({3}, true);
+//    auto responsibilities = likelihoods / likelihoods_sum.where(likelihoods_sum > 0.00001, torch::ones_like(likelihoods_sum)); // preiner Equation (8)
 
-    // cont with preiner (10)
-    // index i -> target
-    // index s -> fitting
-    responsibilities = responsibilities * gm::weights(target);
-    const auto newWeights = torch::sum(responsibilities, {2});
-    responsibilities = responsibilities / newWeights.view({n.batch, n.layers, 1, n_fitting.components});
-    const auto newPositions = torch::sum(responsibilities * gm::positions(target), {2});
-    const auto posDiffs = gm::positions(target).view({n.batch, n.layers, n.components, 1, n.dims, 1}) - newPositions.view({n.batch, n.layers, 1, n_fitting.components, n.dims, 1});
-    const auto newCovariances = torch::sum(responsibilities * (gm::covariances(target).inverse().view({n.batch, n.layers, n.components, 1, n.dims, n.dims}) +
-                                                               posDiffs.mm(posDiffs.transpose(-1, -2))), {2}).inverse();
-    return {gm::pack_mixture(newWeights, newPositions, newCovariances)};
+//    // cont with preiner (10)
+//    // index i -> target
+//    // index s -> fitting
+//    responsibilities = responsibilities * gm::weights(target).unsqueeze(-1);
+//    const auto newWeights = torch::sum(responsibilities, {2});
+//    responsibilities = responsibilities / newWeights.where(newWeights > 0.00001, torch::ones_like(newWeights)).view({n.batch, n.layers, 1, n_fitting.components});
+//    const auto newPositions = torch::sum(responsibilities.unsqueeze(-1) * gm::positions(target).view({n.batch, n.layers, n.components, 1, n.dims}), {2});
+//    const auto posDiffs = gm::positions(target).view({n.batch, n.layers, n.components, 1, n.dims, 1}) - newPositions.view({n.batch, n.layers, 1, n_fitting.components, n.dims, 1});
+
+//    const auto newCovariances = (torch::sum(responsibilities.unsqueeze(-1).unsqueeze(-1) * (gm::covariances(target).inverse().view({n.batch, n.layers, n.components, 1, n.dims, n.dims}) +
+//                                                               posDiffs.matmul(posDiffs.transpose(-1, -2))), {2}) + torch::eye(n.dims) * 0.001).inverse();
+
+//    return {gm::pack_mixture(newWeights.contiguous(), newPositions.contiguous(), newCovariances.contiguous()), responsibilities};
 }
 
 
