@@ -56,6 +56,7 @@ def ad_algorithm(pointclouds: Tensor,
                  penalize_long_gaussians: bool = False,
                  penalize_amplitude_differences: bool = False,
                  penalize_extends_differences: bool = False,
+                 penalize_small_determinants: bool = False,
                  weight_softmax: bool = False,
                  constant_weights: bool = False,
                  log_positions: bool = False,
@@ -68,7 +69,10 @@ def ad_algorithm(pointclouds: Tensor,
     assert pointclouds.shape[2] == 3
     assert n_components > 0
 
-    epsilon = 0.000000001
+    if cov_train_mode == 'cholesky':
+        epsilon = 1e-7
+    else:
+        epsilon = 0.000000001
 
     # Create Visualizer
     vis3d = pygmvis.create_visualizer(False, width=500, height=500)
@@ -150,8 +154,6 @@ def ad_algorithm(pointclouds: Tensor,
     if not create_new_mixture:
         covariances /= scale2   # Covariances need to be downscaled
 
-    amplitudes = pi_normalized / (covariances.det().sqrt() * 15.74960995)
-
     if cov_train_mode == 'cholesky':
         cov_factor_mat = torch.cholesky(covariances)
         cov_factor_vec = torch.zeros((batch_size, 1, n_components, 6)).to(device)
@@ -173,7 +175,9 @@ def ad_algorithm(pointclouds: Tensor,
     else:
         print("Invalid cov train mode")
         return
-    covariances, inversed_covariances = calculate_covariance_matrices(cov_train_mode, cov_train_data, epsilon)
+    covariances, inversed_covariances, determinants = calculate_covariance_matrices(cov_train_mode, cov_train_data, epsilon)
+
+    amplitudes = pi_normalized / (determinants.sqrt() * 15.74960995)
 
 
     # --OPTIMIZER-INITIALIZATION----------------------------------------
@@ -219,9 +223,9 @@ def ad_algorithm(pointclouds: Tensor,
 
     # Log initial gm and positions
     if cov_train_mode == 'cholesky':
-        _amplitudes, _positions, _covariances = rescale_gmm_to_gm(pi_normalized, positions, covariances, scale, scale2)
+        _amplitudes, _positions, _covariances = rescale_gmm_to_gm(pi_normalized, positions, covariances, determinants, scale, scale2)
     else:
-        _amplitudes, _positions, _covariances = rescale_igmm_to_gm(pi_normalized, positions, inversed_covariances,
+        _amplitudes, _positions, _covariances = rescale_igmm_to_gm(pi_normalized, positions, inversed_covariances, determinants,
                                                                scale, scale2)
     gm.write_gm_to_ply(_amplitudes, _positions, _covariances, 0, f"{gm_path}/pcgmm-{0}-initial.ply")
     if log_positions:
@@ -276,12 +280,18 @@ def ad_algorithm(pointclouds: Tensor,
             largest_eigenvalue = eigenvalues[:, :, :, -1]
             ext_cost = largest_eigenvalue.std()
 
-        loss = loss1 + cov_cost + amp_cost + ext_cost
+        det_cost = torch.tensor(0)
+        if penalize_small_determinants:
+            #det_ref = torch.ones(det_cost.shape).to(device)*1e-12
+            #det_cost = (det_ref - det_cost.where(det_cost < det_ref, det_ref)).sum()*1e12
+            det_cost = -(torch.sigmoid(5*determinants/1e-12)-1).sum()*2
+
+        loss = loss1 + cov_cost + amp_cost + ext_cost + det_cost
         #loss = loss1 + cov_cost + ext_cost
 
         assert not torch.isnan(loss).any()
 
-        if k == 152:
+        if k == 151:
             print()
 
         loss.backward()
@@ -292,7 +302,7 @@ def ad_algorithm(pointclouds: Tensor,
         #scheduler_pos.step()
 
         # Reconstruct Covariance Matrix
-        covariances, inversed_covariances = calculate_covariance_matrices(cov_train_mode, cov_train_data, epsilon)
+        covariances, inversed_covariances, determinants = calculate_covariance_matrices(cov_train_mode, cov_train_data, epsilon)
 
         # Calculate new amplitudes from priors
         if not constant_weights:
@@ -302,7 +312,7 @@ def ad_algorithm(pointclouds: Tensor,
                 pi_sum = pi_relative.abs().sum(dim=2).view(batch_size, 1, 1)  # shape: (m,1) -> (m,1,1)
                 pi_normalized = pi_relative.abs() / pi_sum  # shape (m,1,n)
 
-        amplitudes = pi_normalized / (covariances.det().sqrt() * 15.74960995)
+        amplitudes = pi_normalized / (determinants.sqrt() * 15.74960995)
 
         # Send values to Tensorboard
         tensor_board_writer.add_scalar("0. training loss", loss.item(), k)
@@ -313,6 +323,8 @@ def ad_algorithm(pointclouds: Tensor,
             tensor_board_writer.add_scalar("3. ampl loss", amp_cost.item(), k)
         if penalize_extends_differences:
             tensor_board_writer.add_scalar("4. extend loss", ext_cost.item(), k)
+        if penalize_small_determinants:
+            tensor_board_writer.add_scalar("5. det loss", det_cost.item(), k)
 
         print(f"iterations {k}: loss = {loss.item()}")
         # mixture_with_regular_cov = gm.pack_mixture(pi_normalized, positions, covariances.detach().clone())
@@ -351,7 +363,7 @@ def ad_algorithm(pointclouds: Tensor,
         #if True:
         if k % 250 == 0:
             _amplitudes, _positions, _covariances = rescale_gmm_to_gm(pi_normalized, positions,
-                                                                           covariances, scale, scale2)
+                                                                           covariances, determinants, scale, scale2)
 
             _mixture = gm.pack_mixture(_amplitudes, _positions, _covariances)
             vis3d.set_pointclouds(pointclouds)
@@ -401,7 +413,7 @@ def ad_algorithm(pointclouds: Tensor,
     return _mixture
 
 # This function has suboptimal usability
-def rescale_igmm_to_gm(pi_normalized: Tensor, positions: Tensor, inversed_covariances: Tensor, scale: Tensor, scale2: Tensor):
+def rescale_igmm_to_gm(pi_normalized: Tensor, positions: Tensor, inversed_covariances: Tensor, determinants: Tensor, scale: Tensor, scale2: Tensor):
     _positions = positions.detach().clone()
     _positions -= 0.5
     _positions *= scale
@@ -410,12 +422,13 @@ def rescale_igmm_to_gm(pi_normalized: Tensor, positions: Tensor, inversed_covari
     # Scaling of covariance by f@s@f', where f is the diagonal matrix of scalings
     # if all diag entries of f are the same, then this just results in times x^2, where x is the element of f
     _covariances *= scale2
+    _determinants = determinants * torch.pow(scale2, 3)
 
-    _amplitudes = pi_normalized / (_covariances.det().sqrt() * 15.74960995)
+    _amplitudes = pi_normalized / (_determinants.sqrt() * 15.74960995)
 
     return _amplitudes, _positions, _covariances
 
-def rescale_gmm_to_gm(pi_normalized: Tensor, positions: Tensor, covariances: Tensor, scale: Tensor, scale2: Tensor):
+def rescale_gmm_to_gm(pi_normalized: Tensor, positions: Tensor, covariances: Tensor, determinants: Tensor, scale: Tensor, scale2: Tensor):
     _positions = positions.detach().clone()
     _positions -= 0.5
     _positions *= scale
@@ -424,8 +437,9 @@ def rescale_gmm_to_gm(pi_normalized: Tensor, positions: Tensor, covariances: Ten
     # Scaling of covariance by f@s@f', where f is the diagonal matrix of scalings
     # if all diag entries of f are the same, then this just results in times x^2, where x is the element of f
     _covariances *= scale2
+    _determinants = determinants * torch.pow(scale2, 3)
 
-    _amplitudes = pi_normalized / (_covariances.det().sqrt() * 15.74960995)
+    _amplitudes = pi_normalized / (determinants.sqrt() * 15.74960995)
 
     return _amplitudes, _positions, _covariances
 
@@ -443,12 +457,20 @@ def calculate_covariance_matrices(cov_train_mode: str, data: Tensor, epsilon: fl
         covariances = cov_factor_mat_rec @ cov_factor_mat_rec.transpose(-2, -1)
         cov_factor_mat_rec_inv = cov_factor_mat_rec.inverse()
         inversed_covariances = cov_factor_mat_rec_inv.transpose(-2, -1) @ cov_factor_mat_rec_inv
+        #numerically better way of calculating the determinants
+        determinants = torch.pow(cov_factor_mat_rec[:, :, :, 0,0],2)*\
+                       torch.pow(cov_factor_mat_rec[:, :, :, 1,1],2)*\
+                       torch.pow(cov_factor_mat_rec[:, :, :, 2,2],2)
     else:
         inversed_covariances = data @ data.transpose(-2, -1) + torch.eye(3, 3, device=data.device) * epsilon
         covariances = inversed_covariances.inverse()
+        determinants = covariances.det()
+    if torch.isnan(inversed_covariances).any():
+        print()
     assert not torch.isnan(inversed_covariances).any()
     assert not torch.isinf(inversed_covariances).any()
-    return covariances, inversed_covariances
+    assert (determinants > 0).all()
+    return covariances, inversed_covariances, determinants
 
 def test():
     torch.manual_seed(0)
@@ -478,7 +500,7 @@ def test():
     name = input('Name for this training (or empty for auto): ')
     ad_algorithm(
         pointclouds=pcs,
-        n_components=500,
+        n_components=32684,
         n_iterations=1000000,
         device='cuda',
         name=name,
@@ -490,12 +512,13 @@ def test():
         penalize_long_gaussians=False,
         penalize_amplitude_differences=False,
         penalize_extends_differences=False,
+        penalize_small_determinants=True,
         weight_softmax=False,
         constant_weights=False,
         log_positions=False,
         cov_train_mode='cholesky',
         learn_rate_pos=0.001,
-        learn_rate_cov=0.001,
+        learn_rate_cov=0.0001,
         learn_rate_wei=0.0005
     )
 
