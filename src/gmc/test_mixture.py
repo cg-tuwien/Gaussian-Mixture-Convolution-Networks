@@ -9,7 +9,6 @@ import matplotlib.pyplot as plt
 import torch
 from torch import Tensor
 
-import update_syspath
 import gmc.mixture as gm
 
 
@@ -170,7 +169,7 @@ class TestGM(unittest.TestCase):
             n_layers = 4
             gm1 = gm.generate_random_mixtures(n_batch=n_batch, n_layers=n_layers, n_components=3, n_dims=n_dims, pos_radius=0.5, cov_radius=0.2)
             gm1_covs = gm.covariances(gm1)
-            gm1_covs += (torch.eye(n_dims) * 0.05).view(1, 1, 1, n_dims, n_dims)
+            gm1_covs += (torch.eye(n_dims) * 0.05).view(1, 1, 1, n_dims, n_dims)  # tested: changes gm1
             n_samples = 40000000
             integration_area_side_length = 10
 
@@ -184,6 +183,22 @@ class TestGM(unittest.TestCase):
             for b in range(n_batch):
                 for l in range(n_layers):
                     self.assertLess(abs(my_solution[b, l].item() - reference_solution[b, l].item()), 0.016)
+
+    def test_normal_amplitude(self):
+        for n_dims in range(2, 4):
+            print(n_dims)
+            n_batch = 2
+            n_layers = 4
+            gm1 = gm.generate_random_mixtures(n_batch=n_batch, n_layers=n_layers, n_components=3, n_dims=n_dims, pos_radius=0.5, cov_radius=0.2)
+            gm1_covs = gm.covariances(gm1)
+            gm1_covs += (torch.eye(n_dims) * 0.05).view(1, 1, 1, n_dims, n_dims)
+            gm1 = gm.pack_mixture(gm.normal_amplitudes(gm1), gm.positions(gm1), gm1_covs)
+
+            self.assertAlmostEqual(gm.integrate_components(gm1).mean().item(), 1.0, places=6)
+            self.assertAlmostEqual(gm.integrate_components(gm1).var().item(), 0.0, places=6)
+
+            gm1_inversed = gm.pack_mixture(gm.weights(gm1), gm.positions(gm1), gm.covariances(gm1).inverse().transpose(-2, -1))
+            self.assertTrue((gm.normal_amplitudes(gm1) - gm.normal_amplitudes_inversed(gm1_inversed) < 0.000001).all())
 
 
 if __name__ == '__main__':

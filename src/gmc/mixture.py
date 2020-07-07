@@ -39,6 +39,20 @@ def weights(mixture: Tensor) -> Tensor:
     return mixture[:, :, :, 0]
 
 
+# returns the amplitude of a multivariate normal distribution with the given position and covariance
+# version for when the covariance is already inversed (det(C)^-1 == det(C^-1))
+def normal_amplitudes_inversed(mixture: Tensor) -> Tensor:
+    n_dims = n_dimensions(mixture)
+    return (2 * math.pi) ** (- n_dims * 0.5) * torch.sqrt(torch.det(covariances(mixture)))
+
+
+# returns the amplitude of a multivariate normal distribution with the given position and covariance
+# version for when the covariance is in the normal form (det(C)^-1 == det(C^-1))
+def normal_amplitudes(mixture: Tensor) -> Tensor:
+    n_dims = n_dimensions(mixture)
+    return (2 * math.pi) ** (- n_dims * 0.5) / torch.sqrt(torch.det(covariances(mixture)))
+
+
 def positions(mixture: Tensor) -> Tensor:
     return mixture[:, :, :, 1:(n_dimensions(mixture) + 1)]
 
