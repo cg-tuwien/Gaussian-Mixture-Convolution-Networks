@@ -10,7 +10,7 @@
 
 // preiner refers to "Continuous projection for fast L 1 reconstruction" (ACM TOG, 2014)
 
-constexpr int N_VIRTUAL_POINTS = 1000;
+constexpr int N_VIRTUAL_POINTS = 100;
 
 template <typename scalar_t, int DIMS>
 void calc_likelihoods(const torch::PackedTensorAccessor32<scalar_t, 4, torch::RestrictPtrTraits>& target_a,
