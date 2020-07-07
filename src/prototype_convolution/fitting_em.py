@@ -58,8 +58,26 @@ def mixture_to_inversed_gmm(mixture: Tensor) -> typing.Tuple[Tensor, Tensor]:
     return gm.pack_mixture(weights, gm.positions(mixture), gm.covariances(mixture).inverse().contiguous()), integrals
 
 
+def calc_likelihoods(target: Tensor, fitting: Tensor):
+    N_VIRTUAL_POINTS = 100
+    target_weights = gm.weights(target)
+    target_normal_amplitudes = gm.normal_amplitudes(target)
+    target_positions = gm.positions(target)
+    target_covariances = gm.covariances(target)
+
+    fitting_weights = gm.weights(fitting)
+    fitting_normal_amplitudes = gm.normal_amplitudes(fitting)
+    fitting_positions = gm.positions(fitting)
+    fitting_covariances = gm.covariances(fitting)
+
+    target_n_virtual_points = N_VIRTUAL_POINTS * target_weights / target_normal_amplitudes;
+    cant use gm.evaluate here, because we need the outer product (before summing)
+    gaussian_values = gm.evaluate(gm.pack_mixture(fitting_normal_amplitudes, fitting_positions, fitting_covariances),
+                                  target_positions)
+
+
+
 def em_algorithm(mixture: Tensor, n_fitting_components: int, n_iterations: int, tensor_board_writer) -> Tensor:
-    # todo test (after moving from Mixture class to Tensor data
     assert gm.is_valid_mixture(mixture)
     assert n_fitting_components > 0
     n_batch = gm.n_batch(mixture)
