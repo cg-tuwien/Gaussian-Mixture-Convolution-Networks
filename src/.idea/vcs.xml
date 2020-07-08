@@ -2,6 +2,7 @@
 <project version="4">
   <component name="VcsDirectoryMappings">
     <mapping directory="$PROJECT_DIR$/.." vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/gmc/cpp/da-gm-1" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/gmc/cpp/glm" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/gmc/cpp/gm_vis" vcs="Git" />
   </component>
