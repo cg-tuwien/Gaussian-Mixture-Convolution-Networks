@@ -3,6 +3,7 @@ conda config --add channels pytorch
 
 if you use just the pytorch install command, the channel is not in highest priority and anaconda environment updates might downgrade pytorch
 
+conda config file on linux is in ~/.condarc. it lists all channels.
 
 conda update --all
 
