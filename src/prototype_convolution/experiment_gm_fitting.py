@@ -33,14 +33,15 @@ tensor_board_writer = torch.utils.tensorboard.SummaryWriter(config.data_base_pat
 for batch_idx in range(1): # was 10
     start_time = time.perf_counter()
     for layer_id in range(1): # was 3
-        m = gm.load(f"fitting_input/fitting_input_netlayer{layer_id}_batch{batch_idx}")[0]
-        m = m[0, 0].unsqueeze(0).unsqueeze(0)
+        # m = gm.load(f"fitting_input/fitting_input_netlayer{layer_id}_batch{batch_idx}")[0]
+        # m = m[0, 0, 1:2].unsqueeze(0).unsqueeze(0)
+        m = torch.tensor([[[[1, 0.4, -0.2, 0.25, 0.04, 0.04, 0.05]]]])
         # m = m.cuda()
         device = m.device
         n_batch = gm.n_batch(m)
         n_layers = gm.n_layers(m)
         n_components = gm.n_components(m)
-        m, _, _ = gm.normalise(m, torch.zeros([1, n_layers], device=device))
+        # m, _, _ = gm.normalise(m, torch.zeros([1, n_layers], device=device))
         # m.requires_grad = True
         # sorted_indices = torch.argsort(gm.weights(m.detach()))
         # sorted_m = mat_tools.my_index_select(m, sorted_indices)
@@ -48,7 +49,7 @@ for batch_idx in range(1): # was 10
         # negative_m = sorted_m[:, :, :, :n_negative_m]
         # positive_m = sorted_m[:, :, :, n_negative_m:]
 
-        fitting = fitting_em.em_algorithm(m, 10, 10, tensor_board_writer)
+        fitting = fitting_em.em_algorithm(m, n_fitting_components=1, n_iterations=10, tensor_board_writer=tensor_board_writer)
         log(m, fitting[0], tensor_board_writer)
         print(f"{batch_idx}/{layer_id}")
 

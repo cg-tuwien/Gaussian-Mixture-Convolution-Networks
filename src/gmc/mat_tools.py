@@ -48,3 +48,5 @@ def gen_random_positive_definite(dims: typing.List, epsilon: float = 0.01, devic
     return A @ A.transpose(-1, -2) + torch.eye(dims[-1], dtype=torch.float32, device=device) * epsilon
 
 
+def batched_trace(matrices: Tensor) -> Tensor:
+    return torch.diagonal(matrices, dim1=-2, dim2=-1).sum(-1)
