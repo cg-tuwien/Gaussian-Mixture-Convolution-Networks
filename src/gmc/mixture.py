@@ -158,6 +158,41 @@ def evaluate(mixture: Tensor, xes: Tensor) -> Tensor:
     return evaluate_inversed(pack_mixture(weights(mixture), positions(mixture), covariances(mixture).inverse().transpose(-2, -1)), xes)
 
 
+def evaluate_componentwise_inversed(gaussians: Tensor, xes: Tensor):
+    _n_batch = n_batch(gaussians)
+    _n_layers = n_layers(gaussians)
+    _n_dims = n_dimensions(gaussians)
+    _n_comps = n_components(gaussians)
+
+    # xes dims: 1. batch (may be 1), 2. layers (may be 1), 3. n_xes, 4. x/y/[z]
+    assert len(xes.shape) == 4
+    assert xes.shape[0] == 1 or xes.shape[0] == _n_batch
+    assert xes.shape[1] == 1 or xes.shape[1] == _n_layers
+    n_xes = xes.shape[2]
+    assert xes.shape[3] == _n_dims
+
+    xes = xes.view(xes.shape[0], xes.shape[1], n_xes, 1, _n_dims)
+
+    # 1. dim: batches, 2. layers, 3. xes, 4. component, 5.+: vector / matrix components
+    _positions = positions(gaussians).view(_n_batch, _n_layers, 1, _n_comps, _n_dims)
+    values = xes - _positions
+
+    # x^t A x -> quadratic form
+    x_t = values.view(_n_batch, _n_layers, n_xes, _n_comps, 1, _n_dims)
+    x = values.view(_n_batch, _n_layers, n_xes, _n_comps, _n_dims, 1)
+    A = covariances(gaussians).view(_n_batch, _n_layers, 1, _n_comps, _n_dims, _n_dims)
+    values = -0.5 * x_t @ A @ x  # 0.8 -> 3.0gb
+    values = values.view(_n_batch, _n_layers, n_xes, _n_comps)
+
+    values = weights(gaussians).view(_n_batch, _n_layers, 1, _n_comps) * torch.exp(values)
+    return values
+
+
+def evaluate_componentwise(mixture: Tensor, xes: Tensor) -> Tensor:
+    # torch inverse returns a transposed matrix (v 1.3.1). our matrix is symmetric however, and we want to take a view, so the transpose avoids a copy.
+    return evaluate_componentwise_inversed(pack_mixture(weights(mixture), positions(mixture), covariances(mixture).inverse().transpose(-2, -1)), xes)
+
+
 # # todo: untested
 # def max_component(mixture: Tensor, xes: Tensor) -> Tensor:
 #     assert n_layers(mixture) == 1
@@ -226,8 +261,8 @@ def render_bias_and_relu(mixture: Tensor, bias: Tensor,
 def export_as_image(mixture: Tensor) -> None:
     # todo make general on next occasion
     rendering = render(mixture.detach().view(1, -1, 1, 7), x_low=-1.5, x_high=1.5, y_low=-1.5, y_high=1.5).cpu().numpy()
-    import image_tools
-    rendering_cm = image_tools.colour_mapped(rendering, -1, 1)
+    import gmc.image_tools
+    rendering_cm = gmc.image_tools.colour_mapped(rendering, -1, 1)
     rendering_cm = rendering_cm.reshape(-1, 100, 100, 4)
     for i in range(rendering_cm.shape[0]):
         plt.imsave(f"{i:05}.png", rendering_cm[i, :, :, :])
