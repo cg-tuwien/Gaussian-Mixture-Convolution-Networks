@@ -291,9 +291,6 @@ def ad_algorithm(pointclouds: Tensor,
 
         assert not torch.isnan(loss).any()
 
-        if k == 151:
-            print()
-
         loss.backward()
         optimiser_pos.step()
         optimiser_cov.step()
@@ -437,9 +434,9 @@ def rescale_gmm_to_gm(pi_normalized: Tensor, positions: Tensor, covariances: Ten
     # Scaling of covariance by f@s@f', where f is the diagonal matrix of scalings
     # if all diag entries of f are the same, then this just results in times x^2, where x is the element of f
     _covariances *= scale2
-    _determinants = determinants * torch.pow(scale2, 3)
+    _determinants = (determinants * torch.pow(scale2, 3)).view(1, 1, -1)
 
-    _amplitudes = pi_normalized / (determinants.sqrt() * 15.74960995)
+    _amplitudes = pi_normalized / (_determinants.sqrt() * 15.74960995)
 
     return _amplitudes, _positions, _covariances
 
