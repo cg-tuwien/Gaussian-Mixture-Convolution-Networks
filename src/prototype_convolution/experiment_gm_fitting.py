@@ -34,7 +34,7 @@ for batch_idx in range(1): # was 10
     start_time = time.perf_counter()
     for layer_id in range(1): # was 3
         m = gm.load(f"fitting_input/fitting_input_netlayer{layer_id}_batch{batch_idx}")[0]
-        m = m[0, 0, :].unsqueeze(0).unsqueeze(0)
+        # m = m[0, :, :].unsqueeze(0)
         # m = torch.tensor([[[[1, -0.8, -0.8, 0.25, 0.04, 0.04, 0.05], [1, 0.8, 0.8, 0.05, -0.04, -0.04, 0.25]]]])
         # m = m.cuda()
         device = m.device

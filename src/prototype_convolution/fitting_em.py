@@ -143,6 +143,7 @@ def em_algorithm(mixture: Tensor, n_fitting_components: int, n_iterations: int, 
 
         newCovariances = (torch.sum(responsibilities.unsqueeze(-1).unsqueeze(-1) * (gm.covariances(target_gmm).view(n_batch, n_layers, n_components, 1, n_dims, n_dims) +
                                                                                     posDiffs.matmul(posDiffs.transpose(-1, -2))), 2))
+        newCovariances = newCovariances + (newWeights == 0).unsqueeze(-1).unsqueeze(-1) * torch.eye(n_dims).view(1, 1, 1, n_dims, n_dims)
 
         assert not torch.any(torch.isnan(newCovariances))
 
