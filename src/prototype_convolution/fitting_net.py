@@ -356,6 +356,7 @@ class Sampler:
             images[i] = images[i][:, :, 0:3]
             images[i] = images[i].reshape(1, images[i].shape[0], images[i].shape[1], 3)
         images = np.concatenate(images, axis=0)
+        images = images[:, 0:2000, :, :]
         tensor_board_writer.add_image(tag, images, epoch, dataformats='NHWC')
 
     def run_on(self, mixture_in: Tensor, bias_in: Tensor, epoch: int = None, train: bool = True, tensor_board_writer: torch.utils.tensorboard.SummaryWriter = None, tensor_board_prefix: str = "") -> Tensor:

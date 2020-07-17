@@ -10,7 +10,8 @@ import gmc.mixture as gm
 import prototype_convolution.fitting_net as fitting_net
 import prototype_convolution.fitting_em as fitting_em
 
-def log(input: Tensor, output: Tensor, tensor_board_writer):
+
+def log(input: Tensor, output: Tensor, label: str, tensor_board_writer):
     device = input.device
     image_size = 80
     xv, yv = torch.meshgrid([torch.arange(-1.2, 1.2, 2.4 / image_size, dtype=torch.float, device=device),
@@ -21,7 +22,7 @@ def log(input: Tensor, output: Tensor, tensor_board_writer):
     image_target = gm.evaluate_with_activation_fun(input.detach(), torch.zeros([1, gm.n_layers(input)], device=device), xes).view(-1, image_size, image_size)
     output_image = gm.evaluate(output.detach(), xes).view(-1, image_size, image_size)
     fitting_net.Sampler.log_images(tensor_board_writer,
-                                  f"input target prediction",
+                                  f"{label} input target prediction",
                                    [input_image.transpose(0, 1).reshape(image_size, -1),
                                    image_target.transpose(0, 1).reshape(image_size, -1),
                                    output_image.transpose(0, 1).reshape(image_size, -1)],
@@ -32,9 +33,9 @@ tensor_board_writer = torch.utils.tensorboard.SummaryWriter(config.data_base_pat
 
 for batch_idx in range(1): # was 10
     start_time = time.perf_counter()
-    for layer_id in range(1): # was 3
+    for layer_id in range(3): # was 3
         m = gm.load(f"fitting_input/fitting_input_netlayer{layer_id}_batch{batch_idx}")[0]
-        # m = m[0, :, :].unsqueeze(0)
+        m = m[0:3, 0:5, :]  # .unsqueeze(0).unsqueeze(0)
         # m = torch.tensor([[[[1, -0.8, -0.8, 0.25, 0.04, 0.04, 0.05], [1, 0.8, 0.8, 0.05, -0.04, -0.04, 0.25]]]])
         # m = m.cuda()
         device = m.device
@@ -49,8 +50,9 @@ for batch_idx in range(1): # was 10
         # negative_m = sorted_m[:, :, :, :n_negative_m]
         # positive_m = sorted_m[:, :, :, n_negative_m:]
 
-        fitting = fitting_em.em_algorithm(m, n_fitting_components=15, n_iterations=10, tensor_board_writer=tensor_board_writer)
-        log(m, fitting[0], tensor_board_writer)
+        fitting = fitting_em.em_algorithm(m, n_fitting_components=15, n_iterations=1, tensor_board_writer=tensor_board_writer, layer=layer_id)
+        log(m, fitting[0], f"l{layer_id}.", tensor_board_writer)
+        log(m, fitting[0], f"l{layer_id},", tensor_board_writer)
         print(f"{batch_idx}/{layer_id}")
 
     end_time = time.perf_counter()
