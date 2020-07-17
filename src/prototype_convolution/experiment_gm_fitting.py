@@ -4,7 +4,7 @@ import datetime
 import torch.utils.tensorboard
 from torch import Tensor
 
-import update_syspath
+# import update_syspath
 import prototype_convolution.config as config
 import gmc.mixture as gm
 import prototype_convolution.fitting_net as fitting_net
@@ -49,7 +49,7 @@ for batch_idx in range(1): # was 10
         # negative_m = sorted_m[:, :, :, :n_negative_m]
         # positive_m = sorted_m[:, :, :, n_negative_m:]
 
-        fitting = fitting_em.em_algorithm(m, n_fitting_components=10, n_iterations=10, tensor_board_writer=tensor_board_writer)
+        fitting = fitting_em.em_algorithm(m, n_fitting_components=15, n_iterations=10, tensor_board_writer=tensor_board_writer)
         log(m, fitting[0], tensor_board_writer)
         print(f"{batch_idx}/{layer_id}")
 

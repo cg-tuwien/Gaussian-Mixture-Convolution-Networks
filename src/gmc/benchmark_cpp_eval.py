@@ -2,7 +2,7 @@ import unittest
 import time
 import torch.autograd
 
-import update_syspath
+# import update_syspath
 import gmc.mixture as gm
 
 enable_python = True

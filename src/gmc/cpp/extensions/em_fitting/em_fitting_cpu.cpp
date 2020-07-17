@@ -13,9 +13,9 @@
 constexpr int N_VIRTUAL_POINTS = 100;
 
 template <typename scalar_t, int DIMS>
-void calc_likelihoods(const torch::PackedTensorAccessor32<scalar_t, 4, torch::RestrictPtrTraits>& target_a,
-                      const torch::PackedTensorAccessor32<scalar_t, 4, torch::RestrictPtrTraits>& fitting_a,
-                      torch::PackedTensorAccessor32<scalar_t, 4, torch::RestrictPtrTraits>& likelihoods_a,
+void calc_likelihoods(const torch::PackedTensorAccessor32<scalar_t, 4>& target_a,
+                      const torch::PackedTensorAccessor32<scalar_t, 4>& fitting_a,
+                      torch::PackedTensorAccessor32<scalar_t, 4>& likelihoods_a,
                       const gm::MixtureNs& n,
                       const gm::MixtureNs& n_fitting) {
 
@@ -89,9 +89,9 @@ std::vector<torch::Tensor> forward(torch::Tensor target, torch::Tensor initial) 
 
     AT_DISPATCH_FLOATING_TYPES(target.scalar_type(), "calc_likelihoods", ([&] {
         /// TODO: some of the covariances are inversed, that can be precomputed
-        auto target_a = target.packed_accessor32<scalar_t, 4, torch::RestrictPtrTraits>();
-        auto fitting_a = initial.packed_accessor32<scalar_t, 4, torch::RestrictPtrTraits>();
-        auto likelihoods_a = likelihoods.packed_accessor32<scalar_t, 4, torch::RestrictPtrTraits>();
+        auto target_a = target.packed_accessor32<scalar_t, 4>();
+        auto fitting_a = initial.packed_accessor32<scalar_t, 4>();
+        auto likelihoods_a = likelihoods.packed_accessor32<scalar_t, 4>();
 
         if (n.dims == 2)
             calc_likelihoods<scalar_t, 2>(target_a, fitting_a, likelihoods_a, n, n_fitting);

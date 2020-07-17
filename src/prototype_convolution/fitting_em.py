@@ -67,14 +67,14 @@ def calc_likelihoods(target: Tensor, fitting: Tensor) -> Tensor:
     n_virtual_points = n_fitting_components
 
     target_weights = gm.weights(target)
-    target_normal_amplitudes = gm.normal_amplitudes(target)
     target_positions = gm.positions(target)
     target_covariances = gm.covariances(target)
+    target_normal_amplitudes = gm.normal_amplitudes(target_covariances)
 
     fitting_weights = gm.weights(fitting)
-    fitting_normal_amplitudes = gm.normal_amplitudes(fitting)
     fitting_positions = gm.positions(fitting)
     fitting_covariances = gm.covariances(fitting)
+    fitting_normal_amplitudes = gm.normal_amplitudes(fitting_covariances)
 
     target_n_virtual_points = n_virtual_points * target_weights / target_normal_amplitudes;
 
@@ -110,7 +110,7 @@ def em_algorithm(mixture: Tensor, n_fitting_components: int, n_iterations: int, 
     fitting_gmm = mat_tools.my_index_select(target, sorted_indices[:, :, :n_fitting_components])
     fitting_gmm, _ = mixture_to_gmm(fitting_gmm)
 
-    log(fitting_gmm, 0, tensor_board_writer)
+    log(target_gmm, 0, tensor_board_writer)
     log(fitting_gmm, 1, tensor_board_writer)
 
     fitting_start = time.time()
@@ -120,26 +120,25 @@ def em_algorithm(mixture: Tensor, n_fitting_components: int, n_iterations: int, 
         # likelihoods: Tensor = em_fitting(target_inv, fitting_inv)
 
         likelihoods = calc_likelihoods(target_gmm, fitting_gmm)
-        likelihoods = likelihoods * gm.weights(fitting_gmm).view(n_batch, n_layers, 1, n_fitting_components)
-        likelihoods_sum = likelihoods.sum(2, keepdim=True)
-
+        likelihoods = likelihoods * (gm.weights(fitting_gmm) / gm.normal_amplitudes(gm.covariances(fitting_gmm))).view(n_batch, n_layers, 1, n_fitting_components)
+        likelihoods_sum = likelihoods.sum(3, keepdim=True)
         responsibilities = likelihoods / likelihoods_sum.where(likelihoods_sum > 0.00000001, 0.00000001 * torch.ones_like(likelihoods_sum));  # preiner Equation(8)
 
         assert not torch.any(torch.isnan(responsibilities))
 
         # index i -> target
         # index s -> fitting
-        responsibilities = responsibilities * gm.weights(target_gmm).unsqueeze(-1);
+        responsibilities = responsibilities * (gm.weights(target_gmm) / gm.normal_amplitudes(gm.covariances(target_gmm))).unsqueeze(-1);
+        newWeights = torch.sum(responsibilities, 2)
         assert not torch.any(torch.isnan(responsibilities))
 
-        newWeights = torch.sum(responsibilities, 2);
         assert not torch.any(torch.isnan(newWeights))
-        responsibilities = responsibilities / newWeights.where(newWeights > 0.00000001, 0.00000001 * torch.ones_like(newWeights)).view(n_batch, n_layers, 1, n_fitting_components);
+        responsibilities = responsibilities / newWeights.where(newWeights > 0.00000001, 0.00000001 * torch.ones_like(newWeights)).view(n_batch, n_layers, 1, n_fitting_components)
         assert torch.all(responsibilities >= 0)
         assert not torch.any(torch.isnan(responsibilities))
-        newPositions = torch.sum(responsibilities.unsqueeze(-1) * gm.positions(target_gmm).view(n_batch, n_layers, n_components, 1, n_dims), 2);
+        newPositions = torch.sum(responsibilities.unsqueeze(-1) * gm.positions(target_gmm).view(n_batch, n_layers, n_components, 1, n_dims), 2)
         assert not torch.any(torch.isnan(newPositions))
-        posDiffs = gm.positions(target_gmm).view(n_batch, n_layers, n_components, 1, n_dims, 1) - newPositions.view(n_batch, n_layers, 1, n_fitting_components, n_dims, 1);
+        posDiffs = gm.positions(target_gmm).view(n_batch, n_layers, n_components, 1, n_dims, 1) - newPositions.view(n_batch, n_layers, 1, n_fitting_components, n_dims, 1)
         assert not torch.any(torch.isnan(posDiffs))
 
         newCovariances = (torch.sum(responsibilities.unsqueeze(-1).unsqueeze(-1) * (gm.covariances(target_gmm).view(n_batch, n_layers, n_components, 1, n_dims, n_dims) +
@@ -147,7 +146,7 @@ def em_algorithm(mixture: Tensor, n_fitting_components: int, n_iterations: int, 
 
         assert not torch.any(torch.isnan(newCovariances))
 
-        fitting_gmm = gm.pack_mixture(newWeights.contiguous(), newPositions.contiguous(), newCovariances.contiguous())
+        fitting_gmm = gm.pack_mixture(newWeights.contiguous() * gm.normal_amplitudes(newCovariances), newPositions.contiguous(), newCovariances.contiguous())
         log(fitting_gmm, i+2, tensor_board_writer)
 
     fitting_end = time.time()
