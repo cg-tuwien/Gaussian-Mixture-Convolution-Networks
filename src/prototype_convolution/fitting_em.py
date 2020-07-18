@@ -7,7 +7,7 @@ from torch import Tensor
 # import update_syspath
 import gmc.mixture as gm
 import gmc.mat_tools as mat_tools
-from gmc.cpp.extensions.em_fitting.em_fitting import apply as em_fitting
+# from gmc.cpp.extensions.em_fitting.em_fitting import apply as em_fitting
 
 import prototype_convolution.fitting_net as fitting_net
 
@@ -44,7 +44,7 @@ def relu(mixture: Tensor) -> Tensor:
 
 def mixture_to_gmm(mixture: Tensor) -> typing.Tuple[Tensor, Tensor]:
     integrals = gm.integrate(mixture).view(gm.n_batch(mixture), gm.n_layers(mixture), 1)
-    integrals = integrals.where(integrals > 0.00001, torch.ones_like(integrals))
+    integrals = integrals.where(integrals > 0.0001, 0.0001 * torch.ones_like(integrals))
     assert not torch.any(torch.isnan(integrals))
 
     if torch.any(integrals == 0):
@@ -120,7 +120,7 @@ def calc_KL_divergence(target: Tensor, fitting: Tensor) -> Tensor:
     return KL_divergence
 
 
-def em_algorithm(mixture: Tensor, n_fitting_components: int, n_iterations: int, tensor_board_writer, layer: int = 0) -> Tensor:
+def em_algorithm(mixture: Tensor, n_fitting_components: int, n_iterations: int = 1, tensor_board_writer = None, layer: int = 0) -> Tensor:
     assert gm.is_valid_mixture(mixture)
     assert n_fitting_components > 0
     n_batch = gm.n_batch(mixture)
@@ -149,8 +149,8 @@ def em_algorithm(mixture: Tensor, n_fitting_components: int, n_iterations: int, 
         assert gm.is_valid_mixture(fitting_gmm)
         # likelihoods: Tensor = em_fitting(target_inv, fitting_inv)
 
-        likelihoods = calc_likelihoods(target_gmm, fitting_gmm)
-        KL_divergence = calc_KL_divergence(target_gmm, fitting_gmm)
+        likelihoods = calc_likelihoods(target_gmm.detach(), fitting_gmm.detach())
+        KL_divergence = calc_KL_divergence(target_gmm.detach(), fitting_gmm.detach())
         likelihoods = likelihoods * (gm.weights(fitting_gmm) / gm.normal_amplitudes(gm.covariances(fitting_gmm))).view(n_batch, n_layers, 1, n_fitting_components)
         likelihoods = likelihoods * (KL_divergence < 1)
         likelihoods_sum = likelihoods.sum(3, keepdim=True)
@@ -175,11 +175,13 @@ def em_algorithm(mixture: Tensor, n_fitting_components: int, n_iterations: int, 
 
         newCovariances = (torch.sum(responsibilities.unsqueeze(-1).unsqueeze(-1) * (gm.covariances(target_gmm).view(n_batch, n_layers, n_components, 1, n_dims, n_dims) +
                                                                                     posDiffs.matmul(posDiffs.transpose(-1, -2))), 2))
-        newCovariances = newCovariances + (newWeights == 0).unsqueeze(-1).unsqueeze(-1) * torch.eye(n_dims).view(1, 1, 1, n_dims, n_dims)
+        newCovariances = newCovariances + (newWeights < 0.0001).unsqueeze(-1).unsqueeze(-1) * torch.eye(n_dims, device=device).view(1, 1, 1, n_dims, n_dims) * 0.0001
 
         assert not torch.any(torch.isnan(newCovariances))
 
-        fitting_gmm = gm.pack_mixture(newWeights.contiguous() * gm.normal_amplitudes(newCovariances), newPositions.contiguous(), newCovariances.contiguous())
+        normal_amplitudes = gm.normal_amplitudes(newCovariances)
+        # normal_amplitudes = normal_amplitudes.where(normal_amplitudes < 10000, 10000 * torch.ones_like(normal_amplitudes))
+        fitting_gmm = gm.pack_mixture(newWeights.contiguous() * normal_amplitudes, newPositions.contiguous(), newCovariances.contiguous())
         # log(fitting_gmm, i+1, tensor_board_writer, layer=layer)
 
     fitting_end = time.time()

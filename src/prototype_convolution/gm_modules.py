@@ -17,8 +17,8 @@ from torch import Tensor
 import gmc.mixture as gm
 import gmc.mat_tools as mat_tools
 import gmc.image_tools as madam_imagetools
-import config
-import fitting_net
+import prototype_convolution.config as config
+import prototype_convolution.fitting_em as fitting_em
 
 
 class GmConvolution(torch.nn.modules.Module):
@@ -158,20 +158,19 @@ class GmConvolution(torch.nn.modules.Module):
 
         return torch.cat(out_mixtures, dim=1)
 
-
-def generate_default_fitting_module(n_input_gaussians: int, n_output_gaussians: int) -> fitting_net.Net:
-    assert n_output_gaussians > 0
-    n_dimensions = 2
-    return fitting_net.PointNetWithParallelMLPs([64, 128, 256, 512, 512, n_output_gaussians * 25],
-                                                [256, 256, 256, 256, 256, 128],
-                                                n_output_gaussians=n_output_gaussians,
-                                                n_dims=n_dimensions,
-                                                aggregations=1, batch_norm=True)
+#
+# def generate_default_fitting_module(n_input_gaussians: int, n_output_gaussians: int) -> fitting_net.Net:
+#     assert n_output_gaussians > 0
+#     n_dimensions = 2
+#     return fitting_net.PointNetWithParallelMLPs([64, 128, 256, 512, 512, n_output_gaussians * 25],
+#                                                 [256, 256, 256, 256, 256, 128],
+#                                                 n_output_gaussians=n_output_gaussians,
+#                                                 n_dims=n_dimensions,
+#                                                 aggregations=1, batch_norm=True)
 
 
 class GmBiasAndRelu(torch.nn.modules.Module):
-    def __init__(self, layer_id: str, n_layers: int, n_output_gaussians: int, n_input_gaussians: int = -1, max_bias: float = 0.0,
-                 generate_fitting_module: typing.Callable[[int, int], fitting_net.Net] = generate_default_fitting_module):
+    def __init__(self, layer_id: str, n_layers: int, n_output_gaussians: int, n_input_gaussians: int = -1, max_bias: float = 0.0):
         # todo: option to make fitting net have common or seperate weights per module
         super(GmBiasAndRelu, self).__init__()
         self.layer_id = layer_id
@@ -184,35 +183,35 @@ class GmBiasAndRelu(torch.nn.modules.Module):
 
         # WARNING !!!: evil code. the string self.gm_fitting_net_666 is used for filtering in experiment_gm_mnist_model.Net.save_model(). !!! WARNING
         # todo: fix it
-        self.gm_fitting_net_666: fitting_net.Net = generate_fitting_module(n_input_gaussians, n_output_gaussians)
+        # self.gm_fitting_net_666: fitting_net.Net = generate_fitting_module(n_input_gaussians, n_output_gaussians)
 
-        self.gm_fitting_net_666.requires_grad_(True)
+        # self.gm_fitting_net_666.requires_grad_(True)
         self.bias.requires_grad_(True)
         # self.train_fitting(False)
 
-        self.name = f"GmBiasAndRelu_{layer_id}"
-        self.storage_path = config.data_base_path / "weights" / f"GmBiasAndRelu_{layer_id}_{self.gm_fitting_net_666.name}"
+        # self.name = f"GmBiasAndRelu_{layer_id}"
+        # self.storage_path = config.data_base_path / "weights" / f"GmBiasAndRelu_{layer_id}_{self.gm_fitting_net_666.name}"
 
         self.last_in = None
         self.last_out = None
 
-        self.fitting_sampler = fitting_net.Sampler(self, n_training_samples=1000)
+        # self.fitting_sampler = fitting_net.Sampler(self, n_training_samples=1000)
 
-        print(self.gm_fitting_net_666)
+        # print(self.gm_fitting_net_666)
 
     def train_fitting(self, flag: bool):
-        self.gm_fitting_net_666.requires_grad_(flag)
+        # self.gm_fitting_net_666.requires_grad_(flag)
         self.bias.requires_grad_(not flag)
 
     def set_requires_grad(self, flag: bool):
-        self.gm_fitting_net_666.requires_grad_(flag)
+        # self.gm_fitting_net_666.requires_grad_(flag)
         self.bias.requires_grad_(flag)
 
     def forward(self, x: Tensor, overwrite_bias: Tensor = None) -> Tensor:
         bias = self.bias if overwrite_bias is None else overwrite_bias
         bias = torch.abs(bias)
 
-        result = self.gm_fitting_net_666(x, bias)
+        result = fitting_em.em_algorithm(x, n_fitting_components=self.n_output_gaussians)[0]
 
         self.last_in = x.detach()
         self.last_out = result.detach()
@@ -238,13 +237,15 @@ class GmBiasAndRelu(torch.nn.modules.Module):
 
     def save_fitting_parameters(self):
         # todo: make nicer, we want facilities to separate the learned parameters from fitting and gaussian kernels / bias
-        print(f"gm_modules.GmBiasAndRelu: saving fitting module to {self.storage_path}")
-        self.gm_fitting_net_666.save(self.storage_path)
+        # print(f"gm_modules.GmBiasAndRelu: saving fitting module to {self.storage_path}")
+        # self.gm_fitting_net_666.save(self.storage_path)
+        pass
 
     def load_fitting_parameters(self, strict: bool = False) -> bool:
-        print(f"gm_modules.GmBiasAndRelu: trying to load fitting module from {self.storage_path}")
-        if not self.gm_fitting_net_666.load(self.storage_path, strict=strict):
-            self.gm_fitting_net_666.load(strict=strict)
+        # print(f"gm_modules.GmBiasAndRelu: trying to load fitting module from {self.storage_path}")
+        # if not self.gm_fitting_net_666.load(self.storage_path, strict=strict):
+        #     self.gm_fitting_net_666.load(strict=strict)
+        pass
 
 
 class BatchNorm(torch.nn.modules.Module):
