@@ -7,6 +7,7 @@ import numpy as np
 
 import torch
 import torch.nn.modules
+import torch.nn.functional
 import torch.utils.checkpoint
 import torch.nn as nn
 import torch.optim as optim
@@ -170,7 +171,7 @@ class GmConvolution(torch.nn.modules.Module):
 
 
 class GmBiasAndRelu(torch.nn.modules.Module):
-    def __init__(self, layer_id: str, n_layers: int, n_output_gaussians: int, n_input_gaussians: int = -1, max_bias: float = 0.0):
+    def __init__(self, layer_id: str, n_layers: int, n_output_gaussians: int, n_input_gaussians: int = -1):
         # todo: option to make fitting net have common or seperate weights per module
         super(GmBiasAndRelu, self).__init__()
         self.layer_id = layer_id
@@ -179,7 +180,7 @@ class GmBiasAndRelu(torch.nn.modules.Module):
         self.n_output_gaussians = n_output_gaussians
 
         # use a small bias for the start. i hope it's easier for the net to increase it than to lower it
-        self.bias = torch.nn.Parameter(torch.rand(1, self.n_layers) * max_bias)
+        self.bias = torch.nn.Parameter(torch.rand(1, self.n_layers) * 0.01 - 6)
 
         # WARNING !!!: evil code. the string self.gm_fitting_net_666 is used for filtering in experiment_gm_mnist_model.Net.save_model(). !!! WARNING
         # todo: fix it
@@ -209,9 +210,11 @@ class GmBiasAndRelu(torch.nn.modules.Module):
 
     def forward(self, x: Tensor, overwrite_bias: Tensor = None) -> Tensor:
         bias = self.bias if overwrite_bias is None else overwrite_bias
-        bias = torch.abs(bias)
 
-        result = fitting_em.em_algorithm(x, n_fitting_components=self.n_output_gaussians)[0]
+        # before there was a torch.abs(bias), but that is not differentiable at b == 0 + something weird is happening if bias < 0
+        bias = torch.nn.functional.softplus(bias)
+
+        result = fitting_em.em_algorithm(x, bias, n_fitting_components=self.n_output_gaussians)[0]
 
         self.last_in = x.detach()
         self.last_out = result.detach()
@@ -224,7 +227,7 @@ class GmBiasAndRelu(torch.nn.modules.Module):
         last_in = gm.render(self.last_in, batches=[0, 1], layers=[0, None],
                             x_low=position_range[0], y_low=position_range[1], x_high=position_range[2], y_high=position_range[3],
                             width=image_size, height=image_size)
-        target = gm.render_bias_and_relu(self.last_in, self.bias.detach(), batches=[0, 1], layers=[0, None],
+        target = gm.render_bias_and_relu(self.last_in, torch.nn.functional.softplus(self.bias.detach()), batches=[0, 1], layers=[0, None],
                                          x_low=position_range[0], y_low=position_range[1], x_high=position_range[2], y_high=position_range[3],
                                          width=image_size, height=image_size)
         prediction = gm.render(self.last_out, batches=[0, 1], layers=[0, None],
@@ -263,7 +266,7 @@ class BatchNorm(torch.nn.modules.Module):
         positions = gm.positions(x)
         covariances = gm.covariances(x)
 
-        weights = weights / integral
+        weights = weights / (integral)# + 0.0001)
         return gm.pack_mixture(weights, positions, covariances)
 
 

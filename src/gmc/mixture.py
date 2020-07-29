@@ -314,7 +314,7 @@ def is_valid_mixture_and_bias(mixture: Tensor, bias: Tensor) -> bool:
     # ok = ok and mixture.device == bias.device
     # return ok
 
-    assert (bias >= 0).all()
+    # assert (bias >= 0).all()
     assert is_valid_mixture(mixture)
     # todo: actually, i think the batch dimension is not needed for the bias
     assert len(bias.shape) == 2

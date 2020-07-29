@@ -24,7 +24,7 @@ def log(mixture: Tensor, epoch: int, tensor_board_writer, layer: int = 0):
                                    [image.transpose(0, 1).reshape(image_size, -1)],
                                    epoch, [-0.5, 2])
 
-def relu(mixture: Tensor) -> Tensor:
+def relu(mixture: Tensor, bias: Tensor) -> Tensor:
     weights = gm.weights(mixture)
     positions = gm.positions(mixture)
     covariances = gm.covariances(mixture)
@@ -34,7 +34,7 @@ def relu(mixture: Tensor) -> Tensor:
     positive_weights = weights.where(weights > 0, torch.zeros(1, device=device))
     negative_m = gm.pack_mixture(negative_weights, positions, covariances)
     positive_m = gm.pack_mixture(positive_weights, positions, covariances)
-    negative_eval = gm.evaluate(negative_m, positions)
+    negative_eval = gm.evaluate(negative_m, positions) - bias.unsqueeze(-1)
     positive_eval = gm.evaluate(positive_m, positions)
     new_weights_factor = torch.max(torch.zeros(1, device=device),
                                    torch.ones(1, device=device) + (negative_eval - 0.0001) / (positive_eval + 0.0001))
@@ -120,7 +120,7 @@ def calc_KL_divergence(target: Tensor, fitting: Tensor) -> Tensor:
     return KL_divergence
 
 
-def em_algorithm(mixture: Tensor, n_fitting_components: int, n_iterations: int = 1, tensor_board_writer = None, layer: int = 0) -> Tensor:
+def em_algorithm(mixture: Tensor, bias: Tensor, n_fitting_components: int, n_iterations: int = 1, tensor_board_writer = None, layer: int = 0) -> Tensor:
     assert gm.is_valid_mixture(mixture)
     assert n_fitting_components > 0
     n_batch = gm.n_batch(mixture)
@@ -129,7 +129,7 @@ def em_algorithm(mixture: Tensor, n_fitting_components: int, n_iterations: int =
     n_dims = gm.n_dimensions(mixture)
     device = mixture.device
 
-    target = relu(mixture)
+    target = relu(mixture, bias)
     assert gm.is_valid_mixture(target)
     component_integrals = gm.integrate_components(target)
     target_gmm, integrals = mixture_to_gmm(target)
@@ -186,5 +186,5 @@ def em_algorithm(mixture: Tensor, n_fitting_components: int, n_iterations: int =
 
     fitting_end = time.time()
     fitting = gm.pack_mixture(gm.weights(fitting_gmm) * integrals, gm.positions(fitting_gmm), gm.covariances(fitting_gmm))
-    print(f"fitting time: {fitting_end - fitting_start}")
+    # print(f"fitting time: {fitting_end - fitting_start}")
     return fitting, responsibilities
