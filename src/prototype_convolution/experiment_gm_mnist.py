@@ -68,29 +68,33 @@ def train(args, model: experiment_gm_mnist_model.Net, device: torch.device, trai
           kernel_optimiser: optim.Optimizer, epoch: int, tensor_board_writer: torch.utils.tensorboard.SummaryWriter = None):
 
     model.train()
+    start_time = time.perf_counter()
     for batch_idx, (data, target) in enumerate(train_loader):
         data, target = data.to(device), target.to(device)
         step = epoch * len(train_loader.dataset) + batch_idx * len(data)
 
+        batch_start_time = time.perf_counter()
         output = model(data)
         loss = F.nll_loss(output, target)
-        regularisation_loss = model.regularisation_loss() * len(data)
-        training_loss = (loss + regularisation_loss)
+        # regularisation_loss = model.regularisation_loss() * len(data)
+        training_loss = loss  # (loss + regularisation_loss)
 
         kernel_optimiser.zero_grad()
         training_loss.backward()
         kernel_optimiser.step()
+        batch_end_time = time.perf_counter()
 
         if step % args.log_interval == 0:
             pred = output.detach().argmax(dim=1, keepdim=True)  # get the index of the max log-probability
             correct = pred.eq(target.view_as(pred)).sum().item()
-            tensor_board_writer.add_scalar("0. mnist training loss", training_loss.item(), step)
-            tensor_board_writer.add_scalar("1. mnist training accuracy", 100 * correct / len(data), step)
-            tensor_board_writer.add_scalar("2. mnist kernel loss", loss.item(), step)
-            tensor_board_writer.add_scalar("3. mnist training regularisation loss", regularisation_loss.item(), step)
-            tensor_board_writer.add_scalar("5. model layer 1 avg(abs(bias))", model.relus[0].bias.abs().mean().item(), step)
-            tensor_board_writer.add_scalar("5. model layer 2 avg(abs(bias))", model.relus[1].bias.abs().mean().item(), step)
-            tensor_board_writer.add_scalar("5. model layer 3 avg(abs(bias))", model.relus[2].bias.abs().mean().item(), step)
+            tensor_board_writer.add_scalar("00. mnist training loss", training_loss.item(), step)
+            tensor_board_writer.add_scalar("01. mnist training accuracy", 100 * correct / len(data), step)
+            tensor_board_writer.add_scalar("02. mnist kernel loss", loss.item(), step)
+            tensor_board_writer.add_scalar("03. duration per sample", (batch_end_time - batch_start_time) / len(data), step)
+            # tensor_board_writer.add_scalar("04. mnist training regularisation loss", regularisation_loss.item(), step)
+            tensor_board_writer.add_scalar("05. model layer 1 avg(abs(bias))", torch.nn.functional.softplus(model.relus[0].bias).mean().item(), step)
+            tensor_board_writer.add_scalar("05. model layer 2 avg(abs(bias))", torch.nn.functional.softplus(model.relus[1].bias).mean().item(), step)
+            tensor_board_writer.add_scalar("05. model layer 3 avg(abs(bias))", torch.nn.functional.softplus(model.relus[2].bias).mean().item(), step)
             render_debug_images_to_tensorboard(model, step, tensor_board_writer)
 
             print(f'Training kernels: {epoch}/{step} [{batch_idx}/{len(train_loader)} '
@@ -100,7 +104,9 @@ def train(args, model: experiment_gm_mnist_model.Net, device: torch.device, trai
                 model.save_model()
             # print(f"experiment_gm_mnist.tain: saving optimiser state to {model.storage_path}.optimiser")
             # torch.save(kernel_optimiser.state_dict(), f"{model.storage_path}.optimiser")
+    end_time = time.perf_counter()
 
+    tensor_board_writer.add_scalar("10. batch_duration", end_time - start_time, step)
 
 def test(args, model: experiment_gm_mnist_model.Net, device: torch.device, test_loader: torch.utils.data.DataLoader, epoch: int, tensor_board_writer: torch.utils.tensorboard.SummaryWriter):
     model.eval()
@@ -153,7 +159,7 @@ def experiment(device: str = 'cuda', n_epochs: int = 20, kernel_learning_rate: f
 
     kernel_optimiser = optim.SGD(model.parameters(), lr=kernel_learning_rate)
 
-    tensor_board_writer = torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard' / f'sgd_b100_{desc_string}_{datetime.datetime.now().strftime("%Y-%m-%d")}')
+    tensor_board_writer = torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard' / f'sgd_b100_{desc_string}_{datetime.datetime.now().strftime("%m%d_%H%M")}')
     # scheduler = StepLR(kernel_optimiser, step_size=1, gamma=args.gamma)
 
 
