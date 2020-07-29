@@ -47,8 +47,8 @@ class Net(nn.Module):
                                              weight_sd=0.025)
         # self.maxPool3 = gm_modules.MaxPooling(2)
 
-        self.bn0 = gm_modules.BatchNorm(per_gaussian_norm=True)
-        self.bn = gm_modules.BatchNorm(per_gaussian_norm=False)
+        self.bn0 = gm_modules.BatchNorm(per_mixture_norm=True)
+        self.bn = gm_modules.BatchNorm(per_mixture_norm=False)
 
         # initialise these last, so all the kernels should have the same random seed
         self.relus = torch.nn.modules.ModuleList()

@@ -249,13 +249,13 @@ class GmBiasAndRelu(torch.nn.modules.Module):
 
 
 class BatchNorm(torch.nn.modules.Module):
-    def __init__(self, per_gaussian_norm: bool = False):
+    def __init__(self, per_mixture_norm: bool = False):
         super(BatchNorm, self).__init__()
-        self.per_gaussian_norm = per_gaussian_norm
+        self.per_mixture_norm = per_mixture_norm
 
     def forward(self, x: Tensor) -> Tensor:
         integral = gm.integrate(x).view(gm.n_batch(x), gm.n_layers(x), 1)
-        if not self.per_gaussian_norm:
+        if not self.per_mixture_norm:
             integral = torch.mean(integral, dim=0, keepdim=True)
             integral = torch.mean(integral, dim=1, keepdim=True)
 
