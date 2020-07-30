@@ -257,6 +257,8 @@ class BatchNorm(torch.nn.modules.Module):
         self.per_mixture_norm = per_mixture_norm
 
     def forward(self, x: Tensor) -> Tensor:
+        # according to the following link the scaling and mean computations do not detach the gradient.
+        # https://kratzert.github.io/2016/02/12/understanding-the-gradient-flow-through-the-batch-normalization-layer.html
         integral = gm.integrate(x).view(gm.n_batch(x), gm.n_layers(x), 1)
         if not self.per_mixture_norm:
             integral = torch.mean(integral, dim=0, keepdim=True)
@@ -266,7 +268,7 @@ class BatchNorm(torch.nn.modules.Module):
         positions = gm.positions(x)
         covariances = gm.covariances(x)
 
-        weights = weights / (integral)# + 0.0001)
+        weights = weights / (integral + 0.0001)
         return gm.pack_mixture(weights, positions, covariances)
 
 

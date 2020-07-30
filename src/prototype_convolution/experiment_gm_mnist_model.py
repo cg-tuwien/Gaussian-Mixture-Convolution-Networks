@@ -70,6 +70,13 @@ class Net(nn.Module):
         return self.gmc1.regularisation_loss() + self.gmc2.regularisation_loss() + self.gmc3.regularisation_loss()
 
     def forward(self, in_x: torch.Tensor, fitting_inputs: typing.List[torch.Tensor] = None):
+        # Andrew Ng says that most of the time batch norm (BN) is applied before activation.
+        # That would allow to merge the beta and bias learnable parameters
+        # https://www.youtube.com/watch?v=tNIpEZLv_eg
+        # Other sources recommend to applie BN after the activation function.
+        #
+        # in our case: BN just scales. the bias is a bit weird because it is only allowed to be positive. BN would act weird if it were computed
+        # for negative and positive components (we use integrate, it might show 0 although the amplitudes are large).
         x = self.bn0(in_x)
 
         x = self.gmc1(x)
