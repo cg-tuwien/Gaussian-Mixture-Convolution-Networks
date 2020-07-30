@@ -180,7 +180,7 @@ class GmBiasAndRelu(torch.nn.modules.Module):
         self.n_output_gaussians = n_output_gaussians
 
         # use a small bias for the start. i hope it's easier for the net to increase it than to lower it
-        self.bias = torch.nn.Parameter(torch.rand(1, self.n_layers) * 0.01 - 6)
+        self.bias = torch.nn.Parameter(torch.zeros(1, self.n_layers) - 0.1)
 
         # WARNING !!!: evil code. the string self.gm_fitting_net_666 is used for filtering in experiment_gm_mnist_model.Net.save_model(). !!! WARNING
         # todo: fix it
@@ -212,7 +212,7 @@ class GmBiasAndRelu(torch.nn.modules.Module):
         bias = self.bias if overwrite_bias is None else overwrite_bias
 
         # before there was a torch.abs(bias), but that is not differentiable at b == 0 + something weird is happening if bias < 0
-        bias = torch.nn.functional.softplus(bias)
+        bias = torch.nn.functional.softplus(bias, beta=20)
 
         result = fitting_em.em_algorithm(x, bias, n_fitting_components=self.n_output_gaussians)[0]
 
@@ -227,7 +227,7 @@ class GmBiasAndRelu(torch.nn.modules.Module):
         last_in = gm.render(self.last_in, batches=[0, 1], layers=[0, None],
                             x_low=position_range[0], y_low=position_range[1], x_high=position_range[2], y_high=position_range[3],
                             width=image_size, height=image_size)
-        target = gm.render_bias_and_relu(self.last_in, torch.nn.functional.softplus(self.bias.detach()), batches=[0, 1], layers=[0, None],
+        target = gm.render_bias_and_relu(self.last_in, torch.nn.functional.softplus(self.bias.detach(), beta=20), batches=[0, 1], layers=[0, None],
                                          x_low=position_range[0], y_low=position_range[1], x_high=position_range[2], y_high=position_range[3],
                                          width=image_size, height=image_size)
         prediction = gm.render(self.last_out, batches=[0, 1], layers=[0, None],

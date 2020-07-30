@@ -92,9 +92,9 @@ def train(args, model: experiment_gm_mnist_model.Net, device: torch.device, trai
             tensor_board_writer.add_scalar("02. mnist kernel loss", loss.item(), step)
             tensor_board_writer.add_scalar("03. duration per sample", (batch_end_time - batch_start_time) / len(data), step)
             # tensor_board_writer.add_scalar("04. mnist training regularisation loss", regularisation_loss.item(), step)
-            tensor_board_writer.add_scalar("05. model layer 1 avg(abs(bias))", torch.nn.functional.softplus(model.relus[0].bias).mean().item(), step)
-            tensor_board_writer.add_scalar("05. model layer 2 avg(abs(bias))", torch.nn.functional.softplus(model.relus[1].bias).mean().item(), step)
-            tensor_board_writer.add_scalar("05. model layer 3 avg(abs(bias))", torch.nn.functional.softplus(model.relus[2].bias).mean().item(), step)
+            tensor_board_writer.add_scalar("05. model layer 1 max(bias)", torch.nn.functional.softplus(model.relus[0].bias, beta=20).max().item(), step)
+            tensor_board_writer.add_scalar("05. model layer 2 max(bias)", torch.nn.functional.softplus(model.relus[1].bias, beta=20).max().item(), step)
+            tensor_board_writer.add_scalar("05. model layer 3 max(bias)", torch.nn.functional.softplus(model.relus[2].bias, beta=20).max().item(), step)
             render_debug_images_to_tensorboard(model, step, tensor_board_writer)
 
             print(f'Training kernels: {epoch}/{step} [{batch_idx}/{len(train_loader)} '
