@@ -262,7 +262,7 @@ class BatchNorm(torch.nn.modules.Module):
         integral = gm.integrate(x).view(gm.n_batch(x), gm.n_layers(x), 1)
         if not self.per_mixture_norm:
             integral = torch.mean(integral, dim=0, keepdim=True)
-            integral = torch.mean(integral, dim=1, keepdim=True)
+            # integral = torch.mean(integral, dim=1, keepdim=True)
 
         weights = gm.weights(x)
         positions = gm.positions(x)
