@@ -133,9 +133,8 @@ def test(args, model: experiment_gm_mnist_model.Net, device: torch.device, test_
 
 
 def experiment(device: str = 'cuda', n_epochs: int = 20, kernel_learning_rate: float = 0.001, log_interval: int = 100,
-                           learn_positions_after: int = 0,
-                           learn_covariances_after: int = 0,
-                           desc_string: str = ""):
+               learn_positions_after: int = 0, learn_covariances_after: int = 0, desc_string: str = "",
+               use_bias: bool = False, batch_norm_per_layer: bool = False, use_adam: bool = False):
     # Training settings
     torch.manual_seed(0)
 
@@ -145,7 +144,8 @@ def experiment(device: str = 'cuda', n_epochs: int = 20, kernel_learning_rate: f
     model = experiment_gm_mnist_model.Net(name=desc_string,
                                           learn_positions=learn_positions_after == 0,
                                           learn_covariances=learn_covariances_after == 0,
-                                          n_kernel_components=n_kernel_components)
+                                          n_kernel_components=n_kernel_components,
+                                          use_bias=use_bias, batch_norm_per_layer=batch_norm_per_layer)
     model.load()
     model = model.to(device)
 
@@ -157,9 +157,13 @@ def experiment(device: str = 'cuda', n_epochs: int = 20, kernel_learning_rate: f
     args.log_interval = log_interval
     args.save_model = False
 
-    kernel_optimiser = optim.SGD(model.parameters(), lr=kernel_learning_rate)
+    if use_adam:
+        kernel_optimiser = optim.Adam(model.parameters(), lr=kernel_learning_rate)
+        tensor_board_writer = torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard' / f'adam_b100_{desc_string}_{datetime.datetime.now().strftime("%m%d_%H%M")}')
+    else:
+        kernel_optimiser = optim.SGD(model.parameters(), lr=kernel_learning_rate)
+        tensor_board_writer = torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard' / f'sgd_b100_{desc_string}_{datetime.datetime.now().strftime("%m%d_%H%M")}')
 
-    tensor_board_writer = torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard' / f'sgd_b100_{desc_string}_{datetime.datetime.now().strftime("%m%d_%H%M")}')
     # scheduler = StepLR(kernel_optimiser, step_size=1, gamma=args.gamma)
 
 

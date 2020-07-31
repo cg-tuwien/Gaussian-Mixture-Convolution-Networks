@@ -18,7 +18,9 @@ class Net(nn.Module):
                  name: str = "default",
                  learn_positions: bool = False,
                  learn_covariances: bool = False,
-                 n_kernel_components: int = config.mnist_n_kernel_components):
+                 n_kernel_components: int = config.mnist_n_kernel_components,
+                 use_bias: bool = False,
+                 batch_norm_per_layer: bool = False):
         super(Net, self).__init__()
         self.storage_path = config.data_base_path / "weights" / f"mnist_gmcnet_{name}.pt"
         # reference_fitter = gm_modules.generate_default_fitting_module
@@ -48,11 +50,11 @@ class Net(nn.Module):
         # self.maxPool3 = gm_modules.MaxPooling(2)
 
         self.bn0 = gm_modules.BatchNorm(per_mixture_norm=True)
-        self.bn = gm_modules.BatchNorm(per_mixture_norm=False)
+        self.bn = gm_modules.BatchNorm(per_mixture_norm=False, per_layer_norm=batch_norm_per_layer)
 
         # initialise these last, so all the kernels should have the same random seed
         self.relus = torch.nn.modules.ModuleList()
-        self.relus.append(gm_modules.GmBiasAndRelu(layer_id="1c", n_layers=n_layers_1, n_input_gaussians=n_in_g * n_kernel_components, n_output_gaussians=n_out_g_1))
+        self.relus.append(gm_modules.GmBiasAndRelu(layer_id="1c", n_layers=n_layers_1, n_input_gaussians=n_in_g * n_kernel_components, n_output_gaussians=n_out_g_1, use_bias=use_bias))
         self.relus.append(gm_modules.GmBiasAndRelu(layer_id="2c", n_layers=n_layers_2, n_input_gaussians=n_out_g_1 * n_layers_1 * n_kernel_components, n_output_gaussians=n_out_g_2))
         self.relus.append(gm_modules.GmBiasAndRelu(layer_id="3c", n_layers=10, n_input_gaussians=n_out_g_2 * n_layers_2 * n_kernel_components, n_output_gaussians=n_out_g_3))
 

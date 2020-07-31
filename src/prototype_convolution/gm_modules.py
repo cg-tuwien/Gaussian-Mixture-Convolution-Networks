@@ -171,7 +171,7 @@ class GmConvolution(torch.nn.modules.Module):
 
 
 class GmBiasAndRelu(torch.nn.modules.Module):
-    def __init__(self, layer_id: str, n_layers: int, n_output_gaussians: int, n_input_gaussians: int = -1):
+    def __init__(self, layer_id: str, n_layers: int, n_output_gaussians: int, n_input_gaussians: int = -1, use_bias: bool = False):
         # todo: option to make fitting net have common or seperate weights per module
         super(GmBiasAndRelu, self).__init__()
         self.layer_id = layer_id
@@ -181,6 +181,7 @@ class GmBiasAndRelu(torch.nn.modules.Module):
 
         # use a small bias for the start. i hope it's easier for the net to increase it than to lower it
         self.bias = torch.nn.Parameter(torch.zeros(1, self.n_layers) - 0.1)
+        self.use_bias = use_bias
 
         # WARNING !!!: evil code. the string self.gm_fitting_net_666 is used for filtering in experiment_gm_mnist_model.Net.save_model(). !!! WARNING
         # todo: fix it
@@ -211,8 +212,11 @@ class GmBiasAndRelu(torch.nn.modules.Module):
     def forward(self, x: Tensor, overwrite_bias: Tensor = None) -> Tensor:
         bias = self.bias if overwrite_bias is None else overwrite_bias
 
-        # before there was a torch.abs(bias), but that is not differentiable at b == 0 + something weird is happening if bias < 0
-        bias = torch.nn.functional.softplus(bias, beta=20)
+        if self.use_bias:
+            # before there was a torch.abs(bias), but that is not differentiable at b == 0 + something weird is happening if bias < 0
+            bias = torch.nn.functional.softplus(bias, beta=20)
+        else:
+            bias = torch.zeros_like(bias)
 
         result = fitting_em.em_algorithm(x, bias, n_fitting_components=self.n_output_gaussians)[0]
 
@@ -252,9 +256,10 @@ class GmBiasAndRelu(torch.nn.modules.Module):
 
 
 class BatchNorm(torch.nn.modules.Module):
-    def __init__(self, per_mixture_norm: bool = False):
+    def __init__(self, per_mixture_norm: bool = False, per_layer_norm: bool = False):
         super(BatchNorm, self).__init__()
         self.per_mixture_norm = per_mixture_norm
+        self.per_layer_norm = per_layer_norm
 
     def forward(self, x: Tensor) -> Tensor:
         # according to the following link the scaling and mean computations do not detach the gradient.
@@ -262,7 +267,8 @@ class BatchNorm(torch.nn.modules.Module):
         integral = gm.integrate(x).view(gm.n_batch(x), gm.n_layers(x), 1)
         if not self.per_mixture_norm:
             integral = torch.mean(integral, dim=0, keepdim=True)
-            # integral = torch.mean(integral, dim=1, keepdim=True)
+            if not self.per_layer_norm:
+                integral = torch.mean(integral, dim=1, keepdim=True)
 
         weights = gm.weights(x)
         positions = gm.positions(x)
