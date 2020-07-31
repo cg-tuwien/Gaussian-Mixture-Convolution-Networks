@@ -8,7 +8,7 @@ import torch.nn.functional as F
 import torch.utils.data
 import typing
 
-import prototype_convolution.config as config
+import prototype_convolution.config as default_gmcn_config
 import gmc.mixture as gm
 import prototype_convolution.gm_modules as gm_modules
 
@@ -18,18 +18,19 @@ class Net(nn.Module):
                  name: str = "default",
                  learn_positions: bool = False,
                  learn_covariances: bool = False,
-                 n_kernel_components: int = config.mnist_n_kernel_components,
                  use_bias: bool = False,
-                 batch_norm_per_layer: bool = False):
+                 batch_norm_per_layer: bool = False,
+                 gmcn_config=default_gmcn_config):
         super(Net, self).__init__()
-        self.storage_path = config.data_base_path / "weights" / f"mnist_gmcnet_{name}.pt"
+        self.storage_path = gmcn_config.data_base_path / "weights" / f"mnist_gmcnet_{name}.pt"
         # reference_fitter = gm_modules.generate_default_fitting_module
-        n_in_g = config.mnist_n_in_g
-        n_layers_1 = config.mnist_n_layers_1
-        n_out_g_1 = config.mnist_n_out_g_1
-        n_layers_2 = config.mnist_n_layers_2
-        n_out_g_2 = config.mnist_n_out_g_2
-        n_out_g_3 = config.mnist_n_out_g_3
+        n_in_g = gmcn_config.mnist_n_in_g
+        n_layers_1 = gmcn_config.mnist_n_layers_1
+        n_out_g_1 = gmcn_config.mnist_n_out_g_1
+        n_layers_2 = gmcn_config.mnist_n_layers_2
+        n_out_g_2 = gmcn_config.mnist_n_out_g_2
+        n_out_g_3 = gmcn_config.mnist_n_out_g_3
+        n_kernel_components = gmcn_config.mnist_n_kernel_components
 
         self.gmc1 = gm_modules.GmConvolution(n_layers_in=1, n_layers_out=n_layers_1, n_kernel_components=n_kernel_components,
                                              position_range=2, covariance_range=0.5,

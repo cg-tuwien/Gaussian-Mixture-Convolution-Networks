@@ -15,7 +15,6 @@ import typing
 from torchvision import datasets, transforms
 from torch.optim.lr_scheduler import StepLR
 
-import prototype_convolution.config as config
 import gmc.mixture as gm
 # import fitting_net
 import prototype_convolution.gm_modules as gm_modules
@@ -24,7 +23,6 @@ import prototype_convolution.experiment_gm_mnist_model as experiment_gm_mnist_mo
 # based on https://github.com/pytorch/examples/blob/master/mnist/main.py
 import gmc.image_tools as madam_imagetools
 
-n_kernel_components = 5
 
 
 # torch.autograd.set_detect_anomaly(True)
@@ -134,18 +132,18 @@ def test(args, model: experiment_gm_mnist_model.Net, device: torch.device, test_
 
 def experiment(device: str = 'cuda', n_epochs: int = 20, kernel_learning_rate: float = 0.001, log_interval: int = 100,
                learn_positions_after: int = 0, learn_covariances_after: int = 0, desc_string: str = "",
-               use_bias: bool = False, batch_norm_per_layer: bool = False, use_adam: bool = False):
+               use_bias: bool = False, batch_norm_per_layer: bool = False, use_adam: bool = False, gmcn_config = None):
     # Training settings
     torch.manual_seed(0)
 
-    train_loader = torch.utils.data.DataLoader(GmMnistDataSet('mnist/train_', begin=0, end=60000), batch_size=config.batch_size, num_workers=config.num_dataloader_workers, shuffle=True)
-    test_loader = torch.utils.data.DataLoader(GmMnistDataSet('mnist/test_', begin=0, end=10000), batch_size=100, num_workers=config.num_dataloader_workers)
+    train_loader = torch.utils.data.DataLoader(GmMnistDataSet('mnist/train_', begin=0, end=60000), batch_size=gmcn_config.batch_size, num_workers=gmcn_config.num_dataloader_workers, shuffle=True)
+    test_loader = torch.utils.data.DataLoader(GmMnistDataSet('mnist/test_', begin=0, end=10000), batch_size=gmcn_config.batch_size, num_workers=gmcn_config.num_dataloader_workers)
 
     model = experiment_gm_mnist_model.Net(name=desc_string,
                                           learn_positions=learn_positions_after == 0,
                                           learn_covariances=learn_covariances_after == 0,
-                                          n_kernel_components=n_kernel_components,
-                                          use_bias=use_bias, batch_norm_per_layer=batch_norm_per_layer)
+                                          use_bias=use_bias, batch_norm_per_layer=batch_norm_per_layer,
+                                          gmcn_config=gmcn_config)
     model.load()
     model = model.to(device)
 
@@ -159,10 +157,10 @@ def experiment(device: str = 'cuda', n_epochs: int = 20, kernel_learning_rate: f
 
     if use_adam:
         kernel_optimiser = optim.Adam(model.parameters(), lr=kernel_learning_rate)
-        tensor_board_writer = torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard' / f'adam_b100_{desc_string}_{datetime.datetime.now().strftime("%m%d_%H%M")}')
+        tensor_board_writer = torch.utils.tensorboard.SummaryWriter(gmcn_config.data_base_path / 'tensorboard' / f'adam_b100_{desc_string}_{datetime.datetime.now().strftime("%m%d_%H%M")}')
     else:
         kernel_optimiser = optim.SGD(model.parameters(), lr=kernel_learning_rate)
-        tensor_board_writer = torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard' / f'sgd_b100_{desc_string}_{datetime.datetime.now().strftime("%m%d_%H%M")}')
+        tensor_board_writer = torch.utils.tensorboard.SummaryWriter(gmcn_config.data_base_path / 'tensorboard' / f'sgd_b100_{desc_string}_{datetime.datetime.now().strftime("%m%d_%H%M")}')
 
     # scheduler = StepLR(kernel_optimiser, step_size=1, gamma=args.gamma)
 
@@ -178,65 +176,3 @@ def experiment(device: str = 'cuda', n_epochs: int = 20, kernel_learning_rate: f
         if args.save_model:
             model.save_model()
             model.save_fitting_optimiser_state()
-
-
-def main():
-    default_learning_rate = 0.01
-    default_epochs = 6 * 10
-    default_log_interval = 20
-    train_fitting_layers = True
-    train_mnist = False
-    # Training settings
-    parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
-    parser.add_argument('--batch-size', type=int, default=100, metavar='N',
-                        help='input batch size for training (default: 100)')
-    parser.add_argument('--test-batch-size', type=int, default=1000, metavar='N',
-                        help='input batch size for testing (default: 1000)')
-    parser.add_argument('--epochs', type=int, default=default_epochs, metavar='N',
-                        help=f'number of epochs to train (default: {default_epochs})')
-    parser.add_argument('--lr', type=float, default=default_learning_rate, metavar='LR',
-                        help=f'learning rate (default: {default_learning_rate})')
-    parser.add_argument('--gamma', type=float, default=0.7, metavar='M',
-                        help='Learning rate step gamma (default: 0.7)')
-    parser.add_argument('--no-cuda', action='store_true', default=False,
-                        help='disables CUDA training')
-    parser.add_argument('--seed', type=int, default=1, metavar='S',
-                        help='random seed (default: 1)')
-    parser.add_argument('--log-interval', type=int, default=default_log_interval, metavar='N',
-                        help=f'how many batches to wait before logging training status (default: {default_log_interval}')
-
-    parser.add_argument('--save-model', action='store_true', default=True,
-                        help='For Saving the current Model')
-    args = parser.parse_args()
-    use_cuda = not args.no_cuda and torch.cuda.is_available()
-
-    torch.manual_seed(args.seed)
-
-    device = torch.device("cuda" if use_cuda else "cpu")
-
-    train_loader = torch.utils.data.DataLoader(GmMnistDataSet('mnist/train_', begin=0, end=600), batch_size=None, collate_fn=lambda x: x)
-    test_loader = torch.utils.data.DataLoader(GmMnistDataSet('mnist/test_', begin=0, end=100), batch_size=None, collate_fn=lambda x: x)
-
-    model = experiment_gm_mnist_model.Net(n_kernel_components=n_kernel_components)
-    model.load()
-    model = model.to(device)
-
-    optimizer = optim.Adam(model.parameters(), lr=args.lr)
-
-    tensor_board_writer = torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard' / f'gm_mnist_{datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}')
-    # scheduler = StepLR(kernel_optimiser, step_size=1, gamma=args.gamma)
-    for epoch in range(0, args.epochs):
-        train(args, model, device, train_loader, optimizer, epoch, tensor_board_writer=tensor_board_writer)
-        test(args, model, device, test_loader, epoch, tensor_board_writer=tensor_board_writer)
-        # scheduler.step()
-
-        if args.save_model and train_mnist:
-            model.save_model()
-
-        if args.save_model and train_fitting_layers is not None:
-            model.save_fitting_parameters()
-            model.save_fitting_optimiser_state()
-
-
-if __name__ == '__main__':
-    main()
