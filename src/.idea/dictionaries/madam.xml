@@ -2,6 +2,7 @@
   <dictionary name="madam">
     <words>
       <w>cuda</w>
+      <w>gmcn</w>
       <w>mahalanobis</w>
     </words>
   </dictionary>
