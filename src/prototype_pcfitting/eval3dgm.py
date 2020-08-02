@@ -1,13 +1,14 @@
 import torch
 import pointcloud
-import core.gm as gm
+import gmc.mixture as gm
 
 #PC_PATH = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/TEST3.off"
 PC_PATH = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/ModelNet10/pointcloud/ModelNet10/chair/train/chair_0030.off"
 #PC_PATH = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/ModelNet10/pointcloud-lores/ModelNet10/chair/train/chair_0030.off"
 #PC_PATH = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/ModelNet10/pointcloud-hires/ModelNet10/chair/train/chair_0030.off"
-#GM_PATH2 = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/da-gm-1/da-gm-1/data/c_30HR.ply"
-GM_PATH = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/gmc_net/gmc_net_data/models/new-C30HR-32684-w0.0005-PREINER/pcgmm-0-initial.ply"
+#GM_PATH = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/da-gm-1/da-gm-1/data/c_30HR.ply"
+GM_PATH = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/da-gm-1/da-gm-1/data/c_30Ls3.ply"
+#GM_PATH = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/gmc_net/gmc_net_data/models/new-C30HR-32684-w0.0005-PREINER/pcgmm-0-initial.ply"
 #GM_PATH = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/gmc_net/gmc_net_data/models/new-C30HR-32684-w0.0005-PREINER/pcgmm-0-05000.ply"
 #GM_PATH = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/gmc_net/gmc_net_data/models/new-C30HR-32684-P-RMS7-CVSep-W-0.0005-initeq/pcgmm-0-13000.ply"
 #GM_PATH = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/gmc_net/gmc_net_data/models/default-v2-C30HR-32684/pcgmm-0-19000.ply"
@@ -21,11 +22,12 @@ GM_PATH = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/gmc_net/gmc_net_data/mod
 #GM_PATH = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/TEST3-preiner2.ply"
 #PREINER GMS AND GMMS DO NOT RESULT IN THE SAME THING WTF
 SCALE_DOWN = True
+IS_MODEL = True
 
 print("Start")
 pc = pointcloud.load_pc_from_off(PC_PATH).view(1, 1, -1, 3).cuda()
 print("Read in PC")
-mix = gm.read_gm_from_ply(GM_PATH, False).cuda()
+mix = gm.read_gm_from_ply(GM_PATH, IS_MODEL).cuda()
 if SCALE_DOWN:
     bbmin = torch.min(pc, dim=2)[0]  # shape: (m, 3)
     bbmax = torch.max(pc, dim=2)[0]  # shape: (m, 3)
@@ -43,9 +45,9 @@ if SCALE_DOWN:
     positions += 0.5
     covariances = gm.covariances(mix)
     amplitudes = gm.weights(mix)
-    amplitudes *= (covariances.det().sqrt() * 15.74960995)
+    pi = amplitudes * (covariances.det().sqrt() * 15.74960995)
     covariances /= scale2
-    amplitudes /= (covariances.det().sqrt() * 15.74960995)
+    amplitudes = pi / (covariances.det().sqrt() * 15.74960995)
     mix = gm.pack_mixture(amplitudes, positions, covariances)
 print("Read in GM")
 #sample_point_idz = torch.randperm(pc.shape[2])[0:3000] #Shape: (s), where s is #samples

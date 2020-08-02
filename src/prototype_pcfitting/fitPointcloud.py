@@ -69,8 +69,10 @@ def ad_algorithm(pointclouds: Tensor,
     assert pointclouds.shape[2] == 3
     assert n_components > 0
 
+    #torch.autograd.set_detect_anomaly(True)
+
     if cov_train_mode == 'cholesky':
-        epsilon = 1e-7
+        epsilon = pow(10, -2.6)#1e-2.6
     else:
         epsilon = 0.000000001
 
@@ -144,12 +146,12 @@ def ad_algorithm(pointclouds: Tensor,
         pi_relative = gm.weights(mixture)  # shape: (m,1,n)
         if not create_new_mixture:
             pi_relative *= covariances.detach().det().sqrt() * 15.74960995  # calculate priors from amplitudes
-        pi_relative.requires_grad = True
         if weight_softmax:
             pi_normalized = torch.nn.functional.softmax(pi_relative, dim=2)
         else:
             pi_sum = pi_relative.abs().sum(dim=2).view(batch_size, 1, 1)  # shape: (m,1) -> (m,1,1)
             pi_normalized = pi_relative.abs() / pi_sum  # shape (m,1,n)
+        pi_relative.requires_grad = True
 
     if not create_new_mixture:
         covariances /= scale2   # Covariances need to be downscaled
@@ -190,6 +192,9 @@ def ad_algorithm(pointclouds: Tensor,
     #scheduler_pos = optim.lr_scheduler.LambdaLR(optimiser_pos, LRadap)
     if cov_train_mode == 'cholesky':
         optimiser_cov = optim.Adam([cov_factor_vec], lr=learn_rate_cov)
+        #LRadap = lambda epoch: 1 / (1 + 0.001 * epoch)
+        #scheduler_cov = optim.lr_scheduler.LambdaLR(optimiser_cov, LRadap)
+        #optimiser_cov = optim.SGD([cov_factor_vec], lr=learn_rate_cov)
     else:
         optimiser_cov = optim.Adam([icov_factor], lr=learn_rate_cov)
 
@@ -297,6 +302,9 @@ def ad_algorithm(pointclouds: Tensor,
         if optimiser_pi:
             optimiser_pi.step()
         #scheduler_pos.step()
+        #scheduler_cov.step()
+
+        #torch.save(cov_train_data, f"{gm_path}/covd-{k}.gm")
 
         # Reconstruct Covariance Matrix
         covariances, inversed_covariances, determinants = calculate_covariance_matrices(cov_train_mode, cov_train_data, epsilon)
@@ -373,7 +381,7 @@ def ad_algorithm(pointclouds: Tensor,
                 tensor_board_writer.flush()
                 #gm.write_gm_to_ply(_amplitudes, _positions, _covariances, i, f"{gm_path}/pcgm-{i}.ply")
                 gm.write_gm_to_ply(_amplitudes, _positions, _covariances, i, f"{gm_path}/pcgmm-{i}-" + str(k).zfill(5) + ".ply")
-            gm.save(_mixture, f"{gm_path}/pcgm-{i}.gm")
+            gm.save(_mixture, f"{gm_path}/pcgm-{k}.gm")
 
             # _mixture = gm.pack_mixture(amplitudes.clone(), positions.clone(), covariances.clone())
             # vis3d.set_pointclouds(target.clone().cpu())
@@ -479,7 +487,7 @@ def test():
         # "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/ModelNet10/pointcloud/ModelNet10/chair/train/chair_0030.off")
         # "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/ModelNet10/pointcloud-lores/ModelNet10/chair/train/chair_0030.off")
         # "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/ModelNet10/pointcloud-lores-validation/ModelNet10/chair/train/chair_0030.off")
-        "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/ModelNet10/pointcloud-hires/ModelNet10/chair/train/chair_0030.off")
+        "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/ModelNet10/pointcloud-hires/ModelNet10/chair/train/chair_0030.off") #this one!
         # "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/ModelNet10/pointcloud/ModelNet10/toilet/train/toilet_0001.off")
     # validation = pointcloud.load_pc_from_off(
     #    "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/ModelNet10/pointcloud-lores-validation/ModelNet10/chair/train/chair_0030.off")
@@ -487,6 +495,7 @@ def test():
     #gms = gm.read_gm_from_ply("D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/TEST3-preiner2.ply", True)
     #gms = gm.read_gm_from_ply("D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/gmc_net/gmc_net_data/models/TEST3-PREINER3/pcgmm-0-109750.ply", False).cuda()
     #gms = gm.read_gm_from_ply("D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/da-gm-1/da-gm-1/data/c_30HR.ply", True).cuda()
+    gms = gm.read_gm_from_ply("D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/da-gm-1/da-gm-1/data/c_30Ls3.ply", True).cuda()
     #gms = gm.read_gm_from_ply("D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/gmc_net/gmc_net_data/models/GDPREINER-onlyp-0.001-loged/pcgmm-0-initial.ply", False).cuda()
     #gms = gm.read_gm_from_ply("D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/gmc_net/gmc_net_data/models/gdp-inout/pcgmm-0-initial.ply", False).cuda()
     #gms = gms[0, :, :, :].view(1, 1, 88, 13)
@@ -497,11 +506,12 @@ def test():
     name = input('Name for this training (or empty for auto): ')
     ad_algorithm(
         pointclouds=pcs,
-        n_components=32684,
+        #n_components=32684,
+        n_components=375,
         n_iterations=1000000,
         device='cuda',
         name=name,
-        #mixture=gms,
+        mixture=gms,
         #start_epoch=0,
         #validation_pc=validation,
         init_positions_from_pointcloud=True,
@@ -509,13 +519,13 @@ def test():
         penalize_long_gaussians=False,
         penalize_amplitude_differences=False,
         penalize_extends_differences=False,
-        penalize_small_determinants=True,
+        penalize_small_determinants=False,
         weight_softmax=False,
         constant_weights=False,
         log_positions=False,
         cov_train_mode='cholesky',
         learn_rate_pos=0.001,
-        learn_rate_cov=0.0001,
+        learn_rate_cov=1e-4,    #default 1e-4
         learn_rate_wei=0.0005
     )
 
