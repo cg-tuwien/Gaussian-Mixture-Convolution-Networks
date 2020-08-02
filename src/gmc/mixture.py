@@ -39,20 +39,6 @@ def weights(mixture: Tensor) -> Tensor:
     return mixture[:, :, :, 0]
 
 
-# returns the amplitude of a multivariate normal distribution with the given position and covariance
-# version for when the covariance is already inversed (det(C)^-1 == det(C^-1))
-def normal_amplitudes_inversed(mixture: Tensor) -> Tensor:
-    n_dims = n_dimensions(mixture)
-    return (2 * math.pi) ** (- n_dims * 0.5) * torch.sqrt(torch.det(covariances(mixture)))
-
-
-# returns the amplitude of a multivariate normal distribution with the given position and covariance
-# version for when the covariance is in the normal form (det(C)^-1 == det(C^-1))
-def normal_amplitudes(mixture: Tensor) -> Tensor:
-    n_dims = n_dimensions(mixture)
-    return (2 * math.pi) ** (- n_dims * 0.5) / torch.sqrt(torch.det(covariances(mixture)))
-
-
 def positions(mixture: Tensor) -> Tensor:
     return mixture[:, :, :, 1:(n_dimensions(mixture) + 1)]
 
@@ -81,16 +67,6 @@ def pack_mixture(weights: Tensor, positions: Tensor, covariances: Tensor) -> Ten
     return torch.cat((weights.view(weight_shape), positions, covariances.view(cov_shape)), dim=len(positions.shape) - 1)
 
 
-def integrate_components(mixture: Tensor) -> Tensor:
-    assert is_valid_mixture(mixture)
-    dets = torch.det(covariances(mixture))
-    return weights(mixture) * torch.sqrt((2 * math.pi) ** n_dimensions(mixture) * dets)
-
-
-def integrate(mixture: Tensor) -> Tensor:
-    return integrate_components(mixture).sum(dim=2)
-
-
 def is_valid_mixture(mixture: Tensor) -> bool:
     # # mixture: 1st dimension: batch, 2nd: layer, 3rd: component, 4th: vector of gaussian data
     # ok = True
@@ -106,6 +82,30 @@ def is_valid_mixture(mixture: Tensor) -> bool:
     assert n_dimensions(mixture) == 2 or n_dimensions(mixture) == 3   # also checks the length of the Gaussian vector
     assert torch.all(covariances(mixture).det() > 0)
     return True
+
+
+def integrate_components(mixture: Tensor) -> Tensor:
+    assert is_valid_mixture(mixture)
+    dets = torch.det(covariances(mixture))
+    return weights(mixture) * torch.sqrt((2 * math.pi) ** n_dimensions(mixture) * dets)
+
+
+def integrate(mixture: Tensor) -> Tensor:
+    return integrate_components(mixture).sum(dim=2)
+
+
+# returns the amplitude of a multivariate normal distribution with the given covariance
+# version for when the covariance is already inversed (det(C)^-1 == det(C^-1))
+def normal_amplitudes_inversed(_covariances: Tensor) -> Tensor:
+    n_dims = _covariances.shape[-1]
+    return (2 * math.pi) ** (- n_dims * 0.5) * torch.sqrt(torch.det(_covariances))
+
+
+# returns the amplitude of a multivariate normal distribution with the given covariance
+# version for when the covariance is in the normal form (det(C)^-1 == det(C^-1))
+def normal_amplitudes(_covariances: Tensor) -> Tensor:
+    n_dims = _covariances.shape[-1]
+    return (2 * math.pi) ** (- n_dims * 0.5) / torch.sqrt(torch.det(_covariances))
 
 
 def evaluate_inversed(mixture: Tensor, xes: Tensor) -> Tensor:

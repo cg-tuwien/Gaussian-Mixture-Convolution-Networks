@@ -206,13 +206,13 @@ class TestGM(unittest.TestCase):
             gm1 = gm.generate_random_mixtures(n_batch=n_batch, n_layers=n_layers, n_components=3, n_dims=n_dims, pos_radius=0.5, cov_radius=0.2)
             gm1_covs = gm.covariances(gm1)
             gm1_covs += (torch.eye(n_dims) * 0.05).view(1, 1, 1, n_dims, n_dims)
-            gm1 = gm.pack_mixture(gm.normal_amplitudes(gm1), gm.positions(gm1), gm1_covs)
+            gm1 = gm.pack_mixture(gm.normal_amplitudes(gm1_covs), gm.positions(gm1), gm1_covs)
 
             self.assertAlmostEqual(gm.integrate_components(gm1).mean().item(), 1.0, places=6)
             self.assertAlmostEqual(gm.integrate_components(gm1).var().item(), 0.0, places=6)
 
-            gm1_inversed = gm.pack_mixture(gm.weights(gm1), gm.positions(gm1), gm.covariances(gm1).inverse().transpose(-2, -1))
-            self.assertTrue((gm.normal_amplitudes(gm1) - gm.normal_amplitudes_inversed(gm1_inversed) < 0.000001).all())
+            gm1_cov_inversed = gm.covariances(gm1).inverse().transpose(-2, -1)
+            self.assertTrue((gm.normal_amplitudes(gm.covariances(gm1)) - gm.normal_amplitudes_inversed(gm1_cov_inversed) < 0.000001).all())
 
 
 if __name__ == '__main__':
