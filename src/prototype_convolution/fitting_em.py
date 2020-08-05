@@ -11,7 +11,7 @@ import gmc.mat_tools as mat_tools
 
 import prototype_convolution.fitting_net as fitting_net
 
-def log(mixture: Tensor, epoch: int, tensor_board_writer, layer: int = 0):
+def log(mixture: Tensor, epoch: int, tensor_board_writer, layer: int = 1):
     device = mixture.device
     image_size = 80
     xv, yv = torch.meshgrid([torch.arange(-1.2, 1.2, 2.4 / image_size, dtype=torch.float, device=device),
@@ -24,23 +24,46 @@ def log(mixture: Tensor, epoch: int, tensor_board_writer, layer: int = 0):
                                    [image.transpose(0, 1).reshape(image_size, -1)],
                                    epoch, [-0.5, 2])
 
-def relu(mixture: Tensor, bias: Tensor) -> Tensor:
+def relu(mixture: Tensor, bias: Tensor, n_iter: int = 0) -> Tensor:
     weights = gm.weights(mixture)
     positions = gm.positions(mixture)
     covariances = gm.covariances(mixture)
+    bias = bias.unsqueeze(-1)
     device = mixture.device
 
-    negative_weights = weights.where(weights <= 0, torch.zeros(1, device=device))
-    positive_weights = weights.where(weights > 0, torch.zeros(1, device=device))
-    negative_m = gm.pack_mixture(negative_weights, positions, covariances)
-    positive_m = gm.pack_mixture(positive_weights, positions, covariances)
-    negative_eval = gm.evaluate(negative_m, positions) - bias.unsqueeze(-1)
-    positive_eval = gm.evaluate(positive_m, positions)
-    new_weights_factor = torch.max(torch.zeros(1, device=device),
-                                   torch.ones(1, device=device) + (negative_eval - 0.0001) / (positive_eval + 0.0001))
-    new_weights = new_weights_factor * positive_weights
+    b = gm.evaluate(mixture, positions) + bias
+    b = b.where(b >= 0, torch.zeros(1, device=device)) - bias      # todo: make transfer fitting function configurable. e.g. these two can be replaced by leaky relu or softplus (?, might break if we have many overlayin Gs)
+    ret_bias = bias.where(bias >= 0, torch.zeros(1, device=device))
 
-    return gm.pack_mixture(new_weights, positions, covariances)
+    inv_eps = 0.0001
+    w0 = weights.where((weights < 0) | (weights > inv_eps), torch.ones(1, device=device) * inv_eps)
+    w0 = w0.where((weights > 0) | (weights < -inv_eps), - torch.ones(1, device=device) * inv_eps)
+    w0inv = 1 / w0
+
+    #x0 = torch.ones_like(w0).where(weights + bias > 0, torch.zeros_like(w0).where(bias < 0, -bias / w0))  # should be the same, since ret_bias is already clamped to [0, inf[
+    x = torch.ones_like(w0).where(weights + bias > 0, -ret_bias * w0inv)
+    # new_weights = weights.where(weights + bias > 0, -ret_bias)
+
+    for i in range(n_iter):
+        new_weights = x * weights
+        new_mixture = gm.pack_mixture(new_weights, positions, covariances)
+        x = w0inv * (b - gm.evaluate(new_mixture, positions)) - x
+
+        # new_mixture = gm.pack_mixture(new_weights, positions, covariances)
+        # new_weights = b - gm.evaluate(new_mixture, positions) - new_weights
+
+    # positive_weights = weights.where(weights > 0, torch.zeros(1, device=device))
+    # negative_m = gm.pack_mixture(negative_weights, positions, covariances)
+    # positive_m = gm.pack_mixture(positive_weights, positions, covariances)
+    # negative_eval = gm.evaluate(negative_m, positions) - bias.unsqueeze(-1)
+    # positive_eval = gm.evaluate(positive_m, positions)
+    # new_weights_factor = torch.max(torch.zeros(1, device=device),
+    #                                torch.ones(1, device=device) + (negative_eval - 0.0001) / (positive_eval + 0.0001))
+    # new_weights = new_weights_factor * positive_weights
+
+    new_weights = x * weights
+
+    return gm.pack_mixture(new_weights, positions, covariances), ret_bias
 
 def mixture_to_gmm(mixture: Tensor) -> typing.Tuple[Tensor, Tensor]:
     integrals = gm.integrate(mixture).view(gm.n_batch(mixture), gm.n_layers(mixture), 1)
