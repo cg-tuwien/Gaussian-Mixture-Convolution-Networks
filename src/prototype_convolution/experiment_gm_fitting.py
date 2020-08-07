@@ -51,9 +51,9 @@ for batch_idx in range(9, 10): # was 10
         # negative_m = sorted_m[:, :, :, :n_negative_m]
         # positive_m = sorted_m[:, :, :, n_negative_m:]
 
-        bias = - torch.ones([gm.n_batch(m), gm.n_layers(m)], device=device) * 0.5
-        # fitting = fitting_em.em_algorithm(m, n_fitting_components=15, n_iterations=1, tensor_board_writer=tensor_board_writer, layer=layer_id)
+        bias = torch.ones([gm.n_batch(m), gm.n_layers(m)], device=device) * -0.5
         fitting, new_bias = fitting_em.relu(m, bias)
+        fitting = fitting_em.em_algorithm(fitting, n_fitting_components=15, n_iterations=1, tensor_board_writer=tensor_board_writer, layer=layer_id)
         log(m, bias, fitting, new_bias, f"l{layer_id}.", tensor_board_writer)
         # log(m, fitting[0].detach(), f"l{layer_id},", tensor_board_writer)
         print(f"{batch_idx}/{layer_id}")

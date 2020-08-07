@@ -218,7 +218,8 @@ class GmBiasAndRelu(torch.nn.modules.Module):
         else:
             bias = torch.zeros_like(bias)
 
-        result = fitting_em.em_algorithm(x, bias, n_fitting_components=self.n_output_gaussians)[0]
+        y_m, y_bias = fitting_em.relu(x, bias)
+        result = fitting_em.em_algorithm(y_m, n_fitting_components=self.n_output_gaussians)[0]
 
         self.last_in = x.detach()
         self.last_out = result.detach()

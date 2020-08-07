@@ -328,7 +328,7 @@ def evaluate_with_activation_fun(mixture: Tensor, bias: Tensor, xes: Tensor) -> 
     assert is_valid_mixture_and_bias(mixture, bias)
     bias_shape = list(bias.shape)
     bias_shape.append(1)
-    values = evaluate(mixture, xes) - bias.view(bias_shape)
+    values = evaluate(mixture, xes) + bias.view(bias_shape)
     return torch.max(values, torch.tensor([0.00001], dtype=torch.float32, device=mixture.device))
 
 
