@@ -40,10 +40,12 @@ class PCDatasetIterator:
                     relpath = path[len(modelroot):]
                     self.filequeue.put(relpath)
 
-
+    # Returns true if more batches are available
     def hasNext(self) -> bool:
         return not self.filequeue.empty()
 
+    # returns a tensor of the size [b,n,3], where b is the batch size (or less, if less data was available)
+    # and n is the point count
     def nextBatch(self):
         batch = torch.zeros(min(self.batchsize, self.filequeue.qsize()), self.pointcount, 3)
         for i in range(self.batchsize):
