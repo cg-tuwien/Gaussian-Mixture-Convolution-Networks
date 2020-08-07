@@ -40,3 +40,5 @@
 /src/gmc/cpp/extensions/evaluate/__pycache__/*
 /src/gmc/cpp/extensions/em_fitting/__pycache__/*
 /src/gmc/cpp/extensions/CMakeLists.txt.user
+*.pyc
+/src/__pycache__/*

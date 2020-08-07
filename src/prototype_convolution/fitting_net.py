@@ -18,7 +18,7 @@ from torch import Tensor
 import gmc.mixture as gm
 import gmc.image_tools as madam_imagetools
 import gmc.mat_tools as mat_tools
-import config
+import gmc.config as config
 
 COVARIANCE_MIN = 0.0001
 
