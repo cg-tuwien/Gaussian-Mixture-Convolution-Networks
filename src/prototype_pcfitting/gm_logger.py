@@ -5,7 +5,7 @@ import torch.utils.tensorboard
 import os
 import gmc.mixture as gm
 
-from gmc.cpp.gm_vis import GMVisualizer, GmVisColorRangeMode, GmVisColoringRenderMode
+from gmc.cpp.gm_visualizer import GMVisualizer, GmVisColorRangeMode, GmVisColoringRenderMode
 from .scaler import Scaler
 
 
