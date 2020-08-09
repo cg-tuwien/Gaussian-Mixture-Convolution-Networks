@@ -495,7 +495,7 @@ def test():
     #gms = gm.read_gm_from_ply("D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/TEST3-preiner2.ply", True)
     #gms = gm.read_gm_from_ply("D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/gmc_net/gmc_net_data/models/TEST3-PREINER3/pcgmm-0-109750.ply", False).cuda()
     #gms = gm.read_gm_from_ply("D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/da-gm-1/da-gm-1/data/c_30HR.ply", True).cuda()
-    gms = gm.read_gm_from_ply("D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/da-gm-1/da-gm-1/data/c_30Ls3.ply", True).cuda()
+    #gms = gm.read_gm_from_ply("D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/da-gm-1/da-gm-1/data/c_30Ls3.ply", True).cuda()
     #gms = gm.read_gm_from_ply("D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/gmc_net/gmc_net_data/models/GDPREINER-onlyp-0.001-loged/pcgmm-0-initial.ply", False).cuda()
     #gms = gm.read_gm_from_ply("D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/gmc_net/gmc_net_data/models/gdp-inout/pcgmm-0-initial.ply", False).cuda()
     #gms = gms[0, :, :, :].view(1, 1, 88, 13)
@@ -511,7 +511,7 @@ def test():
         n_iterations=1000000,
         device='cuda',
         name=name,
-        mixture=gms,
+        #mixture=gms,
         #start_epoch=0,
         #validation_pc=validation,
         init_positions_from_pointcloud=True,
