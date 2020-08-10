@@ -35,7 +35,7 @@ for batch_idx in range(9, 10): # was 10
     start_time = time.perf_counter()
     for layer_id in range(3): # was 3
         m = gm.load(f"fitting_input/fitting_input_netlayer{layer_id}_batch{batch_idx}")[0]
-        # m = m[0:3, 0:5, :]  # .unsqueeze(0).unsqueeze(0)
+        # m = m[0:1, 0:1, :]
         # m = torch.tensor([[[[1, -0.8, -0.8, 0.25, 0.04, 0.04, 0.05], [1, 0.8, 0.8, 0.05, -0.04, -0.04, 0.25]]]])
         # m = m.cuda()
         # m.requires_grad = True
@@ -51,13 +51,14 @@ for batch_idx in range(9, 10): # was 10
         # negative_m = sorted_m[:, :, :, :n_negative_m]
         # positive_m = sorted_m[:, :, :, n_negative_m:]
 
-        bias = torch.ones([gm.n_batch(m), gm.n_layers(m)], device=device) * -0.5
+        bias = torch.ones([gm.n_batch(m), gm.n_layers(m)], device=device) * 0
         fitting, new_bias = fitting_em.relu(m, bias)
         fitting = fitting_em.em_algorithm(fitting, n_fitting_components=15, n_iterations=1, tensor_board_writer=tensor_board_writer, layer=layer_id)
         log(m, bias, fitting, new_bias, f"l{layer_id}.", tensor_board_writer)
-        # log(m, fitting[0].detach(), f"l{layer_id},", tensor_board_writer)
+        # log(m, bias, fitting, new_bias, f"l{layer_id},", tensor_board_writer)
         print(f"{batch_idx}/{layer_id}")
 
     end_time = time.perf_counter()
+    tensor_board_writer.flush()
     print(f"time for 3 layers: {end_time - start_time}")
     print("============")

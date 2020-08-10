@@ -99,12 +99,12 @@ def mixture_to_double_gmm(mixture: Tensor) -> typing.Tuple[Tensor, Tensor, Tenso
     positive_integrals = positive_component_integrals.sum(dim=2, keepdim=True)
     negative_integrals = negative_component_integrals.sum(dim=2, keepdim=True)
 
-    positive_integrals = positive_integrals.where(positive_integrals > 0.001, 0.001 * torch.ones_like(positive_integrals))
-    negative_integrals = negative_integrals.where(negative_integrals < -0.001, -0.001 * torch.ones_like(negative_integrals))
+    positive_integrals = positive_integrals.where(positive_integrals > 0.05, 0.05 * torch.ones_like(positive_integrals))
+    negative_integrals = negative_integrals.where(negative_integrals < -0.05, -0.05 * torch.ones_like(negative_integrals))
 
     weights = gm.weights(mixture)
     positive_weights = weights.where(weights >= 0, torch.zeros_like(weights))
-    negative_weights = weights.where(weights >= 0, torch.zeros_like(weights))
+    negative_weights = weights.where(weights < 0, torch.zeros_like(weights))
 
     positive_gmm_weights = positive_weights / positive_integrals
     negative_gmm_weights = - negative_weights / negative_integrals
@@ -189,9 +189,8 @@ def em_algorithm(mixture: Tensor, n_fitting_components: int, n_iterations: int =
 
     target_double_gmm, component_integrals, positive_integrals, negative_integrals = mixture_to_double_gmm(target)
     # target_double_gmm, integrals = mixture_to_gmm(target)
-    assert gm.is_valid_mixture(target_double_gmm)
 
-    _, sorted_indices = torch.sort(component_integrals.abs(), descending=True)
+    _, sorted_indices = torch.sort(component_integrals.detach().abs(), descending=True)
 
     fitting_double_gmm = mat_tools.my_index_select(target, sorted_indices[:, :, :n_fitting_components])
     fitting_double_gmm, _, _, _ = mixture_to_double_gmm(fitting_double_gmm)
@@ -234,7 +233,7 @@ def em_algorithm(mixture: Tensor, n_fitting_components: int, n_iterations: int =
 
         newCovariances = (torch.sum(responsibilities.unsqueeze(-1).unsqueeze(-1) * (gm.covariances(target_double_gmm).view(n_batch, n_layers, n_components, 1, n_dims, n_dims) +
                                                                                     posDiffs.matmul(posDiffs.transpose(-1, -2))), 2))
-        newCovariances = newCovariances + (newWeights < 0.0001).unsqueeze(-1).unsqueeze(-1) * torch.eye(n_dims, device=device).view(1, 1, 1, n_dims, n_dims) * 0.0001
+        newCovariances = newCovariances + (newWeights.abs() < 0.0001).unsqueeze(-1).unsqueeze(-1) * torch.eye(n_dims, device=device).view(1, 1, 1, n_dims, n_dims) * 0.0001
 
         assert not torch.any(torch.isnan(newCovariances))
 
@@ -244,6 +243,12 @@ def em_algorithm(mixture: Tensor, n_fitting_components: int, n_iterations: int =
         # log(fitting_double_gmm, i+1, tensor_board_writer, layer=layer)
 
     fitting_end = time.time()
-    fitting = gm.pack_mixture(gm.weights(fitting_double_gmm) * integrals, gm.positions(fitting_double_gmm), gm.covariances(fitting_double_gmm))
+
+    # the following line would have the following effect: scale the fitting result to match the integral of the input exactly. that is bad in case many weak Gs are killed and the remaining weak G is blown up.
+    # fitting_double_gmm, _, _, _ = mixture_to_double_gmm(fitting_double_gmm)
+
+    newWeights = gm.weights(fitting_double_gmm)
+    newWeights = (newWeights * positive_integrals).where(newWeights >= 0, -newWeights * negative_integrals)
+    fitting = gm.pack_mixture(newWeights, gm.positions(fitting_double_gmm), gm.covariances(fitting_double_gmm))
     # print(f"fitting time: {fitting_end - fitting_start}")
     return fitting
