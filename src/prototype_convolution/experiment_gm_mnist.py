@@ -132,7 +132,7 @@ def test(args, model: experiment_gm_mnist_model.Net, device: torch.device, test_
 
 def experiment(device: str = 'cuda', n_epochs: int = 20, kernel_learning_rate: float = 0.001, log_interval: int = 100,
                learn_positions_after: int = 0, learn_covariances_after: int = 0, desc_string: str = "",
-               batch_norm_per_layer: bool = False, use_adam: bool = False, gmcn_config = None):
+               batch_norm_per_layer: bool = False, use_adam: bool = True, gmcn_config = None):
     # Training settings
     torch.manual_seed(0)
 
