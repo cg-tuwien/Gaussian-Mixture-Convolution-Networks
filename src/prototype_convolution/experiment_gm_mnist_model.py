@@ -18,7 +18,6 @@ class Net(nn.Module):
                  name: str = "default",
                  learn_positions: bool = False,
                  learn_covariances: bool = False,
-                 use_bias: bool = False,
                  batch_norm_per_layer: bool = False,
                  gmcn_config=default_gmcn_config):
         super(Net, self).__init__()
@@ -55,7 +54,7 @@ class Net(nn.Module):
 
         # initialise these last, so all the kernels should have the same random seed
         self.relus = torch.nn.modules.ModuleList()
-        self.relus.append(gm_modules.GmBiasAndRelu(layer_id="1c", n_layers=n_layers_1, n_input_gaussians=n_in_g * n_kernel_components, n_output_gaussians=n_out_g_1, use_bias=use_bias))
+        self.relus.append(gm_modules.GmBiasAndRelu(layer_id="1c", n_layers=n_layers_1, n_input_gaussians=n_in_g * n_kernel_components, n_output_gaussians=n_out_g_1))
         self.relus.append(gm_modules.GmBiasAndRelu(layer_id="2c", n_layers=n_layers_2, n_input_gaussians=n_out_g_1 * n_layers_1 * n_kernel_components, n_output_gaussians=n_out_g_2))
         self.relus.append(gm_modules.GmBiasAndRelu(layer_id="3c", n_layers=10, n_input_gaussians=n_out_g_2 * n_layers_2 * n_kernel_components, n_output_gaussians=n_out_g_3))
 
@@ -72,35 +71,29 @@ class Net(nn.Module):
     def regularisation_loss(self):
         return self.gmc1.regularisation_loss() + self.gmc2.regularisation_loss() + self.gmc3.regularisation_loss()
 
-    def forward(self, in_x: torch.Tensor, fitting_inputs: typing.List[torch.Tensor] = None):
+    def forward(self, in_x: torch.Tensor):
         # Andrew Ng says that most of the time batch norm (BN) is applied before activation.
         # That would allow to merge the beta and bias learnable parameters
         # https://www.youtube.com/watch?v=tNIpEZLv_eg
         # Other sources recommend to applie BN after the activation function.
         #
-        # in our case: BN just scales. the bias is a bit weird because it is only allowed to be positive. BN would act weird if it were computed
-        # for negative and positive components (we use integrate, it might show 0 although the amplitudes are large).
-        x = self.bn0(in_x)
+        # in our case: BN just scales and centres. the constant input to BN is ignored, so the constant convolution would be ignored if we place BN before ReLU.
+        # but that might perform better anyway, we'll have to test.
+        x, x_const = self.bn0(in_x)
 
-        x = self.gmc1(x)
-        if fitting_inputs is not None:
-            fitting_inputs.append(x.detach())
-        x = self.relus[0](x)
-        x = self.bn(x)
+        x, x_const = self.gmc1(x, x_const)
+        x, x_const = self.relus[0](x, x_const)
+        x, x_const = self.bn(x, x_const)
         # x = self.maxPool1(x)
 
-        x = self.gmc2(x)
-        if fitting_inputs is not None:
-            fitting_inputs.append(x.detach())
-        x = self.relus[1](x)
-        x = self.bn(x)
+        x, x_const = self.gmc2(x, x_const)
+        x, x_const = self.relus[1](x, x_const)
+        x, x_const = self.bn(x, x_const)
         # x = self.maxPool2(x)
 
-        x = self.gmc3(x)
-        if fitting_inputs is not None:
-            fitting_inputs.append(x.detach())
-        x = self.relus[2](x)
-        x = self.bn(x)
+        x, x_const = self.gmc3(x, x_const)
+        x, x_const = self.relus[2](x, x_const)
+        x, x_const = self.bn(x, x_const)
         # x = self.maxPool3(x)
 
         x = gm.integrate(x)

@@ -1,4 +1,3 @@
-import time
 import typing
 
 import torch
@@ -9,40 +8,26 @@ import gmc.mixture as gm
 import gmc.mat_tools as mat_tools
 # from gmc.cpp.extensions.em_fitting.em_fitting import apply as em_fitting
 
-import prototype_convolution.fitting_net as fitting_net
 
-def log(mixture: Tensor, epoch: int, tensor_board_writer, layer: int = 1):
-    device = mixture.device
-    image_size = 80
-    xv, yv = torch.meshgrid([torch.arange(-1.2, 1.2, 2.4 / image_size, dtype=torch.float, device=device),
-                             torch.arange(-1.2, 1.2, 2.4 / image_size, dtype=torch.float, device=device)])
-    xes = torch.cat((xv.reshape(-1, 1), yv.reshape(-1, 1)), 1).view(1, 1, -1, 2)
-
-    image = gm.evaluate(mixture.detach(), xes).view(-1, image_size, image_size)
-    fitting_net.Sampler.log_images(tensor_board_writer,
-                                  f"l{layer}_fitting",
-                                   [image.transpose(0, 1).reshape(image_size, -1)],
-                                   epoch, [-0.5, 2])
-
-def relu(mixture: Tensor, bias: Tensor, n_iter: int = 1) -> Tensor:
+def relu(mixture: Tensor, constant: Tensor, n_iter: int = 1) -> typing.Tuple[Tensor, Tensor]:
     weights = gm.weights(mixture)
     positions = gm.positions(mixture)
     covariances = gm.covariances(mixture)
-    bias = bias.unsqueeze(-1)
     device = mixture.device
 
-    ret_bias = bias.where(bias >= 0, torch.zeros(1, device=device))
-    b = gm.evaluate(mixture, positions) + bias
-    b = b.where(b >= 0, torch.zeros(1, device=device)) - ret_bias      # todo: make transfer fitting function configurable. e.g. these two can be replaced by leaky relu or softplus (?, might break if we have many overlayin Gs)
+    # todo: make transfer fitting function configurable. e.g. these two can be replaced by leaky relu or softplus (?, might break if we have many overlaying Gs)
+    ret_const = constant.where(constant >= 0, torch.zeros(1, device=device))
+    b = gm.evaluate(mixture, positions) + constant.unsqueeze(-1)
+    b = b.where(b >= 0, torch.zeros(1, device=device)) - ret_const.unsqueeze(-1)
 
-    inv_eps = 0.1
+    # inv_eps = 0.1
     # w0 = weights.where((weights < 0) | (weights > inv_eps), torch.ones(1, device=device) * inv_eps)
     # w0 = w0.where((weights > 0) | (weights < -inv_eps), - torch.ones(1, device=device) * inv_eps)
     # w0inv = 1 / w0
 
-    #x0 = torch.ones_like(w0).where(weights + bias > 0, torch.zeros_like(w0).where(bias < 0, -bias / w0))  # should be the same, since ret_bias is already clamped to [0, inf[
-    # x = torch.ones_like(w0).where(weights + bias > 0, -ret_bias * w0inv)
-    x = weights.where(weights + bias > 0, -ret_bias)
+    # x0 = torch.ones_like(w0).where(weights + constant > 0, torch.zeros_like(w0).where(constant < 0, -constant / w0))  # should be the same, since ret_bias is already clamped to [0, inf[
+    # x = torch.ones_like(w0).where(weights + constant > 0, -ret_bias * w0inv)
+    x = weights.where(weights + constant.unsqueeze(-1) > 0, -ret_const.unsqueeze(-1))
     # sign = x.sign().where(x != 0.0, torch.ones_like(x))
     # x = 0.99 * x + 0.05 * sign
     x = x.abs() + 0.05
@@ -64,7 +49,7 @@ def relu(mixture: Tensor, bias: Tensor, n_iter: int = 1) -> Tensor:
     # positive_weights = weights.where(weights > 0, torch.zeros(1, device=device))
     # negative_m = gm.pack_mixture(negative_weights, positions, covariances)
     # positive_m = gm.pack_mixture(positive_weights, positions, covariances)
-    # negative_eval = gm.evaluate(negative_m, positions) - bias.unsqueeze(-1)
+    # negative_eval = gm.evaluate(negative_m, positions) - constant.unsqueeze(-1)
     # positive_eval = gm.evaluate(positive_m, positions)
     # new_weights_factor = torch.max(torch.zeros(1, device=device),
     #                                torch.ones(1, device=device) + (negative_eval - 0.0001) / (positive_eval + 0.0001))
@@ -72,7 +57,8 @@ def relu(mixture: Tensor, bias: Tensor, n_iter: int = 1) -> Tensor:
 
     # new_weights = x * weights
 
-    return gm.pack_mixture(x, positions, covariances), ret_bias
+    return gm.pack_mixture(x, positions, covariances), ret_const
+
 
 def positive_mixture_to_gmm(mixture: Tensor) -> typing.Tuple[Tensor, Tensor]:
     weights = gm.weights(mixture)
@@ -128,6 +114,7 @@ def calc_likelihoods(target: Tensor, fitting: Tensor) -> Tensor:
     target_covariances = gm.covariances(target)
     target_normal_amplitudes = gm.normal_amplitudes(target_covariances)
 
+    # todo: check why this isn't used
     fitting_weights = gm.weights(fitting).abs()
     fitting_positions = gm.positions(fitting)
     fitting_covariances = gm.covariances(fitting)
@@ -136,10 +123,9 @@ def calc_likelihoods(target: Tensor, fitting: Tensor) -> Tensor:
     target_n_virtual_points = 0.5 * n_virtual_points * target_weights / target_normal_amplitudes  # 0.5, because we have a double integral, i.e. positive integrates to 1 and negative part.
 
     # preiner equation 9
-    gaussian_values = gm.evaluate_componentwise(gm.pack_mixture(fitting_normal_amplitudes, fitting_positions, fitting_covariances),
-                                                     target_positions)
+    gaussian_values = gm.evaluate_componentwise(gm.pack_mixture(fitting_normal_amplitudes, fitting_positions, fitting_covariances), target_positions)
     exp_values = torch.exp(-0.5 * mat_tools.batched_trace(fitting_covariances.inverse().view(n_batch, n_layers, 1, n_fitting_components, n_dims, n_dims) @
-                                              target_covariances.view(n_batch, n_layers, n_target_components, 1, n_dims, n_dims)))
+                                                          target_covariances.view(n_batch, n_layers, n_target_components, 1, n_dims, n_dims)))
 
     almost_likelihoods = gaussian_values * exp_values
 
@@ -149,22 +135,13 @@ def calc_likelihoods(target: Tensor, fitting: Tensor) -> Tensor:
 def calc_KL_divergence(target: Tensor, fitting: Tensor) -> Tensor:
     # index i -> target
     # index s -> fitting
-    n_batch = gm.n_batch(target)
-    n_layers = gm.n_layers(target)
-    n_target_components = gm.n_components(target)
-    n_fitting_components = gm.n_components(fitting)
-    n_dims = gm.n_dimensions(target)
 
-    # target_weights = gm.weights(target).unsqueeze(3)
     target_positions = gm.positions(target).unsqueeze(3)
     target_covariances = gm.covariances(target).unsqueeze(3)
-    # target_normal_amplitudes = gm.normal_amplitudes(target_covariances)
 
-    # fitting_weights = gm.weights(fitting).unsqueeze(2)
     fitting_positions = gm.positions(fitting).unsqueeze(2)
     fitting_covariances = gm.covariances(fitting).unsqueeze(2)
     fitting_covariances_inversed = fitting_covariances.inverse().transpose(-2, -1)
-    # fitting_normal_amplitudes = gm.normal_amplitudes(fitting_covariances)
 
     p_diff = target_positions - fitting_positions
     mahalanobis_distance = torch.sqrt(p_diff.unsqueeze(-2) @ fitting_covariances_inversed @ p_diff.unsqueeze(-1)).squeeze(dim=-1).squeeze(dim=-1)
@@ -175,7 +152,7 @@ def calc_KL_divergence(target: Tensor, fitting: Tensor) -> Tensor:
     return KL_divergence
 
 
-def em_algorithm(mixture: Tensor, n_fitting_components: int, n_iterations: int = 1, tensor_board_writer = None, layer: int = 0) -> Tensor:
+def em_algorithm(mixture: Tensor, n_fitting_components: int, n_iterations: int = 1) -> Tensor:
     assert gm.is_valid_mixture(mixture)
     assert n_fitting_components > 0
     n_batch = gm.n_batch(mixture)
@@ -198,7 +175,6 @@ def em_algorithm(mixture: Tensor, n_fitting_components: int, n_iterations: int =
     # log(target_double_gmm, 0, tensor_board_writer, layer=layer)
     # log(fitting_double_gmm, 1, tensor_board_writer, layer=layer)
 
-    fitting_start = time.time()
     assert gm.is_valid_mixture(target_double_gmm)
     for i in range(n_iterations):
         assert gm.is_valid_mixture(fitting_double_gmm)
@@ -212,13 +188,13 @@ def em_algorithm(mixture: Tensor, n_fitting_components: int, n_iterations: int =
         likelihoods = likelihoods * (gm.weights(fitting_double_gmm) / gm.normal_amplitudes(gm.covariances(fitting_double_gmm))).view(n_batch, n_layers, 1, n_fitting_components)
         likelihoods = likelihoods * (KL_divergence < 1) * sign_match
         likelihoods_sum = likelihoods.sum(3, keepdim=True)
-        responsibilities = likelihoods / likelihoods_sum.where(likelihoods_sum > 0.00000001, 0.00000001 * torch.ones_like(likelihoods_sum));  # preiner Equation(8)
+        responsibilities = likelihoods / likelihoods_sum.where(likelihoods_sum > 0.00000001, 0.00000001 * torch.ones_like(likelihoods_sum))  # preiner Equation(8)
 
         assert not torch.any(torch.isnan(responsibilities))
 
         # index i -> target
         # index s -> fitting
-        responsibilities = responsibilities * (gm.weights(target_double_gmm) / gm.normal_amplitudes(gm.covariances(target_double_gmm))).unsqueeze(-1);
+        responsibilities = responsibilities * (gm.weights(target_double_gmm) / gm.normal_amplitudes(gm.covariances(target_double_gmm))).unsqueeze(-1)
         newWeights = torch.sum(responsibilities, 2)
         assert not torch.any(torch.isnan(responsibilities))
 
@@ -242,13 +218,10 @@ def em_algorithm(mixture: Tensor, n_fitting_components: int, n_iterations: int =
         fitting_double_gmm = gm.pack_mixture(newWeights.contiguous() * normal_amplitudes, newPositions.contiguous(), newCovariances.contiguous())
         # log(fitting_double_gmm, i+1, tensor_board_writer, layer=layer)
 
-    fitting_end = time.time()
-
     # the following line would have the following effect: scale the fitting result to match the integral of the input exactly. that is bad in case many weak Gs are killed and the remaining weak G is blown up.
     # fitting_double_gmm, _, _, _ = mixture_to_double_gmm(fitting_double_gmm)
 
     newWeights = gm.weights(fitting_double_gmm)
     newWeights = (newWeights * positive_integrals).where(newWeights >= 0, -newWeights * negative_integrals)
     fitting = gm.pack_mixture(newWeights, gm.positions(fitting_double_gmm), gm.covariances(fitting_double_gmm))
-    # print(f"fitting time: {fitting_end - fitting_start}")
     return fitting

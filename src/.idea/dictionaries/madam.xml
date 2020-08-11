@@ -3,7 +3,12 @@
     <words>
       <w>cuda</w>
       <w>gmcn</w>
+      <w>inversed</w>
+      <w>jakobi</w>
       <w>mahalanobis</w>
+      <w>preiner</w>
+      <w>softplus</w>
+      <w>unsqueeze</w>
     </words>
   </dictionary>
 </component>

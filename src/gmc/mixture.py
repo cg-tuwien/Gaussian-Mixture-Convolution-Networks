@@ -53,7 +53,8 @@ def covariances(mixture: Tensor) -> Tensor:
 
 def pack_mixture(weights: Tensor, positions: Tensor, covariances: Tensor) -> Tensor:
     assert weights.shape[0] == positions.shape[0] == covariances.shape[0]
-    assert weights.shape[1] == positions.shape[1] == covariances.shape[1]
+    if not weights.shape[1] == positions.shape[1] == covariances.shape[1]:
+        assert weights.shape[1] == positions.shape[1] == covariances.shape[1]
     assert weights.shape[2] == positions.shape[2] == covariances.shape[2]
 
     weight_shape = list(positions.shape)
@@ -250,7 +251,7 @@ def render_bias_and_relu(mixture: Tensor, bias: Tensor,
                          batches: typing.Tuple[int, int] = (0, None), layers: typing.Tuple[int, int] = (0, None),
                          x_low: float = -22, y_low: float = -22, x_high: float = 22, y_high: float = 22,
                          width: int = 100, height: int = 100) -> Tensor:
-    assert is_valid_mixture_and_bias(mixture, bias)
+    assert is_valid_mixture_and_constant(mixture, bias)
     assert bias.shape[0] == 1
     rendering = render(mixture, batches, layers, x_low, y_low, x_high, y_high, width, height)
     bias_ = bias[layers[0]:layers[1]].view(-1, 1).repeat_interleave(height, dim=0)
@@ -303,29 +304,27 @@ def load(file_name: str) -> typing.Tuple[Tensor, typing.Any]:
     return mixture, dictionary["meta_info"]
 
 
-def is_valid_mixture_and_bias(mixture: Tensor, bias: Tensor) -> bool:
+def is_valid_mixture_and_constant(mixture: Tensor, constant: Tensor) -> bool:
     # ok = True
-    # ok = ok and (bias >= 0).all()
     # ok = ok and is_valid_mixture(mixture)
-    # # t o d o : actually, i think the batch dimension is not needed for the bias
-    # ok = ok and len(bias.shape) == 2
-    # ok = ok and (bias.shape[0] == 1 or bias.shape[0] == mixture.shape[0])
-    # ok = ok and bias.shape[1] == mixture.shape[1]
-    # ok = ok and mixture.device == bias.device
+    # # t o d o : actually, i think the batch dimension is not needed for the constant
+    # ok = ok and len(constant.shape) == 2
+    # ok = ok and (constant.shape[0] == 1 or constant.shape[0] == mixture.shape[0])
+    # ok = ok and constant.shape[1] == mixture.shape[1]
+    # ok = ok and mixture.device == constant.device
     # return ok
 
-    # assert (bias >= 0).all()
     assert is_valid_mixture(mixture)
-    # todo: actually, i think the batch dimension is not needed for the bias
-    assert len(bias.shape) == 2
-    assert (bias.shape[0] == 1 or bias.shape[0] == mixture.shape[0])
-    assert bias.shape[1] == mixture.shape[1]
-    assert mixture.device == bias.device
+    # todo: actually, i think the batch dimension is not needed for the constant
+    assert len(constant.shape) == 2
+    assert (constant.shape[0] == 1 or constant.shape[0] == mixture.shape[0])
+    assert constant.shape[1] == mixture.shape[1]
+    assert mixture.device == constant.device
     return True
 
 
 def evaluate_with_activation_fun(mixture: Tensor, bias: Tensor, xes: Tensor) -> Tensor:
-    assert is_valid_mixture_and_bias(mixture, bias)
+    assert is_valid_mixture_and_constant(mixture, bias)
     bias_shape = list(bias.shape)
     bias_shape.append(1)
     values = evaluate(mixture, xes) + bias.view(bias_shape)
@@ -333,7 +332,7 @@ def evaluate_with_activation_fun(mixture: Tensor, bias: Tensor, xes: Tensor) -> 
 
 
 def debug_show_with_activation_fun(mixture: Tensor, bias: Tensor, batch_i: int = 0, layer_i: int = 0, x_low: float = -22, y_low: float = -22, x_high: float = 22, y_high: float = 22, step: float = 0.1, imshow=True) -> Tensor:
-    assert is_valid_mixture_and_bias(mixture, bias)
+    assert is_valid_mixture_and_constant(mixture, bias)
     assert n_dimensions(mixture) == 2
     assert batch_i < n_batch(mixture)
     assert layer_i < n_layers(mixture)

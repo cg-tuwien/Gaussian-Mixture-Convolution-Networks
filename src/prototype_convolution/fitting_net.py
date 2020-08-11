@@ -362,7 +362,7 @@ class Sampler:
     def run_on(self, mixture_in: Tensor, bias_in: Tensor, epoch: int = None, train: bool = True, tensor_board_writer: torch.utils.tensorboard.SummaryWriter = None, tensor_board_prefix: str = "") -> Tensor:
         start_time = time.perf_counter()
 
-        assert gm.is_valid_mixture_and_bias(mixture_in, bias_in)
+        assert gm.is_valid_mixture_and_constant(mixture_in, bias_in)
 
         mixture_in, bias_in, _ = gm.normalise(mixture_in, bias_in)  # we normalise twice, but that shouldn't hurt (but performance). normalisation here is needed due to regularisation
 
@@ -393,7 +393,7 @@ class Sampler:
 
     def sample_loss_on(self, mixture_in_normalised: Tensor, bias_in_normalised: Tensor, mixture_out_normalised: Tensor,
                        epoch: int = None, tensor_board_writer: torch.utils.tensorboard.SummaryWriter = None, tensor_board_prefix: str = "") -> float:
-        assert gm.is_valid_mixture_and_bias(mixture_in_normalised, bias_in_normalised)
+        assert gm.is_valid_mixture_and_constant(mixture_in_normalised, bias_in_normalised)
         device = mixture_in_normalised.device
 
         n_dims = gm.n_dimensions(mixture_in_normalised)

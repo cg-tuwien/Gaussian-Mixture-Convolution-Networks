@@ -131,7 +131,6 @@ class GmConvolution(torch.nn.modules.Module):
 
         return cost
 
-
     def debug_render(self, position_range: float = None, image_size: int = 80, clamp: typing.Tuple[float, float] = (-0.3, 0.3)):
         if position_range is None:
             position_range = self.position_range * 2
@@ -146,8 +145,9 @@ class GmConvolution(torch.nn.modules.Module):
         images = madam_imagetools.colour_mapped(images.cpu().numpy(), clamp[0], clamp[1])
         return images[:, :, :3]
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor, x_constant: Tensor) -> typing.Tuple[Tensor, Tensor]:
         out_mixtures = []
+        out_constants = []
         out_mixture_shape = list(x.shape)
         out_mixture_shape[1] = 1
         out_mixture_shape[2] = -1
@@ -156,8 +156,9 @@ class GmConvolution(torch.nn.modules.Module):
             kernel = self.kernel(i)
             m = gm.convolve(x, kernel)
             out_mixtures.append(m.view(out_mixture_shape))
+            out_constants.append((x_constant * gm.integrate(kernel)).sum(dim=1, keepdim=True))
 
-        return torch.cat(out_mixtures, dim=1)
+        return torch.cat(out_mixtures, dim=1), torch.cat(out_constants, dim=1)
 
 #
 # def generate_default_fitting_module(n_input_gaussians: int, n_output_gaussians: int) -> fitting_net.Net:
@@ -171,7 +172,7 @@ class GmConvolution(torch.nn.modules.Module):
 
 
 class GmBiasAndRelu(torch.nn.modules.Module):
-    def __init__(self, layer_id: str, n_layers: int, n_output_gaussians: int, n_input_gaussians: int = -1, use_bias: bool = False):
+    def __init__(self, layer_id: str, n_layers: int, n_output_gaussians: int, n_input_gaussians: int = -1):
         # todo: option to make fitting net have common or seperate weights per module
         super(GmBiasAndRelu, self).__init__()
         self.layer_id = layer_id
@@ -179,17 +180,9 @@ class GmBiasAndRelu(torch.nn.modules.Module):
         self.n_input_gaussians = n_input_gaussians
         self.n_output_gaussians = n_output_gaussians
 
-        # use a small bias for the start. i hope it's easier for the net to increase it than to lower it
-        self.bias = torch.nn.Parameter(torch.zeros(1, self.n_layers) - 0.1)
-        self.use_bias = use_bias
+        self.bias = torch.nn.Parameter(torch.zeros(1, self.n_layers))
 
-        # WARNING !!!: evil code. the string self.gm_fitting_net_666 is used for filtering in experiment_gm_mnist_model.Net.save_model(). !!! WARNING
-        # todo: fix it
-        # self.gm_fitting_net_666: fitting_net.Net = generate_fitting_module(n_input_gaussians, n_output_gaussians)
-
-        # self.gm_fitting_net_666.requires_grad_(True)
         self.bias.requires_grad_(True)
-        # self.train_fitting(False)
 
         # self.name = f"GmBiasAndRelu_{layer_id}"
         # self.storage_path = config.data_base_path / "weights" / f"GmBiasAndRelu_{layer_id}_{self.gm_fitting_net_666.name}"
@@ -197,33 +190,21 @@ class GmBiasAndRelu(torch.nn.modules.Module):
         self.last_in = None
         self.last_out = None
 
-        # self.fitting_sampler = fitting_net.Sampler(self, n_training_samples=1000)
-
-        # print(self.gm_fitting_net_666)
-
     def train_fitting(self, flag: bool):
-        # self.gm_fitting_net_666.requires_grad_(flag)
         self.bias.requires_grad_(not flag)
 
     def set_requires_grad(self, flag: bool):
-        # self.gm_fitting_net_666.requires_grad_(flag)
         self.bias.requires_grad_(flag)
 
-    def forward(self, x: Tensor, overwrite_bias: Tensor = None) -> Tensor:
-        bias = self.bias if overwrite_bias is None else overwrite_bias
+    def forward(self, x: Tensor, x_constant: Tensor) -> typing.Tuple[Tensor, Tensor]:
+        constant = x_constant
 
-        if self.use_bias:
-            # before there was a torch.abs(bias), but that is not differentiable at b == 0 + something weird is happening if bias < 0
-            bias = torch.nn.functional.softplus(bias, beta=20)
-        else:
-            bias = torch.zeros_like(bias)
-
-        y_m, y_bias = fitting_em.relu(x, bias)
-        result = fitting_em.em_algorithm(y_m, n_fitting_components=self.n_output_gaussians)[0]
+        y_m, y_bias = fitting_em.relu(x, constant)
+        result = fitting_em.em_algorithm(y_m, n_fitting_components=self.n_output_gaussians)
 
         self.last_in = x.detach()
         self.last_out = result.detach()
-        return result
+        return result, y_bias
 
     def debug_render(self, position_range: typing.Tuple[float, float, float, float] = None, image_size: int = 80, clamp: typing.Tuple[float, float] = (-1.0, 1.0)):
         if position_range is None:
@@ -232,7 +213,7 @@ class GmBiasAndRelu(torch.nn.modules.Module):
         last_in = gm.render(self.last_in, batches=[0, 1], layers=[0, None],
                             x_low=position_range[0], y_low=position_range[1], x_high=position_range[2], y_high=position_range[3],
                             width=image_size, height=image_size)
-        target = gm.render_bias_and_relu(self.last_in, torch.nn.functional.softplus(self.bias.detach(), beta=20), batches=[0, 1], layers=[0, None],
+        target = gm.render_bias_and_relu(self.last_in, self.bias.detach(), batches=[0, 1], layers=[0, None],
                                          x_low=position_range[0], y_low=position_range[1], x_high=position_range[2], y_high=position_range[3],
                                          width=image_size, height=image_size)
         prediction = gm.render(self.last_out, batches=[0, 1], layers=[0, None],
@@ -243,18 +224,6 @@ class GmBiasAndRelu(torch.nn.modules.Module):
         images = madam_imagetools.colour_mapped(images.cpu().numpy(), clamp[0], clamp[1])
         return images[:, :, :3]
 
-    def save_fitting_parameters(self):
-        # todo: make nicer, we want facilities to separate the learned parameters from fitting and gaussian kernels / bias
-        # print(f"gm_modules.GmBiasAndRelu: saving fitting module to {self.storage_path}")
-        # self.gm_fitting_net_666.save(self.storage_path)
-        pass
-
-    def load_fitting_parameters(self, strict: bool = False) -> bool:
-        # print(f"gm_modules.GmBiasAndRelu: trying to load fitting module from {self.storage_path}")
-        # if not self.gm_fitting_net_666.load(self.storage_path, strict=strict):
-        #     self.gm_fitting_net_666.load(strict=strict)
-        pass
-
 
 class BatchNorm(torch.nn.modules.Module):
     def __init__(self, per_mixture_norm: bool = False, per_layer_norm: bool = False):
@@ -262,21 +231,34 @@ class BatchNorm(torch.nn.modules.Module):
         self.per_mixture_norm = per_mixture_norm
         self.per_layer_norm = per_layer_norm
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor, x_constant: Tensor = None) -> typing.Tuple[Tensor, Tensor]:
+        # this is an adapted batch norm. It scales and centres the gm, but it has nothing to do with variance or mean
+        # both of them require a domain, or footprint for the computation, but our gaussians extend to infinity.
+        # in a way, variance approaches always zero and the mean approaches x_constant. we can't use them.
+
         # according to the following link the scaling and mean computations do not detach the gradient.
         # https://kratzert.github.io/2016/02/12/understanding-the-gradient-flow-through-the-batch-normalization-layer.html
-        integral = gm.integrate(x).view(gm.n_batch(x), gm.n_layers(x), 1)
+
+        abs_x = gm.pack_mixture(gm.weights(x).abs(), gm.positions(x), gm.covariances(x))
+        integral_abs = gm.integrate(abs_x)
+        integral = gm.integrate(x)
         if not self.per_mixture_norm:
-            integral = torch.mean(integral, dim=0, keepdim=True)
+            integral_abs = torch.mean(integral_abs, dim=0, keepdim=True)
             if not self.per_layer_norm:
-                integral = torch.mean(integral, dim=1, keepdim=True)
+                integral_abs = torch.mean(integral_abs, dim=1, keepdim=True)
 
         weights = gm.weights(x)
         positions = gm.positions(x)
         covariances = gm.covariances(x)
+        if x_constant is None:
+            y_constant = torch.zeros(1, 1, device=x.device)
+        else:
+            y_constant = x_constant - x_constant.mean(dim=0)
+            y_constant = y_constant / (y_constant.std(dim=0) + 0.0001)
 
-        weights = weights / (integral + 0.0001)
-        return gm.pack_mixture(weights, positions, covariances)
+        integral_abs_eps = integral_abs + 0.0001
+        weights = weights / integral_abs_eps.unsqueeze(-1)
+        return gm.pack_mixture(weights, positions, covariances), 0.5 * ((-integral / integral_abs_eps) + y_constant)
 
 
 class MaxPooling(torch.nn.modules.Module):
