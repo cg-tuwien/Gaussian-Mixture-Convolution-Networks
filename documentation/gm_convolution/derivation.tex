@@ -38,7 +38,7 @@
 \newcommand{\vr}[1]{\ensuremath{\boldsymbol{#1}}}
 \newcommand{\tr}[1]{\ensuremath{\boldsymbol{#1}}}
 \newcommand{\T}[1]{\ensuremath{{#1}^T}}
-\newcommand{\f}[1]{\operatorname{#1}}
+\newcommand{\f}[1]{#1}
 \newcommand*\diff{\mathop{}\!\mathrm{d}}
 
 \newcommand{\alphavec}[0]{\ensuremath{\vr{\alpha{}}}}
@@ -80,6 +80,9 @@
 \maketitle
 
 %-------------------------------------------------------------------------
+
+The purpose of this technical report is to derive the closed form solution of the convolution of a Gaussian mixture plus a constant and another Gaussian mixture.
+
 \section{Definitions}
 \subsection*{Notation}
 \begin{center}
@@ -88,11 +91,8 @@
 		$\vr{a}$	& Column vector \\
 		$A$			& Matrix \\ 
 		$\tr{A}$	& Tensor/Array with more than 2 dimensions, e.g. $\tr{A} \in \mathbb{R}^{L \times M \times N}$ \\ 
-		$\tr{A}_{\star, 3, 2}$
-					& Element of an array.
-					The first index is the row, the second a column and the third a slice.
-					"$\star$" selects all elements in that dimension.
-					So in this case the full 3rd column of the second slice. \\ 
+		$\tr{A}_{0, 3, 2}$
+					& Element of an array, $\tr{A}_{m}$ and $\tr{A}_{m, :, :}$ denote slice m in the first dimension (all elements in the other 2 dimensions)\\ 
 		$A^T, \vr{a}^T$
 					& Transpose of $A$ and $\vec{a}$ (row vector) \\
 		$i$			& Imaginary unit \\
@@ -114,7 +114,7 @@ Zero based indices are used and summation ends at $N-1$.
 We define the multi dimensional Gaussian function as
 \begin{align}
 \label{eq:gaussian_definition}
-\f{g}(\vr{x}, a, \vr{b}, C) = a e^{-\frac{1}{2}(\vr{x}-\vr{b})^TC^{-1}(\vr{x}-\vr{b})},
+g(\vr{x}, a, \vr{b}, C) = a e^{-\frac{1}{2}(\vr{x}-\vr{b})^TC^{-1}(\vr{x}-\vr{b})},
 \end{align}
 where $a$ is the height, $\vr{b}$ the shift, $C$ the shape (covariance) of the Gaussian, and all parameters are real.
 The factor $\frac{1}{2}$ and the inversion of $C$ are there to make the derivation and subsequent formulae simpler.
@@ -122,10 +122,12 @@ This Gaussian would turn into a normal distribution if $a$ were replaced with th
 
 A Gaussian mixture is defined as
 \begin{align}
-	\f{gm}(\vr{x}, \vr{a}, B, \tr{C}) = \sum_{n=0}^{N} \f{g}(\vr{x}, \vr{a}_n, B_{\star, n}, C_{\star, \star, n}),
+	\f{gm}(\vr{x}, \vr{a}, B, \tr{C}) = \sum_{n=0}^{N} g(\vr{x}, \vr{a}_n, B_{n}, C_{n}),
 \end{align}
 where $N$ is the number of Gaussians.
-Our definition does not include any normalisation.
+
+The weights are combined with the Gaussian amplitudes in $\vr{a}$.
+Our definition does not include any constraints typically found in probability density functions (positive weights, integrates to 1).
 If desired, this could be included in $\vr{a}$.
 
 We also know the integral of a single dimensional Gaussian \cite{wiki_gaussian_int}:
@@ -145,13 +147,13 @@ The definition of the Fourier transform is taken from Osgood's lecture notes (be
 Properties are:
 \begin{itemize}
 	\item Scalar linearity: \\
-	      $\F(\alpha \f{f} + \beta \f{g})(\omegavec) = \alpha \F \f{f}(\omega) + \beta \F \f{g}(\omegavec)$
+	      $\F(\alpha \f{f} + \beta g)(\omegavec) = \alpha \F \f{f}(\omega) + \beta \F g(\omegavec)$
 	\item Shift / Translation in spatial domain: \\
 	      $\F\f{f}(\xvec + \avec)(\omegavec) = e^{2 \pi i \avec^T \omegavec} (\F \f{f})(\omegavec)$
 	\item General stretch / Transformation in spatial domain:\\
 		  $\F\f{f}(A\vr{x})(\omegavec) = \frac{1}{\abs{\det(A)}} \F \f{f}(\xvec)((A^{-1})^T\omegavec)$
 	\item Convolution:\\
-		  $\F(\f{f}\ast\f{g})(\omegavec) = \F\f{f}(\omegavec) \F\f{g}(\omegavec)$ and $\F(\f{f}\f{g})(\omegavec) = (\F\f{f} \ast \F\f{g})(\omegavec)$
+		  $\F(\f{f}\ast g)(\omegavec) = \F\f{f}(\omegavec) \F g(\omegavec)$ and $\F(\f{f}g)(\omegavec) = (\F\f{f} \ast \F g)(\omegavec)$
 \end{itemize}
 
 \clearpage
@@ -160,7 +162,7 @@ Properties are:
 	The Fourier transform of a multi-dimensional Gaussian is
 	\begin{align}
 	\label{eq:gaussian_fourier_transform}
-	(\F\f{g}(\vr{x}, a, \bvec, C))(\omegavec) = a \sqrt{(2 \pi)^\eta \f{det}(C)} e^{-2 \pi^2 \omegavec^T C \omegavec - 2\pi i \bvec^T \omegavec},
+	(\F g(\vr{x}, a, \bvec, C))(\omegavec) = a \sqrt{(2 \pi)^\eta \det(C)} e^{-2 \pi^2 \omegavec^T C \omegavec - 2\pi i \bvec^T \omegavec},
 	\end{align}
 	where $\eta$ is the number of dimensions.
 \end{theorem}
@@ -172,7 +174,7 @@ Moreover, its absolute value is Gaussian (without proof), but that is not intere
 \subsection*{Simplification}
 We defined a Gaussian as 
 \begin{align*}
-	\f{g}(\vr{x}, a, \vr{b}, C) = a e^{-\frac{1}{2}(\vr{x}-\vr{b})^T C^{-1}(\vr{x}-\vr{b})},
+	g(\vr{x}, a, \vr{b}, C) = a e^{-\frac{1}{2}(\vr{x}-\vr{b})^T C^{-1}(\vr{x}-\vr{b})},
 \end{align*}
 but we will ignore the factor $a$ and the shift $\vr{b}$ for now.
 These can be reintroduced later via the scalar linearity and shift properties of the Fourier transform.
@@ -182,7 +184,7 @@ For a simpler notation we substitute
 \end{align*}
 Therefore we start with
 \begin{align*}
-	(\F\f{g}(\vr{x}, C))(\frac{\xi}{-2 \pi i}) &= \int_{\mathbb{R}^n} e^{-\frac{1}{2} \vr{x}^T C^{-1} \vr{x}} e^{\vr{\xi}^T \vr{x}} \diff \vr{x} \\
+	(\F g(\vr{x}, C))(\frac{\xi}{-2 \pi i}) &= \int_{\mathbb{R}^n} e^{-\frac{1}{2} \vr{x}^T C^{-1} \vr{x}} e^{\vr{\xi}^T \vr{x}} \diff \vr{x} \\
 	&= \int_{\mathbb{R}^n} e^{-\frac{1}{2} \vr{x}^T C^{-1} \vr{x} + \vr{\xi}^T \vr{x}} \diff \vr{x}.
 \end{align*}
 
@@ -194,10 +196,10 @@ We substitute
 \end{align*}
 Resulting in
 \begin{align*}
-	(\F\f{g}(\vr{x}, C))(\frac{\xi}{-2 \pi i})
-	&= \int_{\mathbb{R}^n} e^{-\frac{1}{2} (\yvec + C\xivec)^T C^{-1} (\yvec + C\xivec) + \xivec^T (\yvec + C\xivec)} \abs{\f{det}(\f{D}\varphi)} \diff \yvec.
+	(\F g(\vr{x}, C))(\frac{\xi}{-2 \pi i})
+	&= \int_{\mathbb{R}^n} e^{-\frac{1}{2} (\yvec + C\xivec)^T C^{-1} (\yvec + C\xivec) + \xivec^T (\yvec + C\xivec)} \abs{\det(\f{D}\varphi)} \diff \yvec.
 \end{align*}
-$\abs{\f{det}(\f{D}\varphi)}$ is 1, and we can reduce the exponent:
+$\abs{\det(\f{D}\varphi)}$ is 1, and we can reduce the exponent:
 \begin{align*}
 	&\quad -\frac{1}{2} (\yvec + C\xivec)^T C^{-1} (\yvec + C\xivec) + \xivec^T (\yvec + C\xivec) = \\
 	&= -\frac{1}{2} \left( (\yvec^T C^{-1} + \xivec^T)(\yvec + C \xivec) \right) + \xivec^T \yvec + \xivec^T C \xivec = \\
@@ -208,7 +210,7 @@ using the fact that C is symmetric.
 Putting it back results in
 \begin{align}
 	\label{eq:fourier_only_gauss_int_left}
-	(\F\f{g}(\vr{x}, C))(\frac{\xi}{-2 \pi i})
+	(\F g(\vr{x}, C))(\frac{\xi}{-2 \pi i})
 	&= e^{\frac{1}{2} \xivec^T C \xivec} \int_{\mathbb{R}^n} e^{-\frac{1}{2} \yvec^T C^{-1} \yvec}  \diff \yvec.
 \end{align}
 Nice, so we were able to move that $\xivec$ term out of the integral.
@@ -230,46 +232,46 @@ and substituting
 \end{align*}
 gives (the determinant is 1 again due to orthonormality of Q)
 \begin{align*}
-	&\quad \int_{\mathbb{R}^n} e^{-\frac{1}{2} \zvec^T \Lambda^{-1} \zvec} \abs{\f{det}(\f{D}\psi)} \diff \zvec =\\
+	&\quad \int_{\mathbb{R}^n} e^{-\frac{1}{2} \zvec^T \Lambda^{-1} \zvec} \abs{\det(\f{D}\psi)} \diff \zvec =\\
 	&= \int_{\mathbb{R}^n} e^{-\frac{1}{2} \zvec^T \Lambda^{-1} \zvec} \diff \zvec =\\
 	&= \int_{\mathbb{R}^n} e^{-\frac{1}{2} \sum_{k=0}^\eta \zvec_k^2 \Lambda_{kk}^{-1} } \diff \zvec =\\
 	&= \int_{\mathbb{R}} e^{-\frac{1}{2} \zvec_1^2 \Lambda_{11}^{-1} } \int_{\mathbb{R}} e^{-\frac{1}{2} \zvec_2^2 \Lambda_{22}^{-1} } \dots \int_{\mathbb{R}} e^{-\frac{1}{2} \zvec_\eta^2 \Lambda_{\eta\eta}^{-1} } \diff \zvec_\eta d\zvec_{\eta-1} \dots \diff \zvec_1 =\\
-	&= \prod_{k=0}^\eta \sqrt{2 \pi \Lambda_{kk}} = \sqrt{(2 \pi)^\eta \f{det}(C)},
+	&= \prod_{k=0}^\eta \sqrt{2 \pi \Lambda_{kk}} = \sqrt{(2 \pi)^\eta \det(C)},
 \end{align*}
 where $\eta$ is the number of dimensions, and we use Equation \ref{eq:gaussian_integral} and the fact that the determinant is equal to the product of the eigenvalues. To summarise
 \begin{align}
-	\int_{\mathbb{R}^n} e^{-\frac{1}{2} \yvec^T C^{-1} \yvec}  d\yvec = \sqrt{(2 \pi)^\eta \f{det}(C)}.
+	\int_{\mathbb{R}^n} e^{-\frac{1}{2} \yvec^T C^{-1} \yvec}  d\yvec = \sqrt{(2 \pi)^\eta \det(C)}.
 \end{align}
 
 \subsection*{Putting it back together}
 Plugging that back into Equation \ref{eq:fourier_only_gauss_int_left} gives us
 \begin{align*}
-	(\F\f{g}(\vr{x}, C))(\frac{\xi}{-2 \pi i})
+	(\F g(\vr{x}, C))(\frac{\xi}{-2 \pi i})
 	&= e^{\frac{1}{2} \xivec^T C \xivec} \int_{\mathbb{R}^n} e^{-\frac{1}{2} \yvec^T C^{-1} \yvec}  \diff \yvec = \\
-	&= e^{\frac{1}{2} \xivec^T C \xivec} \sqrt{(2 \pi)^\eta \f{det}(C)}
+	&= e^{\frac{1}{2} \xivec^T C \xivec} \sqrt{(2 \pi)^\eta \det(C)}
 \end{align*}
 and, after recovering $\omega$ and friends
 \begin{align*}
-(\F\f{g}(\vr{x}, C))(\omegavec)
-&= e^{\frac{1}{2} (-2 \pi i \omegavec)^T C (-2 \pi i \omegavec)} \sqrt{(2 \pi)^\eta \f{det}(C)} = \\
-&= \sqrt{(2 \pi)^\eta \f{det}(C)} e^{-2 \pi^2 \omegavec^T C \omegavec}.
+(\F g(\vr{x}, C))(\omegavec)
+&= e^{\frac{1}{2} (-2 \pi i \omegavec)^T C (-2 \pi i \omegavec)} \sqrt{(2 \pi)^\eta \det(C)} = \\
+&= \sqrt{(2 \pi)^\eta \det(C)} e^{-2 \pi^2 \omegavec^T C \omegavec}.
 \end{align*}
 Finally, we use the shift and scalar linearity properties of the Fourier transform:
 \begin{align}
-(\F\f{g}(\vr{x}, a, \bvec, C))(\omegavec) &= a (\F\f{g}(\vr{x} - \bvec, C))(\omegavec) = \nonumber \\
-&= a \sqrt{(2 \pi)^\eta \f{det}(C)} e^{-2\pi i \bvec^T \omegavec} e^{-2 \pi^2 \omegavec^T C \omegavec} =\nonumber \\
-&= a \sqrt{(2 \pi)^\eta \f{det}(C)} e^{-2 \pi^2 \omegavec^T C \omegavec - 2\pi i \bvec^T \omegavec}.
+(\F g(\vr{x}, a, \bvec, C))(\omegavec) &= a (\F g(\vr{x} - \bvec, C))(\omegavec) = \nonumber \\
+&= a \sqrt{(2 \pi)^\eta \det(C)} e^{-2\pi i \bvec^T \omegavec} e^{-2 \pi^2 \omegavec^T C \omegavec} =\nonumber \\
+&= a \sqrt{(2 \pi)^\eta \det(C)} e^{-2 \pi^2 \omegavec^T C \omegavec - 2\pi i \bvec^T \omegavec}.
 \end{align}
 
 \end{proof}
 
 \clearpage
-\section{Convolution}
+\section{Convolution of two Gaussians}
 \label{sec:convolution}
 \begin{theorem}
 	\begin{align}
-		\f{g}(\xvec, a, \bvec, C) \ast \f{g}(\xvec, \alpha, \vr{\beta}, \Gamma) = 
-		\f{g}\left(\xvec, \frac{a \alpha \sqrt{(2 \pi)^\eta} \sqrt{\f{det}(C\Gamma)}}{\sqrt{\f{det}(C+\Gamma)}}, \bvec + \betavec, C + \Gamma\right),
+		g(\xvec, a, \bvec, C) \ast g(\xvec, \alpha, \vr{\beta}, \Gamma) = 
+		g\left(\xvec, \frac{a \alpha \sqrt{(2 \pi)^\eta} \sqrt{\det(C\Gamma)}}{\sqrt{\det(C+\Gamma)}}, \bvec + \betavec, C + \Gamma\right),
 	\end{align}
 	where $\eta$ is the number of dimensions.
 \end{theorem}
@@ -277,61 +279,87 @@ Finally, we use the shift and scalar linearity properties of the Fourier transfo
 Convolution in spatial domain is multiplication in Fourier domain.
 We are interested in
 \begin{align*}
-	\f{g}(\xvec, a, \bvec, C) \ast \f{g}(\xvec, \alpha, \vr{\beta}, \Gamma),
+	g(\xvec, a, \bvec, C) \ast g(\xvec, \alpha, \vr{\beta}, \Gamma),
 \end{align*}
 and therefore in
 \begin{align*}
-	&\ \quad \F^{-1}(\F\f{g}(\xvec, a, \bvec, C) \F\f{g}(\xvec, \alpha, \vr{\beta}, \Gamma))(\xvec) = \nonumber \\
-	&= \F^{-1}\left(a \sqrt{(2 \pi)^\eta \f{det}(C)}      e^{-2 \pi^2 \omegavec^T C \omegavec      - 2\pi i \bvec^T \omegavec}
-	         \alpha \sqrt{(2 \pi)^\eta \f{det}(\Gamma)} e^{-2 \pi^2 \omegavec^T \Gamma \omegavec - 2\pi i \betavec^T \omegavec}\right) = \nonumber \\
-	&= \F^{-1}\left(a \alpha (2 \pi)^\eta \sqrt{\f{det}(C) \f{det}(\Gamma)}
+	&\ \quad \F^{-1}(\F g(\xvec, a, \bvec, C) \F g(\xvec, \alpha, \vr{\beta}, \Gamma))(\xvec) = \nonumber \\
+	&= \F^{-1}\left(a \sqrt{(2 \pi)^\eta \det(C)}      e^{-2 \pi^2 \omegavec^T C \omegavec      - 2\pi i \bvec^T \omegavec}
+	         \alpha \sqrt{(2 \pi)^\eta \det(\Gamma)} e^{-2 \pi^2 \omegavec^T \Gamma \omegavec - 2\pi i \betavec^T \omegavec}\right) = \nonumber \\
+	&= \F^{-1}\left(a \alpha (2 \pi)^\eta \sqrt{\det(C) \det(\Gamma)}
 			        e^{-2 \pi^2 \omegavec^T C \omegavec - 2\pi i \bvec^T \omegavec - 2 \pi^2 \omegavec^T \Gamma \omegavec - 2\pi i \betavec^T \omegavec}\right) = \nonumber \\
 	\label{eq:gaussian_convolution_before_inverse_transform}
-	&= \F^{-1}\left(a \alpha (2 \pi)^\eta \sqrt{\f{det}(C\Gamma)}
+	&= \F^{-1}\left(a \alpha (2 \pi)^\eta \sqrt{\det(C\Gamma)}
                     e^{-2 \pi^2 \omegavec^T (C + \Gamma) \omegavec - 2\pi i (\bvec + \betavec)^T \omegavec}\right).
 \end{align*}
 This looks similar to Equation \ref{eq:gaussian_fourier_transform} and we can guess the inverse transform:
 \begin{align*}
-	&\ \quad \frac{(2 \pi)^\eta \sqrt{\f{det}(C\Gamma)}}{\sqrt{(2\pi)^\eta \f{det}(C+\Gamma)}}
+	&\ \quad \frac{(2 \pi)^\eta \sqrt{\det(C\Gamma)}}{\sqrt{(2\pi)^\eta \det(C+\Gamma)}}
 	        \F^{-1}\left(
-	                     a \alpha \sqrt{(2\pi)^\eta \f{det}(C+\Gamma)}
+	                     a \alpha \sqrt{(2\pi)^\eta \det(C+\Gamma)}
 	                     e^{-2 \pi^2 \omegavec^T (C + \Gamma) \omegavec - 2\pi i (\bvec + \betavec)^T \omegavec}\right) = \\
-	&= \frac{\sqrt{(2 \pi)^\eta} \sqrt{\f{det}(C\Gamma)}}{\sqrt{\f{det}(C+\Gamma)}}
-	   \f{g}(\xvec, a \alpha, \bvec + \betavec, C + \Gamma)
+	&= \frac{\sqrt{(2 \pi)^\eta} \sqrt{\det(C\Gamma)}}{\sqrt{\det(C+\Gamma)}}
+	   g(\xvec, a \alpha, \bvec + \betavec, C + \Gamma)
 \end{align*}
 \end{proof}
 
 \subsection{Numerical behaviour}
-There are no surprises with the Gaussian itself, but $\frac{\sqrt{\f{det}(C\Gamma)}}{\sqrt{\f{det}(C+\Gamma)}}$ looks a bit scary.
+There are no surprises with the Gaussian itself, but $\frac{\sqrt{\det(C\Gamma)}}{\sqrt{\det(C+\Gamma)}}$ looks a bit scary.
 In particular, it is undefined iff both covariances have a determinant of 0.
 This is equivalent with the statement that they are not full rank, or that each of them has at least one eigenvalue equal to 0.
 Graphically this would mean, that the Gaussians have zero variance in at least one direction.
 
 \begin{theorem}
-	In case that at least one covariance has a determinant greater 0, then the factor is bounded by $\sqrt{\f{min}(\f{det}(C), \f{det}(\Gamma))}$.
+	In case that at least one covariance has a determinant greater 0 (it is nonsingular), then the factor is bounded by $\sqrt{\f{min}(\det(C), \det(\Gamma))}$.
 \end{theorem}
 \begin{proof}
-Since $\f{det}(C+\Gamma) \ge \f{det}(C) + \f{det}(\Gamma)$ \cite{wiki_det_inequalities}, and assume wlog $\f{det}(C) = \f{min}(\f{det}(C), \f{det}(\Gamma))$:
+Since $\det(C+\Gamma) \ge \det(C) + \det(\Gamma)$ \cite{wiki_det_inequalities}, and assume wlog $\det(C) = \f{min}(\det(C), \det(\Gamma))$:
 \begin{align*}
-	\frac{\sqrt{\f{det}(C\Gamma)}}{\sqrt{\f{det}(C+\Gamma)}} \le \frac{\sqrt{\f{det}(C\Gamma)}}{\sqrt{\f{det}(C) + \f{det}(\Gamma)}} &\le \sqrt{\f{min}(\f{det}(C), \f{det}(\Gamma))} \\
-	\frac{\f{det}(C\Gamma)}{\f{det}(C) + \f{det}(\Gamma)} &\le \f{det}(C) \\
-	\f{det}(C)\f{det}(\Gamma) &\le \f{det}(C)\f{det}(C) + \f{det}(C)\f{det}(\Gamma) \\
-	0 &\le \f{det}(C)^2
+	\frac{\sqrt{\det(C\Gamma)}}{\sqrt{\det(C+\Gamma)}} \le \frac{\sqrt{\det(C\Gamma)}}{\sqrt{\det(C) + \det(\Gamma)}} &\le \sqrt{\f{min}(\det(C), \det(\Gamma))} \\
+	\frac{\det(C\Gamma)}{\det(C) + \det(\Gamma)} &\le \det(C) \\
+	\det(C)\det(\Gamma) &\le \det(C)\det(C) + \det(C)\det(\Gamma) \\
+	0 &\le \det(C)^2
 \end{align*}
-The last statement is true because both $C$ and $\Gamma$ are positive definite.
 \end{proof}
 
-\section{Convolution of Gaussian mixtures}
-Convolution of 2 Gaussian mixtures is relatively straight forward as both, the Fourier transform and its inverse, are linear, and therefore it is possible to apply convolution on every Gaussian pair separately.
+\section{Convolution of a Gaussian with a constant}
+\begin{theorem}
+	\begin{align}
+		g(\xvec, a, \bvec, C) \ast d = d \int_{\mathbb{R}^n} g(\xvec, a, \bvec, C) \diff \xvec,
+	\end{align}
+	where $d$ is a constant and $g$ a Gaussian. 
+\end{theorem}
+\begin{proof}
+	\begin{align}
+		g(\xvec, a, \bvec, C) \ast d &= \int_{\mathbb{R}^n} g(\tau, a, \bvec, C) d(\xvec - \tau) \diff \tau\\
+		&= \int_{\mathbb{R}^n} g(\tau, a, \bvec, C) d \diff \tau\\
+		&= d \int_{\mathbb{R}^n} g(\tau, a, \bvec, C) \diff \tau
+	\end{align}
+\end{proof}
+
+The same is valid for $d \ast g(\xvec, a, \bvec, C)$ because convolution is commutative.
+
+\section{Convolution of a Gaussian mixture plus constant with another Gaussian mixture}
+Convolution of 2 Gaussian mixtures (without constants) is relatively straight forward as both, the Fourier transform and its inverse, are linear, and therefore it is possible to apply convolution on every Gaussian pair separately.
 Convolving a Gaussian mixture with $n$ terms with another Gaussian mixture with $m$ terms results in a mixture with $nm$ terms.
 
 \begin{align*}
-	&\ \quad \f{gm}(\xvec, \avec, B, \Ctns) \ast \f{gm}(\xvec, \alphavec, \Pi, \Gammatns) = \\
+	\f{gm}(\xvec, \avec&, B, \Ctns) \ast \f{gm}(\xvec, \alphavec, \Pi, \Gammatns) = \\
 	&= \F^{-1}\left(\F\f{gm}(\xvec, \avec, B, \Ctns) \F\f{gm}(\xvec, \alphavec, \Pi, \Gammatns)\right) = \\
-	&= \F^{-1}\left(\sum_{m}\F\f{g}(\xvec, \avec_m, B_{\star, m}, \Ctns_{\star, \star, m}) \sum_n \F\f{g}(\xvec, \alphavec_n, \Pi_{\star, n}, \Gammatns_{\star, \star, n})\right) = \\
-	&= \F^{-1}\left(\sum_{m}\sum_n  \F\f{g}(\xvec, \avec_m, B_{\star, m}, \Ctns_{\star, \star, m}) \F\f{g}(\xvec, \alphavec_n, \Pi_{\star, n}, \Gammatns_{\star, \star, n})\right) = \\
-	&= \sum_{m}\sum_n \f{g}(\xvec, \avec_m, B_{\star, m}, \Ctns_{\star, \star, m}) \ast \f{g}(\xvec, \alphavec_n, \Pi_{\star, n}, \Gammatns_{\star, \star, n}) = \\
-	&= \sum_{m}\sum_n \f{g}\left(\xvec, \frac{\avec_m \alphavec_n \sqrt{(2 \pi)^\eta} \sqrt{\f{det}(\Ctns_{\star, \star, m}\Gammatns_{\star, \star, n})}}{\sqrt{\f{det}(\Ctns_{\star, \star, m}+\Gammatns_{\star, \star, n})}}, B_{\star, m} + \Pi_{\star, n}, \Ctns_{\star, \star, m} + \Gammatns_{\star, \star, n}\right)
+	&= \F^{-1}\left(\sum_{m}\F g(\xvec, \avec_m, B_{m}, \Ctns_{m}) \sum_n \F g(\xvec, \alphavec_n, \Pi_{n}, \Gammatns_{n})\right) = \\
+	&= \F^{-1}\left(\sum_{m}\sum_n  \F g(\xvec, \avec_m, B_{m}, \Ctns_{m}) \F g(\xvec, \alphavec_n, \Pi_{n}, \Gammatns_{n})\right) = \\
+	&= \sum_{m}\sum_n g(\xvec, \avec_m, B_{m}, \Ctns_{m}) \ast g(\xvec, \alphavec_n, \Pi_{n}, \Gammatns_{n}) = \\
+	&= \sum_{m}\sum_n g\left(\xvec, \frac{\avec_m \alphavec_n \sqrt{(2 \pi)^\eta} \sqrt{\det(\Ctns_{m}\Gammatns_{n})}}{\sqrt{\det(\Ctns_{m}+\Gammatns_{n})}}, B_{m} + \Pi_{n}, \Ctns_{m} + \Gammatns_{n}\right)
+\end{align*}
+
+One of the mixtures can carry an additional constant.
+Similar to above, the constant ($d$) is convoluted with every Gaussian of the other mixture:
+
+\begin{align*}
+\Big( \f{gm}(\xvec, \avec&, B, \Ctns) + d \Big)  \ast \f{gm}(\xvec, \alphavec, \Pi, \Gammatns) = \\
+&= \sum_{m}\sum_n g\left(\xvec, \frac{\avec_m \alphavec_n \sqrt{(2 \pi)^\eta} \sqrt{\det(\Ctns_{m}\Gammatns_{n})}}{\sqrt{\det(\Ctns_{m}+\Gammatns_{n})}}, B_{m} + \Pi_{n}, \Ctns_{m} +
+\Gammatns_{n}\right) + \\
+&\quad + d \sum_n \int_{\mathbb{R}^\eta} \f{gm}(\xvec, \alphavec_n, \Pi_n, \Gammatns_n) \diff \xvec.
 \end{align*}
 
 \begin{thebibliography}{9}% 2nd arg is the width of the widest label.
