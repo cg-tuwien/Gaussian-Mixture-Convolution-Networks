@@ -258,7 +258,7 @@ class BatchNorm(torch.nn.modules.Module):
 
         integral_abs_eps = integral_abs + 0.0001
         weights = weights / integral_abs_eps.unsqueeze(-1)
-        return gm.pack_mixture(weights, positions, covariances), 0.5 * ((-integral / integral_abs_eps) + y_constant)
+        return gm.pack_mixture(weights, positions, covariances), torch.zeros(1, 1, device=x.device)  # -integral / integral_abs_eps  # 0.5 * ((-integral / integral_abs_eps) + y_constant)
 
 
 class MaxPooling(torch.nn.modules.Module):
