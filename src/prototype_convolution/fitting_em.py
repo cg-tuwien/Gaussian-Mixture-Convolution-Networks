@@ -18,9 +18,9 @@ def relu(mixture: Tensor, constant: Tensor, n_iter: int = 1) -> typing.Tuple[Ten
     device = mixture.device
 
     # todo: make transfer fitting function configurable. e.g. these two can be replaced by leaky relu or softplus (?, might break if we have many overlaying Gs)
-    ret_const = constant.where(constant >= 0, torch.zeros(1, device=device))
+    ret_const = constant.where(constant > 0, torch.zeros(1, device=device))
     b = gm.evaluate(mixture, positions) + constant.unsqueeze(-1)
-    b = b.where(b >= 0, torch.zeros(1, device=device)) - ret_const.unsqueeze(-1)
+    b = b.where(b > 0, torch.zeros(1, device=device)) - ret_const.unsqueeze(-1)
 
     # inv_eps = 0.1
     # w0 = weights.where((weights < 0) | (weights > inv_eps), torch.ones(1, device=device) * inv_eps)
