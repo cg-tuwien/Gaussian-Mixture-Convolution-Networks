@@ -6,40 +6,40 @@ from torch import Tensor
 
 # from https://discuss.pytorch.org/t/batched-index-select/9115/10
 # I added an unit test, but it's easy to make an error in such code, so.. :)
-def batched_index_select(input: Tensor, dim: int, index: Tensor) -> Tensor:
-    for ii in range(1, len(input.shape)):
+def batched_index_select(tensor: Tensor, dim: int, index: Tensor) -> Tensor:
+    for ii in range(1, len(tensor.shape)):
         if ii != dim:
             index = index.unsqueeze(ii)
-    expanse = list(input.shape)
+    expanse = list(tensor.shape)
     expanse[0] = -1
     expanse[dim] = -1
     index = index.expand(expanse)
-    return torch.gather(input, dim, index)
+    return torch.gather(tensor, dim, index)
 
 
-def my_index_select(input: Tensor, index: Tensor) -> Tensor:
+def my_index_select(tensor: Tensor, index: Tensor) -> Tensor:
     dim = len(index.shape)-1
-    expanse = list(input.shape)
+    expanse = list(tensor.shape)
     for i in range(len(index.shape)):
-        expanse[i] = -1
-    for ii in range(len(index.shape), len(input.shape)):
+        expanse[i] = -1 if index.shape[i] > 1 else tensor.shape[i]
+    for ii in range(len(index.shape), len(tensor.shape)):
         index = index.unsqueeze(ii)
     index = index.expand(expanse)
-    return torch.gather(input, dim, index)
+    return torch.gather(tensor, dim, index)
 
 
-def flatten_index(input: Tensor, shape: torch.Size) -> Tensor:
-    assert input.shape[-1] == len(shape)
+def flatten_index(tensor: Tensor, shape: torch.Size) -> Tensor:
+    assert tensor.shape[-1] == len(shape)
     shape = list(shape)
     old_m = 1
     for d in range(1, len(shape)+1):
         new_m = old_m * shape[-d]
         shape[-d] = old_m
         old_m = new_m
-    shape = torch.tensor(shape, dtype=torch.long, device=input.device)
+    shape = torch.tensor(shape, dtype=torch.long, device=tensor.device)
 
     # dot product
-    return (input * shape).sum(dim=-1).view(input.shape[:-1])
+    return (tensor * shape).sum(dim=-1).view(tensor.shape[:-1])
 
 
 def gen_random_positive_definite(dims: typing.List, epsilon: float = 0.01, device: torch.device = 'cpu') -> Tensor:

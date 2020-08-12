@@ -188,10 +188,10 @@ class ReLUFitting(torch.nn.modules.Module):
 
     def forward(self, x_m: Tensor, x_constant: Tensor) -> typing.Tuple[Tensor, Tensor]:
         y_m, y_constant = fitting_em.relu(x_m, x_constant)
-        y_m = fitting_em.em_algorithm(y_m, n_fitting_components=self.n_output_gaussians)
+        y_m = fitting_em.mhem_algorithm(y_m, n_fitting_components=self.n_output_gaussians)
 
-        self.last_in = (x_m.detach(), x_constant)
-        self.last_out = (y_m.detach(), y_constant)
+        self.last_in = (x_m.detach(), x_constant.detach())
+        self.last_out = (y_m.detach(), y_constant.detach())
         return y_m, y_constant
 
     def debug_render(self, position_range: typing.Tuple[float, float, float, float] = None, image_size: int = 80, clamp: typing.Tuple[float, float] = (-1.0, 1.0)):

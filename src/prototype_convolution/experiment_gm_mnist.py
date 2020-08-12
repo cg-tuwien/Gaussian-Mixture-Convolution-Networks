@@ -153,6 +153,13 @@ def experiment(device: str = 'cuda', n_epochs: int = 20, kernel_learning_rate: f
     args.log_interval = log_interval
     args.save_model = False
 
+    # for name, param in model.named_parameters():
+    #     if param.requires_grad:
+    #         print(name, param.data)
+    #
+    # for parameter in model.parameters():
+    #     print(parameter)
+
     if use_adam:
         kernel_optimiser = optim.Adam(model.parameters(), lr=kernel_learning_rate)
         tensor_board_writer = torch.utils.tensorboard.SummaryWriter(gmcn_config.data_base_path / 'tensorboard' / f'adam_b100_{desc_string}_{datetime.datetime.now().strftime("%m%d_%H%M")}')
