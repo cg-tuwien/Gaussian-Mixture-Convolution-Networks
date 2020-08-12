@@ -139,7 +139,7 @@ class GmConvolution(torch.nn.modules.Module):
         for i in range(self.n_layers_out):
             kernel = self.kernel(i)
             assert kernel.shape[0] == 1
-            kernel_rendering = gm.render(kernel, x_low=-position_range*1.25, x_high=position_range*1.25, y_low=-position_range*1.25, y_high=position_range*1.25, width=image_size, height=image_size)
+            kernel_rendering = gm.render(kernel, torch.zeros(1, 1, device=kernel.device), x_low=-position_range*1.25, x_high=position_range*1.25, y_low=-position_range*1.25, y_high=position_range*1.25, width=image_size, height=image_size)
             images.append(kernel_rendering)
         images = torch.cat(images, dim=1)
         images = madam_imagetools.colour_mapped(images.cpu().numpy(), clamp[0], clamp[1])
@@ -171,18 +171,14 @@ class GmConvolution(torch.nn.modules.Module):
 #                                                 aggregations=1, batch_norm=True)
 
 
-class GmBiasAndRelu(torch.nn.modules.Module):
+class ReLUFitting(torch.nn.modules.Module):
     def __init__(self, layer_id: str, n_layers: int, n_output_gaussians: int, n_input_gaussians: int = -1):
         # todo: option to make fitting net have common or seperate weights per module
-        super(GmBiasAndRelu, self).__init__()
+        super(ReLUFitting, self).__init__()
         self.layer_id = layer_id
         self.n_layers = n_layers
         self.n_input_gaussians = n_input_gaussians
         self.n_output_gaussians = n_output_gaussians
-
-        self.bias = torch.nn.Parameter(torch.zeros(1, self.n_layers))
-
-        self.bias.requires_grad_(True)
 
         # self.name = f"GmBiasAndRelu_{layer_id}"
         # self.storage_path = config.data_base_path / "weights" / f"GmBiasAndRelu_{layer_id}_{self.gm_fitting_net_666.name}"
@@ -190,33 +186,25 @@ class GmBiasAndRelu(torch.nn.modules.Module):
         self.last_in = None
         self.last_out = None
 
-    def train_fitting(self, flag: bool):
-        self.bias.requires_grad_(not flag)
+    def forward(self, x_m: Tensor, x_constant: Tensor) -> typing.Tuple[Tensor, Tensor]:
+        y_m, y_constant = fitting_em.relu(x_m, x_constant)
+        y_m = fitting_em.em_algorithm(y_m, n_fitting_components=self.n_output_gaussians)
 
-    def set_requires_grad(self, flag: bool):
-        self.bias.requires_grad_(flag)
-
-    def forward(self, x: Tensor, x_constant: Tensor) -> typing.Tuple[Tensor, Tensor]:
-        constant = x_constant
-
-        y_m, y_bias = fitting_em.relu(x, constant)
-        result = fitting_em.em_algorithm(y_m, n_fitting_components=self.n_output_gaussians)
-
-        self.last_in = x.detach()
-        self.last_out = result.detach()
-        return result, y_bias
+        self.last_in = (x_m.detach(), x_constant)
+        self.last_out = (y_m.detach(), y_constant)
+        return y_m, y_constant
 
     def debug_render(self, position_range: typing.Tuple[float, float, float, float] = None, image_size: int = 80, clamp: typing.Tuple[float, float] = (-1.0, 1.0)):
         if position_range is None:
             position_range = [-1.0, -1.0, 1.0, 1.0]
 
-        last_in = gm.render(self.last_in, batches=[0, 1], layers=[0, None],
+        last_in = gm.render(self.last_in[0], self.last_in[1], batches=[0, 1], layers=[0, None],
                             x_low=position_range[0], y_low=position_range[1], x_high=position_range[2], y_high=position_range[3],
                             width=image_size, height=image_size)
-        target = gm.render_bias_and_relu(self.last_in, self.bias.detach(), batches=[0, 1], layers=[0, None],
-                                         x_low=position_range[0], y_low=position_range[1], x_high=position_range[2], y_high=position_range[3],
-                                         width=image_size, height=image_size)
-        prediction = gm.render(self.last_out, batches=[0, 1], layers=[0, None],
+        target = gm.render_with_relu(self.last_in[0], self.last_in[1], batches=[0, 1], layers=[0, None],
+                                     x_low=position_range[0], y_low=position_range[1], x_high=position_range[2], y_high=position_range[3],
+                                     width=image_size, height=image_size)
+        prediction = gm.render(self.last_out[0], self.last_out[1], batches=[0, 1], layers=[0, None],
                                x_low=position_range[0], y_low=position_range[1], x_high=position_range[2], y_high=position_range[3],
                                width=image_size, height=image_size)
         images = [last_in, target, prediction]

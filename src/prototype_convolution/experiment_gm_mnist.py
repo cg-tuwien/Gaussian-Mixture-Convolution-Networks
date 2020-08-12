@@ -90,9 +90,12 @@ def train(args, model: experiment_gm_mnist_model.Net, device: torch.device, trai
             tensor_board_writer.add_scalar("02. mnist kernel loss", loss.item(), step)
             tensor_board_writer.add_scalar("03. duration per sample", (batch_end_time - batch_start_time) / len(data), step)
             # tensor_board_writer.add_scalar("04. mnist training regularisation loss", regularisation_loss.item(), step)
-            tensor_board_writer.add_scalar("05. model layer 1 max(bias)", torch.nn.functional.softplus(model.relus[0].bias, beta=20).max().item(), step)
-            tensor_board_writer.add_scalar("05. model layer 2 max(bias)", torch.nn.functional.softplus(model.relus[1].bias, beta=20).max().item(), step)
-            tensor_board_writer.add_scalar("05. model layer 3 max(bias)", torch.nn.functional.softplus(model.relus[2].bias, beta=20).max().item(), step)
+            tensor_board_writer.add_scalar("05.1 model layer 1 max(bias)", model.biases[0].max().item(), step)
+            tensor_board_writer.add_scalar("05.2 model layer 2 max(bias)", model.biases[1].max().item(), step)
+            tensor_board_writer.add_scalar("05.3 model layer 3 max(bias)", model.biases[2].max().item(), step)
+            tensor_board_writer.add_scalar("05.1 model layer 1 min(bias)", model.biases[0].min().item(), step)
+            tensor_board_writer.add_scalar("05.2 model layer 2 min(bias)", model.biases[1].min().item(), step)
+            tensor_board_writer.add_scalar("05.3 model layer 3 min(bias)", model.biases[2].min().item(), step)
             render_debug_images_to_tensorboard(model, step, tensor_board_writer)
 
             print(f'Training kernels: {epoch}/{step} [{batch_idx}/{len(train_loader)} '
@@ -113,20 +116,15 @@ def test(args, model: experiment_gm_mnist_model.Net, device: torch.device, test_
     fitting_loss_sum = 0
     with torch.no_grad():
         for data, target in test_loader:
-            fitting_inputs = list()
             data, target = data.to(device), target.to(device)
-            output = model(data, fitting_inputs=fitting_inputs)
+            output = model(data)
             test_loss += F.nll_loss(output, target, reduction='sum').item()  # sum up batch loss
             pred = output.argmax(dim=1, keepdim=True)  # get the index of the max log-probability
             correct += pred.eq(target.view_as(pred)).sum().item()
-            # fitting_losses = model.run_fitting_sampling(fitting_inputs, train=False, epoch=epoch, tensor_board_writer=tensor_board_writer, tensor_board_prefix="test_")
-            # fitting_loss_sum += sum_losses(fitting_losses).item()
 
     test_loss /= len(test_loader.dataset)
-    # fitting_loss_sum /= len(test_loader.dataset)
     tensor_board_writer.add_scalar("99. mnist test loss", test_loss, epoch)
     tensor_board_writer.add_scalar("98. mnist test accuracy", 100. * correct / len(test_loader.dataset), epoch)
-    # tensor_board_writer.add_scalar("97. mnist test fitting loss", fitting_loss_sum, epoch)
     print(f'\nTest set: Average loss: {test_loss:.4f}, Accuracy: {correct}/{len(test_loader.dataset)} ({100. * correct / len(test_loader.dataset):.0f}%)\n')
 
 

@@ -231,7 +231,7 @@ def debug_show(mixture: Tensor, batch_i: int = 0, layer_i: int = 0, x_low: float
     return image
 
 
-def render(mixture: Tensor, batches: typing.Tuple[int, int] = (0, None), layers: typing.Tuple[int, int] = (0, None),
+def render(mixture: Tensor, constant: Tensor, batches: typing.Tuple[int, int] = (0, None), layers: typing.Tuple[int, int] = (0, None),
            x_low: float = -22, y_low: float = -22, x_high: float = 22, y_high: float = 22,
            width: int = 100, height: int = 100):
     assert n_dimensions(mixture) == 2
@@ -239,23 +239,22 @@ def render(mixture: Tensor, batches: typing.Tuple[int, int] = (0, None), layers:
     xv, yv = torch.meshgrid([torch.arange(x_low, x_high, (x_high - x_low) / width, dtype=torch.float, device=mixture.device),
                              torch.arange(y_low, y_high, (y_high - y_low) / height, dtype=torch.float, device=mixture.device)])
     m = mixture.detach()[batches[0]:batches[1], layers[0]:layers[1]]
+    c = constant.detach()[batches[0]:batches[1], layers[0]:layers[1]]
     n_batch = m.shape[0]
     n_layers = m.shape[1]
     xes = torch.cat((xv.reshape(-1, 1), yv.reshape(-1, 1)), 1).view(1, 1, -1, 2)
-    rendering = evaluate(m, xes).view(n_batch, n_layers, width, height).transpose(2, 3)
+    rendering = (evaluate(m, xes) + c.unsqueeze(-1)).view(n_batch, n_layers, width, height).transpose(2, 3)
     rendering = rendering.transpose(0, 1).reshape(n_layers * height, n_batch * width)
     return rendering
 
 
-def render_bias_and_relu(mixture: Tensor, bias: Tensor,
-                         batches: typing.Tuple[int, int] = (0, None), layers: typing.Tuple[int, int] = (0, None),
-                         x_low: float = -22, y_low: float = -22, x_high: float = 22, y_high: float = 22,
-                         width: int = 100, height: int = 100) -> Tensor:
-    assert is_valid_mixture_and_constant(mixture, bias)
-    assert bias.shape[0] == 1
-    rendering = render(mixture, batches, layers, x_low, y_low, x_high, y_high, width, height)
-    bias_ = bias[layers[0]:layers[1]].view(-1, 1).repeat_interleave(height, dim=0)
-    rendering = rendering - bias_
+def render_with_relu(mixture: Tensor, constant: Tensor,
+                     batches: typing.Tuple[int, int] = (0, None), layers: typing.Tuple[int, int] = (0, None),
+                     x_low: float = -22, y_low: float = -22, x_high: float = 22, y_high: float = 22,
+                     width: int = 100, height: int = 100) -> Tensor:
+    assert is_valid_mixture_and_constant(mixture, constant)
+    assert constant.shape[0] == 1
+    rendering = render(mixture, constant, batches, layers, x_low, y_low, x_high, y_high, width, height)
     return torch.max(rendering, torch.tensor([0.00001], dtype=torch.float32, device=mixture.device))
 
 

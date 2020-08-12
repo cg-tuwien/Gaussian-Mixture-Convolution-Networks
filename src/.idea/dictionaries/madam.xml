@@ -2,6 +2,7 @@
   <dictionary name="madam">
     <words>
       <w>cuda</w>
+      <w>gaussians</w>
       <w>gmcn</w>
       <w>inversed</w>
       <w>jakobi</w>

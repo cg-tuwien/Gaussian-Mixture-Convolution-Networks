@@ -31,32 +31,35 @@ class Net(nn.Module):
         n_out_g_3 = gmcn_config.mnist_n_out_g_3
         n_kernel_components = gmcn_config.mnist_n_kernel_components
 
+        self.biases = torch.nn.ParameterList()
         self.gmc1 = gm_modules.GmConvolution(n_layers_in=1, n_layers_out=n_layers_1, n_kernel_components=n_kernel_components,
                                              position_range=2, covariance_range=0.5,
                                              learn_positions=learn_positions, learn_covariances=learn_covariances,
                                              weight_sd=0.4)
+        self.biases.append(torch.nn.Parameter(torch.zeros(1, n_layers_1)))
         # self.maxPool1 = gm_modules.MaxPooling(10)
 
         self.gmc2 = gm_modules.GmConvolution(n_layers_in=n_layers_1, n_layers_out=n_layers_2, n_kernel_components=n_kernel_components,
                                              position_range=4, covariance_range=2,
                                              learn_positions=learn_positions, learn_covariances=learn_covariances,
                                              weight_sd=0.04)
+        self.biases.append(torch.nn.Parameter(torch.zeros(1, n_layers_2)))
         # self.maxPool2 = gm_modules.MaxPooling(10)
 
         self.gmc3 = gm_modules.GmConvolution(n_layers_in=n_layers_2, n_layers_out=10, n_kernel_components=n_kernel_components,
                                              position_range=8, covariance_range=4,
                                              learn_positions=learn_positions, learn_covariances=learn_covariances,
                                              weight_sd=0.025)
+        self.biases.append(torch.nn.Parameter(torch.zeros(1, 10)))
         # self.maxPool3 = gm_modules.MaxPooling(2)
 
         self.bn0 = gm_modules.BatchNorm(per_mixture_norm=True)
         self.bn = gm_modules.BatchNorm(per_mixture_norm=False, per_layer_norm=batch_norm_per_layer)
 
-        # initialise these last, so all the kernels should have the same random seed
         self.relus = torch.nn.modules.ModuleList()
-        self.relus.append(gm_modules.GmBiasAndRelu(layer_id="1c", n_layers=n_layers_1, n_input_gaussians=n_in_g * n_kernel_components, n_output_gaussians=n_out_g_1))
-        self.relus.append(gm_modules.GmBiasAndRelu(layer_id="2c", n_layers=n_layers_2, n_input_gaussians=n_out_g_1 * n_layers_1 * n_kernel_components, n_output_gaussians=n_out_g_2))
-        self.relus.append(gm_modules.GmBiasAndRelu(layer_id="3c", n_layers=10, n_input_gaussians=n_out_g_2 * n_layers_2 * n_kernel_components, n_output_gaussians=n_out_g_3))
+        self.relus.append(gm_modules.ReLUFitting(layer_id="1c", n_layers=n_layers_1, n_input_gaussians=n_in_g * n_kernel_components, n_output_gaussians=n_out_g_1))
+        self.relus.append(gm_modules.ReLUFitting(layer_id="2c", n_layers=n_layers_2, n_input_gaussians=n_out_g_1 * n_layers_1 * n_kernel_components, n_output_gaussians=n_out_g_2))
+        self.relus.append(gm_modules.ReLUFitting(layer_id="3c", n_layers=10, n_input_gaussians=n_out_g_2 * n_layers_2 * n_kernel_components, n_output_gaussians=n_out_g_3))
 
     def set_position_learning(self, flag: bool):
         self.gmc1.learn_positions = flag
@@ -75,23 +78,26 @@ class Net(nn.Module):
         # Andrew Ng says that most of the time batch norm (BN) is applied before activation.
         # That would allow to merge the beta and bias learnable parameters
         # https://www.youtube.com/watch?v=tNIpEZLv_eg
-        # Other sources recommend to applie BN after the activation function.
+        # Other sources recommend to apply BN after the activation function.
         #
         # in our case: BN just scales and centres. the constant input to BN is ignored, so the constant convolution would be ignored if we place BN before ReLU.
         # but that might perform better anyway, we'll have to test.
         x, x_const = self.bn0(in_x)
 
         x, x_const = self.gmc1(x, x_const)
+        x_const = x_const + self.biases[0]
         x, x_const = self.relus[0](x, x_const)
         x, x_const = self.bn(x, x_const)
         # x = self.maxPool1(x)
 
         x, x_const = self.gmc2(x, x_const)
+        x_const = x_const + self.biases[1]
         x, x_const = self.relus[1](x, x_const)
         x, x_const = self.bn(x, x_const)
         # x = self.maxPool2(x)
 
         x, x_const = self.gmc3(x, x_const)
+        x_const = x_const + self.biases[2]
         x, x_const = self.relus[2](x, x_const)
         x, x_const = self.bn(x, x_const)
         # x = self.maxPool3(x)
