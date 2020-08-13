@@ -10,7 +10,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+import torch.optim.optimizer as Optimizer
 import torch.utils.data
+import torch.utils.tensorboard
 import typing
 from torchvision import datasets, transforms
 from torch.optim.lr_scheduler import StepLR
@@ -22,8 +24,6 @@ import prototype_convolution.experiment_gm_mnist_model as experiment_gm_mnist_mo
 
 # based on https://github.com/pytorch/examples/blob/master/mnist/main.py
 import gmc.image_tools as madam_imagetools
-
-
 
 # torch.autograd.set_detect_anomaly(True)
 
@@ -63,7 +63,7 @@ def render_debug_images_to_tensorboard(model, epoch, tensor_board_writer):
 
 
 def train(args, model: experiment_gm_mnist_model.Net, device: torch.device, train_loader: torch.utils.data.DataLoader,
-          kernel_optimiser: optim.Optimizer, epoch: int, tensor_board_writer: torch.utils.tensorboard.SummaryWriter = None):
+          kernel_optimiser: Optimizer, epoch: int, tensor_board_writer: torch.utils.tensorboard.SummaryWriter = None):
 
     model.train()
     start_time = time.perf_counter()
@@ -109,6 +109,7 @@ def train(args, model: experiment_gm_mnist_model.Net, device: torch.device, trai
 
     tensor_board_writer.add_scalar("10. batch_duration", end_time - start_time, step)
 
+
 def test(args, model: experiment_gm_mnist_model.Net, device: torch.device, test_loader: torch.utils.data.DataLoader, epoch: int, tensor_board_writer: torch.utils.tensorboard.SummaryWriter):
     model.eval()
     test_loss = 0
@@ -129,18 +130,16 @@ def test(args, model: experiment_gm_mnist_model.Net, device: torch.device, test_
 
 
 def experiment(device: str = 'cuda', n_epochs: int = 20, kernel_learning_rate: float = 0.001, log_interval: int = 100,
-               learn_positions_after: int = 0, learn_covariances_after: int = 0, desc_string: str = "",
-               batch_norm_per_layer: bool = False, use_adam: bool = True, gmcn_config = None):
+               learn_positions_after: int = 0, learn_covariances_after: int = 0, desc_string: str = "", gmcn_config = None):
     # Training settings
     torch.manual_seed(0)
 
-    train_loader = torch.utils.data.DataLoader(GmMnistDataSet('mnist/train_', begin=0, end=60000), batch_size=gmcn_config.batch_size, num_workers=gmcn_config.num_dataloader_workers, shuffle=True)
-    test_loader = torch.utils.data.DataLoader(GmMnistDataSet('mnist/test_', begin=0, end=10000), batch_size=gmcn_config.batch_size, num_workers=gmcn_config.num_dataloader_workers)
+    train_loader = torch.utils.data.DataLoader(GmMnistDataSet('mnist/train_', begin=0, end=400), batch_size=gmcn_config.batch_size, num_workers=gmcn_config.num_dataloader_workers, shuffle=True)
+    test_loader = torch.utils.data.DataLoader(GmMnistDataSet('mnist/test_', begin=0, end=200), batch_size=gmcn_config.batch_size, num_workers=gmcn_config.num_dataloader_workers)
 
     model = experiment_gm_mnist_model.Net(name=desc_string,
                                           learn_positions=learn_positions_after == 0,
                                           learn_covariances=learn_covariances_after == 0,
-                                          batch_norm_per_layer=batch_norm_per_layer,
                                           gmcn_config=gmcn_config)
     model.load()
     model = model.to(device)
@@ -160,21 +159,15 @@ def experiment(device: str = 'cuda', n_epochs: int = 20, kernel_learning_rate: f
     # for parameter in model.parameters():
     #     print(parameter)
 
-    if use_adam:
-        kernel_optimiser = optim.Adam(model.parameters(), lr=kernel_learning_rate)
-        tensor_board_writer = torch.utils.tensorboard.SummaryWriter(gmcn_config.data_base_path / 'tensorboard' / f'adam_b100_{desc_string}_{datetime.datetime.now().strftime("%m%d_%H%M")}')
-    else:
-        kernel_optimiser = optim.SGD(model.parameters(), lr=kernel_learning_rate)
-        tensor_board_writer = torch.utils.tensorboard.SummaryWriter(gmcn_config.data_base_path / 'tensorboard' / f'sgd_b100_{desc_string}_{datetime.datetime.now().strftime("%m%d_%H%M")}')
+    kernel_optimiser = optim.Adam(model.parameters(), lr=kernel_learning_rate)
+    tensor_board_writer = torch.utils.tensorboard.SummaryWriter(gmcn_config.data_base_path / 'tensorboard' / f'{desc_string}_{datetime.datetime.now().strftime("%m%d_%H%M")}')
 
     # scheduler = StepLR(kernel_optimiser, step_size=1, gamma=args.gamma)
-
 
     for epoch in range(n_epochs):
         model.set_position_learning(epoch >= learn_positions_after)
         model.set_covariance_learning(epoch >= learn_covariances_after)
         train(args, model, device, train_loader, kernel_optimiser=kernel_optimiser, epoch=epoch, tensor_board_writer=tensor_board_writer)
-
         test(args, model, device, test_loader, epoch, tensor_board_writer=tensor_board_writer)
         # scheduler.step()
 

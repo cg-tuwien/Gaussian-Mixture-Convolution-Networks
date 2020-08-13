@@ -15,5 +15,9 @@ import prototype_convolution.config as gmcn_config
 # device = list(sys.argv)[1]
 device = "cuda"
 
-experiment_gm_mnist.experiment(device=device, n_epochs=200, desc_string="k001", kernel_learning_rate=0.001, learn_covariances_after=200,
-                               learn_positions_after=200, log_interval=1000, batch_norm_per_layer=True, gmcn_config=gmcn_config)
+gmcn_config.bias_type = gmcn_config.BIAS_TYPE_NORMAL
+gmcn_config.bn_constant_computation = gmcn_config.BN_CONSTANT_COMPUTATION_WEIGHTED
+gmcn_config.bn_mean_over_layers = False
+
+experiment_gm_mnist.experiment(device=device, n_epochs=200, desc_string="nobias_noconst_bnOverLayers", kernel_learning_rate=0.001, learn_covariances_after=200,
+                               learn_positions_after=200, log_interval=100, gmcn_config=gmcn_config)

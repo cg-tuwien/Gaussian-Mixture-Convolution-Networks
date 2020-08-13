@@ -253,7 +253,6 @@ def render_with_relu(mixture: Tensor, constant: Tensor,
                      x_low: float = -22, y_low: float = -22, x_high: float = 22, y_high: float = 22,
                      width: int = 100, height: int = 100) -> Tensor:
     assert is_valid_mixture_and_constant(mixture, constant)
-    assert constant.shape[0] == 1
     rendering = render(mixture, constant, batches, layers, x_low, y_low, x_high, y_high, width, height)
     return torch.max(rendering, torch.tensor([0.00001], dtype=torch.float32, device=mixture.device))
 
@@ -316,8 +315,8 @@ def is_valid_mixture_and_constant(mixture: Tensor, constant: Tensor) -> bool:
     assert is_valid_mixture(mixture)
     # todo: actually, i think the batch dimension is not needed for the constant
     assert len(constant.shape) == 2
-    assert (constant.shape[0] == 1 or constant.shape[0] == mixture.shape[0])
-    assert constant.shape[1] == mixture.shape[1]
+    assert constant.shape[0] == 1 or constant.shape[0] == mixture.shape[0]
+    assert constant.shape[1] == 1 or constant.shape[1] == mixture.shape[1]
     assert mixture.device == constant.device
     return True
 

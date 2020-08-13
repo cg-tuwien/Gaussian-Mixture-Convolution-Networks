@@ -1,33 +1,23 @@
 import math
-import time
-import datetime
-import pathlib
 import typing
-import numpy as np
 
 import torch
-import torch.nn.modules
-import torch.nn.functional
-import torch.utils.checkpoint
-import torch.nn as nn
-import torch.optim as optim
-import torch.utils.tensorboard
-
 from torch import Tensor
 
 import gmc.mixture as gm
-import gmc.mat_tools as mat_tools
 import gmc.image_tools as madam_imagetools
-import prototype_convolution.config as config
+import gmc.mat_tools as mat_tools
+import prototype_convolution.config
 import prototype_convolution.fitting_em as fitting_em
 
 
 class GmConvolution(torch.nn.modules.Module):
-    def __init__(self, n_layers_in: int, n_layers_out: int, n_kernel_components: int = 4, n_dims: int = 2,
+    def __init__(self, config: prototype_convolution.config, n_layers_in: int, n_layers_out: int, n_kernel_components: int = 4, n_dims: int = 2,
                  position_range: float = 1, covariance_range: float = 0.25, weight_sd=0.1, weight_mean=0.0,
                  learn_positions: bool = True, learn_covariances: bool = True,
                  covariance_epsilon: float = 0.0001):
         super(GmConvolution, self).__init__()
+        self.config = config
         self.n_layers_in = n_layers_in
         self.n_layers_out = n_layers_out
         self.n_kernel_components = n_kernel_components
@@ -139,7 +129,8 @@ class GmConvolution(torch.nn.modules.Module):
         for i in range(self.n_layers_out):
             kernel = self.kernel(i)
             assert kernel.shape[0] == 1
-            kernel_rendering = gm.render(kernel, torch.zeros(1, 1, device=kernel.device), x_low=-position_range*1.25, x_high=position_range*1.25, y_low=-position_range*1.25, y_high=position_range*1.25, width=image_size, height=image_size)
+            kernel_rendering = gm.render(kernel, torch.zeros(1, 1, device=kernel.device),
+                                         x_low=-position_range*1.25, x_high=position_range*1.25, y_low=-position_range*1.25, y_high=position_range*1.25, width=image_size, height=image_size)
             images.append(kernel_rendering)
         images = torch.cat(images, dim=1)
         images = madam_imagetools.colour_mapped(images.cpu().numpy(), clamp[0], clamp[1])
@@ -172,9 +163,9 @@ class GmConvolution(torch.nn.modules.Module):
 
 
 class ReLUFitting(torch.nn.modules.Module):
-    def __init__(self, layer_id: str, n_layers: int, n_output_gaussians: int, n_input_gaussians: int = -1):
-        # todo: option to make fitting net have common or seperate weights per module
+    def __init__(self, config: prototype_convolution.config,  layer_id: str, n_layers: int, n_output_gaussians: int, n_input_gaussians: int = -1):
         super(ReLUFitting, self).__init__()
+        self.config = config
         self.layer_id = layer_id
         self.n_layers = n_layers
         self.n_input_gaussians = n_input_gaussians
@@ -198,13 +189,13 @@ class ReLUFitting(torch.nn.modules.Module):
         if position_range is None:
             position_range = [-1.0, -1.0, 1.0, 1.0]
 
-        last_in = gm.render(self.last_in[0], self.last_in[1], batches=[0, 1], layers=[0, None],
+        last_in = gm.render(self.last_in[0], self.last_in[1], batches=(0, 1), layers=(0, None),
                             x_low=position_range[0], y_low=position_range[1], x_high=position_range[2], y_high=position_range[3],
                             width=image_size, height=image_size)
-        target = gm.render_with_relu(self.last_in[0], self.last_in[1], batches=[0, 1], layers=[0, None],
+        target = gm.render_with_relu(self.last_in[0], self.last_in[1], batches=(0, 1), layers=(0, None),
                                      x_low=position_range[0], y_low=position_range[1], x_high=position_range[2], y_high=position_range[3],
                                      width=image_size, height=image_size)
-        prediction = gm.render(self.last_out[0], self.last_out[1], batches=[0, 1], layers=[0, None],
+        prediction = gm.render(self.last_out[0], self.last_out[1], batches=(0, 1), layers=(0, None),
                                x_low=position_range[0], y_low=position_range[1], x_high=position_range[2], y_high=position_range[3],
                                width=image_size, height=image_size)
         images = [last_in, target, prediction]
@@ -214,10 +205,10 @@ class ReLUFitting(torch.nn.modules.Module):
 
 
 class BatchNorm(torch.nn.modules.Module):
-    def __init__(self, per_mixture_norm: bool = False, per_layer_norm: bool = False):
+    def __init__(self, config: prototype_convolution.config, per_mixture_norm: bool = False):
         super(BatchNorm, self).__init__()
         self.per_mixture_norm = per_mixture_norm
-        self.per_layer_norm = per_layer_norm
+        self.config = config
 
     def forward(self, x: Tensor, x_constant: Tensor = None) -> typing.Tuple[Tensor, Tensor]:
         # this is an adapted batch norm. It scales and centres the gm, but it has nothing to do with variance or mean
@@ -229,24 +220,47 @@ class BatchNorm(torch.nn.modules.Module):
 
         abs_x = gm.pack_mixture(gm.weights(x).abs(), gm.positions(x), gm.covariances(x))
         integral_abs = gm.integrate(abs_x)
-        integral = gm.integrate(x)
         if not self.per_mixture_norm:
             integral_abs = torch.mean(integral_abs, dim=0, keepdim=True)
-            if not self.per_layer_norm:
+            if self.config.bn_mean_over_layers:
                 integral_abs = torch.mean(integral_abs, dim=1, keepdim=True)
 
         weights = gm.weights(x)
         positions = gm.positions(x)
         covariances = gm.covariances(x)
-        if x_constant is None:
-            y_constant = torch.zeros(1, 1, device=x.device)
-        else:
-            y_constant = x_constant - x_constant.mean(dim=0)
-            y_constant = y_constant / (y_constant.std(dim=0) + 0.0001)
-
         integral_abs_eps = integral_abs + 0.0001
         weights = weights / integral_abs_eps.unsqueeze(-1)
-        return gm.pack_mixture(weights, positions, covariances), torch.zeros(1, 1, device=x.device)  # -integral / integral_abs_eps  # 0.5 * ((-integral / integral_abs_eps) + y_constant)
+        mixture = gm.pack_mixture(weights, positions, covariances)
+
+        if self.config.bn_constant_computation == prototype_convolution.config.BN_CONSTANT_COMPUTATION_ZERO:
+            y_constant = torch.zeros(1, 1, device=x.device)
+        elif self.config.bn_constant_computation == prototype_convolution.config.BN_CONSTANT_COMPUTATION_INTEGRAL:
+            y_constant = -gm.integrate(abs_x)
+        elif self.config.bn_constant_computation == prototype_convolution.config.BN_CONSTANT_COMPUTATION_MEAN_IN_CONST:
+            if x_constant is None:
+                y_constant = torch.zeros(1, 1, device=x.device)
+            elif x_constant.shape[0] == 1:
+                # std produces NaN gradients in that case
+                # c - c.mean produces always 0 gradients, hence the following is the same.
+                y_constant = torch.zeros(1, 1, device=x.device)
+            else:
+                y_constant = x_constant - x_constant.mean(dim=0, keepdim=True)
+                y_constant = y_constant / (y_constant.std(dim=0, keepdim=True, unbiased=False) + 0.001)
+        else:
+            assert self.config.bn_constant_computation == prototype_convolution.config.BN_CONSTANT_COMPUTATION_WEIGHTED
+            if x_constant is None:
+                y_constant = torch.zeros(1, 1, device=x.device)
+            elif x_constant.shape[0] == 1:
+                # std produces NaN gradients in that case
+                # c - c.mean produces always 0 gradients, hence the following is the same.
+                y_constant = torch.zeros(1, 1, device=x.device)
+            else:
+                y_constant = x_constant - x_constant.mean(dim=0, keepdim=True)
+                y_constant = y_constant / (y_constant.std(dim=0, keepdim=True, unbiased=False) + 0.001)
+
+            y_constant = 0.5 * (y_constant - gm.integrate(abs_x))
+
+        return mixture, y_constant
 
 
 class MaxPooling(torch.nn.modules.Module):

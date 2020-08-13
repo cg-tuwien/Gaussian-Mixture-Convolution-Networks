@@ -20,3 +20,15 @@ mnist_n_layers_2 = 6
 mnist_n_out_g_2 = 12
 mnist_n_out_g_3 = 6
 mnist_n_kernel_components = 5
+
+bn_mean_over_layers = False
+BN_CONSTANT_COMPUTATION_ZERO = 0
+BN_CONSTANT_COMPUTATION_MEAN_IN_CONST = 1
+BN_CONSTANT_COMPUTATION_INTEGRAL = 2
+BN_CONSTANT_COMPUTATION_WEIGHTED = 3
+bn_constant_computation = BN_CONSTANT_COMPUTATION_ZERO
+
+BIAS_TYPE_NONE = 0
+BIAS_TYPE_NORMAL = 1
+BIAS_TYPE_NEGATIVE_SOFTPLUS = 2
+bias_type = BIAS_TYPE_NORMAL

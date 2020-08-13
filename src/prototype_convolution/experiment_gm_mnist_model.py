@@ -1,14 +1,13 @@
 from __future__ import print_function
 import pathlib
-import random
 
 import torch
+from torch import Tensor
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.utils.data
-import typing
 
-import prototype_convolution.config as default_gmcn_config
+import prototype_convolution.config
 import gmc.mixture as gm
 import prototype_convolution.gm_modules as gm_modules
 
@@ -18,8 +17,7 @@ class Net(nn.Module):
                  name: str = "default",
                  learn_positions: bool = False,
                  learn_covariances: bool = False,
-                 batch_norm_per_layer: bool = False,
-                 gmcn_config=default_gmcn_config):
+                 gmcn_config: prototype_convolution.config = prototype_convolution.config):
         super(Net, self).__init__()
         self.storage_path = gmcn_config.data_base_path / "weights" / f"mnist_gmcnet_{name}.pt"
         # reference_fitter = gm_modules.generate_default_fitting_module
@@ -30,36 +28,41 @@ class Net(nn.Module):
         n_out_g_2 = gmcn_config.mnist_n_out_g_2
         n_out_g_3 = gmcn_config.mnist_n_out_g_3
         n_kernel_components = gmcn_config.mnist_n_kernel_components
+        self.config = gmcn_config
+
+        bias_0 = 0.0
+        if self.config.bias_type == prototype_convolution.config.BIAS_TYPE_NEGATIVE_SOFTPLUS:
+            bias_0 = -0.1
 
         self.biases = torch.nn.ParameterList()
-        self.gmc1 = gm_modules.GmConvolution(n_layers_in=1, n_layers_out=n_layers_1, n_kernel_components=n_kernel_components,
+        self.gmc1 = gm_modules.GmConvolution(gmcn_config, n_layers_in=1, n_layers_out=n_layers_1, n_kernel_components=n_kernel_components,
                                              position_range=2, covariance_range=0.5,
                                              learn_positions=learn_positions, learn_covariances=learn_covariances,
                                              weight_sd=0.4)
-        self.biases.append(torch.nn.Parameter(torch.zeros(1, n_layers_1)))
+        self.biases.append(torch.nn.Parameter(torch.zeros(1, n_layers_1) + bias_0))
         # self.maxPool1 = gm_modules.MaxPooling(10)
 
-        self.gmc2 = gm_modules.GmConvolution(n_layers_in=n_layers_1, n_layers_out=n_layers_2, n_kernel_components=n_kernel_components,
+        self.gmc2 = gm_modules.GmConvolution(gmcn_config, n_layers_in=n_layers_1, n_layers_out=n_layers_2, n_kernel_components=n_kernel_components,
                                              position_range=4, covariance_range=2,
                                              learn_positions=learn_positions, learn_covariances=learn_covariances,
                                              weight_sd=0.04)
-        self.biases.append(torch.nn.Parameter(torch.zeros(1, n_layers_2)))
+        self.biases.append(torch.nn.Parameter(torch.zeros(1, n_layers_2) + bias_0))
         # self.maxPool2 = gm_modules.MaxPooling(10)
 
-        self.gmc3 = gm_modules.GmConvolution(n_layers_in=n_layers_2, n_layers_out=10, n_kernel_components=n_kernel_components,
+        self.gmc3 = gm_modules.GmConvolution(gmcn_config, n_layers_in=n_layers_2, n_layers_out=10, n_kernel_components=n_kernel_components,
                                              position_range=8, covariance_range=4,
                                              learn_positions=learn_positions, learn_covariances=learn_covariances,
                                              weight_sd=0.025)
-        self.biases.append(torch.nn.Parameter(torch.zeros(1, 10)))
+        self.biases.append(torch.nn.Parameter(torch.zeros(1, 10) + bias_0))
         # self.maxPool3 = gm_modules.MaxPooling(2)
 
-        self.bn0 = gm_modules.BatchNorm(per_mixture_norm=True)
-        self.bn = gm_modules.BatchNorm(per_mixture_norm=False, per_layer_norm=batch_norm_per_layer)
+        self.bn0 = gm_modules.BatchNorm(gmcn_config, per_mixture_norm=True)
+        self.bn = gm_modules.BatchNorm(gmcn_config, per_mixture_norm=False)
 
         self.relus = torch.nn.modules.ModuleList()
-        self.relus.append(gm_modules.ReLUFitting(layer_id="1c", n_layers=n_layers_1, n_input_gaussians=n_in_g * n_kernel_components, n_output_gaussians=n_out_g_1))
-        self.relus.append(gm_modules.ReLUFitting(layer_id="2c", n_layers=n_layers_2, n_input_gaussians=n_out_g_1 * n_layers_1 * n_kernel_components, n_output_gaussians=n_out_g_2))
-        self.relus.append(gm_modules.ReLUFitting(layer_id="3c", n_layers=10, n_input_gaussians=n_out_g_2 * n_layers_2 * n_kernel_components, n_output_gaussians=n_out_g_3))
+        self.relus.append(gm_modules.ReLUFitting(gmcn_config, layer_id="1c", n_layers=n_layers_1, n_input_gaussians=n_in_g * n_kernel_components, n_output_gaussians=n_out_g_1))
+        self.relus.append(gm_modules.ReLUFitting(gmcn_config, layer_id="2c", n_layers=n_layers_2, n_input_gaussians=n_out_g_1 * n_layers_1 * n_kernel_components, n_output_gaussians=n_out_g_2))
+        self.relus.append(gm_modules.ReLUFitting(gmcn_config, layer_id="3c", n_layers=10, n_input_gaussians=n_out_g_2 * n_layers_2 * n_kernel_components, n_output_gaussians=n_out_g_3))
 
     def set_position_learning(self, flag: bool):
         self.gmc1.learn_positions = flag
@@ -74,7 +77,8 @@ class Net(nn.Module):
     def regularisation_loss(self):
         return self.gmc1.regularisation_loss() + self.gmc2.regularisation_loss() + self.gmc3.regularisation_loss()
 
-    def forward(self, in_x: torch.Tensor):
+    # noinspection PyCallingNonCallable
+    def forward(self, in_x: Tensor) -> Tensor:
         # Andrew Ng says that most of the time batch norm (BN) is applied before activation.
         # That would allow to merge the beta and bias learnable parameters
         # https://www.youtube.com/watch?v=tNIpEZLv_eg
@@ -85,19 +89,37 @@ class Net(nn.Module):
         x, x_const = self.bn0(in_x)
 
         x, x_const = self.gmc1(x, x_const)
-        x_const = x_const + self.biases[0]
+        if self.config.bias_type == prototype_convolution.config.BIAS_TYPE_NEGATIVE_SOFTPLUS:
+            x_const = x_const - F.softplus(self.biases[0], beta=20)
+        elif self.config.bias_type == prototype_convolution.config.BIAS_TYPE_NORMAL:
+            x_const = x_const + self.biases[0]
+        else:
+            assert self.config.bias_type == prototype_convolution.config.BIAS_TYPE_NONE
+            x_const = torch.zeros(1, 1, device=in_x.device)
         x, x_const = self.relus[0](x, x_const)
         x, x_const = self.bn(x, x_const)
         # x = self.maxPool1(x)
 
         x, x_const = self.gmc2(x, x_const)
-        x_const = x_const + self.biases[1]
+        if self.config.bias_type == prototype_convolution.config.BIAS_TYPE_NEGATIVE_SOFTPLUS:
+            x_const = x_const - F.softplus(self.biases[1], beta=20)
+        elif self.config.bias_type == prototype_convolution.config.BIAS_TYPE_NORMAL:
+            x_const = x_const + self.biases[1]
+        else:
+            assert self.config.bias_type == prototype_convolution.config.BIAS_TYPE_NONE
+            x_const = torch.zeros(1, 1, device=in_x.device)
         x, x_const = self.relus[1](x, x_const)
         x, x_const = self.bn(x, x_const)
         # x = self.maxPool2(x)
 
         x, x_const = self.gmc3(x, x_const)
-        x_const = x_const + self.biases[2]
+        if self.config.bias_type == prototype_convolution.config.BIAS_TYPE_NEGATIVE_SOFTPLUS:
+            x_const = x_const - F.softplus(self.biases[2], beta=20)
+        elif self.config.bias_type == prototype_convolution.config.BIAS_TYPE_NORMAL:
+            x_const = x_const + self.biases[2]
+        else:
+            assert self.config.bias_type == prototype_convolution.config.BIAS_TYPE_NONE
+            x_const = torch.zeros(1, 1, device=in_x.device)
         x, x_const = self.relus[2](x, x_const)
         x, x_const = self.bn(x, x_const)
         # x = self.maxPool3(x)
@@ -130,5 +152,5 @@ class Net(nn.Module):
         else:
             print("experiment_gm_mnist_model.Net.load: not found")
 
-    def to(self, device: torch.device):
-        return super(Net, self).to(device)
+    def to(self, *args, **kwargs):
+        return super(Net, self).to(*args, **kwargs)
