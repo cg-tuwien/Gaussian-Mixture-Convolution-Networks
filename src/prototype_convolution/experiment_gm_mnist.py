@@ -134,8 +134,8 @@ def experiment(device: str = 'cuda', n_epochs: int = 20, kernel_learning_rate: f
     # Training settings
     torch.manual_seed(0)
 
-    train_loader = torch.utils.data.DataLoader(GmMnistDataSet('mnist/train_', begin=0, end=400), batch_size=gmcn_config.batch_size, num_workers=gmcn_config.num_dataloader_workers, shuffle=True)
-    test_loader = torch.utils.data.DataLoader(GmMnistDataSet('mnist/test_', begin=0, end=200), batch_size=gmcn_config.batch_size, num_workers=gmcn_config.num_dataloader_workers)
+    train_loader = torch.utils.data.DataLoader(GmMnistDataSet('mnist/train_', begin=0, end=60000), batch_size=gmcn_config.batch_size, num_workers=gmcn_config.num_dataloader_workers, shuffle=True)
+    test_loader = torch.utils.data.DataLoader(GmMnistDataSet('mnist/test_', begin=0, end=10000), batch_size=gmcn_config.batch_size, num_workers=gmcn_config.num_dataloader_workers)
 
     model = experiment_gm_mnist_model.Net(name=desc_string,
                                           learn_positions=learn_positions_after == 0,
