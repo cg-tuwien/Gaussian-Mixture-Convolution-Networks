@@ -1,5 +1,6 @@
 import math
 import typing
+import time
 
 import torch
 from torch import Tensor
@@ -176,13 +177,20 @@ class ReLUFitting(torch.nn.modules.Module):
 
         self.last_in = None
         self.last_out = None
+        self.last_time_relu = None
+        self.last_time_mhem = None
 
     def forward(self, x_m: Tensor, x_constant: Tensor) -> typing.Tuple[Tensor, Tensor]:
+        t0 = time.perf_counter()
         y_m, y_constant = fitting_em.relu(x_m, x_constant)
+        t1 = time.perf_counter()
         y_m = fitting_em.mhem_algorithm(y_m, n_fitting_components=self.n_output_gaussians)
+        t2 = time.perf_counter()
 
         self.last_in = (x_m.detach(), x_constant.detach())
         self.last_out = (y_m.detach(), y_constant.detach())
+        self.last_time_relu = t1 - t0
+        self.last_time_mhem = t2 - t1
         return y_m, y_constant
 
     def debug_render(self, position_range: typing.Tuple[float, float, float, float] = None, image_size: int = 80, clamp: typing.Tuple[float, float] = (-1.0, 1.0)):
