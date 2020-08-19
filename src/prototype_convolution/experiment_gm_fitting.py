@@ -98,8 +98,8 @@ for batch_idx in range(0, 1):  # was 10
             fitting = fitting_em.mhem_algorithm(fitting, n_fitting_components=15, n_iterations=1)
             add_measurement(f"time_mhem[layer{layer_id}]", time.perf_counter() - start)
             eval_mhem = gm.evaluate(fitting, eval_xes) + new_bias.unsqueeze(-1)
-            add_measurement(f"mse_mhem [layer{layer_id}]", ((eval_mhem - eval_gt)**2).mean().item())
-            add_measurement(f"mse_mhem [bias{bias}]", ((eval_mhem - eval_gt)**2).mean().item())
+            add_measurement(f"mse_mhem_vs_relu [layer{layer_id}]", ((eval_mhem - eval_relu)**2).mean().item())
+            add_measurement(f"mse_mhem_vs_relu [bias{bias}]", ((eval_mhem - eval_relu)**2).mean().item())
 
             if batch_idx == 0 and bias in [-0.5, 0.0, 0.5]:
                 log(m, bias_tensor, fitting, new_bias, f"l{layer_id}_b{bias},", tensor_board_writer)
