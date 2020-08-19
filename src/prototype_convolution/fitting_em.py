@@ -183,43 +183,42 @@ def mhem_algorithm(mixture: Tensor, n_fitting_components: int, n_iterations: int
 
         likelihoods = likelihoods * (gm.weights(fitting_double_gmm).abs() / gm.normal_amplitudes(gm.covariances(fitting_double_gmm))).view(n_batch, n_layers, 1, n_fitting_components)
         likelihoods = likelihoods * (KL_divergence < 1) * sign_match
-        likelihoods_positive = likelihoods * sign_positive
-        likelihoods_negative = likelihoods * sign_negative
-        likelihoods_positive_sum = likelihoods_positive.sum(3, keepdim=True)
-        likelihoods_negative_sum = likelihoods_negative.sum(3, keepdim=True)
-        responsibilities_positive = likelihoods_positive / likelihoods_positive_sum.where(likelihoods_positive_sum > 0.0000001, 0.0000001 * torch.ones_like(likelihoods_positive_sum))  # preiner Equation(8)
-        responsibilities_negative = likelihoods_negative / likelihoods_negative_sum.where(likelihoods_negative_sum > 0.0000001, 0.0000001 * torch.ones_like(likelihoods_negative_sum))  # preiner Equation(8)
+        # likelihoods_positive = likelihoods * sign_positive
+        # likelihoods_negative = likelihoods * sign_negative
+        # likelihoods_positive_sum = likelihoods_positive.sum(3, keepdim=True)
+        # likelihoods_negative_sum = likelihoods_negative.sum(3, keepdim=True)
+        # responsibilities_positive = likelihoods_positive / likelihoods_positive_sum.where(likelihoods_positive_sum > 0.0000001, 0.0000001 * torch.ones_like(likelihoods_positive_sum))  # preiner Equation(8)
+        # responsibilities_negative = likelihoods_negative / likelihoods_negative_sum.where(likelihoods_negative_sum > 0.0000001, 0.0000001 * torch.ones_like(likelihoods_negative_sum))  # preiner Equation(8)
 
-        # todo: result looked the same. maybe we can merge back into one walk through?
-        def comp_m(responsibilities, fitting_gmm, target_gmm, n_batch, n_layers, n_components, n_dims, n_fitting_components, sign):
-            assert not torch.any(torch.isnan(responsibilities))
+        likelihoods_sum = likelihoods.sum(3, keepdim=True)
+        responsibilities = likelihoods / likelihoods_sum.where(likelihoods_sum > 0.0000001, 0.0000001 * torch.ones_like(likelihoods_sum))  # preiner Equation(8)
 
-            # index i -> target
-            # index s -> fitting
-            responsibilities = responsibilities * (gm.weights(target_gmm).abs() / gm.normal_amplitudes(gm.covariances(target_gmm))).unsqueeze(-1)
-            newWeights = torch.sum(responsibilities, 2)
-            assert not torch.any(torch.isnan(responsibilities))
+        assert not torch.any(torch.isnan(responsibilities))
 
-            assert not torch.any(torch.isnan(newWeights))
-            responsibilities = responsibilities / newWeights.where(newWeights > 0.00000001, 0.00000001 * torch.ones_like(newWeights)).view(n_batch, n_layers, 1, n_fitting_components)
-            assert torch.all(responsibilities >= 0)
-            assert not torch.any(torch.isnan(responsibilities))
-            newPositions = torch.sum(responsibilities.unsqueeze(-1) * gm.positions(target_gmm).view(n_batch, n_layers, n_components, 1, n_dims), 2)
-            assert not torch.any(torch.isnan(newPositions))
-            posDiffs = gm.positions(target_gmm).view(n_batch, n_layers, n_components, 1, n_dims, 1) - newPositions.view(n_batch, n_layers, 1, n_fitting_components, n_dims, 1)
-            assert not torch.any(torch.isnan(posDiffs))
+        # index i -> target
+        # index s -> fitting
+        responsibilities = responsibilities * (gm.weights(target_double_gmm).abs() / gm.normal_amplitudes(gm.covariances(target_double_gmm))).unsqueeze(-1)
+        newWeights = torch.sum(responsibilities, 2)
+        assert not torch.any(torch.isnan(responsibilities))
 
-            newCovariances = (torch.sum(responsibilities.unsqueeze(-1).unsqueeze(-1) * (gm.covariances(target_gmm).view(n_batch, n_layers, n_components, 1, n_dims, n_dims) +
-                                                                                        posDiffs.matmul(posDiffs.transpose(-1, -2))), 2))
-            newCovariances = newCovariances + (newWeights < 0.0001).unsqueeze(-1).unsqueeze(-1) * torch.eye(n_dims, device=device).view(1, 1, 1, n_dims, n_dims) * 0.0001
+        assert not torch.any(torch.isnan(newWeights))
+        responsibilities = responsibilities / newWeights.where(newWeights > 0.00000001, 0.00000001 * torch.ones_like(newWeights)).view(n_batch, n_layers, 1, n_fitting_components)
+        assert torch.all(responsibilities >= 0)
+        assert not torch.any(torch.isnan(responsibilities))
+        newPositions = torch.sum(responsibilities.unsqueeze(-1) * gm.positions(target_double_gmm).view(n_batch, n_layers, n_components, 1, n_dims), 2)
+        assert not torch.any(torch.isnan(newPositions))
+        posDiffs = gm.positions(target_double_gmm).view(n_batch, n_layers, n_components, 1, n_dims, 1) - newPositions.view(n_batch, n_layers, 1, n_fitting_components, n_dims, 1)
+        assert not torch.any(torch.isnan(posDiffs))
 
-            assert not torch.any(torch.isnan(newCovariances))
+        newCovariances = (torch.sum(responsibilities.unsqueeze(-1).unsqueeze(-1) * (gm.covariances(target_double_gmm).view(n_batch, n_layers, n_components, 1, n_dims, n_dims) +
+                                                                                    posDiffs.matmul(posDiffs.transpose(-1, -2))), 2))
+        newCovariances = newCovariances + (newWeights < 0.0001).unsqueeze(-1).unsqueeze(-1) * torch.eye(n_dims, device=device).view(1, 1, 1, n_dims, n_dims) * 0.0001
 
-            normal_amplitudes = gm.normal_amplitudes(newCovariances)
-            return gm.pack_mixture(newWeights.contiguous() * normal_amplitudes * sign, newPositions.contiguous(), newCovariances.contiguous())
+        assert not torch.any(torch.isnan(newCovariances))
 
-        fitting_double_gmm = comp_m(responsibilities_positive, fitting_double_gmm, target_double_gmm, n_batch, n_layers, n_components, n_dims, n_fitting_components, 1) + \
-                             comp_m(responsibilities_negative, fitting_double_gmm, target_double_gmm, n_batch, n_layers, n_components, n_dims, n_fitting_components, -1)
+        normal_amplitudes = gm.normal_amplitudes(newCovariances)
+        fitting_double_gmm = gm.pack_mixture(newWeights.contiguous() * normal_amplitudes * gm.weights(fitting_double_gmm).sign(), newPositions.contiguous(), newCovariances.contiguous())
+
 
     # the following line would have the following effect: scale the fitting result to match the integral of the input exactly. that is bad in case many weak Gs are killed and the remaining weak G is blown up.
     # fitting_double_gmm, _, _, _ = mixture_to_double_gmm(fitting_double_gmm)
