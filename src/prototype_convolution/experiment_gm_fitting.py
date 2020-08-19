@@ -12,7 +12,7 @@ import prototype_convolution.fitting_net as fitting_net
 import prototype_convolution.fitting_em as fitting_em
 
 
-def log(target: Tensor, target_bias, fitting: Tensor, fitting_bias: Tensor, label: str, tensor_board_writer):
+def log(target: Tensor, target_bias, fitting_relu: Tensor, fitting_mhem: Tensor, fitting_bias: Tensor, label: str, tensor_board_writer):
     device = target.device
     image_size = 80
     xv, yv = torch.meshgrid([torch.arange(-1.2, 1.2, 2.4 / image_size, dtype=torch.float, device=device),
@@ -21,12 +21,14 @@ def log(target: Tensor, target_bias, fitting: Tensor, fitting_bias: Tensor, labe
 
     input_image = gm.evaluate(target.detach(), xes).view(-1, image_size, image_size) + target_bias.view(-1).unsqueeze(-1).unsqueeze(-1)
     image_target = gm.evaluate_with_activation_fun(target.detach(), target_bias, xes).view(-1, image_size, image_size)
-    output_image = gm.evaluate(fitting.detach(), xes).view(-1, image_size, image_size) + fitting_bias.view(-1).unsqueeze(-1).unsqueeze(-1)
+    fitting_relu = gm.evaluate(fitting_relu.detach(), xes).view(-1, image_size, image_size) + fitting_bias.view(-1).unsqueeze(-1).unsqueeze(-1)
+    fitting_mhem = gm.evaluate(fitting_mhem.detach(), xes).view(-1, image_size, image_size) + fitting_bias.view(-1).unsqueeze(-1).unsqueeze(-1)
     fitting_net.Sampler.log_images(tensor_board_writer,
                                    f"{label} input target prediction",
                                    [input_image.transpose(0, 1).reshape(image_size, -1),
                                     image_target.transpose(0, 1).reshape(image_size, -1),
-                                    output_image.transpose(0, 1).reshape(image_size, -1)],
+                                    fitting_relu.transpose(0, 1).reshape(image_size, -1),
+                                    fitting_mhem.transpose(0, 1).reshape(image_size, -1)],
                                    None, [-0.5, 2])
 
 
@@ -63,7 +65,7 @@ for batch_idx in range(0, 1):  # was 10
         # for bias in [-1, -0.5, -0.1, -0.005, 0, 0.005, 0.1, 0.5, 1]:
         for bias in [-0.5, 0.0, 0.5]:
             m = gm.load(f"fitting_input/fitting_input_batch{batch_idx}_netlayer{layer_id}")[0]
-            # m = m[0:1, 1:2, 0:20]
+            # m = m[0:10, :, :, :]
             # m = torch.tensor([[[[1, -0.8, -0.8, 0.25, 0.04, 0.04, 0.05], [1, 0.8, 0.8, 0.05, -0.04, -0.04, 0.25]]]])
             m = m.cuda()
             # m.requires_grad = True
@@ -86,23 +88,23 @@ for batch_idx in range(0, 1):  # was 10
 
             # m.requires_grad = True
             start = time.perf_counter()
-            fitting, new_bias = fitting_em.relu(m, bias_tensor)
+            fitting_relu, new_bias = fitting_em.relu(m, bias_tensor)
             add_measurement(f"time_relu[layer{layer_id}]", time.perf_counter() - start)
-            eval_relu = gm.evaluate(fitting, eval_xes) + new_bias.unsqueeze(-1)
+            eval_relu = gm.evaluate(fitting_relu, eval_xes) + new_bias.unsqueeze(-1)
             add_measurement(f"mse_relu [layer{layer_id}]", ((eval_relu - eval_gt)**2).mean().item())
             add_measurement(f"mse_relu [bias{bias}]", ((eval_relu - eval_gt)**2).mean().item())
 
             # fitting.requires_grad = True
             # (gm.integrate(fitting)).sum().backward()
             start = time.perf_counter()
-            fitting = fitting_em.mhem_algorithm(fitting, n_fitting_components=15, n_iterations=1)
+            fitting_mhem = fitting_em.mhem_algorithm(fitting_relu, n_fitting_components=15, n_iterations=1)
             add_measurement(f"time_mhem[layer{layer_id}]", time.perf_counter() - start)
-            eval_mhem = gm.evaluate(fitting, eval_xes) + new_bias.unsqueeze(-1)
+            eval_mhem = gm.evaluate(fitting_mhem, eval_xes) + new_bias.unsqueeze(-1)
             add_measurement(f"mse_mhem_vs_relu [layer{layer_id}]", ((eval_mhem - eval_relu)**2).mean().item())
             add_measurement(f"mse_mhem_vs_relu [bias{bias}]", ((eval_mhem - eval_relu)**2).mean().item())
 
             if batch_idx == 0 and bias in [-0.5, 0.0, 0.5]:
-                log(m, bias_tensor, fitting, new_bias, f"l{layer_id}_b{bias},", tensor_board_writer)
+                log(m, bias_tensor, fitting_relu, fitting_mhem, new_bias, f"l{layer_id}_b{bias},", tensor_board_writer)
         print(f"batch {batch_idx} / layer {layer_id}")
 
 tensor_board_writer.flush()

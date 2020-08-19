@@ -104,7 +104,7 @@ def calc_likelihoods(target: Tensor, fitting: Tensor) -> Tensor:
     target_covariances = gm.covariances(target)
     target_normal_amplitudes = gm.normal_amplitudes(target_covariances)
 
-    # fitting weights are not used here, only in mhem_algorithm
+    # fitting weights are not used here, only in mhem_algorithm()
     fitting_positions = gm.positions(fitting)
     fitting_covariances = gm.covariances(fitting)
     fitting_normal_amplitudes = gm.normal_amplitudes(fitting_covariances)
