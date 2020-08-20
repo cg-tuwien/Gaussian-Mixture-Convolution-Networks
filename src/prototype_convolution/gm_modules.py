@@ -9,7 +9,7 @@ import gmc.mixture as gm
 import gmc.image_tools as madam_imagetools
 import gmc.mat_tools as mat_tools
 import prototype_convolution.config
-import prototype_convolution.fitting_em as fitting_em
+import prototype_convolution.fitting as fitting
 
 
 class GmConvolution(torch.nn.modules.Module):
@@ -182,9 +182,9 @@ class ReLUFitting(torch.nn.modules.Module):
 
     def forward(self, x_m: Tensor, x_constant: Tensor) -> typing.Tuple[Tensor, Tensor]:
         t0 = time.perf_counter()
-        y_m, y_constant = fitting_em.relu(x_m, x_constant)
+        y_m, y_constant = fitting.relu(x_m, x_constant)
         t1 = time.perf_counter()
-        y_m = fitting_em.mhem_algorithm(y_m, n_fitting_components=self.n_output_gaussians)
+        y_m = fitting.mhem_algorithm(y_m, n_fitting_components=self.n_output_gaussians)
         t2 = time.perf_counter()
 
         self.last_in = (x_m.detach(), x_constant.detach())

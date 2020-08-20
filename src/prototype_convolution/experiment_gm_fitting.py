@@ -9,7 +9,7 @@ from torch import Tensor
 import prototype_convolution.config as config
 import gmc.mixture as gm
 import prototype_convolution.fitting_net as fitting_net
-import prototype_convolution.fitting_em as fitting
+import prototype_convolution.fitting as fitting
 
 
 def log(target: Tensor, target_bias, fitting_relu: Tensor, fitting_mhem: Tensor, fitting_bias: Tensor, label: str, tensor_board_writer):
