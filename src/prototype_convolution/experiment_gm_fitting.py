@@ -9,7 +9,7 @@ from torch import Tensor
 import prototype_convolution.config as config
 import gmc.mixture as gm
 import prototype_convolution.fitting_net as fitting_net
-import prototype_convolution.fitting_em as fitting_em
+import prototype_convolution.fitting_em as fitting
 
 
 def log(target: Tensor, target_bias, fitting_relu: Tensor, fitting_mhem: Tensor, fitting_bias: Tensor, label: str, tensor_board_writer):
@@ -88,7 +88,7 @@ for batch_idx in range(0, 1):  # was 10
 
             # m.requires_grad = True
             start = time.perf_counter()
-            fitting_relu, new_bias = fitting_em.relu(m, bias_tensor)
+            fitting_relu, new_bias = fitting.relu(m, bias_tensor)
             add_measurement(f"time_relu[layer{layer_id}]", time.perf_counter() - start)
             eval_relu = gm.evaluate(fitting_relu, eval_xes) + new_bias.unsqueeze(-1)
             add_measurement(f"mse_relu [layer{layer_id}]", ((eval_relu - eval_gt)**2).mean().item())
@@ -97,7 +97,7 @@ for batch_idx in range(0, 1):  # was 10
             # fitting.requires_grad = True
             # (gm.integrate(fitting)).sum().backward()
             start = time.perf_counter()
-            fitting_mhem = fitting_em.mhem_algorithm(fitting_relu, n_fitting_components=15, n_iterations=1)
+            fitting_mhem = fitting.mhem_algorithm(fitting_relu, n_fitting_components=15, n_iterations=1)
             add_measurement(f"time_mhem[layer{layer_id}]", time.perf_counter() - start)
             eval_mhem = gm.evaluate(fitting_mhem, eval_xes) + new_bias.unsqueeze(-1)
             add_measurement(f"mse_mhem_vs_relu [layer{layer_id}]", ((eval_mhem - eval_relu)**2).mean().item())

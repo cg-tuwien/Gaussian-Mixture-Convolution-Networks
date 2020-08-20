@@ -3,12 +3,8 @@ import typing
 import torch
 from torch import Tensor
 
-# import update_syspath
 import gmc.mixture as gm
 import gmc.mat_tools as mat_tools
-
-
-# from gmc.cpp.extensions.em_fitting.em_fitting import apply as em_fitting
 
 
 def relu(mixture: Tensor, constant: Tensor, n_iter: int = 1) -> typing.Tuple[Tensor, Tensor]:
@@ -22,61 +18,15 @@ def relu(mixture: Tensor, constant: Tensor, n_iter: int = 1) -> typing.Tuple[Ten
     b = gm.evaluate(mixture, positions) + constant.unsqueeze(-1)
     b = b.where(b > 0, torch.zeros(1, device=device)) - ret_const.unsqueeze(-1)
 
-    # inv_eps = 0.1
-    # w0 = weights.where((weights < 0) | (weights > inv_eps), torch.ones(1, device=device) * inv_eps)
-    # w0 = w0.where((weights > 0) | (weights < -inv_eps), - torch.ones(1, device=device) * inv_eps)
-    # w0inv = 1 / w0
-
-    # x0 = torch.ones_like(w0).where(weights + constant > 0, torch.zeros_like(w0).where(constant < 0, -constant / w0))  # should be the same, since ret_bias is already clamped to [0, inf[
-    # x = torch.ones_like(w0).where(weights + constant > 0, -ret_bias * w0inv)
     x = weights.where(weights + constant.unsqueeze(-1) > 0, -ret_const.unsqueeze(-1))
-    # sign = x.sign().where(x != 0.0, torch.ones_like(x))
-    # x = 0.99 * x + 0.05 * sign
     x = x.abs() + 0.05
-    # x = x.where(x > inv_eps, torch.ones_like(x) * inv_eps)
-    # x = gm.normal_amplitudes(covariances)
-    # alpha = 0
 
     for i in range(n_iter):
-        # jakobi (not working):
-        # new_mixture = gm.pack_mixture(x, positions, covariances)
-        # x = (1/(1 + alpha)) * (b - gm.evaluate(new_mixture, positions) - x)
-
-        # new_mixture = gm.pack_mixture(torch.ones_like(b), positions, covariances)
         x = x.abs()
-        # sign = x.sign().where(x != 0.0, torch.ones_like(x))
         new_mixture = gm.pack_mixture(x, positions, covariances)
         x = x * b / (gm.evaluate(new_mixture, positions) + 0.01)
 
-    # positive_weights = weights.where(weights > 0, torch.zeros(1, device=device))
-    # negative_m = gm.pack_mixture(negative_weights, positions, covariances)
-    # positive_m = gm.pack_mixture(positive_weights, positions, covariances)
-    # negative_eval = gm.evaluate(negative_m, positions) - constant.unsqueeze(-1)
-    # positive_eval = gm.evaluate(positive_m, positions)
-    # new_weights_factor = torch.max(torch.zeros(1, device=device),
-    #                                torch.ones(1, device=device) + (negative_eval - 0.0001) / (positive_eval + 0.0001))
-    # new_weights = new_weights_factor * positive_weights
-
-    # new_weights = x * weights
-
     return gm.pack_mixture(x, positions, covariances), ret_const
-
-
-def positive_mixture_to_gmm(mixture: Tensor) -> typing.Tuple[Tensor, Tensor]:
-    weights = gm.weights(mixture)
-    assert ((weights >= 0).all())
-    integrals = gm.integrate(mixture).view(gm.n_batch(mixture), gm.n_layers(mixture), 1)
-    integrals = integrals.where(integrals > 0.0001, 0.0001 * torch.ones_like(integrals))
-    assert not torch.any(torch.isnan(integrals))
-
-    if torch.any(integrals == 0):
-        print("dd")
-        assert False
-
-    assert not torch.any(torch.isnan(weights))
-    weights = weights / integrals
-    assert not torch.any(torch.isnan(weights))
-    return gm.pack_mixture(weights, gm.positions(mixture), gm.covariances(mixture)), integrals
 
 
 def mixture_to_double_gmm(mixture: Tensor) -> typing.Tuple[Tensor, Tensor, Tensor]:
@@ -171,24 +121,15 @@ def mhem_algorithm(mixture: Tensor, n_fitting_components: int, n_iterations: int
     assert gm.is_valid_mixture(target_double_gmm)
     for i in range(n_iterations):
         assert gm.is_valid_mixture(fitting_double_gmm)
-        # likelihoods: Tensor = em_fitting(target_inv, fitting_inv)
 
         target_weights = gm.weights(target_double_gmm).unsqueeze(3)
         fitting_weights = gm.weights(fitting_double_gmm).unsqueeze(2)
         sign_match = target_weights.sign() == fitting_weights.sign()
-        sign_positive = (target_weights.sign() == 1) & (fitting_weights.sign() == 1)
-        sign_negative = (target_weights.sign() == -1) & (fitting_weights.sign() == -1)
         likelihoods = calc_likelihoods(target_double_gmm.detach(), fitting_double_gmm.detach())
         KL_divergence = calc_KL_divergence(target_double_gmm.detach(), fitting_double_gmm.detach())
 
         likelihoods = likelihoods * (gm.weights(fitting_double_gmm).abs() / gm.normal_amplitudes(gm.covariances(fitting_double_gmm))).view(n_batch, n_layers, 1, n_fitting_components)
         likelihoods = likelihoods * (KL_divergence < 1) * sign_match
-        # likelihoods_positive = likelihoods * sign_positive
-        # likelihoods_negative = likelihoods * sign_negative
-        # likelihoods_positive_sum = likelihoods_positive.sum(3, keepdim=True)
-        # likelihoods_negative_sum = likelihoods_negative.sum(3, keepdim=True)
-        # responsibilities_positive = likelihoods_positive / likelihoods_positive_sum.where(likelihoods_positive_sum > 0.0000001, 0.0000001 * torch.ones_like(likelihoods_positive_sum))  # preiner Equation(8)
-        # responsibilities_negative = likelihoods_negative / likelihoods_negative_sum.where(likelihoods_negative_sum > 0.0000001, 0.0000001 * torch.ones_like(likelihoods_negative_sum))  # preiner Equation(8)
 
         likelihoods_sum = likelihoods.sum(3, keepdim=True)
         responsibilities = likelihoods / likelihoods_sum.where(likelihoods_sum > 0.0000001, 0.0000001 * torch.ones_like(likelihoods_sum))  # preiner Equation(8)
