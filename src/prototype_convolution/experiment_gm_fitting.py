@@ -59,13 +59,13 @@ def generate_random_sampling(m: Tensor, n: int) -> Tensor:
     return sampling
 
 
-for batch_idx in range(0, 1):  # was 10
+for batch_idx in range(0, 1):  # max 10
     start_time = time.perf_counter()
-    for layer_id in range(3):  # was 3
+    for layer_id in range(3):
         # for bias in [-1, -0.5, -0.1, -0.005, 0, 0.005, 0.1, 0.5, 1]:
         for bias in [-0.5, 0.0, 0.5]:
             m = gm.load(f"fitting_input/fitting_input_batch{batch_idx}_netlayer{layer_id}")[0]
-            # m = m[0:10, :, :, :]
+            # m = m[0:5, :, :, :]
             # m = torch.tensor([[[[1, -0.8, -0.8, 0.25, 0.04, 0.04, 0.05], [1, 0.8, 0.8, 0.05, -0.04, -0.04, 0.25]]]])
             m = m.cuda()
             # m.requires_grad = True
@@ -88,16 +88,15 @@ for batch_idx in range(0, 1):  # was 10
 
             # m.requires_grad = True
             start = time.perf_counter()
-            fitting_relu, new_bias = fitting.relu(m, bias_tensor)
-            fitting_mhem = fitting.mhem_algorithm(fitting_relu, n_fitting_components=15, n_iterations=1)
+            fitted_m, new_bias = fitting.fixed_point_and_mhem(m, bias_tensor, 15)
             add_measurement(f"time[layer{layer_id}]", time.perf_counter() - start)
 
-            eval_fit = gm.evaluate(fitting_mhem, eval_xes) + new_bias.unsqueeze(-1)
+            eval_fit = gm.evaluate(fitted_m, eval_xes) + new_bias.unsqueeze(-1)
             add_measurement(f"mse [layer{layer_id}]", ((eval_fit - eval_gt)**2).mean().item())
             add_measurement(f"mse [bias{bias}]", ((eval_fit - eval_gt)**2).mean().item())
 
             if batch_idx == 0 and bias in [-0.5, 0.0, 0.5]:
-                log(m, bias_tensor, fitting_relu, fitting_mhem, new_bias, f"l{layer_id}_b{bias},", tensor_board_writer)
+                log(m, bias_tensor, fitted_m, fitted_m, new_bias, f"l{layer_id}_b{bias},", tensor_board_writer)
         print(f"batch {batch_idx} / layer {layer_id}")
 
 tensor_board_writer.flush()
