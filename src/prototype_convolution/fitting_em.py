@@ -107,12 +107,15 @@ def mhem_algorithm(mixture: Tensor, n_fitting_components: int, n_iterations: int
     target_double_gmm, component_integrals, abs_integrals = mixture_to_double_gmm(target)
     # target_double_gmm, integrals = mixture_to_gmm(target)
 
-    _, sorted_indices = torch.sort(component_integrals.detach().abs(), descending=True)
-    #
-    # fitting_double_gmm = mat_tools.my_index_select(target, sorted_indices[:, :, :min(max(n_fitting_components*2, n_components // 4), n_components)])
-    # fitting_double_gmm = mat_tools.my_index_select(fitting_double_gmm, torch.randperm(fitting_double_gmm.shape[-2], device=device)[:n_fitting_components].view(1, 1, n_fitting_components))
+    # # original
+    # _, sorted_indices = torch.sort(component_integrals.detach().abs(), descending=True)
+    # fitting_double_gmm = mat_tools.my_index_select(target, sorted_indices[:, :, :n_fitting_components])
 
-    fitting_double_gmm = mat_tools.my_index_select(target, sorted_indices[:, :, :n_fitting_components])
+    # random sampling
+    _, sorted_indices = torch.sort(component_integrals.detach().abs(), descending=True)
+    fitting_double_gmm = mat_tools.my_index_select(target, sorted_indices[:, :, :min(max(n_fitting_components*2, n_components // 4), n_components)])
+    fitting_double_gmm = mat_tools.my_index_select(fitting_double_gmm, torch.randperm(fitting_double_gmm.shape[-2], device=device)[:n_fitting_components].view(1, 1, n_fitting_components))
+
     fitting_double_gmm, _, _ = mixture_to_double_gmm(fitting_double_gmm)
 
     # log(target_double_gmm, 0, tensor_board_writer, layer=layer)
