@@ -89,19 +89,12 @@ for batch_idx in range(0, 1):  # was 10
             # m.requires_grad = True
             start = time.perf_counter()
             fitting_relu, new_bias = fitting.relu(m, bias_tensor)
-            add_measurement(f"time_relu[layer{layer_id}]", time.perf_counter() - start)
-            eval_relu = gm.evaluate(fitting_relu, eval_xes) + new_bias.unsqueeze(-1)
-            add_measurement(f"mse_relu [layer{layer_id}]", ((eval_relu - eval_gt)**2).mean().item())
-            add_measurement(f"mse_relu [bias{bias}]", ((eval_relu - eval_gt)**2).mean().item())
-
-            # fitting.requires_grad = True
-            # (gm.integrate(fitting)).sum().backward()
-            start = time.perf_counter()
             fitting_mhem = fitting.mhem_algorithm(fitting_relu, n_fitting_components=15, n_iterations=1)
-            add_measurement(f"time_mhem[layer{layer_id}]", time.perf_counter() - start)
-            eval_mhem = gm.evaluate(fitting_mhem, eval_xes) + new_bias.unsqueeze(-1)
-            add_measurement(f"mse_mhem_vs_relu [layer{layer_id}]", ((eval_mhem - eval_relu)**2).mean().item())
-            add_measurement(f"mse_mhem_vs_relu [bias{bias}]", ((eval_mhem - eval_relu)**2).mean().item())
+            add_measurement(f"time[layer{layer_id}]", time.perf_counter() - start)
+
+            eval_fit = gm.evaluate(fitting_mhem, eval_xes) + new_bias.unsqueeze(-1)
+            add_measurement(f"mse [layer{layer_id}]", ((eval_fit - eval_gt)**2).mean().item())
+            add_measurement(f"mse [bias{bias}]", ((eval_fit - eval_gt)**2).mean().item())
 
             if batch_idx == 0 and bias in [-0.5, 0.0, 0.5]:
                 log(m, bias_tensor, fitting_relu, fitting_mhem, new_bias, f"l{layer_id}_b{bias},", tensor_board_writer)
@@ -112,7 +105,7 @@ print("============")
 
 printing_times = False
 for name, measurement_sum in sorted(measurements.items()):
-    if name.startswith("time_") and printing_times is False:
+    if name.startswith("time") and printing_times is False:
         print("------------")
         printing_times = True
     if printing_times is False:
