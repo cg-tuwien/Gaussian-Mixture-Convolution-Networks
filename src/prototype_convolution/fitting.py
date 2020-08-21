@@ -7,12 +7,29 @@ import gmc.mixture as gm
 import gmc.mat_tools as mat_tools
 
 
-def fixed_point_and_mhem(mixture: Tensor, constant: Tensor, n_components: int) -> typing.Tuple[Tensor, Tensor]:
-    fitting = initial_approx_to_relu(mixture, constant)
-    fitting, ret_const = fixed_point_iteration_to_relu(mixture, constant, fitting)
-    reduced_fitting = representative_select_for_relu(fitting, ret_const, n_components)
-    fitting = mhem_fit_a_to_b(reduced_fitting, fitting)
-    return fitting, ret_const
+def fixed_point_and_mhem(mixture: Tensor, constant: Tensor, n_components: int) -> typing.Tuple[Tensor, Tensor, typing.List[Tensor]]:
+    initial_fitting = initial_approx_to_relu(mixture, constant)
+    fp_fitting, ret_const = fixed_point_iteration_to_relu(mixture, constant, initial_fitting)
+    reduced_fitting = representative_select_for_relu(fp_fitting, ret_const, n_components)
+    fitting = mhem_fit_a_to_b(reduced_fitting, fp_fitting)
+    return fitting, ret_const, [initial_fitting, fp_fitting, reduced_fitting]
+
+
+def fixed_point_only(mixture: Tensor, constant: Tensor, n_components: int) -> typing.Tuple[Tensor, Tensor, typing.List[Tensor]]:
+    initial_fitting = initial_approx_to_relu(mixture, constant)
+    reduced_fitting = representative_select_for_relu(initial_fitting, constant, n_components)
+    fp_fitting, ret_const = fixed_point_iteration_to_relu(mixture, constant, reduced_fitting)
+    # fitting = mhem_fit_a_to_b(reduced_fitting, fitting)
+    return fp_fitting, ret_const, [initial_fitting, reduced_fitting]
+
+
+def mhem_and_fixed_point(mixture: Tensor, constant: Tensor, n_components: int) -> typing.Tuple[Tensor, Tensor, typing.List[Tensor]]:
+    initial_fitting = initial_approx_to_relu(mixture, constant)
+    reduced_fitting = representative_select_for_relu(initial_fitting, constant, n_components)
+    mhem_fitting = mhem_fit_a_to_b(reduced_fitting, initial_fitting)
+    fp_fitting, ret_const = fixed_point_iteration_to_relu(mixture, constant, mhem_fitting)
+    return fp_fitting, ret_const, [initial_fitting, reduced_fitting, mhem_fitting]
+
 
 def initial_approx_to_relu(mixture: Tensor, constant: Tensor) -> Tensor:
     device = mixture.device
