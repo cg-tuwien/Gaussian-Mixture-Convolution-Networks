@@ -181,10 +181,13 @@ class ReLUFitting(torch.nn.modules.Module):
         self.last_time_mhem = None
 
     def forward(self, x_m: Tensor, x_constant: Tensor) -> typing.Tuple[Tensor, Tensor]:
+
         t0 = time.perf_counter()
-        y_m, y_constant = fitting.fixed_point_iteration_to_relu(x_m, x_constant, x_m)
+        initial_fitting = fitting.initial_approx_to_relu(x_m, x_constant)
+        fp_fitting, y_constant = fitting.fixed_point_iteration_to_relu(x_m, x_constant, initial_fitting)
         t1 = time.perf_counter()
-        y_m = fitting.mhem_reduce(y_m, n_fitting_components=self.n_output_gaussians)
+        reduced_fitting = fitting.representative_select_for_relu(fp_fitting, y_constant, self.n_output_gaussians)
+        y_m = fitting.mhem_fit_a_to_b(reduced_fitting, fp_fitting)
         t2 = time.perf_counter()
 
         self.last_in = (x_m.detach(), x_constant.detach())
