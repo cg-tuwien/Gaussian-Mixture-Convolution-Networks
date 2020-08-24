@@ -1,27 +1,25 @@
-#include <torch/extension.h>
-
-#include <vector>
-#include <torch/extension.h>
-
 #include <vector>
 #include <algorithm>
 
-
-#include "common.h"
+#include <torch/extension.h>
+#include <c10/cuda/CUDAGuard.h>
 
 // I guess(!) we can't use a single implementatino file because the cu file doesn't like pybind11
 // I'm really guessing here, didn't test anything, just copied the example from the docs.
+// Ye, and I believe that the cuda compiler also doesn't like <torch/extension.h> (depending on the version of pytorch / pybind / cuda / gcc)
 // CUDA forward declarations
 torch::Tensor cuda_evaluate_inversed_forward(torch::Tensor mixture, torch::Tensor xes);
 std::vector<torch::Tensor> cuda_evaluate_inversed_backward(torch::Tensor grad_output, torch::Tensor mixture, torch::Tensor xes, bool requires_grad_mixture, bool requires_grad_xes);
 
 
 torch::Tensor evaluate_inversed_forward(torch::Tensor mixture, torch::Tensor xes) {
+    const at::cuda::OptionalCUDAGuard device_guard(device_of(mixture));
     return cuda_evaluate_inversed_forward(mixture, xes);
 }
 
 
 std::vector<torch::Tensor> evaluate_inversed_backward(torch::Tensor grad_output, torch::Tensor mixture, torch::Tensor xes, bool requires_grad_mixture, bool requires_grad_xes) {
+    const at::cuda::OptionalCUDAGuard device_guard(device_of(mixture));
     return cuda_evaluate_inversed_backward(grad_output, mixture, xes, requires_grad_mixture, requires_grad_xes);
 }
 
