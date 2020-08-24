@@ -9,7 +9,7 @@ import gmc.mixture as gm
 import gmc.image_tools as madam_imagetools
 import gmc.mat_tools as mat_tools
 import prototype_convolution.config
-import prototype_convolution.fitting as fitting
+import prototype_convolution.fitting
 
 
 class GmConvolution(torch.nn.modules.Module):
@@ -152,16 +152,6 @@ class GmConvolution(torch.nn.modules.Module):
 
         return torch.cat(out_mixtures, dim=1), torch.cat(out_constants, dim=1)
 
-#
-# def generate_default_fitting_module(n_input_gaussians: int, n_output_gaussians: int) -> fitting_net.Net:
-#     assert n_output_gaussians > 0
-#     n_dimensions = 2
-#     return fitting_net.PointNetWithParallelMLPs([64, 128, 256, 512, 512, n_output_gaussians * 25],
-#                                                 [256, 256, 256, 256, 256, 128],
-#                                                 n_output_gaussians=n_output_gaussians,
-#                                                 n_dims=n_dimensions,
-#                                                 aggregations=1, batch_norm=True)
-
 
 class ReLUFitting(torch.nn.modules.Module):
     def __init__(self, config: prototype_convolution.config,  layer_id: str, n_layers: int, n_output_gaussians: int, n_input_gaussians: int = -1):
@@ -177,23 +167,12 @@ class ReLUFitting(torch.nn.modules.Module):
 
         self.last_in = None
         self.last_out = None
-        self.last_time_relu = None
-        self.last_time_mhem = None
 
     def forward(self, x_m: Tensor, x_constant: Tensor) -> typing.Tuple[Tensor, Tensor]:
-
-        t0 = time.perf_counter()
-        initial_fitting = fitting.initial_approx_to_relu(x_m, x_constant)
-        fp_fitting, y_constant = fitting.fixed_point_iteration_to_relu(x_m, x_constant, initial_fitting)
-        t1 = time.perf_counter()
-        reduced_fitting = fitting.representative_select_for_relu(fp_fitting, y_constant, self.n_output_gaussians)
-        y_m = fitting.mhem_fit_a_to_b(reduced_fitting, fp_fitting)
-        t2 = time.perf_counter()
+        y_m, y_constant, _ = prototype_convolution.fitting.fit(x_m, x_constant, self.n_output_gaussians, self.config.fitting_config)
 
         self.last_in = (x_m.detach(), x_constant.detach())
         self.last_out = (y_m.detach(), y_constant.detach())
-        self.last_time_relu = t1 - t0
-        self.last_time_mhem = t2 - t1
         return y_m, y_constant
 
     def debug_render(self, position_range: typing.Tuple[float, float, float, float] = None, image_size: int = 80, clamp: typing.Tuple[float, float] = (-1.0, 1.0)):

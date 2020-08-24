@@ -1,6 +1,8 @@
 import pathlib
 import os
 
+import prototype_convolution.fitting
+
 source_dir = os.path.dirname(__file__)
 data_base_path = pathlib.Path(f"{source_dir}/../../data")
 num_dataloader_workers = 0
@@ -32,3 +34,6 @@ BIAS_TYPE_NONE = 0
 BIAS_TYPE_NORMAL = 1
 BIAS_TYPE_NEGATIVE_SOFTPLUS = 2
 bias_type = BIAS_TYPE_NORMAL
+
+fitting_method = prototype_convolution.fitting.fixed_point_and_mhem
+fitting_config = prototype_convolution.fitting.Config()

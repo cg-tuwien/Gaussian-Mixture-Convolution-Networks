@@ -8,30 +8,49 @@ import gmc.mat_tools as mat_tools
 
 
 class Config:
-    def __init__(self, n_iterations: int = 1, KL_divergence_threshold: float = 1.5):
+    REPRESENTATIVE_SELECT_MODE_TOP_INTEGRALS: int = 0
+    REPRESENTATIVE_SELECT_MODE_RANDOM_TOP: int = 1
+
+    def __init__(self, n_iterations: int = 1, KL_divergence_threshold: float = 1.5, representative_select_mode: int = REPRESENTATIVE_SELECT_MODE_TOP_INTEGRALS):
         self.n_iterations = n_iterations
         self.KL_divergence_threshold = KL_divergence_threshold
+        self.representative_select_mode = representative_select_mode
 
 
 def fixed_point_and_mhem(mixture: Tensor, constant: Tensor, n_components: int, config: Config = Config()) -> typing.Tuple[Tensor, Tensor, typing.List[Tensor]]:
+    if n_components < 0:
+        initial_fitting = initial_approx_to_relu(mixture, constant)
+        fitting, ret_const = fixed_point_iteration_to_relu(mixture, constant, initial_fitting)
+        return fitting, ret_const, [initial_fitting]
+
     initial_fitting = initial_approx_to_relu(mixture, constant)
     fp_fitting, ret_const = fixed_point_iteration_to_relu(mixture, constant, initial_fitting)
-    reduced_fitting = representative_select_for_relu(fp_fitting.detach(), ret_const.detach(), n_components)
+    reduced_fitting = representative_select_for_relu(fp_fitting.detach(), n_components, config)
     fitting = mhem_fit_a_to_b(reduced_fitting, fp_fitting, config)
     return fitting, ret_const, [initial_fitting, fp_fitting, reduced_fitting]
 
 
 def fixed_point_only(mixture: Tensor, constant: Tensor, n_components: int, config: Config = Config()) -> typing.Tuple[Tensor, Tensor, typing.List[Tensor]]:
+    if n_components < 0:
+        initial_fitting = initial_approx_to_relu(mixture, constant)
+        fitting, ret_const = fixed_point_iteration_to_relu(mixture, constant, initial_fitting)
+        return fitting, ret_const, [initial_fitting]
+
     initial_fitting = initial_approx_to_relu(mixture, constant)
-    reduced_fitting = representative_select_for_relu(initial_fitting, constant, n_components)
+    reduced_fitting = representative_select_for_relu(initial_fitting, n_components, config)
     fp_fitting, ret_const = fixed_point_iteration_to_relu(mixture, constant, reduced_fitting)
     # fitting = mhem_fit_a_to_b(reduced_fitting, fitting)
     return fp_fitting, ret_const, [initial_fitting, reduced_fitting]
 
 
 def mhem_and_fixed_point(mixture: Tensor, constant: Tensor, n_components: int, config: Config = Config()) -> typing.Tuple[Tensor, Tensor, typing.List[Tensor]]:
-    initial_fitting = initial_approx_to_relu(mixture, constant)
-    reduced_fitting = representative_select_for_relu(initial_fitting, constant, n_components)
+    if n_components < 0:
+        initial_fitting = initial_approx_to_relu(mixture, constant)
+        fitting, ret_const = fixed_point_iteration_to_relu(mixture, constant, initial_fitting)
+        return fitting, ret_const, [initial_fitting]
+
+    initial_fitting = initial_approx_to_relu(mixture.detach(), constant.detach())
+    reduced_fitting = representative_select_for_relu(initial_fitting, n_components, config)
     mhem_fitting = mhem_fit_a_to_b(reduced_fitting, initial_fitting, config)
     fp_fitting, ret_const = fixed_point_iteration_to_relu(mixture, constant, mhem_fitting)
     return fp_fitting, ret_const, [initial_fitting, reduced_fitting, mhem_fitting]
@@ -136,21 +155,25 @@ def calc_KL_divergence(target: Tensor, fitting: Tensor) -> Tensor:
     return KL_divergence
 
 
-def representative_select_for_relu(mixture: Tensor, constant: Tensor, n_components: int) -> Tensor:
-    mixture = initial_approx_to_relu(mixture, constant)
-    component_integrals = gm.integrate_components(mixture)
+def representative_select_for_relu(mixture: Tensor, n_components: int, config: Config = Config()) -> Tensor:
+    assert n_components > 0
+    component_integrals = gm.integrate_components(mixture.detach()).abs()
 
     n_original_components = gm.n_components(mixture)
     device = mixture.device
 
-    # original
-    _, sorted_indices = torch.sort(component_integrals.detach().abs(), descending=True)
-    selection_mixture = mat_tools.my_index_select(mixture, sorted_indices[:, :, :n_components])
+    if config.representative_select_mode == config.REPRESENTATIVE_SELECT_MODE_TOP_INTEGRALS:
+        # original
+        _, sorted_indices = torch.sort(component_integrals, descending=True)
+        selection_mixture = mat_tools.my_index_select(mixture, sorted_indices[:, :, :n_components])
+    elif config.representative_select_mode == config.REPRESENTATIVE_SELECT_MODE_RANDOM_TOP:
+        # random sampling
+        _, sorted_indices = torch.sort(component_integrals, descending=True)
+        selection_mixture = mat_tools.my_index_select(mixture, sorted_indices[:, :, :min(max(n_components*2, n_original_components // 4), n_original_components)])
+        selection_mixture = mat_tools.my_index_select(selection_mixture, torch.randperm(selection_mixture.shape[-2], device=device)[:n_components].view(1, 1, n_components))
+    else:
+        assert False
 
-    # # random sampling
-    # _, sorted_indices = torch.sort(component_integrals.detach().abs(), descending=True)
-    # selection_mixture = mat_tools.my_index_select(mixture, sorted_indices[:, :, :min(max(n_components*2, n_original_components // 4), n_original_components)])
-    # selection_mixture = mat_tools.my_index_select(selection_mixture, torch.randperm(selection_mixture.shape[-2], device=device)[:n_components].view(1, 1, n_components))
     return selection_mixture
 
 

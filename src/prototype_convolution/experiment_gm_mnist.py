@@ -104,9 +104,6 @@ def train(args, model: experiment_gm_mnist_model.Net, device: torch.device, trai
             tensor_board_writer.add_scalar("07.3 model layer 3 min(bias)", model.biases[2].min().item(), step)
 
             # tensor_board_writer.add_scalar("04. mnist training regularisation loss", regularisation_loss.item(), step)
-            for i, relu in enumerate(model.relus):
-                tensor_board_writer.add_scalar(f"05.1 model layer {i} relu relu time", relu.last_time_relu, step)
-                tensor_board_writer.add_scalar(f"05.2 model layer {i} relu mhem time", relu.last_time_mhem, step)
 
             for name, timing in model.timings.items():
                 tensor_board_writer.add_scalar(f"06. {name} time", timing, step)
