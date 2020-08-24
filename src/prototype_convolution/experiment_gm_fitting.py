@@ -68,8 +68,8 @@ def generate_random_sampling(m: Tensor, n: int) -> Tensor:
 
 for batch_idx in range(0, 1):  # max 10
     start_time = time.perf_counter()
-    # for kl_thresh in [0.6, 0.8, 1.0, 1.2, 1.4, 1.6]:
-    for kl_thresh in [1.8, 2.0, 2.2]:
+    # for the next experiment, make an numpy array, write into it and visualise directly..
+    for kl_thresh in [0.6, 0.8, 1.0, 1.2, 1.4, 1.6, 1.8, 2.0, 2.2]:
         for n_fitted_c in [6, 8, 10, 15, 20, 24, 32, 48]:
             print(f"========= kl_thresh: {kl_thresh}, n_fitted_c:{n_fitted_c} =========")
             measurements = dict()

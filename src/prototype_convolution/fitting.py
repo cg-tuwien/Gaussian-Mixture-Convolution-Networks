@@ -16,7 +16,7 @@ class Config:
 def fixed_point_and_mhem(mixture: Tensor, constant: Tensor, n_components: int, config: Config = Config()) -> typing.Tuple[Tensor, Tensor, typing.List[Tensor]]:
     initial_fitting = initial_approx_to_relu(mixture, constant)
     fp_fitting, ret_const = fixed_point_iteration_to_relu(mixture, constant, initial_fitting)
-    reduced_fitting = representative_select_for_relu(fp_fitting, ret_const, n_components)
+    reduced_fitting = representative_select_for_relu(fp_fitting.detach(), ret_const.detach(), n_components)
     fitting = mhem_fit_a_to_b(reduced_fitting, fp_fitting, config)
     return fitting, ret_const, [initial_fitting, fp_fitting, reduced_fitting]
 

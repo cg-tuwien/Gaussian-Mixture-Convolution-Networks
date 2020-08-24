@@ -26,8 +26,8 @@ gmcn_config.bias_type = gmcn_config.BIAS_TYPE_NORMAL
 gmcn_config.bn_constant_computation = gmcn_config.BN_CONSTANT_COMPUTATION_ZERO
 gmcn_config.bn_mean_over_layers = False
 
-experiment_gm_mnist.experiment(device=device, n_epochs=100, desc_string="M3_lrnAll", kernel_learning_rate=0.001, learn_covariances_after=2,
-                               learn_positions_after=2, log_interval=1000, gmcn_config=gmcn_config)
+experiment_gm_mnist.experiment(device=device, n_epochs=100, desc_string="M3_biasYes_bnCCzero_rndFitting_detachedInitM_fixed_klthr1.5", kernel_learning_rate=0.001, learn_covariances_after=100,
+                               learn_positions_after=100, log_interval=1000, gmcn_config=gmcn_config)
 
 # gmcn_config.bias_type = gmcn_config.BIAS_TYPE_NONE
 # gmcn_config.bn_constant_computation = gmcn_config.BN_CONSTANT_COMPUTATION_INTEGRAL
