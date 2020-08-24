@@ -68,53 +68,60 @@ def generate_random_sampling(m: Tensor, n: int) -> Tensor:
 
 for batch_idx in range(0, 1):  # max 10
     start_time = time.perf_counter()
-    for layer_id in range(3):
-        # for bias in [-1, -0.5, -0.1, -0.005, 0, 0.005, 0.1, 0.5, 1]:
-        for bias in [-0.5, 0.0, 0.5]:
-            m = gm.load(f"fitting_input/fitting_input_batch{batch_idx}_netlayer{layer_id}")[0]
-            m = m[0:5, :, :, :]
-            # m = torch.tensor([[[[1, -0.8, -0.8, 0.25, 0.04, 0.04, 0.05], [1, 0.8, 0.8, 0.05, -0.04, -0.04, 0.25]]]])
-            m = m.cuda()
-            # m.requires_grad = True
-            device = m.device
-            n_batch = gm.n_batch(m)
-            n_layers = gm.n_layers(m)
-            n_components = gm.n_components(m)
-            m, _, _ = gm.normalise(m, torch.zeros([1, n_layers], device=device))
-            # m.requires_grad = True
-            # sorted_indices = torch.argsort(gm.weights(m.detach()))
-            # sorted_m = mat_tools.my_index_select(m, sorted_indices)
-            # n_negative_m = (gm.weights(m).detach() <= 0).sum(-1)
-            # negative_m = sorted_m[:, :, :, :n_negative_m]
-            # positive_m = sorted_m[:, :, :, n_negative_m:]
+    # for kl_thresh in [0.6, 0.8, 1.0, 1.2, 1.4, 1.6]:
+    for kl_thresh in [1.8, 2.0, 2.2]:
+        for n_fitted_c in [6, 8, 10, 15, 20, 24, 32, 48]:
+            print(f"========= kl_thresh: {kl_thresh}, n_fitted_c:{n_fitted_c} =========")
+            measurements = dict()
+            measurements_n = dict()
+            config = fitting.Config(KL_divergence_threshold=kl_thresh)
+            for layer_id in range(3):
+                # for bias in [-1, -0.5, -0.1, -0.005, 0, 0.005, 0.1, 0.5, 1]:
+                for bias in [-0.5, 0.0, 0.5]:
+                    m = gm.load(f"fitting_input/fitting_input_batch{batch_idx}_netlayer{layer_id}")[0]
+                    m = m[0:20, :, :, :]
+                    # m = torch.tensor([[[[1, -0.8, -0.8, 0.25, 0.04, 0.04, 0.05], [1, 0.8, 0.8, 0.05, -0.04, -0.04, 0.25]]]])
+                    m = m.cuda()
+                    # m.requires_grad = True
+                    device = m.device
+                    n_batch = gm.n_batch(m)
+                    n_layers = gm.n_layers(m)
+                    n_components = gm.n_components(m)
+                    m, _, _ = gm.normalise(m, torch.zeros([1, n_layers], device=device))
+                    # m.requires_grad = True
+                    # sorted_indices = torch.argsort(gm.weights(m.detach()))
+                    # sorted_m = mat_tools.my_index_select(m, sorted_indices)
+                    # n_negative_m = (gm.weights(m).detach() <= 0).sum(-1)
+                    # negative_m = sorted_m[:, :, :, :n_negative_m]
+                    # positive_m = sorted_m[:, :, :, n_negative_m:]
 
-            bias_tensor = torch.zeros([n_batch, n_layers], device=device, requires_grad=False) + bias
+                    bias_tensor = torch.zeros([n_batch, n_layers], device=device, requires_grad=False) + bias
 
-            eval_xes = generate_random_sampling(m, 5000)
-            eval_gt = gm.evaluate_with_activation_fun(m, bias_tensor, eval_xes)
+                    eval_xes = generate_random_sampling(m, 5000)
+                    eval_gt = gm.evaluate_with_activation_fun(m, bias_tensor, eval_xes)
 
-            # m.requires_grad = True
-            start = time.perf_counter()
-            fitted_m, new_bias, fitting_steps = fitting.fixed_point_and_mhem(m, bias_tensor, N_FITTED_GAUSSIANS)
-            add_measurement(f"time[layer{layer_id}]", time.perf_counter() - start)
+                    # m.requires_grad = True
+                    start = time.perf_counter()
+                    fitted_m, new_bias, fitting_steps = fitting.fixed_point_and_mhem(m, bias_tensor, n_fitted_c, config)
+                    # add_measurement(f"time[layer{layer_id}]", time.perf_counter() - start)
 
-            eval_fit = gm.evaluate(fitted_m, eval_xes) + new_bias.unsqueeze(-1)
-            add_measurement(f"mse [layer{layer_id}]", ((eval_fit - eval_gt)**2).mean().item())
-            add_measurement(f"mse [bias{bias}]", ((eval_fit - eval_gt)**2).mean().item())
+                    eval_fit = gm.evaluate(fitted_m, eval_xes) + new_bias.unsqueeze(-1)
+                    add_measurement(f"mse [layer{layer_id}]", ((eval_fit - eval_gt)**2).mean().item())
+                    add_measurement(f"mse [bias{bias}]", ((eval_fit - eval_gt)**2).mean().item())
 
-            if batch_idx == 0 and bias in [-0.5, 0.0, 0.5]:
-                log(m, bias_tensor, fitting_steps, fitted_m, new_bias, f"l{layer_id}_b{bias},", tensor_board_writer)
-        print(f"batch {batch_idx} / layer {layer_id}")
+                    if batch_idx == 0 and bias in [-0.5, 0.0, 0.5]:
+                        log(m, bias_tensor, fitting_steps, fitted_m, new_bias, f"l{layer_id}_b{bias},", tensor_board_writer)
+                # print(f"batch {batch_idx} / layer {layer_id}")
 
-tensor_board_writer.flush()
-print("============")
+            tensor_board_writer.flush()
+            # print("=========")
 
-printing_times = False
-for name, measurement_sum in sorted(measurements.items()):
-    if name.startswith("time") and printing_times is False:
-        print("------------")
-        printing_times = True
-    if printing_times is False:
-        print(f"r{name}: {math.sqrt(measurement_sum / measurements_n[name])}")
-    else:
-        print(f"{name}: {measurement_sum/measurements_n[name]}")
+            printing_times = False
+            for name, measurement_sum in sorted(measurements.items()):
+                if name.startswith("time") and printing_times is False:
+                    print("------------")
+                    printing_times = True
+                if printing_times is False:
+                    print(f"r{name}: {math.sqrt(measurement_sum / measurements_n[name])}")
+                else:
+                    print(f"{name}: {measurement_sum/measurements_n[name]}")

@@ -7,15 +7,21 @@ import gmc.mixture as gm
 import gmc.mat_tools as mat_tools
 
 
-def fixed_point_and_mhem(mixture: Tensor, constant: Tensor, n_components: int) -> typing.Tuple[Tensor, Tensor, typing.List[Tensor]]:
+class Config:
+    def __init__(self, n_iterations: int = 1, KL_divergence_threshold: float = 1.5):
+        self.n_iterations = n_iterations
+        self.KL_divergence_threshold = KL_divergence_threshold
+
+
+def fixed_point_and_mhem(mixture: Tensor, constant: Tensor, n_components: int, config: Config = Config()) -> typing.Tuple[Tensor, Tensor, typing.List[Tensor]]:
     initial_fitting = initial_approx_to_relu(mixture, constant)
     fp_fitting, ret_const = fixed_point_iteration_to_relu(mixture, constant, initial_fitting)
     reduced_fitting = representative_select_for_relu(fp_fitting, ret_const, n_components)
-    fitting = mhem_fit_a_to_b(reduced_fitting, fp_fitting)
+    fitting = mhem_fit_a_to_b(reduced_fitting, fp_fitting, config)
     return fitting, ret_const, [initial_fitting, fp_fitting, reduced_fitting]
 
 
-def fixed_point_only(mixture: Tensor, constant: Tensor, n_components: int) -> typing.Tuple[Tensor, Tensor, typing.List[Tensor]]:
+def fixed_point_only(mixture: Tensor, constant: Tensor, n_components: int, config: Config = Config()) -> typing.Tuple[Tensor, Tensor, typing.List[Tensor]]:
     initial_fitting = initial_approx_to_relu(mixture, constant)
     reduced_fitting = representative_select_for_relu(initial_fitting, constant, n_components)
     fp_fitting, ret_const = fixed_point_iteration_to_relu(mixture, constant, reduced_fitting)
@@ -23,10 +29,10 @@ def fixed_point_only(mixture: Tensor, constant: Tensor, n_components: int) -> ty
     return fp_fitting, ret_const, [initial_fitting, reduced_fitting]
 
 
-def mhem_and_fixed_point(mixture: Tensor, constant: Tensor, n_components: int) -> typing.Tuple[Tensor, Tensor, typing.List[Tensor]]:
+def mhem_and_fixed_point(mixture: Tensor, constant: Tensor, n_components: int, config: Config = Config()) -> typing.Tuple[Tensor, Tensor, typing.List[Tensor]]:
     initial_fitting = initial_approx_to_relu(mixture, constant)
     reduced_fitting = representative_select_for_relu(initial_fitting, constant, n_components)
-    mhem_fitting = mhem_fit_a_to_b(reduced_fitting, initial_fitting)
+    mhem_fitting = mhem_fit_a_to_b(reduced_fitting, initial_fitting, config)
     fp_fitting, ret_const = fixed_point_iteration_to_relu(mixture, constant, mhem_fitting)
     return fp_fitting, ret_const, [initial_fitting, reduced_fitting, mhem_fitting]
 
@@ -125,7 +131,7 @@ def calc_KL_divergence(target: Tensor, fitting: Tensor) -> Tensor:
     mahalanobis_distance = torch.sqrt(p_diff.unsqueeze(-2) @ fitting_covariances_inversed @ p_diff.unsqueeze(-1)).squeeze(dim=-1).squeeze(dim=-1)
     trace = mat_tools.batched_trace(fitting_covariances_inversed @ target_covariances)
     logarithm = torch.log(target_covariances.det() / fitting_covariances.det())
-    KL_divergence = 0.5 * (mahalanobis_distance + trace - 3 - logarithm)
+    KL_divergence = 0.5 * (mahalanobis_distance + trace - gm.n_dimensions(target) - logarithm)
 
     return KL_divergence
 
@@ -137,18 +143,18 @@ def representative_select_for_relu(mixture: Tensor, constant: Tensor, n_componen
     n_original_components = gm.n_components(mixture)
     device = mixture.device
 
-    # # original
-    # _, sorted_indices = torch.sort(component_integrals.detach().abs(), descending=True)
-    # fitting_double_gmm = mat_tools.my_index_select(target, sorted_indices[:, :, :n_fitting_components])
-
-    # random sampling
+    # original
     _, sorted_indices = torch.sort(component_integrals.detach().abs(), descending=True)
-    selection_mixture = mat_tools.my_index_select(mixture, sorted_indices[:, :, :min(max(n_components*2, n_original_components // 4), n_original_components)])
-    selection_mixture = mat_tools.my_index_select(selection_mixture, torch.randperm(selection_mixture.shape[-2], device=device)[:n_components].view(1, 1, n_components))
+    selection_mixture = mat_tools.my_index_select(mixture, sorted_indices[:, :, :n_components])
+
+    # # random sampling
+    # _, sorted_indices = torch.sort(component_integrals.detach().abs(), descending=True)
+    # selection_mixture = mat_tools.my_index_select(mixture, sorted_indices[:, :, :min(max(n_components*2, n_original_components // 4), n_original_components)])
+    # selection_mixture = mat_tools.my_index_select(selection_mixture, torch.randperm(selection_mixture.shape[-2], device=device)[:n_components].view(1, 1, n_components))
     return selection_mixture
 
 
-def mhem_fit_a_to_b(fitting_mixture: Tensor, target_mixture: Tensor, n_iterations: int = 1) -> Tensor:
+def mhem_fit_a_to_b(fitting_mixture: Tensor, target_mixture: Tensor, config: Config = Config()) -> Tensor:
     assert gm.is_valid_mixture(fitting_mixture)
     assert gm.is_valid_mixture(target_mixture)
     assert gm.n_batch(target_mixture) == gm.n_batch(fitting_mixture)
@@ -172,7 +178,7 @@ def mhem_fit_a_to_b(fitting_mixture: Tensor, target_mixture: Tensor, n_iteration
     # log(fitting_double_gmm, 1, tensor_board_writer, layer=layer)
 
     assert gm.is_valid_mixture(target_double_gmm)
-    for i in range(n_iterations):
+    for i in range(config.n_iterations):
         assert gm.is_valid_mixture(fitting_double_gmm)
 
         target_weights = gm.weights(target_double_gmm).unsqueeze(3)
@@ -182,7 +188,7 @@ def mhem_fit_a_to_b(fitting_mixture: Tensor, target_mixture: Tensor, n_iteration
         KL_divergence = calc_KL_divergence(target_double_gmm.detach(), fitting_double_gmm.detach())
 
         likelihoods = likelihoods * (gm.weights(fitting_double_gmm).abs() / gm.normal_amplitudes(gm.covariances(fitting_double_gmm))).view(n_batch, n_layers, 1, n_components_fitting)
-        likelihoods = likelihoods * (KL_divergence < 1) * sign_match
+        likelihoods = likelihoods * (KL_divergence < config.KL_divergence_threshold) * sign_match
 
         likelihoods_sum = likelihoods.sum(3, keepdim=True)
         responsibilities = likelihoods / likelihoods_sum.where(likelihoods_sum > 0.0000001, 0.0000001 * torch.ones_like(likelihoods_sum))  # preiner Equation(8)
