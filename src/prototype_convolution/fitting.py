@@ -242,10 +242,26 @@ def mhem_fit_a_to_b(fitting_mixture: Tensor, target_mixture: Tensor, config: Con
         normal_amplitudes = gm.normal_amplitudes(newCovariances)
         fitting_double_gmm = gm.pack_mixture(newWeights.contiguous() * normal_amplitudes * gm.weights(fitting_double_gmm).sign(), newPositions.contiguous(), newCovariances.contiguous())
 
-
     # the following line would have the following effect: scale the fitting result to match the integral of the input exactly. that is bad in case many weak Gs are killed and the remaining weak G is blown up.
     # fitting_double_gmm, _, _, _ = mixture_to_double_gmm(fitting_double_gmm)
 
     newWeights = gm.weights(fitting_double_gmm) * abs_integrals
     fitting = gm.pack_mixture(newWeights, gm.positions(fitting_double_gmm), gm.covariances(fitting_double_gmm))
     return fitting
+
+
+def generate_random_sampling(m: Tensor, n: int) -> Tensor:
+    covariance_adjustment = torch.sqrt(torch.diagonal(gm.covariances(m.detach()), dim1=-2, dim2=-1))
+    position_max, _ = torch.max(gm.positions(m.detach()) + covariance_adjustment, dim=2, keepdim=True)
+    position_min, _ = torch.min(gm.positions(m.detach()) - covariance_adjustment, dim=2, keepdim=True)
+    sampling = torch.rand(gm.n_batch(m), gm.n_layers(m), n, gm.n_dimensions(m), device=m.device)
+    sampling *= position_max - position_min
+    sampling += position_min
+    return sampling
+
+
+def mse(target_mixture: Tensor, target_constant: Tensor, fitting_mixture: Tensor, fitting_constant: Tensor, n_test_points: int = 500) -> float:
+    xes = generate_random_sampling(target_mixture, n_test_points)
+    ground_truth = gm.evaluate_with_activation_fun(target_mixture, target_constant, xes)
+    fitting = gm.evaluate(fitting_mixture, xes) + fitting_constant.unsqueeze(-1)
+    return ((fitting - ground_truth)**2).mean().item()

@@ -21,6 +21,7 @@ import gmc.mixture as gm
 # import fitting_net
 import prototype_convolution.gm_modules as gm_modules
 import prototype_convolution.experiment_gm_mnist_model as experiment_gm_mnist_model
+import prototype_convolution.fitting
 
 # based on https://github.com/pytorch/examples/blob/master/mnist/main.py
 import gmc.image_tools as madam_imagetools
@@ -104,6 +105,10 @@ def train(args, model: experiment_gm_mnist_model.Net, device: torch.device, trai
             tensor_board_writer.add_scalar("07.3 model layer 3 min(bias)", model.biases[2].min().item(), step)
 
             # tensor_board_writer.add_scalar("04. mnist training regularisation loss", regularisation_loss.item(), step)
+
+            for i, relu in enumerate(model.relus):
+                mse = prototype_convolution.fitting.mse(*relu.last_in, *relu.last_out)
+                tensor_board_writer.add_scalar(f"05.1 model layer {i} relu mse", mse, step)
 
             for name, timing in model.timings.items():
                 tensor_board_writer.add_scalar(f"06. {name} time", timing, step)

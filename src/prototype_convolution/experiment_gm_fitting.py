@@ -56,21 +56,13 @@ def add_measurement(name: str, value: float):
         measurements_n[name] += 1
 
 
-def generate_random_sampling(m: Tensor, n: int) -> Tensor:
-    covariance_adjustment = torch.sqrt(torch.diagonal(gm.covariances(m.detach()), dim1=-2, dim2=-1))
-    position_max, _ = torch.max(gm.positions(m.detach()) + covariance_adjustment, dim=2, keepdim=True)
-    position_min, _ = torch.min(gm.positions(m.detach()) - covariance_adjustment, dim=2, keepdim=True)
-    sampling = torch.rand(gm.n_batch(m), gm.n_layers(m), n, gm.n_dimensions(m), device=m.device)
-    sampling *= position_max - position_min
-    sampling += position_min
-    return sampling
-
-
 for batch_idx in range(0, 1):  # max 10
     start_time = time.perf_counter()
     # for the next experiment, make an numpy array, write into it and visualise directly..
-    for kl_thresh in [0.6, 0.8, 1.0, 1.2, 1.4, 1.6, 1.8, 2.0, 2.2]:
-        for n_fitted_c in [6, 8, 10, 15, 20, 24, 32, 48]:
+    # for kl_thresh in [0.6, 0.8, 1.0, 1.2, 1.4, 1.6, 1.8, 2.0, 2.2]:
+    for kl_thresh in [1.5]:
+        # for n_fitted_c in [6, 8, 10, 15, 20, 24, 32, 48]:
+        for n_fitted_c in [20]:
             print(f"========= kl_thresh: {kl_thresh}, n_fitted_c:{n_fitted_c} =========")
             measurements = dict()
             measurements_n = dict()
@@ -97,17 +89,14 @@ for batch_idx in range(0, 1):  # max 10
 
                     bias_tensor = torch.zeros([n_batch, n_layers], device=device, requires_grad=False) + bias
 
-                    eval_xes = generate_random_sampling(m, 5000)
-                    eval_gt = gm.evaluate_with_activation_fun(m, bias_tensor, eval_xes)
-
                     # m.requires_grad = True
                     start = time.perf_counter()
                     fitted_m, new_bias, fitting_steps = fitting.fixed_point_and_mhem(m, bias_tensor, n_fitted_c, config)
                     # add_measurement(f"time[layer{layer_id}]", time.perf_counter() - start)
 
-                    eval_fit = gm.evaluate(fitted_m, eval_xes) + new_bias.unsqueeze(-1)
-                    add_measurement(f"mse [layer{layer_id}]", ((eval_fit - eval_gt)**2).mean().item())
-                    add_measurement(f"mse [bias{bias}]", ((eval_fit - eval_gt)**2).mean().item())
+                    mse = fitting.mse(m, bias_tensor, fitted_m, new_bias, 4000)
+                    add_measurement(f"mse [layer{layer_id}]", mse)
+                    add_measurement(f"mse [bias{bias}]", mse)
 
                     if batch_idx == 0 and bias in [-0.5, 0.0, 0.5]:
                         log(m, bias_tensor, fitting_steps, fitted_m, new_bias, f"l{layer_id}_b{bias},", tensor_board_writer)

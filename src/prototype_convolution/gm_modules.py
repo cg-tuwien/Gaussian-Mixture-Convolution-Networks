@@ -169,10 +169,16 @@ class ReLUFitting(torch.nn.modules.Module):
         self.last_out = None
 
     def forward(self, x_m: Tensor, x_constant: Tensor) -> typing.Tuple[Tensor, Tensor]:
-        y_m, y_constant, _ = prototype_convolution.fitting.fit(x_m, x_constant, self.n_output_gaussians, self.config.fitting_config)
+
+        x_m, x_constant, normalisation_factors = gm.normalise(x_m, x_constant)
+
+        y_m, y_constant, _ = self.config.fitting_method(x_m, x_constant, self.n_output_gaussians, self.config.fitting_config)
 
         self.last_in = (x_m.detach(), x_constant.detach())
         self.last_out = (y_m.detach(), y_constant.detach())
+
+        y_m = gm.de_normalise(y_m, normalisation_factors)
+        y_constant = y_constant / normalisation_factors.weight_scaling.unsqueeze(-1)
         return y_m, y_constant
 
     def debug_render(self, position_range: typing.Tuple[float, float, float, float] = None, image_size: int = 80, clamp: typing.Tuple[float, float] = (-1.0, 1.0)):
