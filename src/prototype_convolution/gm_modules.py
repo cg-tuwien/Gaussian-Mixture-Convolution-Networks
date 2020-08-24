@@ -1,5 +1,6 @@
 import math
 import typing
+import time
 
 import torch
 from torch import Tensor
@@ -8,7 +9,7 @@ import gmc.mixture as gm
 import gmc.image_tools as madam_imagetools
 import gmc.mat_tools as mat_tools
 import prototype_convolution.config
-import prototype_convolution.fitting_em as fitting_em
+import prototype_convolution.fitting as fitting
 
 
 class GmConvolution(torch.nn.modules.Module):
@@ -176,13 +177,23 @@ class ReLUFitting(torch.nn.modules.Module):
 
         self.last_in = None
         self.last_out = None
+        self.last_time_relu = None
+        self.last_time_mhem = None
 
     def forward(self, x_m: Tensor, x_constant: Tensor) -> typing.Tuple[Tensor, Tensor]:
-        y_m, y_constant = fitting_em.relu(x_m, x_constant)
-        y_m = fitting_em.mhem_algorithm(y_m, n_fitting_components=self.n_output_gaussians)
+
+        t0 = time.perf_counter()
+        initial_fitting = fitting.initial_approx_to_relu(x_m, x_constant)
+        fp_fitting, y_constant = fitting.fixed_point_iteration_to_relu(x_m, x_constant, initial_fitting)
+        t1 = time.perf_counter()
+        reduced_fitting = fitting.representative_select_for_relu(fp_fitting, y_constant, self.n_output_gaussians)
+        y_m = fitting.mhem_fit_a_to_b(reduced_fitting, fp_fitting)
+        t2 = time.perf_counter()
 
         self.last_in = (x_m.detach(), x_constant.detach())
         self.last_out = (y_m.detach(), y_constant.detach())
+        self.last_time_relu = t1 - t0
+        self.last_time_mhem = t2 - t1
         return y_m, y_constant
 
     def debug_render(self, position_range: typing.Tuple[float, float, float, float] = None, image_size: int = 80, clamp: typing.Tuple[float, float] = (-1.0, 1.0)):

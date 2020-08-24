@@ -1,5 +1,6 @@
 from __future__ import print_function
 import pathlib
+import time
 
 import torch
 from torch import Tensor
@@ -64,6 +65,17 @@ class Net(nn.Module):
         self.relus.append(gm_modules.ReLUFitting(gmcn_config, layer_id="2c", n_layers=n_layers_2, n_input_gaussians=n_out_g_1 * n_layers_1 * n_kernel_components, n_output_gaussians=n_out_g_2))
         self.relus.append(gm_modules.ReLUFitting(gmcn_config, layer_id="3c", n_layers=10, n_input_gaussians=n_out_g_2 * n_layers_2 * n_kernel_components, n_output_gaussians=n_out_g_3))
 
+        self.timings = dict()
+        self.last_time = time.time()
+
+    def reset_timer(self):
+        self.last_time = time.perf_counter()
+
+    def time_lap(self, name: str):
+        current = time.perf_counter()
+        self.timings[name] = current - self.last_time
+        self.last_time = current
+
     def set_position_learning(self, flag: bool):
         self.gmc1.learn_positions = flag
         self.gmc2.learn_positions = flag
@@ -89,6 +101,7 @@ class Net(nn.Module):
         x, x_const = self.bn0(in_x)
 
         x, x_const = self.gmc1(x, x_const)
+
         if self.config.bias_type == prototype_convolution.config.BIAS_TYPE_NEGATIVE_SOFTPLUS:
             x_const = x_const - F.softplus(self.biases[0], beta=20)
         elif self.config.bias_type == prototype_convolution.config.BIAS_TYPE_NORMAL:
@@ -96,11 +109,14 @@ class Net(nn.Module):
         else:
             assert self.config.bias_type == prototype_convolution.config.BIAS_TYPE_NONE
             x_const = torch.zeros(1, 1, device=in_x.device)
+        self.reset_timer()
         x, x_const = self.relus[0](x, x_const)
+        self.time_lap("relu0")
         x, x_const = self.bn(x, x_const)
         # x = self.maxPool1(x)
 
         x, x_const = self.gmc2(x, x_const)
+
         if self.config.bias_type == prototype_convolution.config.BIAS_TYPE_NEGATIVE_SOFTPLUS:
             x_const = x_const - F.softplus(self.biases[1], beta=20)
         elif self.config.bias_type == prototype_convolution.config.BIAS_TYPE_NORMAL:
@@ -108,7 +124,9 @@ class Net(nn.Module):
         else:
             assert self.config.bias_type == prototype_convolution.config.BIAS_TYPE_NONE
             x_const = torch.zeros(1, 1, device=in_x.device)
+        self.reset_timer()
         x, x_const = self.relus[1](x, x_const)
+        self.time_lap("relu1")
         x, x_const = self.bn(x, x_const)
         # x = self.maxPool2(x)
 
@@ -120,7 +138,9 @@ class Net(nn.Module):
         else:
             assert self.config.bias_type == prototype_convolution.config.BIAS_TYPE_NONE
             x_const = torch.zeros(1, 1, device=in_x.device)
+        self.reset_timer()
         x, x_const = self.relus[2](x, x_const)
+        self.time_lap("relu2")
         x, x_const = self.bn(x, x_const)
         # x = self.maxPool3(x)
 
