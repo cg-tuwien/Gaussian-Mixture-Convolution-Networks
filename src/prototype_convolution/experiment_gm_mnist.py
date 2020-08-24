@@ -95,6 +95,14 @@ def train(args, model: experiment_gm_mnist_model.Net, device: torch.device, trai
             tensor_board_writer.add_scalar("03.1 total duration per sample", (batch_end_time - batch_start_time) / len(data), step)
             tensor_board_writer.add_scalar("03.2 forward time per batch", (ty - tx), step)
             tensor_board_writer.add_scalar("03.3 backward time per batch", (tw - tz), step)
+
+            tensor_board_writer.add_scalar("07.1 model layer 1 max(bias)", model.biases[0].max().item(), step)
+            tensor_board_writer.add_scalar("07.2 model layer 2 max(bias)", model.biases[1].max().item(), step)
+            tensor_board_writer.add_scalar("07.3 model layer 3 max(bias)", model.biases[2].max().item(), step)
+            tensor_board_writer.add_scalar("07.1 model layer 1 min(bias)", model.biases[0].min().item(), step)
+            tensor_board_writer.add_scalar("07.2 model layer 2 min(bias)", model.biases[1].min().item(), step)
+            tensor_board_writer.add_scalar("07.3 model layer 3 min(bias)", model.biases[2].min().item(), step)
+
             # tensor_board_writer.add_scalar("04. mnist training regularisation loss", regularisation_loss.item(), step)
             for i, relu in enumerate(model.relus):
                 tensor_board_writer.add_scalar(f"05.1 model layer {i} relu relu time", relu.last_time_relu, step)
@@ -113,9 +121,9 @@ def train(args, model: experiment_gm_mnist_model.Net, device: torch.device, trai
             # print(f"experiment_gm_mnist.tain: saving optimiser state to {model.storage_path}.optimiser")
             # torch.save(kernel_optimiser.state_dict(), f"{model.storage_path}.optimiser")
 
-        if epoch == 1 and batch_idx < 10:
-            for i, relu in enumerate(model.relus):
-                gm.save(relu.last_in[0], f"fitting_input/fitting_input_batch{batch_idx}_netlayer{i}", relu.last_in[1].detach().cpu())
+        # if epoch == 1 and batch_idx < 10:
+        #     for i, relu in enumerate(model.relus):
+        #         gm.save(relu.last_in[0], f"fitting_input/fitting_input_batch{batch_idx}_netlayer{i}", relu.last_in[1].detach().cpu())
     end_time = time.perf_counter()
 
     tensor_board_writer.add_scalar("10. batch_duration", end_time - start_time, step)
