@@ -87,7 +87,7 @@ def fixed_point_iteration_to_relu(target_mixture: Tensor, target_constant: Tenso
     for i in range(n_iter):
         x = x.abs()
         new_mixture = gm.pack_mixture(x, positions, covariances)
-        x = x * b / (gm.evaluate(new_mixture, positions) + 0.01)
+        x = x * b / (gm.evaluate(new_mixture, positions) + 0.05)
 
     return gm.pack_mixture(x, positions, covariances), ret_const
 
@@ -214,7 +214,7 @@ def mhem_fit_a_to_b(fitting_mixture: Tensor, target_mixture: Tensor, config: Con
         likelihoods = likelihoods * (KL_divergence < config.KL_divergence_threshold) * sign_match
 
         likelihoods_sum = likelihoods.sum(3, keepdim=True)
-        responsibilities = likelihoods / likelihoods_sum.where(likelihoods_sum > 0.0000001, 0.0000001 * torch.ones_like(likelihoods_sum))  # preiner Equation(8)
+        responsibilities = likelihoods / (likelihoods_sum + 0.00001)
 
         assert not torch.any(torch.isnan(responsibilities))
 
@@ -225,7 +225,7 @@ def mhem_fit_a_to_b(fitting_mixture: Tensor, target_mixture: Tensor, config: Con
         assert not torch.any(torch.isnan(responsibilities))
 
         assert not torch.any(torch.isnan(newWeights))
-        responsibilities = responsibilities / newWeights.where(newWeights > 0.00000001, 0.00000001 * torch.ones_like(newWeights)).view(n_batch, n_layers, 1, n_components_fitting)
+        responsibilities = responsibilities / (newWeights + 0.00001).view(n_batch, n_layers, 1, n_components_fitting)
         assert torch.all(responsibilities >= 0)
         assert not torch.any(torch.isnan(responsibilities))
         newPositions = torch.sum(responsibilities.unsqueeze(-1) * gm.positions(target_double_gmm).view(n_batch, n_layers, n_components_target, 1, n_dims), 2)
