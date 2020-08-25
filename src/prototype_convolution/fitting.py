@@ -263,5 +263,10 @@ def generate_random_sampling(m: Tensor, n: int) -> Tensor:
 def mse(target_mixture: Tensor, target_constant: Tensor, fitting_mixture: Tensor, fitting_constant: Tensor, n_test_points: int = 500) -> float:
     xes = generate_random_sampling(target_mixture, n_test_points)
     ground_truth = gm.evaluate_with_activation_fun(target_mixture, target_constant, xes)
+    gt_mean = ground_truth.mean()
+    gt_sd = ground_truth.std()
+    ground_truth = (ground_truth - gt_mean) / gt_sd
+
     fitting = gm.evaluate(fitting_mixture, xes) + fitting_constant.unsqueeze(-1)
+    fitting = (fitting - gt_mean) / gt_sd
     return ((fitting - ground_truth)**2).mean().item()
