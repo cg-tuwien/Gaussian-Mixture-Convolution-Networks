@@ -442,7 +442,7 @@ def normalise(mixture_in: Tensor, bias_in: Tensor) -> (Tensor, Tensor, Normalisa
     weight_scaling = torch.ones(1, dtype=torch.float32, device=mixture_in.device) / weight_scaling
 
     weights_normalised = weights(mixture_in) * weight_scaling
-    bias_normalised = bias_in.view(bias_in.shape[0], _n_layers) * weight_scaling.view(_n_batch, _n_layers)
+    bias_normalised = bias_in.view(bias_in.shape[0], bias_in.shape[1]) * weight_scaling.view(_n_batch, _n_layers)
 
     position_translation = (-torch.mean(positions(mixture_in.detach()), dim=2)).view(_n_batch, _n_layers, 1, _n_dims)
     positions_normalised = positions(mixture_in) + position_translation
