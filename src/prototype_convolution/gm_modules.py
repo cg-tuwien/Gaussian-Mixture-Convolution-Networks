@@ -138,6 +138,7 @@ class GmConvolution(torch.nn.modules.Module):
         return images[:, :, :3]
 
     def forward(self, x: Tensor, x_constant: Tensor) -> typing.Tuple[Tensor, Tensor]:
+        assert gm.is_valid_mixture_and_constant(x, x_constant)
         out_mixtures = []
         out_constants = []
         out_mixture_shape = list(x.shape)
@@ -181,9 +182,22 @@ class ReLUFitting(torch.nn.modules.Module):
         y_constant = y_constant / normalisation_factors.weight_scaling.unsqueeze(-1)
         return y_m, y_constant
 
-    def debug_render(self, position_range: typing.Tuple[float, float, float, float] = None, image_size: int = 80, clamp: typing.Tuple[float, float] = (-1.0, 1.0)):
+    def debug_render(self, position_range: typing.Tuple[float, float, float, float] = None, image_size: int = 80, clamp: typing.Tuple[float, float] = None):
         if position_range is None:
-            position_range = [-1.0, -1.0, 1.0, 1.0]
+            covariance_adjustment = torch.sqrt(torch.diagonal(gm.covariances(self.last_in[0]), dim1=-2, dim2=-1))
+            position_max = gm.positions(self.last_in[0]) + covariance_adjustment
+            position_max_x = torch.max(position_max[:, :, :, 0]).item()
+            position_max_y = torch.max(position_max[:, :, :, 1]).item()
+            position_min = gm.positions(self.last_in[0]) - covariance_adjustment
+            position_min_x = torch.min(position_min[:, :, :, 0]).item()
+            position_min_y = torch.min(position_min[:, :, :, 1]).item()
+            position_range = [position_min_x, position_min_y, position_max_x, position_max_y]
+
+        if clamp is None:
+            max_weight = gm.weights(self.last_out[0]).max().item()
+            min_weight = gm.weights(self.last_out[0]).min().item()
+            abs_diff = max_weight - min_weight
+            clamp = (min_weight - abs_diff * 2, min_weight + abs_diff * 2)
 
         last_in = gm.render(self.last_in[0], self.last_in[1], batches=(0, 1), layers=(0, None),
                             x_low=position_range[0], y_low=position_range[1], x_high=position_range[2], y_high=position_range[3],
@@ -213,7 +227,10 @@ class BatchNorm(torch.nn.modules.Module):
 
         # according to the following link the scaling and mean computations do not detach the gradient.
         # https://kratzert.github.io/2016/02/12/understanding-the-gradient-flow-through-the-batch-normalization-layer.html
-
+        if x_constant is not None:
+            assert gm.is_valid_mixture_and_constant(x, x_constant)
+        else:
+            assert gm.is_valid_mixture(x)
         abs_x = gm.pack_mixture(gm.weights(x).abs(), gm.positions(x), gm.covariances(x))
         integral_abs = gm.integrate(abs_x)
         if not self.per_mixture_norm:
@@ -224,7 +241,7 @@ class BatchNorm(torch.nn.modules.Module):
         weights = gm.weights(x)
         positions = gm.positions(x)
         covariances = gm.covariances(x)
-        integral_abs_eps = integral_abs + 0.0001
+        integral_abs_eps = integral_abs + 0.01
         weights = weights / integral_abs_eps.unsqueeze(-1)
         mixture = gm.pack_mixture(weights, positions, covariances)
 
