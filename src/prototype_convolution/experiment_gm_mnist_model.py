@@ -99,8 +99,9 @@ class Net(nn.Module):
         # in our case: BN just scales and centres. the constant input to BN is ignored, so the constant convolution would be ignored if we place BN before ReLU.
         # but that might perform better anyway, we'll have to test.
         x, x_const = self.bn0(in_x)
-
         x, x_const = self.gmc1(x, x_const)
+        if self.config.bn_place == prototype_convolution.config.BN_PLACE_AFTER_GMC:
+            x, x_const = self.bn(x, x_const)
 
         if self.config.bias_type == prototype_convolution.config.BIAS_TYPE_NEGATIVE_SOFTPLUS:
             x_const = x_const - F.softplus(self.biases[0], beta=20)
@@ -109,13 +110,17 @@ class Net(nn.Module):
         else:
             assert self.config.bias_type == prototype_convolution.config.BIAS_TYPE_NONE
             x_const = torch.zeros(1, 1, device=in_x.device)
+
         self.reset_timer()
         x, x_const = self.relus[0](x, x_const)
         self.time_lap("relu0")
-        x, x_const = self.bn(x, x_const)
         # x = self.maxPool1(x)
 
+        if self.config.bn_place == prototype_convolution.config.BN_PLACE_BEFORE_GMC:
+            x, x_const = self.bn(x, x_const)
         x, x_const = self.gmc2(x, x_const)
+        if self.config.bn_place == prototype_convolution.config.BN_PLACE_AFTER_GMC:
+            x, x_const = self.bn(x, x_const)
 
         if self.config.bias_type == prototype_convolution.config.BIAS_TYPE_NEGATIVE_SOFTPLUS:
             x_const = x_const - F.softplus(self.biases[1], beta=20)
@@ -124,13 +129,18 @@ class Net(nn.Module):
         else:
             assert self.config.bias_type == prototype_convolution.config.BIAS_TYPE_NONE
             x_const = torch.zeros(1, 1, device=in_x.device)
+
         self.reset_timer()
         x, x_const = self.relus[1](x, x_const)
         self.time_lap("relu1")
-        x, x_const = self.bn(x, x_const)
         # x = self.maxPool2(x)
 
+        if self.config.bn_place == prototype_convolution.config.BN_PLACE_BEFORE_GMC:
+            x, x_const = self.bn(x, x_const)
         x, x_const = self.gmc3(x, x_const)
+        if self.config.bn_place == prototype_convolution.config.BN_PLACE_AFTER_GMC:
+            x, x_const = self.bn(x, x_const)
+
         if self.config.bias_type == prototype_convolution.config.BIAS_TYPE_NEGATIVE_SOFTPLUS:
             x_const = x_const - F.softplus(self.biases[2], beta=20)
         elif self.config.bias_type == prototype_convolution.config.BIAS_TYPE_NORMAL:
@@ -138,10 +148,10 @@ class Net(nn.Module):
         else:
             assert self.config.bias_type == prototype_convolution.config.BIAS_TYPE_NONE
             x_const = torch.zeros(1, 1, device=in_x.device)
+
         self.reset_timer()
         x, x_const = self.relus[2](x, x_const)
         self.time_lap("relu2")
-        x, x_const = self.bn(x, x_const)
         # x = self.maxPool3(x)
 
         x = gm.integrate(x)

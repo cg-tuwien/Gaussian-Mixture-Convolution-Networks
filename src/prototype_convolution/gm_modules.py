@@ -163,23 +163,14 @@ class ReLUFitting(torch.nn.modules.Module):
         self.n_input_gaussians = n_input_gaussians
         self.n_output_gaussians = n_output_gaussians
 
-        # self.name = f"GmBiasAndRelu_{layer_id}"
-        # self.storage_path = config.data_base_path / "weights" / f"GmBiasAndRelu_{layer_id}_{self.gm_fitting_net_666.name}"
-
         self.last_in = None
         self.last_out = None
 
     def forward(self, x_m: Tensor, x_constant: Tensor) -> typing.Tuple[Tensor, Tensor]:
-
-        x_m, x_constant, normalisation_factors = gm.normalise(x_m, x_constant)
-
         y_m, y_constant, _ = self.config.fitting_method(x_m, x_constant, self.n_output_gaussians, self.config.fitting_config)
 
         self.last_in = (x_m.detach(), x_constant.detach())
         self.last_out = (y_m.detach(), y_constant.detach())
-
-        y_m = gm.de_normalise(y_m, normalisation_factors)
-        y_constant = y_constant / normalisation_factors.weight_scaling.unsqueeze(-1)
         return y_m, y_constant
 
     def debug_render(self, position_range: typing.Tuple[float, float, float, float] = None, image_size: int = 80, clamp: typing.Tuple[float, float] = None):
@@ -231,7 +222,8 @@ class BatchNorm(torch.nn.modules.Module):
             assert gm.is_valid_mixture_and_constant(x, x_constant)
         else:
             assert gm.is_valid_mixture(x)
-        abs_x = gm.pack_mixture(gm.weights(x).abs(), gm.positions(x), gm.covariances(x))
+
+        abs_x = gm.pack_mixture(torch.max(gm.weights(x), torch.zeros(1, 1, 1, device=x.device)), gm.positions(x), gm.covariances(x))
         integral_abs = gm.integrate(abs_x)
         if not self.per_mixture_norm:
             integral_abs = torch.mean(integral_abs, dim=0, keepdim=True)
