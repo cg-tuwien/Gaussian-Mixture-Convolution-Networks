@@ -49,10 +49,14 @@ class PCDatasetIterator:
     def next_batch(self):
         # returns a tensor of the size [b,n,3], where b is the batch size (or less, if less data was available)
         # and n is the point count
-        batch = torch.zeros(min(self._batch_size, self._file_queue.qsize()), self._point_count, 3)
+        # also returns a list of names of the point clouds
+        current_batch_size = min(self._batch_size, self._file_queue.qsize())
+        batch = torch.zeros(current_batch_size, self._point_count, 3, device=torch.device("cuda"))
+        names = [None] * current_batch_size
         for i in range(self._batch_size):
             if not self._file_queue.empty():
                 filename = self._file_queue.get()
+                names[i] = filename
                 objpath = os.path.join(self._model_root, filename)
                 pcpath = os.path.join(self._pc_root, filename)
                 if os.path.exists(pcpath):
@@ -64,7 +68,7 @@ class PCDatasetIterator:
                     samples *= 100.0 / np.max(bb.primitive.extents)
                     pointcloud.write_pc_to_off(pcpath, samples)
                     batch[i, :, :] = torch.from_numpy(samples)
-        return batch
+        return batch, names
 
     def remaining_batches_count(self):
         return math.ceil(self._file_queue.qsize() / self._batch_size)

@@ -1,7 +1,7 @@
 import torch
 import os
 
-# pc is returned as a 3d tensor with shape [1,n,3]
+# pc is returned as a 3d tensor with shape [1,n,3] on cpu
 def load_pc_from_off(path: str) -> torch.Tensor:
     file = open(path, "r")
     if 'OFF' != file.readline().strip():
