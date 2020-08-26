@@ -119,6 +119,7 @@ class GMLogger:
         if self._log_loss_tb > 0 and iteration & self._log_loss_tb == 0:
             for i in range(len(self._tbwriters)):
                 self._tbwriters[i].add_scalar("Loss", losses[i].item(), iteration)
+                self._tbwriters[i].flush()
 
         log_rendering = self._log_rendering_tb > 0 and iteration % self._log_rendering_tb == 0
         log_gm = self._log_gm > 0 and iteration % self._log_loss_tb == 0
@@ -131,8 +132,8 @@ class GMLogger:
             self._visualizer.set_gaussian_mixtures(gm_upscaled.detach().cpu(), isgmm=False)
             res = self._visualizer.render(iteration)
             for i in range(res.shape[0]):
-                self._tbwriters[i].add_image(f"GM {i}, Ellipsoids", res[i, 0, :, :, :], iteration, dataformats="HWC")
-                self._tbwriters[i].add_image(f"GM {i}, Density", res[i, 1, :, :, :], iteration, dataformats="HWC")
+                self._tbwriters[i].add_image(f"Ellipsoids", res[i, 0, :, :, :], iteration, dataformats="HWC")
+                self._tbwriters[i].add_image(f"Density", res[i, 1, :, :, :], iteration, dataformats="HWC")
                 self._tbwriters[i].flush()
 
         if log_gm:
@@ -154,3 +155,11 @@ class GMLogger:
                         bindata = struct.pack('<' + 'd'*len(pdata), *pdata)  # little endian!
                         f.write(bindata)
                         f.close()
+
+    def finalize(self):
+        # Destructor
+        if self._log_loss_tb > 0 or self._log_rendering_tb > 0:
+            for i in range(len(self._tbwriters)):
+                self._tbwriters[i].close()
+        if self._log_rendering_tb > 0:
+            self._visualizer.finish()

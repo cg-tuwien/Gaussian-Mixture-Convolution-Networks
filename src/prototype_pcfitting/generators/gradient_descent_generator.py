@@ -15,7 +15,7 @@ class GradientDescentGenerator(GMMGenerator):
     def __init__(self,
                  n_components: int,
                  n_sample_points: int,
-                 termination_criterion: TerminationCriterion = MaxIterationTerminationCriterion(3000),
+                 termination_criterion: TerminationCriterion = MaxIterationTerminationCriterion(500),
                  learn_rate_pos: float = 1e-3,
                  learn_rate_cov: float = 1e-4,
                  learn_rate_weights: float = 5e-4):
@@ -27,7 +27,7 @@ class GradientDescentGenerator(GMMGenerator):
         #   n_sample_points: int
         #       Number of points to consider for calculating the loss
         #   termination_criteration: TerminationCriterion
-        #       Defining when to terminate. Default: After 3000 Iterations.
+        #       Defining when to terminate. Default: After 500 Iterations.
         #       As this algorithm works on batches, the common batch loss is given to the termination criterion
         #       (We could implement saving of the best result in order to avoid moving out of optima)
         #   learn_rate_pos: float
@@ -55,18 +55,21 @@ class GradientDescentGenerator(GMMGenerator):
         #
         self._logger = logger
 
-    def generate(self, pcbatch: torch.Tensor, gmbatch: torch.Tensor = None) -> torch.Tensor:
+    def generate(self, pcbatch: torch.Tensor, gmbatch: torch.Tensor = None) -> (torch.Tensor, torch.Tensor):
         # Gets a point cloud batch of size [m,n,3]
         # where m is the batch size and n the point count.
         # Point cloud is given downscaled (see Scaler)!
         # It might be given an initial gaussian mixture of
         # size [m,1,g,10] where m is the batch size and g
         # the number of Gaussians.
-        # It returns a gaussian mixture batch of size
-        # [m,1,g,10].
+        # It returns two gaussian mixtures of sizes
+        # [m,1,g,10], the first being a mixture with amplitudes as weights
+        # the second a mixture where the weights describe the priors.
         # Training parameters have to be set in the other methods
         # of the class
         #
+        self._termination_criterion.reset()
+
         batch_size = pcbatch.shape[0]
         point_count = pcbatch.shape[1]
         pcbatch = pcbatch.to(self._device)
@@ -129,7 +132,8 @@ class GradientDescentGenerator(GMMGenerator):
             gm_data.update_amplitudes()
 
         # Return final mixture
-        return gm.pack_mixture(gm_data.get_amplitudes(), gm_data.get_positions(), gm_data.get_covariances())
+        return gm.pack_mixture(gm_data.get_amplitudes(), gm_data.get_positions(), gm_data.get_covariances()), \
+            gm.pack_mixture(gm_data.pi_normalized, gm_data.get_positions(), gm_data.get_covariances())
 
     class TrainingData:
         # Helper class. Capsules all the training data of the current gm batch

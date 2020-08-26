@@ -1,6 +1,10 @@
+import gc
+
 from prototype_pcfitting import PCDatasetIterator, Scaler, GMLogger
+from prototype_pcfitting import RelChangeTerminationCriterion, MaxIterationTerminationCriterion
 from prototype_pcfitting.generators import GradientDescentGenerator
 import datetime
+import os
 
 # model_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/ModelNet10/ModelNet10"
 # genpc_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/ModelNet10/genpc"
@@ -18,9 +22,11 @@ if log_prefix == '':
 n_points = 20000
 n_gaussians = 100
 
-dataset = PCDatasetIterator(model_path, n_points, 20, genpc_path)
+dataset = PCDatasetIterator(model_path, n_points, 6, genpc_path)
 scaler = Scaler()
-generator = GradientDescentGenerator(n_components=n_gaussians, n_sample_points=1000)
+# terminator = RelChangeTerminationCriterion(0.1, 250)
+terminator = MaxIterationTerminationCriterion(1000)
+generator = GradientDescentGenerator(n_components=n_gaussians, n_sample_points=1000, termination_criterion=terminator)
 
 i = 1
 while dataset.has_next():
@@ -31,13 +37,17 @@ while dataset.has_next():
     scaler.set_pointcloud_batch(batch)
     batch_scaled = scaler.scale_down_pc(batch)
 
-    logger = GMLogger(names=names, log_prefix=log_prefix, log_path=log_path, log_positions=500,
+    logger = GMLogger(names=names, log_prefix=log_prefix, log_path=log_path, log_positions=0,
                       gm_n_components=n_gaussians, log_loss_console=1, log_loss_tb=1, log_rendering_tb=250, log_gm=250,
                       pointclouds=batch, scaler=scaler)
 
     generator.set_logging(logger)
-    generator.generate(batch_scaled)
+    gmbatch, gmmbatch = generator.generate(batch_scaled)
 
+    generator.save_gms(scaler.scale_up_gm(gmbatch), scaler.scale_up_gmm(gmmbatch),
+                       os.path.join(gengmm_path, log_prefix), names)
+
+    logger.finalize()
     i += 1
 
 print("Done")
