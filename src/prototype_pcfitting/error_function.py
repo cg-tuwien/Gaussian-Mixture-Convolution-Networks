@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from gmc import mixture
 import torch
 
 
@@ -15,3 +16,10 @@ class ErrorFunction(ABC):
         # Returns a tensor of size [m] where each entry contains the
         # score / loss
         pass
+
+    def calculate_score_packed(self, pcbatch: torch.Tensor, gmabatch: torch.Tensor):
+        gmpositions = mixture.positions(gmabatch)
+        gmcovariances = mixture.covariances(gmabatch)
+        gminvcovariances = gmcovariances.inverse().contiguous()
+        gmamplitudes = mixture.weights(gmabatch)
+        return self.calculate_score(pcbatch, gmpositions, gmcovariances, gminvcovariances, gmamplitudes)

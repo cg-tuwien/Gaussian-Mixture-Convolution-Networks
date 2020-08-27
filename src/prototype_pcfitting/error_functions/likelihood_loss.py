@@ -9,6 +9,7 @@ class LikelihoodLoss(ErrorFunction):
     def calculate_score(self, pcbatch: torch.Tensor, gmpositions: torch.Tensor, gmcovariances: torch.Tensor,
                         gminvcovariances: torch.Tensor, gmamplitudes: torch.Tensor) -> torch.Tensor:
         batch_size = pcbatch.shape[0]
+        points = pcbatch.view(batch_size, 1, -1, 3)
         mixture_with_inversed_cov = gm.pack_mixture(gmamplitudes, gmpositions, gminvcovariances)
-        output = gm.evaluate_inversed(mixture_with_inversed_cov, pcbatch).view(batch_size, -1)
+        output = gm.evaluate_inversed(mixture_with_inversed_cov, points).view(batch_size, -1)
         return -torch.mean(torch.log(output + 0.00001), dim=1)

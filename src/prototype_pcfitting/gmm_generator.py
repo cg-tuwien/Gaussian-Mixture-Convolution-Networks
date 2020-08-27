@@ -3,6 +3,7 @@ from typing import List
 
 import torch
 import gmc.mixture as gm
+from prototype_pcfitting import GMLogger
 
 
 class GMMGenerator(ABC):
@@ -21,6 +22,10 @@ class GMMGenerator(ABC):
         # the second a mixture where the weights describe the priors.
         # Parameters have to be set in the other methods
         # of the class
+        pass
+
+    @abstractmethod
+    def set_logging(self, logger: GMLogger = None):
         pass
 
     @staticmethod
