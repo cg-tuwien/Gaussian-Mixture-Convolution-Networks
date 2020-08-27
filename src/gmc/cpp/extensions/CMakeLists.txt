@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.18)
 
 project(gm_pytorch_extensions LANGUAGES CUDA CXX)
 
@@ -9,13 +9,35 @@ if(NOT DEFINED CMAKE_CUDA_STANDARD)
     set(CMAKE_CUDA_STANDARD 14)
     set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 endif()
-string(APPEND CMAKE_CUDA_FLAGS " -gencode arch=compute_70,code=sm_70 -O3 --use_fast_math")
-string(APPEND CMAKE_CXX_FLAGS " -D_GLIBCXX_USE_CXX11_ABI=1")
+set(CMAKE_CUDA_ARCHITECTURES 60)
+set(CMAKE_CUDA_FLAGS
+    "-D_GLIBCXX_USE_CXX11_ABI=0 -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --expt-relaxed-constexpr --compiler-options '-fPIC' -O3 --use_fast_math -std=c++14"
+    )
+string(APPEND CMAKE_CXX_FLAGS " -D_GLIBCXX_USE_CXX11_ABI=0")
 
+#set(CMAKE_CXX_FLAGS -D_GLIBCXX_USE_CXX11_ABI=0 -O3 --use_fast_math)
+
+set(CUDA_PROPAGATE_HOST_FLAGS OFF)
 
 add_compile_definitions(GMC_CMAKE_TEST_BUILD)
 
+# only works in conda environment
+#set(Torch_DIR
+#    $ENV{CONDA_PREFIX}/lib/python3.7/site-packages/torch/share/cmake/Torch/
+#)
+
+set(Torch_DIR
+    /home/madam/bin/anaconda3/lib/python3.7/site-packages/torch/share/cmake/Torch/
+)
+set(CUDNN_INCLUDE_PATH
+    /home/madam/bin/anaconda3/pkgs/cudnn-7.6.4-cuda10.1_0/include/
+    )
+set (CUDNN_LIBRARY_PATH
+    /home/madam/bin/anaconda3/pkgs/cudnn-7.6.4-cuda10.1_0/lib/
+    )
+
 find_package(OpenMP REQUIRED)
+#find_package(Torch REQUIRED)
 
 set(MY_INCLUDE_PATHS
     /home/madam/bin/anaconda3/lib/python3.7/site-packages/torch/include
@@ -25,20 +47,21 @@ set(MY_INCLUDE_PATHS
     .
 )
 
-set(PYTORCH_LIBS
-    c10_cuda
-    c10
-    caffe2_detectron_ops_gpu
-    caffe2_module_test_dynamic
-    caffe2_nvrtc
-    caffe2_observers
-    shm
-    torch_cpu
-    torch_cuda
-    torch_global_deps
-    torch_python
-    torch
-)
+ set(PYTORCH_LIBS
+     c10_cuda
+     c10
+#     caffe2_detectron_ops_gpu
+#     caffe2_module_test_dynamic
+#     caffe2_nvrtc
+#     caffe2_observers
+#     shm
+     torch_cpu
+     torch_cuda
+#     torch_global_deps
+     torch_python
+     torch
+     cudart
+ )
 
 include_directories(SYSTEM ${MY_INCLUDE_PATHS})
 link_directories(/home/madam/bin/anaconda3/lib/python3.7/site-packages/torch/lib)
