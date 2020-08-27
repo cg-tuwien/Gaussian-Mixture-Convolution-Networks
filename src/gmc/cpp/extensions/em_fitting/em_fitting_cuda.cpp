@@ -25,7 +25,9 @@ std::vector<torch::Tensor> evaluate_inversed_backward(torch::Tensor grad_output,
     return cuda_evaluate_inversed_backward(grad_output, mixture, xes, requires_grad_mixture, requires_grad_xes);
 }
 
+#ifndef GMC_CMAKE_TEST_BUILD
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("forward", &evaluate_inversed_forward, "evaluate_inversed forward (CUDA)");
   m.def("backward", &evaluate_inversed_backward, "evaluate_inversed backward (CUDA)");
 }
+#endif

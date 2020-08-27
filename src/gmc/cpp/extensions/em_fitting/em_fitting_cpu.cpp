@@ -220,7 +220,9 @@ std::vector<torch::Tensor> backward(torch::Tensor grad_output, torch::Tensor mix
     return {grad_mixture, grad_xes};
 }
 
+#ifndef GMC_CMAKE_TEST_BUILD
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("forward", &forward, "forward function");
   m.def("backward", &backward, "backward function");
 }
+#endif
