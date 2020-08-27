@@ -4,6 +4,7 @@ import gmc.mixture as gm
 
 
 class LikelihoodLoss(ErrorFunction):
+    # Calculates an error by calculating the likelihood of the point cloud given the mixture
 
     def calculate_score(self, pcbatch: torch.Tensor, gmpositions: torch.Tensor, gmcovariances: torch.Tensor,
                         gminvcovariances: torch.Tensor, gmamplitudes: torch.Tensor) -> torch.Tensor:

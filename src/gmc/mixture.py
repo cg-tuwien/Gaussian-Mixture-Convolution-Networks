@@ -1,6 +1,7 @@
 #from __future__ import annotations
 import math
 import typing
+import os
 
 import torch
 from torch import Tensor
@@ -489,6 +490,8 @@ def write_gm_to_ply(weights: Tensor, positions: Tensor, covariances: Tensor, bat
     _positions = positions[batch,0,:,:].view(n,3)
     _covs = covariances[batch,0,:,:,:].view(n,3,3)
 
+    if not os.path.exists(os.path.dirname(filename)):
+        os.makedirs(os.path.dirname(filename))
     file = open(filename, "w+")
     file.write("ply\nformat ascii 1.0\n")
     file.write(f"element component {n}\n")
