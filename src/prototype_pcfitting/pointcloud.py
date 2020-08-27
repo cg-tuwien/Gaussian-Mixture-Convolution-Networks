@@ -26,4 +26,5 @@ def sample(pcbatch: torch.Tensor, n_sample_points: int) -> torch.Tensor:
     batch_size, point_count, _ = pcbatch.shape
     sample_point_idz = torch.randperm(point_count)[0:n_sample_points]   # Shape: (s)
     sample_points = pcbatch[:, sample_point_idz, :]                     # Shape: (m,s,3)
-    return sample_points.view(batch_size, 1, min(point_count, n_sample_points), 3)
+    return sample_points
+    #return sample_points.view(batch_size, 1, min(point_count, n_sample_points), 3)

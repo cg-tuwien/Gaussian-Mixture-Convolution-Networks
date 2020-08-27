@@ -15,7 +15,7 @@ class PCDatasetIterator:
     # and returned in batches. They are also stored in a directory and
     # loaded from there if the model directory has been used before.
 
-    def __init__(self, model_root: str, point_count: int, batch_size: int, pc_root: str = None):
+    def __init__(self, model_root: str, point_count: int, batch_size: int, pc_root: str):
         # Constructor
         # Creates a new PCDatasetIterator.
         # Parameters:
@@ -25,7 +25,7 @@ class PCDatasetIterator:
         #       With how many points point clouds will be sampled from the models
         #   batch_size: int
         #       How many point clouds will be returned in one batch
-        #   pc_root: str (optional)
+        #   pc_root: str
         #       The path to store the point clouds in. If a point cloud for a given model
         #       has also been generated and stored in this directory. It is read from there as well,
         #       instead of creating a new point cloud.

@@ -13,6 +13,8 @@ class GMLogger:
     # Class that provides logging functionality.
     # This class may log loss to the console, loss and renderings to tensorboard,
     # mixtures to ply-fiels and positions to binary files (can be read by the visualizer).
+    # Please take note, that only one GMLogger with visualization functionality can exist at once.
+    # If you stop using one, please call finalize, in order to enable a new one to work properly.
 
     def __init__(self,
                  names: List[str],
@@ -122,7 +124,7 @@ class GMLogger:
                 self._tbwriters[i].flush()
 
         log_rendering = self._log_rendering_tb > 0 and iteration % self._log_rendering_tb == 0
-        log_gm = self._log_gm > 0 and iteration % self._log_loss_tb == 0
+        log_gm = self._log_gm > 0 and iteration % self._log_gm == 0
         gm_upscaled = torch.zeros(0)
 
         if log_rendering or log_gm or self._log_positions > 0:
@@ -141,7 +143,7 @@ class GMLogger:
             gmp = gm.positions(gm_upscaled)
             gmc = gm.covariances(gm_upscaled)
             for i in range(gm_upscaled.shape[0]):
-                gm.write_gm_to_ply(gmw, gmp, gmc, i, f"{self._gm_paths[i]}/gmm-{str(iteration).zfill(5)}.ply")
+                gm.write_gm_to_ply(gmw, gmp, gmc, i, f"{self._gm_paths[i]}/gmm-{str(iteration).zfill(5)}.gma.ply")
 
         if self._log_positions > 0:
             self._position_buffer[:, :, iteration % self._log_positions, :] = \
@@ -157,7 +159,7 @@ class GMLogger:
                         f.close()
 
     def finalize(self):
-        # Destructor
+        # This has to be called when using the visualizer before creating a new GMLogger!
         if self._log_loss_tb > 0 or self._log_rendering_tb > 0:
             for i in range(len(self._tbwriters)):
                 self._tbwriters[i].close()

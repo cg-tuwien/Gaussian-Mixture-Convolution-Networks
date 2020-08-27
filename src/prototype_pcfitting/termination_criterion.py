@@ -28,6 +28,8 @@ class MaxIterationTerminationCriterion(TerminationCriterion):
 
 
 class RelChangeTerminationCriterion(TerminationCriterion):
+    # Please be aware that this criterion operates on the batch-loss and not
+    # on the individual losses. So this will behave differently with different batch sizes.
 
     def __init__(self, relchange: float, itercount: int):
         self.relchange = relchange
