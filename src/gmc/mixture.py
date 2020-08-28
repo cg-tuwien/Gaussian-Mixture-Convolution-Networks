@@ -524,7 +524,9 @@ def write_gm_to_ply(weights: Tensor, positions: Tensor, covariances: Tensor, bat
 
 
 def read_gm_from_ply(filename: str, ismodel: bool) -> Tensor:
-    #THIS IS VERY SIMPLE AND NOT GENERAL
+    # Reads a Gaussian Mixture from a ply-file
+    # The parameter "ismodel" defines whether the weights in the file represent amplitudes (False) or priors (True)
+    # The weights of the returned GM are amplitudes.
     fin = open(filename)
     header = True
     index = 0
@@ -555,3 +557,17 @@ def read_gm_from_ply(filename: str, ismodel: bool) -> Tensor:
         return pack_mixture(amplitudes, gmpos, gmcov)
     else:
         return pack_mixture(gmwei, gmpos, gmcov)
+
+
+def convert_priors_to_amplitudes(gm: torch.Tensor) -> torch.Tensor:
+    gmwei = weights(gm)
+    gmcov = covariances(gm)
+    amplitudes = gmwei / (gmcov.det().sqrt() * 15.74960995)
+    return pack_mixture(amplitudes, positions(gm), gmcov)
+
+
+def convert_amplitudes_to_priors(gm: torch.Tensor) -> torch.Tensor:
+    gmamp = weights(gm)
+    gmcov = covariances(gm)
+    priors = gmamp * (gmcov.det().sqrt() * 15.74960995)
+    return pack_mixture(priors, positions(gm), gmcov)
