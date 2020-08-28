@@ -1,14 +1,19 @@
+#include <iostream>
+#include <string>
 //#include <torch/torch.h>
 #include <torch/script.h>
 
-#include <iostream>
 
 int main() {
-    torch::jit::script::Module container = torch::jit::load("/home/madam/Documents/work/tuw/gmc_net/data/fitting_input/fitting_input_batch0_netlayer0.tensor");
+    torch::jit::script::Module container = torch::jit::load("/home/madam/Documents/work/tuw/gmc_net/data/fitting_input/fitting_input_batch0.pt");
     auto list = container.attributes();
-    auto a = container.attr("m").toTensor();
+    for (int i = 0; i < 3; i++) {
 
-    std::cout << a.sizes() << std::endl;
+        auto a = container.attr(std::to_string(i)).toTensor().cuda();
+        std::cout << "layer " << i << ": " << a.sizes() << " device: " << a.device() << std::endl;
+
+    }
+
 //    torch::load(d, "/home/madam/Documents/work/tuw/gmc_net/data/fitting_input/fitting_input_batch0_netlayer0.tensor");
 
     return 0;
