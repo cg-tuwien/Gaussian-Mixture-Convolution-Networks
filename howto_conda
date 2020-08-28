@@ -10,3 +10,5 @@ conda update --all
 pip install --upgrade tensorflow # or tensorflow-gpu(?); required for tensorboard, there used to be bugs with tb sin tf; tf 2.2+
 # there is a tf diagnosis script in https://raw.githubusercontent.com/tensorflow/tensorboard/master/tensorboard/tools/diagnose_tensorboard.py
 
+for building the c++/cuda extension tester/profiler:
+conda install -c conda-forge cmake ?
