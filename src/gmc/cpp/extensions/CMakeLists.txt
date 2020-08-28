@@ -29,12 +29,12 @@ add_compile_definitions(GMC_CMAKE_TEST_BUILD)
 set(Torch_DIR
     /home/madam/bin/anaconda3/lib/python3.7/site-packages/torch/share/cmake/Torch/
 )
-set(CUDNN_INCLUDE_PATH
-    /home/madam/bin/anaconda3/pkgs/cudnn-7.6.4-cuda10.1_0/include/
-    )
-set (CUDNN_LIBRARY_PATH
-    /home/madam/bin/anaconda3/pkgs/cudnn-7.6.4-cuda10.1_0/lib/
-    )
+#set(CUDNN_INCLUDE_PATH
+#    /home/madam/bin/anaconda3/pkgs/cudnn-7.6.4-cuda10.1_0/include/
+#    )
+#set (CUDNN_LIBRARY_PATH
+#    /home/madam/bin/anaconda3/pkgs/cudnn-7.6.4-cuda10.1_0/lib/
+#    )
 
 find_package(OpenMP REQUIRED)
 #find_package(Torch REQUIRED)
@@ -60,7 +60,7 @@ set(MY_INCLUDE_PATHS
 #     torch_global_deps
      torch_python
      torch
-     cudart
+#     cudart
  )
 
 include_directories(SYSTEM ${MY_INCLUDE_PATHS})
