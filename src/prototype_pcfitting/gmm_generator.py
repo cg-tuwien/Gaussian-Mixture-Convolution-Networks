@@ -1,8 +1,6 @@
 from abc import ABC, abstractmethod
-from typing import List
 
 import torch
-import gmc.mixture as gm
 from prototype_pcfitting import GMLogger
 
 
@@ -27,13 +25,3 @@ class GMMGenerator(ABC):
     @abstractmethod
     def set_logging(self, logger: GMLogger = None):
         pass
-
-    @staticmethod
-    def save_gms(gmbatch: torch.Tensor, gmmbatch: torch.Tensor, basepath: str, names: List[str]):
-        gmw = gm.weights(gmmbatch)
-        gma = gm.weights(gmbatch)
-        gmp = gm.positions(gmbatch)
-        gmc = gm.covariances(gmbatch)
-        for i in range(gmbatch.shape[0]):
-            gm.write_gm_to_ply(gmw, gmp, gmc, i, f"{basepath}/{names[i]}.gmm.ply")
-            gm.write_gm_to_ply(gma, gmp, gmc, i, f"{basepath}/{names[i]}.gma.ply")

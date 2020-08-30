@@ -20,7 +20,7 @@ gengmm_path is the path, where the generated final GMMs will be stored as .ply-f
     The files will not be stored directly in the given path, but in subdirectories of the shape: "<gengmm_path>/
     <training_name>/<generator_identifier>/<model_name>.gma.ply" (or gmm.ply). model_name is the path of the model
     relative to model_path. generator_identifier is explained below. So for a model "<model_path>/train/chair_0890.off",
-    the corresponding gmm file could be stored in "<gengmm_path>/200827-02-eval/GD/train/chair_0890.off".
+    the corresponding gmm file could be stored in "<gengmm_path>/200827-02-eval/GD/train/chair_0890.off.gma-ply".
 log_path is a path where log files will be stored, such as tensorboard data, GMM-logs or position-logs (depending on
     logging options). The logging files will not be stored directly in that path, but in a subdirectory of shape
     "<log_path>/<training_name>/<generator_identifier>/<model_name>/", so a intermediate GMM might be stored in
@@ -58,7 +58,24 @@ generator_identifiers Identifiers of generators that have been used in GMM fitti
 error_functions List of error functions to use for evaluation
 error_function_identifiers List of strings, each being an identifier for the corresponding error functions (for output).
 
+Quick GMM Evaluation:
+The file to execute is quick_eval.py. This reads in one GMM and one point cloud and evaluates them using a specified
+error function.
+The following variables can be specified:
+pc_path Path to the pointcloud off file
+gm_path Path to the GMM ply file
+gm_is_model True if the weights in the file are priors (.gmm.ply), False if they are amplitudes (.gma.ply)
+error_function Error function to use
 
+Quick GMM Refinement:
+The file to execute is quick_refine.ply. This reads in one GMM and refines it using a specified GMM generaotr.
+The following variables can be specified:
+out_path Path to store the result in. Logs are stored in a subdirectory "log".
+pc_path Path to the pointcloud off file
+gm_path Path to the GMM ply file
+gm_is_model True if the weights in the file are priors (.gmm.ply), False if they are amplitudes (.gma.ply)
+generator A GMMGenerator to use for refining
+logging options: same as in GMM fitting
 
 Possible ToDos:
  - Support Iterating over Point Clouds without models

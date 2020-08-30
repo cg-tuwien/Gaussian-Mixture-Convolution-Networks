@@ -16,7 +16,7 @@ n_points = 20000
 eval_points = 20000
 
 # Define identifiers of Generators to evaluate and error functions to use
-generator_identifiers = ["GD1", "GD2"]
+generator_identifiers = ["GD"]
 error_functions: List[ErrorFunction] = [LikelihoodLoss()]
 error_function_identifiers = ["Likelihood Loss"]
 

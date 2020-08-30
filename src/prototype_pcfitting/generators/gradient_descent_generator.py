@@ -1,7 +1,6 @@
-from prototype_pcfitting import GMMGenerator, GMLogger
+from prototype_pcfitting import GMMGenerator, GMLogger, data_loading
 from prototype_pcfitting import TerminationCriterion, MaxIterationTerminationCriterion
 from prototype_pcfitting.error_functions import LikelihoodLoss
-import prototype_pcfitting.pointcloud as pointcloud
 import torch
 import torch.optim
 import gmc.mixture as gm
@@ -92,12 +91,12 @@ class GradientDescentGenerator(GMMGenerator):
 
         # Initialize Optimizers
         optimiser_pos = torch.optim.RMSprop([gm_data.tr_positions], lr=self._learn_rate_pos, alpha=0.7,
-                                                    momentum=0.0)
+                                            momentum=0.0)
         optimiser_cov = torch.optim.Adam([gm_data.tr_cov_data], lr=self._learn_rate_cov)
         optimiser_pi = torch.optim.Adam([gm_data.tr_pi_relative], lr=self._learn_rate_weights)
 
         # Calculate initial loss
-        sample_points = pointcloud.sample(pcbatch, self._n_sample_points)
+        sample_points = data_loading.sample(pcbatch, self._n_sample_points)
         losses = self._loss.calculate_score(sample_points, gm_data.get_positions(), gm_data.get_covariances(),
                                             gm_data.get_inversed_covariances(), gm_data.get_amplitudes())
         loss = losses.sum()
@@ -114,7 +113,7 @@ class GradientDescentGenerator(GMMGenerator):
             optimiser_pi.zero_grad()
 
             # Calculate Loss
-            sample_points = pointcloud.sample(pcbatch, self._n_sample_points)
+            sample_points = data_loading.sample(pcbatch, self._n_sample_points)
             losses = self._loss.calculate_score(sample_points, gm_data.get_positions(), gm_data.get_covariances(),
                                                 gm_data.get_inversed_covariances(), gm_data.get_amplitudes())
 
@@ -132,8 +131,10 @@ class GradientDescentGenerator(GMMGenerator):
             gm_data.update_amplitudes()
 
         # Return final mixture
-        return gm.pack_mixture(gm_data.get_amplitudes(), gm_data.get_positions(), gm_data.get_covariances()), \
-            gm.pack_mixture(gm_data.pi_normalized, gm_data.get_positions(), gm_data.get_covariances())
+        final_gm = gm.pack_mixture(gm_data.get_amplitudes(), gm_data.get_positions(), gm_data.get_covariances())
+        final_gmm = gm.pack_mixture(gm_data.pi_normalized, gm_data.get_positions(), gm_data.get_covariances())
+
+        return final_gm, final_gmm
 
     class TrainingData:
         # Helper class. Capsules all the training data of the current gm batch

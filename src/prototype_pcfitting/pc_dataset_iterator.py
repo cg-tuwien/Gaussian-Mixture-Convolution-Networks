@@ -2,7 +2,7 @@ import os
 import torch
 import numpy as np
 from queue import SimpleQueue
-from prototype_pcfitting import pointcloud
+from prototype_pcfitting import data_loading
 import trimesh
 import trimesh.sample
 import math
@@ -60,13 +60,13 @@ class PCDatasetIterator:
                 objpath = os.path.join(self._model_root, filename)
                 pcpath = os.path.join(self._pc_root, filename)
                 if os.path.exists(pcpath):
-                    batch[i, :, :] = pointcloud.load_pc_from_off(pcpath)[0, :, :]
+                    batch[i, :, :] = data_loading.load_pc_from_off(pcpath)[0, :, :]
                 else:
                     mesh = trimesh.load_mesh(objpath)
                     bb = mesh.bounding_box
                     samples, _ = trimesh.sample.sample_surface(mesh, self._point_count)
                     samples *= 100.0 / np.max(bb.primitive.extents)
-                    pointcloud.write_pc_to_off(pcpath, samples)
+                    data_loading.write_pc_to_off(pcpath, samples)
                     batch[i, :, :] = torch.from_numpy(samples)
         return batch, names
 

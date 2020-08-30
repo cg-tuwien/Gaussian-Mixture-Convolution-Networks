@@ -78,7 +78,7 @@ class Scaler:
         positions *= self.scaleP
         covariances = gm.covariances(gmbatch).clone()
         amplitudes = gm.weights(gmbatch).clone()
-        amplitudes *= self.scaleA
+        amplitudes /= self.scaleA
         covariances *= self.scaleC
         return gm.pack_mixture(amplitudes, positions, covariances)
 

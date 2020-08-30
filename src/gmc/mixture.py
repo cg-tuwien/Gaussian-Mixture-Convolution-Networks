@@ -472,10 +472,12 @@ def de_normalise(m: Tensor, normalisation: NormalisationFactors) -> Tensor:
                         inverted_covariance_scaling @ covariances(m) @ inverted_covariance_scaling)
 
 
-def write_gm_to_ply(weights: Tensor, positions: Tensor, covariances: Tensor, batch: int, filename: str):
-    weight_shape = weights.shape #should be (m,1,n)
-    pos_shape = positions.shape #should be (m,1,n,3)
-    cov_shape = covariances.shape #should be (m,1,n,3,3)
+def write_gm_to_ply(m_weights: Tensor, m_positions: Tensor, m_covariances: Tensor, index: int, filename: str):
+    # Writes a single Gaussian Mixture to a ply-file
+    # The parameter "index" defines which element in the batch to use
+    weight_shape = m_weights.shape  # should be (m,1,n)
+    pos_shape = m_positions.shape  # should be (m,1,n,3)
+    cov_shape = m_covariances.shape  # should be (m,1,n,3,3)
     assert len(weight_shape) == 3
     assert len(pos_shape) == 4
     assert len(cov_shape) == 5
@@ -486,9 +488,9 @@ def write_gm_to_ply(weights: Tensor, positions: Tensor, covariances: Tensor, bat
     assert cov_shape[4] == 3
     n = weight_shape[2]
 
-    _weights = weights[batch,0,:].view(n)
-    _positions = positions[batch,0,:,:].view(n,3)
-    _covs = covariances[batch,0,:,:,:].view(n,3,3)
+    _weights = m_weights[index,0,:].view(n)
+    _positions = m_positions[index,0,:,:].view(n,3)
+    _covs = m_covariances[index,0,:,:,:].view(n,3,3)
 
     if not os.path.exists(os.path.dirname(filename)):
         os.makedirs(os.path.dirname(filename))
@@ -501,7 +503,7 @@ def write_gm_to_ply(weights: Tensor, positions: Tensor, covariances: Tensor, bat
     file.write("property float weight\nend_header\n")
 
     file.close()
-    file = open(filename, "ab") #open in append mode
+    file = open(filename, "ab")  # open in append mode
 
     data = torch.zeros(n, 10)
     data[:, 0:3] = _positions
@@ -515,11 +517,6 @@ def write_gm_to_ply(weights: Tensor, positions: Tensor, covariances: Tensor, bat
 
     np.savetxt(file, data.detach().numpy(), delimiter="  ")
 
-    # for i in range(0,n):
-    #     file.write(f"{_positions[i,0].item()}  {_positions[i,1].item()}  {_positions[i,2].item()}  ")
-    #     file.write(f"{_covs[i,0,0].item()}  {_covs[i,0,1].item()}  {_covs[i,0,2].item()}  ")
-    #     file.write(f"{_covs[i,1,1].item()}  {_covs[i,1,2].item()}  {_covs[i,2,2].item()}  ")
-    #     file.write(f"{_weights[i].item()}\n")
     file.close()
 
 
@@ -560,6 +557,8 @@ def read_gm_from_ply(filename: str, ismodel: bool) -> Tensor:
 
 
 def convert_priors_to_amplitudes(gm: torch.Tensor) -> torch.Tensor:
+    # Given mixture has priors as weights
+    # This returns a new mixture with corresponding amplitudes as weights
     gmwei = weights(gm)
     gmcov = covariances(gm)
     amplitudes = gmwei / (gmcov.det().sqrt() * 15.74960995)
@@ -567,6 +566,8 @@ def convert_priors_to_amplitudes(gm: torch.Tensor) -> torch.Tensor:
 
 
 def convert_amplitudes_to_priors(gm: torch.Tensor) -> torch.Tensor:
+    # Given mixture has amplitudes as weights
+    # This returns a new mixture with corresponding priors as weights
     gmamp = weights(gm)
     gmcov = covariances(gm)
     priors = gmamp * (gmcov.det().sqrt() * 15.74960995)

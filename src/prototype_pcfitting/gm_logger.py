@@ -7,6 +7,7 @@ import gmc.mixture as gm
 
 from gmc.cpp.gm_visualizer import GMVisualizer, GmVisColorRangeMode, GmVisColoringRenderMode
 from .scaler import Scaler
+from prototype_pcfitting import data_loading
 
 
 class GMLogger:
@@ -143,7 +144,8 @@ class GMLogger:
             gmp = gm.positions(gm_upscaled)
             gmc = gm.covariances(gm_upscaled)
             for i in range(gm_upscaled.shape[0]):
-                gm.write_gm_to_ply(gmw, gmp, gmc, i, f"{self._gm_paths[i]}/gmm-{str(iteration).zfill(5)}.gma.ply")
+                data_loading.write_gm_to_ply(gmw, gmp, gmc, i,
+                                            f"{self._gm_paths[i]}/gmm-{str(iteration).zfill(5)}.gma.ply")
 
         if self._log_positions > 0:
             self._position_buffer[:, :, iteration % self._log_positions, :] = \
