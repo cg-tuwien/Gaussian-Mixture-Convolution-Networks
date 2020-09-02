@@ -559,6 +559,7 @@ def read_gm_from_ply(filename: str, ismodel: bool) -> Tensor:
 def convert_priors_to_amplitudes(gm: torch.Tensor) -> torch.Tensor:
     # Given mixture has priors as weights
     # This returns a new mixture with corresponding amplitudes as weights
+    # This implementation specificly only works for 3D
     gmwei = weights(gm)
     gmcov = covariances(gm)
     amplitudes = gmwei / (gmcov.det().sqrt() * 15.74960995)
@@ -568,6 +569,7 @@ def convert_priors_to_amplitudes(gm: torch.Tensor) -> torch.Tensor:
 def convert_amplitudes_to_priors(gm: torch.Tensor) -> torch.Tensor:
     # Given mixture has amplitudes as weights
     # This returns a new mixture with corresponding priors as weights
+    # This implementation specificly only works for 3D
     gmamp = weights(gm)
     gmcov = covariances(gm)
     priors = gmamp * (gmcov.det().sqrt() * 15.74960995)
