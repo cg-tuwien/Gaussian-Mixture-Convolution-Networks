@@ -27,8 +27,8 @@ class EMGenerator(GMMGenerator):
 
         batch_size = pcbatch.shape[0]
         point_count = pcbatch.shape[1]
-        pcbatch = pcbatch.to(self._device)
-        pcbatch_4 = pcbatch.view(batch_size, 1, point_count, 3)
+        pcbatch = pcbatch.to(self._device)  # dimension: (bs, np, 3)
+        pcbatch_4 = pcbatch.unsqueeze(1)  # dimension: (bs, 1, np, 3)
 
         lossgen = LikelihoodLoss()
 
@@ -60,23 +60,50 @@ class EMGenerator(GMMGenerator):
         while self._termination_criterion.may_continue(iteration, loss.item()):
             iteration += 1
 
+            # ToDo: Sometimes we can use unsqueeze instead of view, and maybe repeat is not necessary
+            # ToDo: Erase NaNs, e.g. newCovariances = newCovariances + (newWeights < 0.0001).unsqueeze(-1).unsqueeze(-1) * torch.eye(n_dims, device=device).view(1, 1, 1, n_dims, n_dims) * 0.0001
+
             # Expectation
             gaussvalues = gm.evaluate_componentwise(gm_data.pack_mixture(), pcbatch_4)
-            gaussvalues[gaussvalues < 1e-30] = 1e-30  # to avoid division by zero
+            gaussvalues[gaussvalues < 1e-10] = 1e-10  # to avoid division by zero
             priors_rep = gm_data.get_priors().repeat(batch_size, 1, point_count, 1)
             multiplied = priors_rep * gaussvalues
-            responsibilities = multiplied / multiplied.sum(dim=3, keepdim=True)     # dimension: (bs, 1, np, ng)
+            responsibilities = multiplied / (multiplied.sum(dim=3, keepdim=True) + 1e-20)   # dimension: (bs, 1, np, ng)
 
             # Maximization
             n_k = responsibilities.sum(dim=2)     # dimension: (bs, 1, ng)
-            multiplied = responsibilities.repeat(1, 1, 1, 1, 3) * pcbatch.repeat(1, 1, self._n_gaussians, 1, 1)
-            new_positions = multiplied.sum(dim=2) / n_k
+            # Calculate new Positions               # pcbatch_rep dimension: (bs, 1, np, ng, 3)
+            pcbatch_rep = pcbatch.unsqueeze(3).repeat(1, 1, 1, self._n_gaussians, 1)
+            multiplied = responsibilities.unsqueeze(4).repeat(1, 1, 1, 1, 3) \
+                            * pcbatch_rep  # dimension: (bs, 1, np, ng, 3)
+            new_positions = multiplied.sum(dim=2, keepdim=True) / n_k.unsqueeze(2).unsqueeze(4)
+                            # dimension: (bs, 1, 1, ng, 3)
+            new_positions_rep = new_positions.repeat(1, 1, point_count, 1, 1)
+            new_positions = new_positions.squeeze(2)  # dimensions: (bs, 1, ng, 3)
+            # Calculate new Covariances
+            relpos = (pcbatch_rep - new_positions_rep).unsqueeze(5)
+            matrix = relpos * (relpos.transpose(-1, -2))    # dimension: (bs, 1, np, ng, 3, 3)
+            matrix *= responsibilities.unsqueeze(4).unsqueeze(5)
+            new_covariances = matrix.sum(dim = 2) / n_k.unsqueeze(3).unsqueeze(4)  # dimension: (b_s, 1, ng, 3, 3)
+            # Calculate new priors
+            new_priors = n_k / point_count  # dimension: (b_s, 1, ng)
+            # Update GMData
+            gm_data.set_positions(new_positions)
+            gm_data.set_covariances(new_covariances)
+            gm_data.set_priors(new_priors)
 
-            # Todo: Calculate new Covariances
-            # Todo: Calculate new priors
-            # ToDo: Update GMData
+            sample_points = data_loading.sample(pcbatch, self._n_sample_points)
+            losses = lossgen.calculate_score(sample_points, gm_data.get_positions(), gm_data.get_covariances(),
+                                             gm_data.get_inversed_covariances(), gm_data.get_amplitudes())
+            loss = losses.sum()
 
-            pass
+            if self._logger:
+                self._logger.log(iteration, losses, gm_data.pack_mixture())
+
+        final_gm = gm_data.pack_mixture()
+        final_gmm = gm.pack_mixture(gm_data.get_priors(), gm_data.get_positions(), gm_data.get_covariances())
+
+        return final_gm, final_gmm
 
     class TrainingData:
 
@@ -97,6 +124,10 @@ class EMGenerator(GMMGenerator):
         def set_amplitudes(self, amplitudes):
             self._amplitudes = amplitudes
             self._priors = amplitudes * (self._covariances.det().sqrt() * 15.74960995)
+
+        def set_priors(self, priors):
+            self._priors = priors
+            self._amplitudes = priors / (self._covariances.det().sqrt() * 15.74960995)
 
         def get_positions(self):
             return self._positions
