@@ -28,7 +28,10 @@ int main(int argc, char *argv[]) {
             auto n_batch = gm::n_batch(mixture);
             auto n_layers = gm::n_layers(mixture);
 
+            auto weights = gm::weights(mixture);
             auto positions = gm::positions(mixture);
+            auto invCovs = gm::covariances(mixture).inverse();
+            mixture = gm::pack_mixture(weights, positions, invCovs.contiguous());
             auto minPos = positions.min().item().toFloat();
             auto maxPos = positions.max().item().toFloat();
 
