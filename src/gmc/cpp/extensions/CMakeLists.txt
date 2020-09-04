@@ -48,14 +48,15 @@ set(HEADERS
     common.h
 )
 
-#set(EVALUATE_SOURCES
-#    evaluate/evaluate_inversed_cpu.cpp
-#    evaluate/evaluate_inversed_cuda.cpp
-#    evaluate/evaluate_inversed_cuda.cu
-#)
+set(EVALUATE_SOURCES
+    evaluate/evaluate_inversed_cpu.cpp
+    evaluate/evaluate_inversed_cuda.cpp
+    evaluate/evaluate_inversed_cuda.cu
+    evaluate2/test_runner.cpp
+)
 
-#add_executable(gm_evaluate ${HEADERS} ${EVALUATE_SOURCES})
-#target_link_libraries(gm_evaluate PUBLIC OpenMP::OpenMP_CXX ${PYTORCH_LIBS})
+add_executable(gm_evaluate ${HEADERS} ${EVALUATE_SOURCES})
+target_link_libraries(gm_evaluate PUBLIC OpenMP::OpenMP_CXX torch)
 
 #set(EM_FITTING_SOURCES
 #    em_fitting/em_fitting_common.h
