@@ -12,20 +12,20 @@ torch::Tensor cuda_evaluate_inversed_forward(torch::Tensor mixture, torch::Tenso
 std::vector<torch::Tensor> cuda_evaluate_inversed_backward(torch::Tensor grad_output, torch::Tensor mixture, torch::Tensor xes, bool requires_grad_mixture, bool requires_grad_xes);
 
 
-torch::Tensor evaluate_inversed_forward(torch::Tensor mixture, torch::Tensor xes) {
+torch::Tensor cuda_forward(torch::Tensor mixture, torch::Tensor xes) {
     const at::cuda::OptionalCUDAGuard device_guard(device_of(mixture));
     return cuda_evaluate_inversed_forward(mixture, xes);
 }
 
 
-std::vector<torch::Tensor> evaluate_inversed_backward(torch::Tensor grad_output, torch::Tensor mixture, torch::Tensor xes, bool requires_grad_mixture, bool requires_grad_xes) {
+std::vector<torch::Tensor> cuda_backward(torch::Tensor grad_output, torch::Tensor mixture, torch::Tensor xes, bool requires_grad_mixture, bool requires_grad_xes) {
     const at::cuda::OptionalCUDAGuard device_guard(device_of(mixture));
     return cuda_evaluate_inversed_backward(grad_output, mixture, xes, requires_grad_mixture, requires_grad_xes);
 }
 
 #ifndef GMC_CMAKE_TEST_BUILD
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
-  m.def("forward", &evaluate_inversed_forward, "evaluate_inversed forward (CUDA)");
-  m.def("backward", &evaluate_inversed_backward, "evaluate_inversed backward (CUDA)");
+  m.def("forward", &cuda_forward, "evaluate_inversed forward (CUDA)");
+  m.def("backward", &cuda_backward, "evaluate_inversed backward (CUDA)");
 }
 #endif
