@@ -62,6 +62,7 @@ class PCDatasetIterator:
                 if os.path.exists(pcpath):
                     batch[i, :, :] = data_loading.load_pc_from_off(pcpath)[0, :, :]
                 else:
+                    print("Sampling ", objpath)
                     mesh = trimesh.load_mesh(objpath)
                     bb = mesh.bounding_box
                     samples, _ = trimesh.sample.sample_surface(mesh, self._point_count)

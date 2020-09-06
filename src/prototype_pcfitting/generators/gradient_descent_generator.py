@@ -12,7 +12,7 @@ class GradientDescentGenerator(GMMGenerator):
     _device = torch.device('cuda')
 
     def __init__(self,
-                 n_components: int,
+                 n_gaussians: int,
                  n_sample_points: int,
                  termination_criterion: TerminationCriterion = MaxIterationTerminationCriterion(500),
                  learn_rate_pos: float = 1e-3,
@@ -20,7 +20,7 @@ class GradientDescentGenerator(GMMGenerator):
                  learn_rate_weights: float = 5e-4):
         # Constructor. Creates a new GradientDescentGenerator.
         # Parameters:
-        #   n_components: int
+        #   n_gaussians: int
         #       Number of components this Generator should create.
         #       This is only used when a new mixture has to be created, not when refining an existing one.
         #   n_sample_points: int
@@ -36,7 +36,7 @@ class GradientDescentGenerator(GMMGenerator):
         #   learn_rate_weights: float
         #       Learning rate for the relative weights. Default: 5e-4
         #
-        self._n_components = n_components
+        self._n_gaussians = n_gaussians
         self._n_sample_points = n_sample_points
         self._termination_criterion = termination_criterion
         self._learn_rate_pos = learn_rate_pos
@@ -75,12 +75,12 @@ class GradientDescentGenerator(GMMGenerator):
 
         # Initialize mixture (Important: Assumes intervall [0,1])
         if gmbatch is None:
-            gmbatch = gm.generate_random_mixtures(n_batch=batch_size, n_layers=1, n_components=self._n_components,
+            gmbatch = gm.generate_random_mixtures(n_batch=batch_size, n_layers=1, n_components=self._n_gaussians,
                                                   n_dims=3, pos_radius=0.5,
-                                                  cov_radius=0.01 / (self._n_components ** (1 / 3)),
+                                                  cov_radius=0.01 / (self._n_gaussians ** (1 / 3)),
                                                   weight_min=0, weight_max=1, device=self._device)
-            indizes = torch.randperm(point_count)[0:self._n_components]
-            positions = pcbatch[:, indizes, :].view(batch_size, 1, self._n_components, 3)
+            indizes = torch.randperm(point_count)[0:self._n_gaussians]
+            positions = pcbatch[:, indizes, :].view(batch_size, 1, self._n_gaussians, 3)
             gmbatch = gm.pack_mixture(gm.weights(gmbatch), positions, gm.covariances(gmbatch))
 
         # Initialize Training Data
@@ -170,9 +170,9 @@ class GradientDescentGenerator(GMMGenerator):
             # This creates the covariance training data from the covariances.
             # If there are covariances that are too small, they might be set to bigger ones.
             batch_size = covariances.shape[0]
-            n_components = covariances.shape[2]
+            n_gaussians = covariances.shape[2]
             cov_factor_mat = torch.cholesky(covariances)
-            cov_factor_vec = torch.zeros((batch_size, 1, n_components, 6)).to(GradientDescentGenerator._device)
+            cov_factor_vec = torch.zeros((batch_size, 1, n_gaussians, 6)).to(GradientDescentGenerator._device)
             cov_factor_vec[:, :, :, 0] = torch.max(cov_factor_mat[:, :, :, 0, 0] - self._epsilon, 0)[0]
             cov_factor_vec[:, :, :, 1] = torch.max(cov_factor_mat[:, :, :, 1, 1] - self._epsilon, 0)[0]
             cov_factor_vec[:, :, :, 2] = torch.max(cov_factor_mat[:, :, :, 2, 2] - self._epsilon, 0)[0]
