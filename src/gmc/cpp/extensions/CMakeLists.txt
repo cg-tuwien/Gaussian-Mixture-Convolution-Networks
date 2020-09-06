@@ -75,7 +75,7 @@ set(EVALUATE_SOURCES
 )
 
 add_executable(gm_evaluate ${HEADERS} ${EVALUATE_SOURCES})
-target_link_libraries(gm_evaluate PUBLIC OpenMP::OpenMP_CXX torch)
+target_link_libraries(gm_evaluate PUBLIC OpenMP::OpenMP_CXX torch Qt5::Widgets)
 
 #set(EM_FITTING_SOURCES
 #    em_fitting/em_fitting_common.h
@@ -86,14 +86,3 @@ target_link_libraries(gm_evaluate PUBLIC OpenMP::OpenMP_CXX torch)
 
 #add_executable(em_fitting ${HEADERS} ${EM_FITTING_SOURCES})
 #target_link_libraries(em_fitting PUBLIC OpenMP::OpenMP_CXX ${PYTORCH_LIBS})
-
-
-set(EVALUATE2_SOURCES
-    evaluate2/evaluate2_inversed_cpu.cpp
-    evaluate2/evaluate2_inversed_cuda.cpp
-    evaluate2/evaluate2_inversed_cuda.cu
-    evaluate2/test_runner.cpp
-)
-
-add_executable(gm_evaluate2 ${HEADERS} ${EVALUATE2_SOURCES})
-target_link_libraries(gm_evaluate2 PUBLIC OpenMP::OpenMP_CXX torch Qt5::Core Qt5::Widgets Qt5::Gui)
