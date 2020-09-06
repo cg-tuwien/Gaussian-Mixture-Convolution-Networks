@@ -19,10 +19,10 @@ else:
     cuda_extra_cuda_cflags = ["-arch=sm_70", "-O3", "--use_fast_math"]
     cpp_extra_cflags = ["-fopenmp", "-O4", "-ffast-math"]
 
-cuda = load('evaluate_inversed_cuda', [source_dir + '/evaluate_inversed_cuda.cpp', source_dir + '/evaluate_inversed_cuda.cu'],
+cuda = load('evaluate_inversed_cuda_parallel', [source_dir + '/cuda_parallel.cpp', source_dir + '/cuda_parallel.cu'],
                                 extra_include_paths=extra_include_paths,
                                 verbose=True, extra_cflags=cuda_extra_cflags, extra_cuda_cflags=cuda_extra_cuda_cflags)
-cpu = load('evaluate_inversed_cpu', [source_dir + '/evaluate_inversed_cpu.cpp'],
+cpu = load('evaluate_inversed_cpu_parallel', [source_dir + '/cpu_parallel.cpp'],
                                 extra_include_paths=extra_include_paths,
                                 verbose=True, extra_cflags=cpp_extra_cflags, extra_ldflags=["-lpthread"])
 

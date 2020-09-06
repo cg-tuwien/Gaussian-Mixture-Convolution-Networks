@@ -68,14 +68,14 @@ set(HEADERS
 )
 
 set(EVALUATE_SOURCES
-    evaluate/evaluate_inversed_cpu.cpp
-    evaluate/evaluate_inversed_cuda.cpp
-    evaluate/evaluate_inversed_cuda.cu
-    evaluate/test_runner.cpp
+    evaluate_inversed/cpu_parallel.cpp
+    evaluate_inversed/cuda_parallel.cpp
+    evaluate_inversed/cuda_parallel.cu
+    evaluate_inversed/test_runner.cpp
 )
 
-add_executable(gm_evaluate ${HEADERS} ${EVALUATE_SOURCES})
-target_link_libraries(gm_evaluate PUBLIC OpenMP::OpenMP_CXX torch Qt5::Widgets)
+add_executable(evaluate_inversed_tester ${HEADERS} ${EVALUATE_SOURCES})
+target_link_libraries(evaluate_inversed_tester PUBLIC OpenMP::OpenMP_CXX torch Qt5::Widgets)
 
 #set(EM_FITTING_SOURCES
 #    em_fitting/em_fitting_common.h

@@ -11,15 +11,15 @@
 
 #include "common.h"
 
-torch::Tensor cuda_forward(torch::Tensor mixture, torch::Tensor xes);
-torch::Tensor cpu_forward(torch::Tensor mixture, torch::Tensor xes);
+torch::Tensor cuda_parallel_forward(torch::Tensor mixture, torch::Tensor xes);
+torch::Tensor cpu_parallel_forward(torch::Tensor mixture, torch::Tensor xes);
 
 constexpr uint N_BATCHES = 1;
 constexpr uint N_LAYERS = 1;
 constexpr uint LIMIT_N_BATCH = 20;
 
 void show(torch::Tensor mixture, const uint resolution, const uint n_batch_limit) {
-    const auto eval_fun = mixture.is_cuda() ? &cuda_forward : &cpu_forward;
+    const auto eval_fun = mixture.is_cuda() ? &cuda_parallel_forward : &cpu_parallel_forward;
     using namespace torch::indexing;
     const auto n_batch = std::min(gm::n_batch(mixture), n_batch_limit);
     mixture = mixture.index({Slice(None, n_batch)});

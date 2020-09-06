@@ -87,7 +87,7 @@ void execute_parallel_forward(const torch::PackedTensorAccessor32<scalar_t, 4>& 
     }
 }
 
-torch::Tensor cpu_forward(torch::Tensor mixture, torch::Tensor xes) {
+torch::Tensor cpu_parallel_forward(torch::Tensor mixture, torch::Tensor xes) {
     using namespace torch::indexing;
     auto n = gm::check_input_and_get_ns(mixture, xes);
 
@@ -181,7 +181,7 @@ void execute_parallel_backward(const torch::PackedTensorAccessor32<scalar_t, 4>&
     }
 }
 
-std::vector<torch::Tensor> cpu_backward(torch::Tensor grad_output, torch::Tensor mixture, torch::Tensor xes, bool requires_grad_mixture, bool requires_grad_xes) {
+std::vector<torch::Tensor> cpu_parallel_backward(torch::Tensor grad_output, torch::Tensor mixture, torch::Tensor xes, bool requires_grad_mixture, bool requires_grad_xes) {
     gm::check_mixture(mixture);
     auto n = gm::check_input_and_get_ns(mixture, xes);
 
@@ -214,7 +214,7 @@ std::vector<torch::Tensor> cpu_backward(torch::Tensor grad_output, torch::Tensor
 
 #ifndef GMC_CMAKE_TEST_BUILD
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
-  m.def("forward", &cpu_forward, "evaluate_inversed forward");
-  m.def("backward", &cpu_backward, "evaluate_inversed backward");
+  m.def("forward", &cpu_parallel_forward, "evaluate_inversed forward");
+  m.def("backward", &cpu_parallel_backward, "evaluate_inversed backward");
 }
 #endif
