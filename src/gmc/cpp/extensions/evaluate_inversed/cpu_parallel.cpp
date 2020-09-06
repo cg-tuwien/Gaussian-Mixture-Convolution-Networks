@@ -7,6 +7,55 @@
 #include "common.h"
 
 
+//torch::Tensor evaluate_inversed_forward(
+//    torch::Tensor mixture,
+//    torch::Tensor xes) {
+//    using namespace torch::indexing;
+
+//    gm::check_mixture(mixture);
+
+//    auto n_batch = gm::n_batch(mixture);
+//    auto n_layers = gm::n_layers(mixture);
+//    auto n_components = gm::n_components(mixture);
+//    auto n_dims = gm::n_dimensions(mixture);
+
+//    TORCH_CHECK(xes.dim() == 4, "xes must have 4 dimensions");
+//    TORCH_CHECK(xes.size(0) == 1 || xes.size(0) == n_batch, "xes must have a batch dimension of size 1 or of size equal to the mixture");
+//    TORCH_CHECK(xes.size(1) == 1 || xes.size(1) == n_layers, "xes must have a layer dimension of size 1 or of size equal to the mixture");
+
+//    auto n_xes = xes.size(2);
+//    TORCH_CHECK(xes.size(3) == n_dims, "xes must have the last dimension equal to the number of dimensions of the mixture");
+
+//    xes = xes.view({xes.size(0), xes.size(1), 1, n_xes, n_dims});
+//    torch::Tensor values_sum = torch::zeros({n_batch, n_layers, n_xes}, torch::dtype(torch::kFloat32).device(mixture.device()));
+
+//    int64_t total_memory_space = n_batch * n_layers * n_components * n_xes * n_dims;  //# did i forget something?
+//    int64_t n_memory_slices = std::max(total_memory_space / (1024 * 1024 * 200), int64_t(1));
+//    int64_t comp_slice_size = std::max(n_components / n_memory_slices, int64_t(1));
+//    n_memory_slices = n_components / comp_slice_size + int(n_components % comp_slice_size != 0);
+
+//    for (int64_t i = 0; i < n_memory_slices; ++i) {
+//        int64_t comps_begin = i * comp_slice_size;
+//        int64_t comps_end = std::min(comps_begin + comp_slice_size, n_components);
+//        int64_t n_comps_slice = comps_end - comps_begin;
+
+//        torch::Tensor mixture_slice = mixture.index({Slice(), Slice(), Slice(comps_begin, comps_end), Slice()});
+//        torch::Tensor values = xes - gm::positions(mixture_slice).view({n_batch, n_layers, n_comps_slice, 1, n_dims});
+
+//        // x^t A x -> quadratic form
+//        torch::Tensor x_t = values.view({n_batch, n_layers, n_comps_slice, -1, 1, n_dims});
+//        torch::Tensor x = values.view({n_batch, n_layers, n_comps_slice, -1, n_dims, 1});
+//        torch::Tensor A = gm::covariances(mixture_slice).view({n_batch, n_layers, n_comps_slice, 1, n_dims, n_dims});
+//        values = -0.5 * x_t.matmul(A).matmul(x);
+//        values = values.view({n_batch, n_layers, n_comps_slice, -1});
+
+//        values = gm::weights(mixture_slice).view({n_batch, n_layers, n_comps_slice, 1}) * torch::exp(values);
+//        values_sum += values.sum(2);
+//    }
+
+//    return values_sum;
+//}
+
 template <typename scalar_t, int DIMS>
 void execute_parallel_forward(const torch::PackedTensorAccessor32<scalar_t, 4>& mixture_a,
                       const torch::PackedTensorAccessor32<scalar_t, 4>& xes_a,
@@ -38,7 +87,7 @@ void execute_parallel_forward(const torch::PackedTensorAccessor32<scalar_t, 4>& 
     }
 }
 
-torch::Tensor evaluate_inversed_forward_cpu(torch::Tensor mixture, torch::Tensor xes) {
+torch::Tensor cpu_parallel_forward(torch::Tensor mixture, torch::Tensor xes) {
     using namespace torch::indexing;
     auto n = gm::check_input_and_get_ns(mixture, xes);
 
@@ -132,7 +181,7 @@ void execute_parallel_backward(const torch::PackedTensorAccessor32<scalar_t, 4>&
     }
 }
 
-std::vector<torch::Tensor> evaluate_inversed_backward_cpu(torch::Tensor grad_output, torch::Tensor mixture, torch::Tensor xes, bool requires_grad_mixture, bool requires_grad_xes) {
+std::vector<torch::Tensor> cpu_parallel_backward(torch::Tensor grad_output, torch::Tensor mixture, torch::Tensor xes, bool requires_grad_mixture, bool requires_grad_xes) {
     gm::check_mixture(mixture);
     auto n = gm::check_input_and_get_ns(mixture, xes);
 
@@ -165,7 +214,7 @@ std::vector<torch::Tensor> evaluate_inversed_backward_cpu(torch::Tensor grad_out
 
 #ifndef GMC_CMAKE_TEST_BUILD
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
-  m.def("forward", &evaluate_inversed_forward_cpu, "evaluate_inversed forward");
-  m.def("backward", &evaluate_inversed_backward_cpu, "evaluate_inversed backward");
+  m.def("forward", &cpu_parallel_forward, "evaluate_inversed forward");
+  m.def("backward", &cpu_parallel_backward, "evaluate_inversed backward");
 }
 #endif

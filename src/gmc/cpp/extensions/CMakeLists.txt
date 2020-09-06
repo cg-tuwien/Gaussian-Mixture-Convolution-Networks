@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.18)
 
 project(gm_pytorch_extensions LANGUAGES CUDA CXX)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 if(NOT DEFINED CMAKE_CUDA_STANDARD)
@@ -32,8 +32,27 @@ set (CUDNN_LIBRARY_PATH
    ${MY_ANACONDA_PATH}/pkgs/cudnn-7.6.4-cuda10.1_0/lib/libcudnn.so
    )
 
+
+
+set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTORCC ON)
+set(CMAKE_AUTOUIC ON)
+
 find_package(OpenMP REQUIRED)
 find_package(Torch REQUIRED)
+
+set(CMAKE_INCLUDE_CURRENT_DIR ON)
+ADD_DEFINITIONS(-DQT_NO_KEYWORDS)
+find_package(QT NAMES Qt5 COMPONENTS Core Widgets REQUIRED)
+find_package(Qt5 COMPONENTS Core Widgets REQUIRED)
+if ( TARGET Qt5::Core )
+    get_property( core_options TARGET Qt5::Core PROPERTY INTERFACE_COMPILE_OPTIONS )
+    string( REPLACE "-fPIC" "" new_core_options "${core_options}" )
+    set_property( TARGET Qt5::Core PROPERTY INTERFACE_COMPILE_OPTIONS ${new_core_options} )
+    set_property( TARGET Qt5::Core PROPERTY INTERFACE_POSITION_INDEPENDENT_CODE "ON" )
+    set( CMAKE_CXX_COMPILE_OPTIONS_PIE "-fPIC" )
+endif()
+
 
 set(MY_INCLUDE_PATHS
     ${MY_ANACONDA_PATH}/include/python3.7m/
@@ -48,14 +67,15 @@ set(HEADERS
     common.h
 )
 
-#set(EVALUATE_SOURCES
-#    evaluate/evaluate_inversed_cpu.cpp
-#    evaluate/evaluate_inversed_cuda.cpp
-#    evaluate/evaluate_inversed_cuda.cu
-#)
+set(EVALUATE_SOURCES
+    evaluate_inversed/cpu_parallel.cpp
+    evaluate_inversed/cuda_parallel.cpp
+    evaluate_inversed/cuda_parallel.cu
+    evaluate_inversed/test_runner.cpp
+)
 
-#add_executable(gm_evaluate ${HEADERS} ${EVALUATE_SOURCES})
-#target_link_libraries(gm_evaluate PUBLIC OpenMP::OpenMP_CXX ${PYTORCH_LIBS})
+add_executable(evaluate_inversed_tester ${HEADERS} ${EVALUATE_SOURCES})
+target_link_libraries(evaluate_inversed_tester PUBLIC OpenMP::OpenMP_CXX torch Qt5::Widgets)
 
 #set(EM_FITTING_SOURCES
 #    em_fitting/em_fitting_common.h
@@ -66,14 +86,3 @@ set(HEADERS
 
 #add_executable(em_fitting ${HEADERS} ${EM_FITTING_SOURCES})
 #target_link_libraries(em_fitting PUBLIC OpenMP::OpenMP_CXX ${PYTORCH_LIBS})
-
-
-set(EVALUATE2_SOURCES
-    evaluate2/evaluate2_inversed_cpu.cpp
-    evaluate2/evaluate2_inversed_cuda.cpp
-    evaluate2/evaluate2_inversed_cuda.cu
-    evaluate2/test_runner.cpp
-)
-
-add_executable(gm_evaluate2 ${HEADERS} ${EVALUATE2_SOURCES})
-target_link_libraries(gm_evaluate2 PUBLIC OpenMP::OpenMP_CXX torch)

@@ -11,10 +11,11 @@ class Container(torch.nn.Module):
             setattr(self, key, my_values[key])
 
 
-for batch in range(10):
+for batch in range(1):
     d = dict()
-    for layer in range(3):
+    for layer in range(1):
         m = gmc.mixture.load(f"fitting_input/fitting_input_batch{batch}_netlayer{layer}")[0]
+        gmc.mixture.export_as_image(m[:8])
         d[f"{layer}"] = m
 
     c = torch.jit.script(Container(d))

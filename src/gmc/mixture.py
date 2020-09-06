@@ -10,7 +10,7 @@ import numpy as np
 
 from . import mat_tools
 from . import config
-from .cpp.extensions.evaluate import evaluate_inversed as gm_evaluate_inversed
+from .cpp.extensions.evaluate_inversed import evaluate_inversed as gm_evaluate_inversed
 
 
 def n_dimensions(mixture: Tensor) -> int:
@@ -260,9 +260,13 @@ def render_with_relu(mixture: Tensor, constant: Tensor,
 
 def export_as_image(mixture: Tensor) -> None:
     # todo make general on next occasion
-    rendering = render(mixture.detach().view(1, -1, 1, 7), x_low=-1.5, x_high=1.5, y_low=-1.5, y_high=1.5).cpu().numpy()
+    l = positions(mixture).min().item()
+    h = positions(mixture).max().item()
+    rendering = render(mixture.detach(), torch.zeros(1, 1, device=mixture.device), x_low=l, x_high=h, y_low=l, y_high=h, ).cpu().numpy()
+    rendering -= rendering.min()
+    rendering /= rendering.max()
     import gmc.image_tools
-    rendering_cm = gmc.image_tools.colour_mapped(rendering, -1, 1)
+    rendering_cm = gmc.image_tools.colour_mapped(rendering, 0, 1)
     rendering_cm = rendering_cm.reshape(-1, 100, 100, 4)
     for i in range(rendering_cm.shape[0]):
         plt.imsave(f"{i:05}.png", rendering_cm[i, :, :, :])
