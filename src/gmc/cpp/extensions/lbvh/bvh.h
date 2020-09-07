@@ -225,7 +225,7 @@ using  bvh_device = detail::basic_device_bvh<Real, Object, false>;
 template<typename Real, typename Object>
 using cbvh_device = detail::basic_device_bvh<Real, Object, true>;
 
-template<typename Real, typename Object, typename AABBGetter,
+template<typename Real, typename Object,
          typename MortonCodeCalculator = default_morton_code_calculator<Real, Object>>
 class bvh
 {
@@ -235,17 +235,15 @@ class bvh
     using object_type = Object;
     using aabb_type   = aabb<real_type>;
     using node_type   = detail::node;
-    using aabb_getter_type  = AABBGetter;
     using morton_code_calculator_type = MortonCodeCalculator;
 
   public:
 
-    template<typename InputIterator>
-    bvh(InputIterator first, InputIterator last, bool query_host_enabled = false)
-        : objects_h_(first, last), objects_d_(objects_h_),
-          query_host_enabled_(query_host_enabled)
+    template<typename InputIterator, typename AabbIterator>
+    bvh(InputIterator first, InputIterator last, AabbIterator first_aabb)
+        : objects_d_(first, last)
     {
-        this->construct();
+        this->construct(first_aabb);
     }
 
     bvh()                      = default;
@@ -255,16 +253,10 @@ class bvh
     bvh& operator=(const bvh&) = default;
     bvh& operator=(bvh&&)      = default;
 
-    bool  query_host_enabled() const noexcept {return query_host_enabled_;}
-    bool& query_host_enabled()       noexcept {return query_host_enabled_;}
-
     void clear()
     {
-        this->objects_h_.clear();
         this->objects_d_.clear();
-        this->aabbs_h_.clear();
         this->aabbs_.clear();
-        this->nodes_h_.clear();
         this->nodes_.clear();
         return ;
     }
@@ -295,12 +287,12 @@ class bvh
         };
     }
 
-    void construct()
+    template<typename AabbIterator>
+    void construct(AabbIterator aabbBegin)
     {
-        assert(objects_h_.size() == objects_d_.size());
-        if(objects_h_.size() == 0u) {return;}
+        if(objects_d_.size() == 0u) {return;}
 
-        const unsigned int num_objects        = objects_h_.size();
+        const unsigned int num_objects        = objects_d_.size();
         const unsigned int num_internal_nodes = num_objects - 1;
         const unsigned int num_nodes          = num_objects * 2 - 1;
 
@@ -315,9 +307,8 @@ class bvh
 
         this->aabbs_.resize(num_nodes, default_aabb);
 
-        thrust::transform(this->objects_d_.begin(), this->objects_d_.end(),
-                aabbs_.begin() + num_internal_nodes, aabb_getter_type());
 
+        thrust::copy_n(aabbBegin, num_objects, aabbs_.begin() + num_internal_nodes);
         const auto aabb_whole = thrust::reduce(
             aabbs_.begin() + num_internal_nodes, aabbs_.end(), default_aabb,
             [] __device__ (const aabb_type& lhs, const aabb_type& rhs) {
@@ -436,31 +427,14 @@ class bvh
                 }
                 return;
             });
-
-        if(this->query_host_enabled_)
-        {
-            aabbs_h_ = aabbs_;
-            nodes_h_ = nodes_;
-        }
         return;
     }
 
-    thrust::host_vector<object_type> const& objects_host() const noexcept {return objects_h_;}
-    thrust::host_vector<object_type>&       objects_host()       noexcept {return objects_h_;}
-    thrust::host_vector<node_type> const& nodes_host() const noexcept {return nodes_h_;}
-    thrust::host_vector<node_type>&       nodes_host()       noexcept {return nodes_h_;}
-    thrust::host_vector<aabb_type> const& aabbs_host() const noexcept {return aabbs_h_;}
-    thrust::host_vector<aabb_type>&       aabbs_host()       noexcept {return aabbs_h_;}
-
   private:
 
-    thrust::host_vector  <object_type>   objects_h_;
     thrust::device_vector<object_type>   objects_d_;
-    thrust::host_vector  <aabb_type>     aabbs_h_;
     thrust::device_vector<aabb_type>     aabbs_;
-    thrust::host_vector  <node_type>     nodes_h_;
     thrust::device_vector<node_type>     nodes_;
-    bool query_host_enabled_;
 };
 
 } // lbvh

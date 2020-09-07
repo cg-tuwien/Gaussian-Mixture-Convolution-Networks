@@ -1,11 +1,17 @@
 //#include <torch/extension.h>
 #include <torch/script.h>
+#include <torch/nn/functional.h>
 
 #include <cuda.h>
 #include <cuda_runtime.h>
 
 #include <vector>
 #include <algorithm>
+
+#include <glm/glm.hpp>
+
+#include "lbvh/aabb.h"
+#include "lbvh/bvh.h"
 
 #include "common.h"
 
@@ -17,9 +23,30 @@ using std::min;
 using std::max;
 #endif
 
+template<int N_DIMS, typename scalar_t>
+struct Gaussian {
+    scalar_t weight;
+    glm::vec<N_DIMS, scalar_t> position;
+    glm::mat<N_DIMS, N_DIMS, scalar_t> covariance;
+};
+
+template<int N_DIMS, typename scalar_t>
+struct aabb_getter
+{
+    __device__
+    lbvh::aabb<scalar_t> operator()(const Gaussian<N_DIMS, scalar_t>& f) const noexcept
+    {
+        lbvh::aabb<scalar_t> retval;
+        retval.upper = f;
+        retval.lower = f;
+        return retval;
+    }
+};
 
 torch::Tensor cuda_bvh_forward_impl(torch::Tensor mixture, torch::Tensor xes) {
     using namespace torch::indexing;
+    namespace F = torch::nn::functional;
+    using build_lbvh = lbvh::bvh<float, Gaussian<2, float>>;
     auto n = gm::check_input_and_get_ns(mixture, xes);
 
     torch::Tensor sum = torch::zeros({n.batch, n.layers, n.xes}, torch::dtype(mixture.dtype()).device(mixture.device()));
@@ -28,10 +55,60 @@ torch::Tensor cuda_bvh_forward_impl(torch::Tensor mixture, torch::Tensor xes) {
     TORCH_CHECK(n.batch * n.layers < 65535, "n_batch x n_layers must be smaller than 65535 for CUDA");
     TORCH_CHECK(n.xes < 65535, "number of xes must be smaller than 65535 for CUDA");
 
+    TORCH_CHECK(n.dims == 2, "atm only 2d gaussians");
+    TORCH_CHECK(mixture.dtype() == caffe2::TypeMeta::Make<float>(), "atm only float");
+
+    torch::Tensor aabbs;
+    {
+        constexpr float threshold = 0.001f;
+        // double scalar = sqrt(-2 * log(threshold / m_amplitude));
+
+        torch::Tensor factors = -2 * torch::log(threshold / gm::weights(mixture));
+        factors = factors.where(factors > 0, torch::zeros({1, 1, 1}, factors.device()));
+        factors = torch::sqrt(factors);
+
+        torch::Tensor covs = gm::covariances(mixture).inverse();
+        torch::Tensor eigenvalues;
+        torch::Tensor eigenvectors;
+        std::cout << "covs.sizes()=" << covs.sizes() << std::endl;
+        std::tie(eigenvalues, eigenvectors) = covs.symeig(true);
+        /*
+         * eigenvectors is a tensor of [*, *, *, d, d], where d is the dimensionality (2 or 3)
+         * the eigenvectors are in the rows of that d * d matrix.
+         */
+        std::cout << "eigenvalues.sizes()=" << eigenvalues.sizes() << std::endl;
+        std::cout << "eigenvalues.unsqueeze(-1).sizes()=" << eigenvalues.unsqueeze(-1).sizes() << std::endl;
+        std::cout << "eigenvectors.sizes()=" << eigenvectors.sizes() << std::endl;
+        eigenvalues = sqrt(eigenvalues);
+        eigenvectors = eigenvalues.unsqueeze(-1) * eigenvectors;
+
+        auto ellipsoidM = factors.unsqueeze(-1).unsqueeze(-1) * eigenvectors;
+        std::cout << "ellipsoidM.sizes()=" << ellipsoidM.sizes() << std::endl;
+
+        // https://stackoverflow.com/a/24112864/4032670
+        // https://members.loria.fr/SHornus/ellipsoid-bbox.html
+        // we take the norm over the eigenvectors, that is analogous to simon fraiss' code in gmvis/core/Gaussian.cpp
+        auto delta = torch::norm(ellipsoidM, 2, {-2});
+        auto centroid = gm::positions(mixture);
+        auto upper = centroid + delta;
+        auto lower = centroid - delta;
+
+        // bring that thing into a format that can be read by our lbvh builder
+        upper = F::pad(upper, F::PadFuncOptions({0, 4-n.dims}));
+        lower = F::pad(lower, F::PadFuncOptions({0, 4-n.dims}));
+        aabbs = torch::cat({upper, lower}, -1).contiguous();
+
+    }
+
     for (uint batch_id = 0; batch_id < n.batch; ++batch_id) {
         for (uint layer_id = 0; layer_id < n.layers; ++layer_id) {
-            torch::Tensor current_mixture = mixture.index({batch_id, layer_id});
+            torch::Tensor current_mixture = mixture[batch_id][layer_id];
             TORCH_CHECK(current_mixture.is_contiguous(), "mixtures must be contiguous");
+            auto mixture_begin = static_cast<Gaussian<2, float>*>(current_mixture.data_ptr());
+            auto mixture_end = mixture_begin + n.components;
+            auto aabbs_begin = static_cast<lbvh::aabb<float>*>(aabbs.data_ptr());
+
+            auto bvh = build_lbvh(mixture_begin, mixture_end, aabbs_begin);
 
         }
     }

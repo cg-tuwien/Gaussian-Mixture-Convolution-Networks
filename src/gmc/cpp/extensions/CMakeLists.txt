@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.18)
 
 project(gm_pytorch_extensions LANGUAGES CUDA CXX)
 
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 if(NOT DEFINED CMAKE_CUDA_STANDARD)
@@ -14,7 +14,8 @@ set(CMAKE_CUDA_ARCHITECTURES 60)
 #     "-D_GLIBCXX_USE_CXX11_ABI=0 -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --expt-relaxed-constexpr --compiler-options '-fPIC' -O3 --use_fast_math -std=c++14"
 #     )
 # string(APPEND CMAKE_CXX_FLAGS " -D_GLIBCXX_USE_CXX11_ABI=0")
-string(APPEND CMAKE_CUDA_FLAGS " -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --expt-relaxed-constexpr --compiler-options '-fPIC' -O3 --use_fast_math")
+string(APPEND CMAKE_CUDA_FLAGS " -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --expt-extended-lambda --expt-relaxed-constexpr --compiler-options '-fPIC'")
+string(APPEND CMAKE_CUDA_FLAGS_RELEASE " -O3 --use_fast_math")
 
 # set(CMAKE_CXX_FLAGS -D_GLIBCXX_USE_CXX11_ABI=0 -O3 --use_fast_math)
 
@@ -45,6 +46,8 @@ set(CMAKE_INCLUDE_CURRENT_DIR ON)
 ADD_DEFINITIONS(-DQT_NO_KEYWORDS)
 find_package(QT NAMES Qt5 COMPONENTS Core Widgets REQUIRED)
 find_package(Qt5 COMPONENTS Core Widgets REQUIRED)
+
+# https://gitlab.kitware.com/cmake/cmake/-/issues/16915
 if ( TARGET Qt5::Core )
     get_property( core_options TARGET Qt5::Core PROPERTY INTERFACE_COMPILE_OPTIONS )
     string( REPLACE "-fPIC" "" new_core_options "${core_options}" )
@@ -97,3 +100,6 @@ target_link_libraries(evaluate_inversed_tester PUBLIC OpenMP::OpenMP_CXX torch Q
 
 #add_executable(em_fitting ${HEADERS} ${EM_FITTING_SOURCES})
 #target_link_libraries(em_fitting PUBLIC OpenMP::OpenMP_CXX ${PYTORCH_LIBS})
+
+###### add to python pytorch cuda flags:
+# --expt-extended-lambda
