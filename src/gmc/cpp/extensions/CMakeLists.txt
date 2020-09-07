@@ -67,14 +67,25 @@ set(HEADERS
     common.h
 )
 
+set(LBVH_HEADERS
+    lbvh/aabb.h
+    lbvh/bvh.h
+    lbvh/morton_code.h
+    lbvh/predicator.h
+    lbvh/query.h
+    lbvh/utility.h)
+
 set(EVALUATE_SOURCES
+    evaluate_inversed/cpu_bvh.cpp
+    evaluate_inversed/cuda_bvh.cpp
+    evaluate_inversed/cuda_bvh.cu
     evaluate_inversed/cpu_parallel.cpp
     evaluate_inversed/cuda_parallel.cpp
     evaluate_inversed/cuda_parallel.cu
     evaluate_inversed/test_runner.cpp
 )
 
-add_executable(evaluate_inversed_tester ${HEADERS} ${EVALUATE_SOURCES})
+add_executable(evaluate_inversed_tester ${HEADERS} ${LBVH_HEADERS} ${EVALUATE_SOURCES})
 target_link_libraries(evaluate_inversed_tester PUBLIC OpenMP::OpenMP_CXX torch Qt5::Widgets)
 
 #set(EM_FITTING_SOURCES
