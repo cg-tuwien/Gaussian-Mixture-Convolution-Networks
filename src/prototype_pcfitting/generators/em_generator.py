@@ -13,10 +13,12 @@ class EMGenerator(GMMGenerator):
     def __init__(self,
                  n_gaussians: int,
                  n_sample_points: int,
-                 termination_criterion: TerminationCriterion = MaxIterationTerminationCriterion(500)):
+                 termination_criterion: TerminationCriterion = MaxIterationTerminationCriterion(500),
+                 min_det: float = 1e-10):
         self._n_gaussians = n_gaussians
         self._n_sample_points = n_sample_points
         self._termination_criterion = termination_criterion
+        self._min_det = min_det
         self._logger = None
 
     def set_logging(self, logger: GMLogger = None):
@@ -60,20 +62,19 @@ class EMGenerator(GMMGenerator):
         while self._termination_criterion.may_continue(iteration, loss.item()):
             iteration += 1
 
-            # ToDo: Sometimes we can use unsqueeze instead of view, and maybe repeat is not necessary
-            # ToDo: Erase NaNs, e.g. newCovariances = newCovariances + (newWeights < 0.0001).unsqueeze(-1).unsqueeze(-1) * torch.eye(n_dims, device=device).view(1, 1, 1, n_dims, n_dims) * 0.0001
-
             # Expectation
             gaussvalues = gm.evaluate_componentwise(gm_data.pack_mixture(), pcbatch_4)
-            gaussvalues[gaussvalues < 1e-10] = 1e-10  # to avoid division by zero
-            priors_rep = gm_data.get_priors().repeat(batch_size, 1, point_count, 1)
-            multiplied = priors_rep * gaussvalues
-            responsibilities = multiplied / (multiplied.sum(dim=3, keepdim=True) + 1e-20)   # dimension: (bs, 1, np, ng)
+            priors_rep = gm_data.get_priors().unsqueeze(2).repeat(1, 1, point_count, 1)
+            likelihood = priors_rep * gaussvalues
+            likelihood[likelihood < 1e-20] = 1e-20  # to avoid division by zero
+            responsibilities = likelihood / (likelihood.sum(dim=3, keepdim=True))   # dimension: (bs, 1, np, ng)
+            assert torch.all(responsibilities >= 0)
+            assert not torch.any(torch.isnan(responsibilities))
 
             # Maximization
             n_k = responsibilities.sum(dim=2)     # dimension: (bs, 1, ng)
             # Calculate new Positions               # pcbatch_rep dimension: (bs, 1, np, ng, 3)
-            pcbatch_rep = pcbatch.unsqueeze(3).repeat(1, 1, 1, self._n_gaussians, 1)
+            pcbatch_rep = pcbatch_4.unsqueeze(3).repeat(1, 1, 1, self._n_gaussians, 1)
             multiplied = responsibilities.unsqueeze(4).repeat(1, 1, 1, 1, 3) \
                             * pcbatch_rep  # dimension: (bs, 1, np, ng, 3)
             new_positions = multiplied.sum(dim=2, keepdim=True) / n_k.unsqueeze(2).unsqueeze(4)
@@ -85,6 +86,11 @@ class EMGenerator(GMMGenerator):
             matrix = relpos * (relpos.transpose(-1, -2))    # dimension: (bs, 1, np, ng, 3, 3)
             matrix *= responsibilities.unsqueeze(4).unsqueeze(5)
             new_covariances = matrix.sum(dim = 2) / n_k.unsqueeze(3).unsqueeze(4)  # dimension: (b_s, 1, ng, 3, 3)
+            dets = new_covariances.det()
+            covdet_too_small_idx = dets < self._min_det
+            old_new_cov = new_covariances.clone()
+            new_covariances[covdet_too_small_idx] *= ((self._min_det / dets[covdet_too_small_idx]) ** (1/3.)).\
+                view(-1,1,1)
             # Calculate new priors
             new_priors = n_k / point_count  # dimension: (b_s, 1, ng)
             # Update GMData

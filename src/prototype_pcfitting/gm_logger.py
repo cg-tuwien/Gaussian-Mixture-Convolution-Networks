@@ -90,7 +90,7 @@ class GMLogger:
                 n = names[i]
                 self._gm_paths[i] = os.path.join(log_path, log_prefix, n)
                 if not os.path.exists(self._gm_paths[i]):
-                    os.mkdir(self._gm_paths[i])
+                    os.makedirs(self._gm_paths[i])
 
         # Prepare Position Log Data
         self._log_positions = log_positions

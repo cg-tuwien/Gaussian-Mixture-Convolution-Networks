@@ -26,7 +26,7 @@ log_positions = 0
 log_loss_console = 1
 log_loss_tb = 0
 log_rendering_tb = 0
-log_gm = 0
+log_gm = 1
 
 # Read in Name
 training_name = "Debug"
