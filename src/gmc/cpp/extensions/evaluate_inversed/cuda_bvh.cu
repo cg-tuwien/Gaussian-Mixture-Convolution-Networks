@@ -1,3 +1,5 @@
+#include <chrono>
+
 //#include <torch/extension.h>
 #include <torch/script.h>
 #include <torch/nn/functional.h>
@@ -60,7 +62,7 @@ torch::Tensor cuda_bvh_forward_impl(torch::Tensor mixture, torch::Tensor xes) {
 
     torch::Tensor aabbs;
     {
-        constexpr float threshold = 0.001f;
+        constexpr float threshold = 0.01f;
         // double scalar = sqrt(-2 * log(threshold / m_amplitude));
 
         torch::Tensor factors = -2 * torch::log(threshold / gm::weights(mixture));
@@ -70,20 +72,24 @@ torch::Tensor cuda_bvh_forward_impl(torch::Tensor mixture, torch::Tensor xes) {
         torch::Tensor covs = gm::covariances(mixture).inverse();
         torch::Tensor eigenvalues;
         torch::Tensor eigenvectors;
-        std::cout << "covs.sizes()=" << covs.sizes() << std::endl;
+//        std::cout << "covs.sizes()=" << covs.sizes() << std::endl;
+        auto start = std::chrono::steady_clock::now();
+
+        /// TODO: torch::symeig is too slow in pytorch version 1.6.
         std::tie(eigenvalues, eigenvectors) = covs.symeig(true);
+        auto end = std::chrono::steady_clock::now();
         /*
          * eigenvectors is a tensor of [*, *, *, d, d], where d is the dimensionality (2 or 3)
          * the eigenvectors are in the rows of that d * d matrix.
          */
-        std::cout << "eigenvalues.sizes()=" << eigenvalues.sizes() << std::endl;
-        std::cout << "eigenvalues.unsqueeze(-1).sizes()=" << eigenvalues.unsqueeze(-1).sizes() << std::endl;
-        std::cout << "eigenvectors.sizes()=" << eigenvectors.sizes() << std::endl;
+//        std::cout << "eigenvalues.sizes()=" << eigenvalues.sizes() << std::endl;
+//        std::cout << "eigenvalues.unsqueeze(-1).sizes()=" << eigenvalues.unsqueeze(-1).sizes() << std::endl;
+//        std::cout << "eigenvectors.sizes()=" << eigenvectors.sizes() << std::endl;
         eigenvalues = sqrt(eigenvalues);
         eigenvectors = eigenvalues.unsqueeze(-1) * eigenvectors;
 
         auto ellipsoidM = factors.unsqueeze(-1).unsqueeze(-1) * eigenvectors;
-        std::cout << "ellipsoidM.sizes()=" << ellipsoidM.sizes() << std::endl;
+//        std::cout << "ellipsoidM.sizes()=" << ellipsoidM.sizes() << std::endl;
 
         // https://stackoverflow.com/a/24112864/4032670
         // https://members.loria.fr/SHornus/ellipsoid-bbox.html
@@ -97,7 +103,10 @@ torch::Tensor cuda_bvh_forward_impl(torch::Tensor mixture, torch::Tensor xes) {
         upper = F::pad(upper, F::PadFuncOptions({0, 4-n.dims}));
         lower = F::pad(lower, F::PadFuncOptions({0, 4-n.dims}));
         aabbs = torch::cat({upper, lower}, -1).contiguous();
+//        std::cout << "mixture: " << mixture << std::endl;
+//        std::cout << "aabbs: " << aabbs << std::endl;
 
+        std::cout << "elapsed time: " << std::chrono::duration_cast<std::chrono::milliseconds>(end-start).count() << "ms\n";
     }
 
     for (uint batch_id = 0; batch_id < n.batch; ++batch_id) {

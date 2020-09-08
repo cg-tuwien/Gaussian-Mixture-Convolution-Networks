@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.18)
 
 project(gm_pytorch_extensions LANGUAGES CUDA CXX)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 if(NOT DEFINED CMAKE_CUDA_STANDARD)
@@ -15,7 +15,7 @@ set(CMAKE_CUDA_ARCHITECTURES 60)
 #     )
 # string(APPEND CMAKE_CXX_FLAGS " -D_GLIBCXX_USE_CXX11_ABI=0")
 string(APPEND CMAKE_CUDA_FLAGS " -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --expt-extended-lambda --expt-relaxed-constexpr --compiler-options '-fPIC'")
-string(APPEND CMAKE_CUDA_FLAGS_RELEASE " -O3 --use_fast_math")
+string(APPEND CMAKE_CUDA_FLAGS_RELEASE " --use_fast_math")
 
 # set(CMAKE_CXX_FLAGS -D_GLIBCXX_USE_CXX11_ABI=0 -O3 --use_fast_math)
 
@@ -78,6 +78,14 @@ set(LBVH_HEADERS
     lbvh/query.h
     lbvh/utility.h)
 
+
+
+set(MATH_SOURCES
+    math/symeig.h
+    math/symeig_cpu.cpp
+    math/symeig_cuda.cpp
+    math/symeig_cuda.cu)
+
 set(EVALUATE_SOURCES
     evaluate_inversed/cpu_bvh.cpp
     evaluate_inversed/cuda_bvh.cpp
@@ -88,7 +96,7 @@ set(EVALUATE_SOURCES
     evaluate_inversed/test_runner.cpp
 )
 
-add_executable(evaluate_inversed_tester ${HEADERS} ${LBVH_HEADERS} ${EVALUATE_SOURCES})
+add_executable(evaluate_inversed_tester ${HEADERS} ${MATH_SOURCES} ${LBVH_HEADERS} ${EVALUATE_SOURCES})
 target_link_libraries(evaluate_inversed_tester PUBLIC OpenMP::OpenMP_CXX torch Qt5::Widgets)
 
 #set(EM_FITTING_SOURCES

@@ -1,0 +1,219 @@
+#include "math/symeig.h"
+#include <vector>
+#include <algorithm>
+#include <iostream>
+
+#include <torch/extension.h>
+
+#include <glm/glm.hpp>
+
+#include "common.h"
+
+template <typename scalar_t>
+__forceinline__ __host__ __device__ scalar_t trace(const glm::mat<2, 2, scalar_t>& m) {
+    return m[0][0] + m[1][1];
+}
+
+template <typename scalar_t>
+__forceinline__ __host__ __device__ scalar_t trace(const glm::mat<3, 3, scalar_t>& m) {
+    return m[0][0] + m[1][1] + m[2][2];
+}
+
+template <typename scalar_t>
+std::tuple<glm::vec<2, scalar_t>, glm::mat<2, 2, scalar_t>> compute_symeig(const glm::mat<2, 2, scalar_t>& matrix) {
+    using vec = glm::vec<2, scalar_t>;
+    using mat = glm::mat<2, 2, scalar_t>;
+    // we follow pytorch notation, eigenvectors are in the rows
+    // [1] https://math.stackexchange.com/questions/395698/fast-way-to-calculate-eigen-of-2x2-matrix-using-a-formula
+    // [2] http://people.math.harvard.edu/~knill/teaching/math21b2004/exhibits/2dmatrices/index.html
+    // [3] https://en.wikipedia.org/wiki/Eigenvalue_algorithm#2.C3.972_matrices
+
+    // using [2], but we want to normalise the eigen vectors
+    // our matrices are symmetric, so b == c, and the eigen vectors are orthogonal to each other.
+    // normalisation becomes instable for small vectors, so we should take the larger one and rotate it for greater stability
+
+    // for positive semidefinit L1 and L2 (the eigenvalues) are > 0
+    // L1 is always larger, because sqrt is positive and L1 = T/2 + sqrt
+    // of the 2 formulas in [2], the one subtracting the smaller of a and d is more stable (gives the larger number for normalisation)
+
+    auto T = trace(matrix);
+    auto D = glm::determinant(matrix);
+//    std::cout << "D=" << D << std::endl;
+    const auto a = matrix[0][0];
+    const auto b = matrix[1][0];
+    const auto d = matrix[1][1];
+//    std::cout << "a=" << a << " b=" << b << " d=" << d << std::endl;
+    auto f1 = T / scalar_t(2.0);
+    auto f2 = gm::sqrt(T*T / scalar_t(4.0) - D);
+//    std::cout << "f1=" << f1 << " f2=" << f2 << std::endl;
+    auto eigenvalues = vec(f1 - f2, f1 + f2);
+//    std::cout << "eigenvalues=" << eigenvalues[0] << "/" << eigenvalues[1] << std::endl;
+    if (b == scalar_t(0)) {
+        return std::make_tuple(eigenvalues, mat(1, 0, 0, 1));
+    }
+    vec e1;
+    if (a < d)
+        e1 = vec(b, eigenvalues[1]-a);
+    else
+        e1 = vec(eigenvalues[1]-d, b);
+    e1 = glm::normalize(e1);
+//    std::cout << "e1=" << e1[0] << "/" << e1[1] << std::endl;
+    return std::make_tuple(eigenvalues, mat(vec(e1[1], -e1[0]), e1));
+}
+
+template <typename scalar_t, int DIMS>
+void execute_parallel_forward(const torch::PackedTensorAccessor32<scalar_t, 3>& matrices_a,
+                      torch::PackedTensorAccessor32<scalar_t, 3>& eigenvectors_a,
+                      torch::PackedTensorAccessor32<scalar_t, 2>& eigenvalues_a,
+                      const int& n_batch) {
+    using Vec = glm::vec<DIMS, scalar_t>;
+    using Mat = glm::mat<DIMS, DIMS, scalar_t>;
+
+//    #pragma omp parallel for num_threads(16)
+    for (int i = 0; i < n_batch; ++i) {
+        const auto& mat = gm::mat<DIMS>(matrices_a[i][0][0]);
+        Vec& eigenvalues = gm::vec<DIMS>(eigenvalues_a[i][0]);
+        Mat& eigenvectors = gm::mat<DIMS>(eigenvectors_a[i][0][0]);
+        std::tie(eigenvalues, eigenvectors) = compute_symeig(mat);
+    }
+}
+
+std::vector<torch::Tensor> eigen_cpu_forward(torch::Tensor matrices) {
+    using namespace torch::indexing;
+    // currently only 2x2 matrices
+    TORCH_CHECK(matrices.size(-1) == 2 && matrices.size(-2) == 2);
+    TORCH_CHECK(matrices.device().is_cpu(), "this one is just for cpu..");
+
+    const auto original_shape = matrices.sizes().vec();
+    const auto n_dims = original_shape.back();
+    matrices = matrices.view({-1, n_dims, n_dims});
+    const int n_batch = int(matrices.size(0));
+
+    torch::Tensor eigenvectors = torch::zeros_like(matrices);
+    torch::Tensor eigenvalues = torch::zeros({n_batch, n_dims}, at::TensorOptions(matrices.device()).dtype(matrices.dtype()));
+
+    AT_DISPATCH_FLOATING_TYPES(matrices.scalar_type(), "eval_inversed_omp", ([&] {
+        auto matrices_a = matrices.packed_accessor32<scalar_t, 3>();
+        auto eigenvectors_a = eigenvectors.packed_accessor32<scalar_t, 3>();
+        auto eigenvalues_a = eigenvalues.packed_accessor32<scalar_t, 2>();
+
+        if (n_dims == 2)
+            execute_parallel_forward<scalar_t, 2>(matrices_a, eigenvectors_a, eigenvalues_a, n_batch);
+//        else
+//            execute_parallel_forward<scalar_t, 3>(mixture_a, xes_a, sum_a, n);
+    }));
+    auto eigenvalues_shape = original_shape;
+    eigenvalues_shape.pop_back();
+
+    return {eigenvalues.view(eigenvalues_shape), eigenvectors.view(original_shape)};
+}
+
+
+//template <typename scalar_t, int DIMS>
+//void execute_parallel_backward(const torch::PackedTensorAccessor32<scalar_t, 4>& mixture_a,
+//                      const torch::PackedTensorAccessor32<scalar_t, 4>& xes_a,
+//                      torch::PackedTensorAccessor32<scalar_t, 4>& grad_mixture_a,
+//                      torch::PackedTensorAccessor32<scalar_t, 4>& grad_xes_a,
+//                      torch::PackedTensorAccessor32<scalar_t, 3>& grad_output_a,
+//                      const gm::MixtureAndXesNs& n, bool requires_grad_mixture, bool requires_grad_xes) {
+
+//    const auto nXes_x_nLayers = int(n.xes * n.layers);
+//    #pragma omp parallel for num_threads(16)
+//    for (int i = 0; i < n.batch * n.layers * n.xes; ++i) {
+//        const auto batch_index = int(i) / nXes_x_nLayers;
+//        const auto remaining = (int(i) - batch_index * nXes_x_nLayers);
+//        const auto layer_index = remaining / int(n.xes);
+//        const auto batch_xes_index = std::min(batch_index, int(n.batch_xes - 1));
+//        const auto layer_xes_index = std::min(layer_index, int(n.layers_xes - 1));
+//        const auto xes_index = remaining - layer_index * int(n.xes);
+
+//        const auto& x_pos = gm::vec<DIMS>(xes_a[batch_xes_index][layer_xes_index][xes_index][0]);
+
+//        auto& grad_xes = gm::vec<DIMS>(grad_xes_a[batch_xes_index][layer_xes_index][xes_index][0]);
+//        for (int c = 0; c < int(n.components); ++c) {
+//            auto& grad_c_weight = gm::weight(grad_mixture_a[batch_index][layer_index][c]);
+//            auto& grad_c_pos = gm::position<DIMS>(grad_mixture_a[batch_index][layer_index][c]);
+//            auto& grad_c_cov = gm::covariance<DIMS>(grad_mixture_a[batch_index][layer_index][c]);
+
+//            const auto& c_weight = gm::weight(mixture_a[batch_index][layer_index][c]);
+//            const auto& c_pos = gm::position<DIMS>(mixture_a[batch_index][layer_index][c]);
+//            const auto& c_cov = gm::covariance<DIMS>(mixture_a[batch_index][layer_index][c]);
+
+//            const auto t = x_pos - c_pos;
+//            const auto v = scalar_t(-0.5) * glm::dot(t, (c_cov * t));
+//            const auto exp = std::exp(v);
+//            const auto weighted_exp = c_weight * exp;
+//            const auto local_grad_c_pos = weighted_exp * t * c_cov;
+
+//            if (requires_grad_xes) {
+//                // grad_xes causes a race in case of xes having only 1 batch or layer size
+//                for (int i = 0; i < DIMS; ++i) {
+//                    #pragma omp atomic
+//                    grad_xes[i] += -local_grad_c_pos[i];
+//                }
+//            }
+//            if (requires_grad_mixture) {
+//                const auto weight_addition = exp * grad_output_a[batch_index][layer_index][xes_index];
+//                const auto pos_addition = local_grad_c_pos * grad_output_a[batch_index][layer_index][xes_index];
+//                const auto cov_addition = - c_weight * scalar_t(0.5) * exp * grad_output_a[batch_index][layer_index][xes_index] * glm::outerProduct(t, t);
+
+//                #pragma omp atomic
+//                grad_c_weight += weight_addition;
+
+//                for (int i = 0; i < DIMS; ++i) {
+//                    #pragma omp atomic
+//                    grad_c_pos[i] += pos_addition[i];
+
+//                    for (int j = 0; j < DIMS; ++j) {
+//                        #pragma omp atomic
+//                        grad_c_cov[i][j] += cov_addition[i][j];
+//                    }
+//                }
+//            }
+//        }
+//        if (requires_grad_xes) {
+//            for (int i = 0; i < DIMS; ++i) {
+//                #pragma omp atomic
+//                grad_xes[i] *= grad_output_a[batch_index][layer_index][xes_index];
+//            }
+//        }
+//    }
+//}
+
+//std::vector<torch::Tensor> eigen_cpu_backward(torch::Tensor grad_output, torch::Tensor mixture, torch::Tensor xes, bool requires_grad_mixture, bool requires_grad_xes) {
+//    gm::check_mixture(mixture);
+//    auto n = gm::check_input_and_get_ns(mixture, xes);
+
+//    TORCH_CHECK(mixture.device().is_cpu(), "this one is just for cpu..");
+//    TORCH_CHECK(grad_output.device().is_cpu(), "grad_output must be on cpu..");
+//    TORCH_CHECK(grad_output.dim() == 3, "grad_output has wrong number of dimensions");
+//    TORCH_CHECK(grad_output.size(0) == n.batch, "grad_output has wrong batch dimension");
+//    TORCH_CHECK(grad_output.size(1) == n.layers, "grad_output has wrong layer dimension");
+//    TORCH_CHECK(grad_output.size(2) == n.xes, "grad_output has wrong xes dimension");
+//    TORCH_CHECK(grad_output.dtype() == mixture.dtype(), "grad_output dtype does not match with mixture dtype")
+
+//    torch::Tensor grad_mixture = torch::zeros({n.batch, n.layers, n.components, mixture.size(3)}, torch::dtype(mixture.dtype()).device(mixture.device()));
+//    torch::Tensor grad_xes = torch::zeros({n.batch_xes, n.layers_xes, n.xes, n.dims}, torch::dtype(mixture.dtype()).device(mixture.device()));
+
+//    AT_DISPATCH_FLOATING_TYPES(mixture.scalar_type(), "eval_inversed_omp_backward", ([&] {
+//        auto mixture_a = mixture.packed_accessor32<scalar_t, 4>();
+//        auto xes_a = xes.packed_accessor32<scalar_t, 4>();
+//        auto grad_mixture_a = grad_mixture.packed_accessor32<scalar_t, 4>();
+//        auto grad_xes_a = grad_xes.packed_accessor32<scalar_t, 4>();
+//        auto grad_output_a = grad_output.packed_accessor32<scalar_t, 3>();
+
+//        if (n.dims == 2)
+//            execute_parallel_backward<scalar_t, 2>(mixture_a, xes_a, grad_mixture_a, grad_xes_a, grad_output_a, n, requires_grad_mixture, requires_grad_xes);
+//        else
+//            execute_parallel_backward<scalar_t, 3>(mixture_a, xes_a, grad_mixture_a, grad_xes_a, grad_output_a, n, requires_grad_mixture, requires_grad_xes);
+//    }));
+
+//    return {grad_mixture, grad_xes};
+//}
+
+#ifndef GMC_CMAKE_TEST_BUILD
+PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
+  m.def("forward", &eigen_cpu_forward, "evaluate_inversed forward");
+//  m.def("backward", &eigen_cpu_backward, "evaluate_inversed backward");
+}
+#endif
