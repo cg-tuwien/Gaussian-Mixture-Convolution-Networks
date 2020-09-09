@@ -1,21 +1,19 @@
+#include <algorithm>
 #include <chrono>
-
-//#include <torch/extension.h>
-#include <torch/script.h>
-#include <torch/nn/functional.h>
+#include <vector>
 
 #include <cuda.h>
 #include <cuda_runtime.h>
 
-#include <vector>
-#include <algorithm>
+#include <torch/script.h>
+#include <torch/nn/functional.h>
 
 #include <glm/glm.hpp>
 
+#include "common.h"
 #include "lbvh/aabb.h"
 #include "lbvh/bvh.h"
-
-#include "common.h"
+#include "math/symeig.h"
 
 #ifndef __CUDACC__
 constexpr dim3 blockIdx;
@@ -76,7 +74,7 @@ torch::Tensor cuda_bvh_forward_impl(torch::Tensor mixture, torch::Tensor xes) {
         auto start = std::chrono::steady_clock::now();
 
         /// TODO: torch::symeig is too slow in pytorch version 1.6.
-        std::tie(eigenvalues, eigenvectors) = covs.symeig(true);
+        std::tie(eigenvalues, eigenvectors) = gpe::symeig(covs);
         auto end = std::chrono::steady_clock::now();
         /*
          * eigenvectors is a tensor of [*, *, *, d, d], where d is the dimensionality (2 or 3)

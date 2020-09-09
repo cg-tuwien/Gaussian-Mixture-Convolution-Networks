@@ -63,10 +63,6 @@ int main(int argc, char *argv[]) {
     using namespace torch::indexing;
     QApplication a(argc, argv);
 
-    auto t = torch::rand({4, 1, 2, 2});
-    auto r = gpe::symeig(t);
-    std::cout << r[0] << r[1] << std::endl;
-    return 0;
     for (uint i = 0; i < N_BATCHES; ++i) {
         torch::jit::script::Module container = torch::jit::load("/home/madam/Documents/work/tuw/gmc_net/data/fitting_input/fitting_input_batch" + std::to_string(i) + ".pt");
         auto list = container.attributes();
