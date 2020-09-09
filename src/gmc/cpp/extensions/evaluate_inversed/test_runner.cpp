@@ -24,14 +24,14 @@ constexpr uint LIMIT_N_BATCH = 100;
 void show(torch::Tensor mixture, const uint resolution, const uint n_batch_limit) {
     const auto eval_fun = mixture.is_cuda() ? &cuda_bvh_forward_impl : &cpu_parallel_forward;
     using namespace torch::indexing;
-    const auto n_batch = std::min(gm::n_batch(mixture), n_batch_limit);
+    const auto n_batch = std::min(gpe::n_batch(mixture), n_batch_limit);
     mixture = mixture.index({Slice(None, n_batch)});
-    const auto n_layers = gm::n_layers(mixture);
+    const auto n_layers = gpe::n_layers(mixture);
 
-    const auto weights = gm::weights(mixture);
-    const auto positions = gm::positions(mixture);
-    const auto invCovs = gm::covariances(mixture).inverse().transpose(-1, -2);
-    mixture = gm::pack_mixture(weights, positions, invCovs.contiguous());
+    const auto weights = gpe::weights(mixture);
+    const auto positions = gpe::positions(mixture);
+    const auto invCovs = gpe::covariances(mixture).inverse().transpose(-1, -2);
+    mixture = gpe::pack_mixture(weights, positions, invCovs.contiguous());
 
     const auto minPos = positions.min().item().toFloat() - 0.1f;
     const auto maxPos = positions.max().item().toFloat() + 0.1f;
@@ -63,9 +63,9 @@ int main(int argc, char *argv[]) {
     using namespace torch::indexing;
     QApplication a(argc, argv);
 
-    auto t = torch::tensor({1.0f, 0.0f, 0.0f, 1.0f}).view({1, 1, 2, 2});
-    eigen_cpu_forward(t);
-
+    auto t = torch::rand({4, 1, 2, 2});
+    auto r = gpe::symeig(t);
+    std::cout << r[0] << r[1] << std::endl;
     return 0;
     for (uint i = 0; i < N_BATCHES; ++i) {
         torch::jit::script::Module container = torch::jit::load("/home/madam/Documents/work/tuw/gmc_net/data/fitting_input/fitting_input_batch" + std::to_string(i) + ".pt");

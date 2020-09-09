@@ -21,7 +21,7 @@ template <typename scalar_t, int DIMS>
 __global__ void kernel_forward(const torch::PackedTensorAccessor32<scalar_t, 4, torch::RestrictPtrTraits> mixture_a,
                       const torch::PackedTensorAccessor32<scalar_t, 4, torch::RestrictPtrTraits> xes_a,
                       torch::PackedTensorAccessor32<scalar_t, 3, torch::RestrictPtrTraits> sum_a,
-                      const gm::MixtureAndXesNs n) {
+                      const gpe::MixtureAndXesNs n) {
     const auto batch_index = blockIdx.x / n.layers;
     const auto layer_index = blockIdx.x - batch_index * n.layers;
     const auto batch_xes_index = min(batch_index, n.batch_xes - 1);
@@ -36,12 +36,12 @@ __global__ void kernel_forward(const torch::PackedTensorAccessor32<scalar_t, 4, 
 //           batch_index, layer_index, component_index, xes_index);
 
 
-    const auto& x_pos = gm::vec<DIMS>(xes_a[batch_xes_index][layer_xes_index][xes_index][0]);
+    const auto& x_pos = gpe::vec<DIMS>(xes_a[batch_xes_index][layer_xes_index][xes_index][0]);
 
-    const auto& c_weight = gm::weight(mixture_a[batch_index][layer_index][component_index]);
-    const auto& c_pos = gm::position<DIMS>(mixture_a[batch_index][layer_index][component_index]);
-    const auto& c_cov = gm::covariance<DIMS>(mixture_a[batch_index][layer_index][component_index]);
-    const auto w = gm::evaluate_gaussian(x_pos, c_weight, c_pos, c_cov);
+    const auto& c_weight = gpe::weight(mixture_a[batch_index][layer_index][component_index]);
+    const auto& c_pos = gpe::position<DIMS>(mixture_a[batch_index][layer_index][component_index]);
+    const auto& c_cov = gpe::covariance<DIMS>(mixture_a[batch_index][layer_index][component_index]);
+    const auto w = gpe::evaluate_gaussian(x_pos, c_weight, c_pos, c_cov);
 
 //    sum_a[batch_layer_index][xes_index] += w; // test performance impact of atomicAdd; but this will give a wrong result.
     atomicAdd(&sum_a[batch_index][layer_index][xes_index], w);
@@ -54,7 +54,7 @@ __global__ void kernel_backward(const torch::PackedTensorAccessor32<scalar_t, 4,
                       torch::PackedTensorAccessor32<scalar_t, 4, torch::RestrictPtrTraits> grad_mixture_a,
                       torch::PackedTensorAccessor32<scalar_t, 4, torch::RestrictPtrTraits> grad_xes_a,
                       torch::PackedTensorAccessor32<scalar_t, 3, torch::RestrictPtrTraits> grad_output_a,
-                      const gm::MixtureAndXesNs n, bool requires_grad_mixture, bool requires_grad_xes) {
+                      const gpe::MixtureAndXesNs n, bool requires_grad_mixture, bool requires_grad_xes) {
     const auto batch_index = blockIdx.x / n.layers;
     const auto layer_index = blockIdx.x - batch_index * n.layers;
     const auto batch_xes_index = min(batch_index, n.batch_xes - 1);
@@ -69,21 +69,21 @@ __global__ void kernel_backward(const torch::PackedTensorAccessor32<scalar_t, 4,
 //           batch_index, layer_index, component_index, xes_index);
 
 
-    const auto& x_pos = gm::vec<DIMS>(xes_a[batch_xes_index][layer_xes_index][xes_index][0]);
+    const auto& x_pos = gpe::vec<DIMS>(xes_a[batch_xes_index][layer_xes_index][xes_index][0]);
 
-//    glm::vec<DIMS, scalar_t>& grad_xes = gm::vec<DIMS>(grad_xes_a[batch_layer_index][xes_index][0]);
+//    glm::vec<DIMS, scalar_t>& grad_xes = gpe::vec<DIMS>(grad_xes_a[batch_layer_index][xes_index][0]);
 
-//    auto& grad_c_weight = gm::weight(grad_mixture_a[batch_layer_index][component_index]);
-//    auto& grad_c_pos = gm::position<DIMS>(grad_mixture_a[batch_layer_index][component_index]);
-//    auto& grad_c_cov = gm::covariance<DIMS>(grad_mixture_a[batch_layer_index][component_index]);
+//    auto& grad_c_weight = gpe::weight(grad_mixture_a[batch_layer_index][component_index]);
+//    auto& grad_c_pos = gpe::position<DIMS>(grad_mixture_a[batch_layer_index][component_index]);
+//    auto& grad_c_cov = gpe::covariance<DIMS>(grad_mixture_a[batch_layer_index][component_index]);
 
-    const auto& c_weight = gm::weight(mixture_a[batch_index][layer_index][component_index]);
-    const auto& c_pos = gm::position<DIMS>(mixture_a[batch_index][layer_index][component_index]);
-    const auto& c_cov = gm::covariance<DIMS>(mixture_a[batch_index][layer_index][component_index]);
+    const auto& c_weight = gpe::weight(mixture_a[batch_index][layer_index][component_index]);
+    const auto& c_pos = gpe::position<DIMS>(mixture_a[batch_index][layer_index][component_index]);
+    const auto& c_cov = gpe::covariance<DIMS>(mixture_a[batch_index][layer_index][component_index]);
 
     const auto t = x_pos - c_pos;
     const auto v = scalar_t(-0.5) * glm::dot(t, (c_cov * t));
-    const auto exp = gm::exp(v);
+    const auto exp = gpe::exp(v);
     const auto weighted_exp = c_weight * exp;
     const auto local_grad_c_pos = weighted_exp * t * c_cov;
 
@@ -109,7 +109,7 @@ __global__ void kernel_backward(const torch::PackedTensorAccessor32<scalar_t, 4,
 
 torch::Tensor cuda_parallel_forward_impl(torch::Tensor mixture, torch::Tensor xes) {
     using namespace torch::indexing;
-    auto n = gm::check_input_and_get_ns(mixture, xes);
+    auto n = gpe::check_input_and_get_ns(mixture, xes);
 
     torch::Tensor sum = torch::zeros({n.batch, n.layers, n.xes}, torch::dtype(mixture.dtype()).device(mixture.device()));
 
@@ -134,13 +134,15 @@ torch::Tensor cuda_parallel_forward_impl(torch::Tensor mixture, torch::Tensor xe
             kernel_forward<scalar_t, 2><<<dimGrid, dimBlock>>>(mixture_a, xes_a, sum_a, n);
         else
             kernel_forward<scalar_t, 3><<<dimGrid, dimBlock>>>(mixture_a, xes_a, sum_a, n);
+
+        cudaDeviceSynchronize();
     }));
     return sum;
 }
 
 std::vector<torch::Tensor> cuda_parallel_backward_impl(torch::Tensor grad_output, torch::Tensor mixture, torch::Tensor xes, bool requires_grad_mixture, bool requires_grad_xes) {
-    gm::check_mixture(mixture);
-    auto n = gm::check_input_and_get_ns(mixture, xes);
+    gpe::check_mixture(mixture);
+    auto n = gpe::check_input_and_get_ns(mixture, xes);
 
     TORCH_CHECK(mixture.device().is_cuda(), "mixture must be a CUDA tensor")
     TORCH_CHECK(grad_output.device().is_cuda(), "grad_output must be a CUDA tensor");

@@ -15,9 +15,9 @@ if platform.system() == "Windows":
     cuda_extra_cuda_cflags = ["-O3",  "--use_fast_math", "--std=c++14"]
     cpp_extra_cflags = ["/openmp", "/O2", "/fp:fast", "/std:c++14"]
 else:
-    cuda_extra_cflags = ["-O4", "-ffast-math"];
-    cuda_extra_cuda_cflags = ["-arch=sm_70", "-O3", "--use_fast_math"]
-    cpp_extra_cflags = ["-fopenmp", "-O4", "-ffast-math"]
+    cuda_extra_cflags = ["-O4", "-ffast-math", "-march=native", "--std=c++14"];
+    cuda_extra_cuda_cflags = ["-arch=sm_70", "-O3", "--use_fast_math", "--std=c++14"]
+    cpp_extra_cflags = ["-fopenmp", "-O4", "-ffast-math", "-march=native", "--std=c++14"]
 
 cuda = load('evaluate_inversed_cuda_parallel', [source_dir + '/cuda_parallel.cpp', source_dir + '/cuda_parallel.cu'],
                                 extra_include_paths=extra_include_paths,

@@ -8,6 +8,9 @@
 #define GLM_FORCE_INLINE
 #include <glm/glm.hpp>
 
+#include "math/scalar.h"
+#include "math/matrix.h"
+
 #ifndef __CUDACC__
 #define __device__
 #define __host__
@@ -19,66 +22,8 @@
 
 using uint = unsigned int;
 
-namespace gm {
+namespace gpe {
 
-
-// http://www.machinedlearnings.com/2011/06/fast-approximate-logarithm-exponential.html
-// https://github.com/xodobox/fastapprox/blob/master/fastapprox/src/fastexp.h
-// 2x faster, error in the range of e^-4 (dunno about relativ error)
-static inline float fasterpow2 (float p)
-{
-  float clipp = (p < -126) ? -126.0f : p;
-  union { uint32_t i; float f; } v = { uint32_t ( (1 << 23) * (clipp + 126.94269504f) ) };
-  return v.f;
-}
-
-static inline float fasterexp (float p)
-{
-  return fasterpow2 (1.442695040f * p);
-}
-
-// slightly faster than std::exp, slightly less precise (error in the range of e-10)
-static inline float
-fastpow2 (float p)
-{
-  float offset = (p < 0) ? 1.0f : 0.0f;
-  float clipp = (p < -126) ? -126.0f : p;
-  int w = int(clipp);
-  float z = clipp - w + offset;
-  union { uint32_t i; float f; } v = { uint32_t ( (1 << 23) * (clipp + 121.2740575f + 27.7280233f / (4.84252568f - z) - 1.49012907f * z) ) };
-
-  return v.f;
-}
-
-static inline float
-fastexp (float p)
-{
-  return fastpow2 (1.442695040f * p);
-}
-
-__forceinline__ __device__ float exp(float x) {
-    return ::expf(x);
-}
-__forceinline__ __device__ double exp(double x) {
-    return ::exp(x);
-}
-
-template <typename scalar_t>
-scalar_t exp(scalar_t x) {
-    return std::exp(x);
-}
-
-__forceinline__ __device__ float sqrt(float x) {
-    return ::sqrtf(x);
-}
-__forceinline__ __device__ double sqrt(double x) {
-    return ::sqrt(x);
-}
-
-template <typename scalar_t>
-scalar_t sqrt(scalar_t x) {
-    return std::sqrt(x);
-}
 
 struct MixtureAndXesNs {
     uint batch = 0;
@@ -156,20 +101,6 @@ inline torch::Tensor pack_mixture(const torch::Tensor weights, const torch::Tens
     return torch::cat({weights.view({n_batch, n_layers, n_components, 1}), positions, covariances.view({n_batch, n_layers, n_components, n_dims * n_dims})}, 3);
 }
 
-
-template <int DIMS, typename scalar_t>
-__forceinline__ __host__ __device__ typename std::conditional<std::is_const<scalar_t>::value, const glm::vec<DIMS, std::remove_cv_t<scalar_t>>, glm::vec<DIMS, scalar_t>>::type&
-vec(scalar_t& memory_location) {
-    return reinterpret_cast<typename std::conditional<std::is_const<scalar_t>::value, const glm::vec<DIMS, std::remove_cv_t<scalar_t>>, glm::vec<DIMS, scalar_t>>::type&>(memory_location);
-}
-
-template <int DIMS, typename scalar_t>
-__forceinline__ __host__ __device__ typename std::conditional<std::is_const<scalar_t>::value, const glm::mat<DIMS, DIMS, std::remove_cv_t<scalar_t>>, glm::mat<DIMS, DIMS, scalar_t>>::type&
-mat(scalar_t& memory_location) {
-    return reinterpret_cast<typename std::conditional<std::is_const<scalar_t>::value, const glm::mat<DIMS, DIMS, std::remove_cv_t<scalar_t>>, glm::mat<DIMS, DIMS, scalar_t>>::type&>(memory_location);
-}
-
-
 template <typename Gaussian>
 __forceinline__ __host__ __device__ auto weight(Gaussian&& gaussian) -> decltype (gaussian[0]) {
     return gaussian[0];
@@ -193,7 +124,7 @@ __forceinline__ __host__ __device__ scalar_t evaluate_gaussian(const glm::vec<DI
                                                                const glm::mat<DIMS, DIMS, scalar_t>& inversed_cov) {
     const auto t = evalpos - pos;
     const auto v = scalar_t(-0.5) * glm::dot(t, (inversed_cov * t));
-    return weight * gm::exp(v);
+    return weight * gpe::exp(v);
 }
 
 inline void check_mixture(torch::Tensor mixture) {
@@ -210,10 +141,10 @@ inline void check_mixture(torch::Tensor mixture) {
 inline MixtureNs get_ns(torch::Tensor mixture) {
     check_mixture(mixture);
 
-    uint n_batch = gm::n_batch(mixture);
-    uint n_layers = gm::n_layers(mixture);
-    uint n_components = gm::n_components(mixture);
-    uint n_dims = gm::n_dimensions(mixture);
+    uint n_batch = gpe::n_batch(mixture);
+    uint n_layers = gpe::n_layers(mixture);
+    uint n_components = gpe::n_components(mixture);
+    uint n_dims = gpe::n_dimensions(mixture);
 
     return {n_batch, n_layers, n_components, n_dims};
 }
@@ -221,10 +152,10 @@ inline MixtureNs get_ns(torch::Tensor mixture) {
 inline MixtureAndXesNs check_input_and_get_ns(torch::Tensor mixture, torch::Tensor xes) {
     check_mixture(mixture);
 
-    uint n_batch = gm::n_batch(mixture);
-    uint n_layers = gm::n_layers(mixture);
-    uint n_components = gm::n_components(mixture);
-    uint n_dims = gm::n_dimensions(mixture);
+    uint n_batch = gpe::n_batch(mixture);
+    uint n_layers = gpe::n_layers(mixture);
+    uint n_components = gpe::n_components(mixture);
+    uint n_dims = gpe::n_dimensions(mixture);
 
     TORCH_CHECK(xes.is_contiguous(), "mixture must be contiguous")
     TORCH_CHECK(xes.dim() == 4, "xes must have 4 dimensions");

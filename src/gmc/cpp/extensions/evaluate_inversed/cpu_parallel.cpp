@@ -12,12 +12,12 @@
 //    torch::Tensor xes) {
 //    using namespace torch::indexing;
 
-//    gm::check_mixture(mixture);
+//    gpe::check_mixture(mixture);
 
-//    auto n_batch = gm::n_batch(mixture);
-//    auto n_layers = gm::n_layers(mixture);
-//    auto n_components = gm::n_components(mixture);
-//    auto n_dims = gm::n_dimensions(mixture);
+//    auto n_batch = gpe::n_batch(mixture);
+//    auto n_layers = gpe::n_layers(mixture);
+//    auto n_components = gpe::n_components(mixture);
+//    auto n_dims = gpe::n_dimensions(mixture);
 
 //    TORCH_CHECK(xes.dim() == 4, "xes must have 4 dimensions");
 //    TORCH_CHECK(xes.size(0) == 1 || xes.size(0) == n_batch, "xes must have a batch dimension of size 1 or of size equal to the mixture");
@@ -40,16 +40,16 @@
 //        int64_t n_comps_slice = comps_end - comps_begin;
 
 //        torch::Tensor mixture_slice = mixture.index({Slice(), Slice(), Slice(comps_begin, comps_end), Slice()});
-//        torch::Tensor values = xes - gm::positions(mixture_slice).view({n_batch, n_layers, n_comps_slice, 1, n_dims});
+//        torch::Tensor values = xes - gpe::positions(mixture_slice).view({n_batch, n_layers, n_comps_slice, 1, n_dims});
 
 //        // x^t A x -> quadratic form
 //        torch::Tensor x_t = values.view({n_batch, n_layers, n_comps_slice, -1, 1, n_dims});
 //        torch::Tensor x = values.view({n_batch, n_layers, n_comps_slice, -1, n_dims, 1});
-//        torch::Tensor A = gm::covariances(mixture_slice).view({n_batch, n_layers, n_comps_slice, 1, n_dims, n_dims});
+//        torch::Tensor A = gpe::covariances(mixture_slice).view({n_batch, n_layers, n_comps_slice, 1, n_dims, n_dims});
 //        values = -0.5 * x_t.matmul(A).matmul(x);
 //        values = values.view({n_batch, n_layers, n_comps_slice, -1});
 
-//        values = gm::weights(mixture_slice).view({n_batch, n_layers, n_comps_slice, 1}) * torch::exp(values);
+//        values = gpe::weights(mixture_slice).view({n_batch, n_layers, n_comps_slice, 1}) * torch::exp(values);
 //        values_sum += values.sum(2);
 //    }
 
@@ -60,7 +60,7 @@ template <typename scalar_t, int DIMS>
 void execute_parallel_forward(const torch::PackedTensorAccessor32<scalar_t, 4>& mixture_a,
                       const torch::PackedTensorAccessor32<scalar_t, 4>& xes_a,
                       torch::PackedTensorAccessor32<scalar_t, 3>& sum_a,
-                      const gm::MixtureAndXesNs& n) {
+                      const gpe::MixtureAndXesNs& n) {
 
     const auto nXes_x_nLayers = int(n.xes * n.layers);
     #pragma omp parallel for num_threads(16)
@@ -74,14 +74,14 @@ void execute_parallel_forward(const torch::PackedTensorAccessor32<scalar_t, 4>& 
 //        std::cout << "b" << batch_index << " l" << layer_index << " x" << xes_index << std::endl;
 
 
-        const auto& x_pos = gm::vec<DIMS>(xes_a[batch_xes_index][layer_xes_index][xes_index][0]);
+        const auto& x_pos = gpe::vec<DIMS>(xes_a[batch_xes_index][layer_xes_index][xes_index][0]);
 
         scalar_t& sum = sum_a[batch_index][layer_index][xes_index];
         for (uint c = 0; c < n.components; ++c) {
-            const auto& c_weight = gm::weight(mixture_a[batch_index][layer_index][int(c)]);
-            const auto& c_pos = gm::position<DIMS>(mixture_a[batch_index][layer_index][int(c)]);
-            const auto& c_cov = gm::covariance<DIMS>(mixture_a[batch_index][layer_index][int(c)]);
-            sum += gm::evaluate_gaussian(x_pos, c_weight, c_pos, c_cov);
+            const auto& c_weight = gpe::weight(mixture_a[batch_index][layer_index][int(c)]);
+            const auto& c_pos = gpe::position<DIMS>(mixture_a[batch_index][layer_index][int(c)]);
+            const auto& c_cov = gpe::covariance<DIMS>(mixture_a[batch_index][layer_index][int(c)]);
+            sum += gpe::evaluate_gaussian(x_pos, c_weight, c_pos, c_cov);
         }
 
     }
@@ -89,7 +89,7 @@ void execute_parallel_forward(const torch::PackedTensorAccessor32<scalar_t, 4>& 
 
 torch::Tensor cpu_parallel_forward(torch::Tensor mixture, torch::Tensor xes) {
     using namespace torch::indexing;
-    auto n = gm::check_input_and_get_ns(mixture, xes);
+    auto n = gpe::check_input_and_get_ns(mixture, xes);
 
     torch::Tensor sum = torch::zeros({n.batch, n.layers, n.xes}, torch::dtype(mixture.dtype()).device(mixture.device()));
 
@@ -116,7 +116,7 @@ void execute_parallel_backward(const torch::PackedTensorAccessor32<scalar_t, 4>&
                       torch::PackedTensorAccessor32<scalar_t, 4>& grad_mixture_a,
                       torch::PackedTensorAccessor32<scalar_t, 4>& grad_xes_a,
                       torch::PackedTensorAccessor32<scalar_t, 3>& grad_output_a,
-                      const gm::MixtureAndXesNs& n, bool requires_grad_mixture, bool requires_grad_xes) {
+                      const gpe::MixtureAndXesNs& n, bool requires_grad_mixture, bool requires_grad_xes) {
 
     const auto nXes_x_nLayers = int(n.xes * n.layers);
     #pragma omp parallel for num_threads(16)
@@ -128,17 +128,17 @@ void execute_parallel_backward(const torch::PackedTensorAccessor32<scalar_t, 4>&
         const auto layer_xes_index = std::min(layer_index, int(n.layers_xes - 1));
         const auto xes_index = remaining - layer_index * int(n.xes);
 
-        const auto& x_pos = gm::vec<DIMS>(xes_a[batch_xes_index][layer_xes_index][xes_index][0]);
+        const auto& x_pos = gpe::vec<DIMS>(xes_a[batch_xes_index][layer_xes_index][xes_index][0]);
 
-        auto& grad_xes = gm::vec<DIMS>(grad_xes_a[batch_xes_index][layer_xes_index][xes_index][0]);
+        auto& grad_xes = gpe::vec<DIMS>(grad_xes_a[batch_xes_index][layer_xes_index][xes_index][0]);
         for (int c = 0; c < int(n.components); ++c) {
-            auto& grad_c_weight = gm::weight(grad_mixture_a[batch_index][layer_index][c]);
-            auto& grad_c_pos = gm::position<DIMS>(grad_mixture_a[batch_index][layer_index][c]);
-            auto& grad_c_cov = gm::covariance<DIMS>(grad_mixture_a[batch_index][layer_index][c]);
+            auto& grad_c_weight = gpe::weight(grad_mixture_a[batch_index][layer_index][c]);
+            auto& grad_c_pos = gpe::position<DIMS>(grad_mixture_a[batch_index][layer_index][c]);
+            auto& grad_c_cov = gpe::covariance<DIMS>(grad_mixture_a[batch_index][layer_index][c]);
 
-            const auto& c_weight = gm::weight(mixture_a[batch_index][layer_index][c]);
-            const auto& c_pos = gm::position<DIMS>(mixture_a[batch_index][layer_index][c]);
-            const auto& c_cov = gm::covariance<DIMS>(mixture_a[batch_index][layer_index][c]);
+            const auto& c_weight = gpe::weight(mixture_a[batch_index][layer_index][c]);
+            const auto& c_pos = gpe::position<DIMS>(mixture_a[batch_index][layer_index][c]);
+            const auto& c_cov = gpe::covariance<DIMS>(mixture_a[batch_index][layer_index][c]);
 
             const auto t = x_pos - c_pos;
             const auto v = scalar_t(-0.5) * glm::dot(t, (c_cov * t));
@@ -182,8 +182,8 @@ void execute_parallel_backward(const torch::PackedTensorAccessor32<scalar_t, 4>&
 }
 
 std::vector<torch::Tensor> cpu_parallel_backward(torch::Tensor grad_output, torch::Tensor mixture, torch::Tensor xes, bool requires_grad_mixture, bool requires_grad_xes) {
-    gm::check_mixture(mixture);
-    auto n = gm::check_input_and_get_ns(mixture, xes);
+    gpe::check_mixture(mixture);
+    auto n = gpe::check_input_and_get_ns(mixture, xes);
 
     TORCH_CHECK(mixture.device().is_cpu(), "this one is just for cpu..");
     TORCH_CHECK(grad_output.device().is_cpu(), "grad_output must be on cpu..");

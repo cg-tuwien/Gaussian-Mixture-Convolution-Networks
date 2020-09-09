@@ -2,64 +2,18 @@
 #include <vector>
 #include <algorithm>
 #include <iostream>
+#include <omp.h>
+
+#include <thrust/tuple.h>
 
 #include <torch/extension.h>
 
 #include <glm/glm.hpp>
 
 #include "common.h"
+#include "math/symeig_detail.h"
 
-template <typename scalar_t>
-__forceinline__ __host__ __device__ scalar_t trace(const glm::mat<2, 2, scalar_t>& m) {
-    return m[0][0] + m[1][1];
-}
-
-template <typename scalar_t>
-__forceinline__ __host__ __device__ scalar_t trace(const glm::mat<3, 3, scalar_t>& m) {
-    return m[0][0] + m[1][1] + m[2][2];
-}
-
-template <typename scalar_t>
-std::tuple<glm::vec<2, scalar_t>, glm::mat<2, 2, scalar_t>> compute_symeig(const glm::mat<2, 2, scalar_t>& matrix) {
-    using vec = glm::vec<2, scalar_t>;
-    using mat = glm::mat<2, 2, scalar_t>;
-    // we follow pytorch notation, eigenvectors are in the rows
-    // [1] https://math.stackexchange.com/questions/395698/fast-way-to-calculate-eigen-of-2x2-matrix-using-a-formula
-    // [2] http://people.math.harvard.edu/~knill/teaching/math21b2004/exhibits/2dmatrices/index.html
-    // [3] https://en.wikipedia.org/wiki/Eigenvalue_algorithm#2.C3.972_matrices
-
-    // using [2], but we want to normalise the eigen vectors
-    // our matrices are symmetric, so b == c, and the eigen vectors are orthogonal to each other.
-    // normalisation becomes instable for small vectors, so we should take the larger one and rotate it for greater stability
-
-    // for positive semidefinit L1 and L2 (the eigenvalues) are > 0
-    // L1 is always larger, because sqrt is positive and L1 = T/2 + sqrt
-    // of the 2 formulas in [2], the one subtracting the smaller of a and d is more stable (gives the larger number for normalisation)
-
-    auto T = trace(matrix);
-    auto D = glm::determinant(matrix);
-//    std::cout << "D=" << D << std::endl;
-    const auto a = matrix[0][0];
-    const auto b = matrix[1][0];
-    const auto d = matrix[1][1];
-//    std::cout << "a=" << a << " b=" << b << " d=" << d << std::endl;
-    auto f1 = T / scalar_t(2.0);
-    auto f2 = gm::sqrt(T*T / scalar_t(4.0) - D);
-//    std::cout << "f1=" << f1 << " f2=" << f2 << std::endl;
-    auto eigenvalues = vec(f1 - f2, f1 + f2);
-//    std::cout << "eigenvalues=" << eigenvalues[0] << "/" << eigenvalues[1] << std::endl;
-    if (b == scalar_t(0)) {
-        return std::make_tuple(eigenvalues, mat(1, 0, 0, 1));
-    }
-    vec e1;
-    if (a < d)
-        e1 = vec(b, eigenvalues[1]-a);
-    else
-        e1 = vec(eigenvalues[1]-d, b);
-    e1 = glm::normalize(e1);
-//    std::cout << "e1=" << e1[0] << "/" << e1[1] << std::endl;
-    return std::make_tuple(eigenvalues, mat(vec(e1[1], -e1[0]), e1));
-}
+namespace {
 
 template <typename scalar_t, int DIMS>
 void execute_parallel_forward(const torch::PackedTensorAccessor32<scalar_t, 3>& matrices_a,
@@ -69,16 +23,17 @@ void execute_parallel_forward(const torch::PackedTensorAccessor32<scalar_t, 3>& 
     using Vec = glm::vec<DIMS, scalar_t>;
     using Mat = glm::mat<DIMS, DIMS, scalar_t>;
 
-//    #pragma omp parallel for num_threads(16)
+    #pragma omp parallel for num_threads(omp_get_num_procs())
     for (int i = 0; i < n_batch; ++i) {
-        const auto& mat = gm::mat<DIMS>(matrices_a[i][0][0]);
-        Vec& eigenvalues = gm::vec<DIMS>(eigenvalues_a[i][0]);
-        Mat& eigenvectors = gm::mat<DIMS>(eigenvectors_a[i][0][0]);
-        std::tie(eigenvalues, eigenvectors) = compute_symeig(mat);
+        const auto& mat = gpe::mat<DIMS>(matrices_a[i][0][0]);
+        Vec& eigenvalues = gpe::vec<DIMS>(eigenvalues_a[i][0]);
+        Mat& eigenvectors = gpe::mat<DIMS>(eigenvectors_a[i][0][0]);
+        thrust::tie(eigenvalues, eigenvectors) = gpe::detail::compute_symeig(mat);
     }
 }
+}
 
-std::vector<torch::Tensor> eigen_cpu_forward(torch::Tensor matrices) {
+std::vector<torch::Tensor> gpe::symeig_cpu_forward(const torch::Tensor& matrices) {
     using namespace torch::indexing;
     // currently only 2x2 matrices
     TORCH_CHECK(matrices.size(-1) == 2 && matrices.size(-2) == 2);
@@ -86,14 +41,14 @@ std::vector<torch::Tensor> eigen_cpu_forward(torch::Tensor matrices) {
 
     const auto original_shape = matrices.sizes().vec();
     const auto n_dims = original_shape.back();
-    matrices = matrices.view({-1, n_dims, n_dims});
-    const int n_batch = int(matrices.size(0));
+    const auto flattened_matrices = matrices.view({-1, n_dims, n_dims});
+    const int n_batch = int(flattened_matrices.size(0));
 
-    torch::Tensor eigenvectors = torch::zeros_like(matrices);
+    torch::Tensor eigenvectors = torch::zeros_like(flattened_matrices);
     torch::Tensor eigenvalues = torch::zeros({n_batch, n_dims}, at::TensorOptions(matrices.device()).dtype(matrices.dtype()));
 
     AT_DISPATCH_FLOATING_TYPES(matrices.scalar_type(), "eval_inversed_omp", ([&] {
-        auto matrices_a = matrices.packed_accessor32<scalar_t, 3>();
+        auto matrices_a = flattened_matrices.packed_accessor32<scalar_t, 3>();
         auto eigenvectors_a = eigenvectors.packed_accessor32<scalar_t, 3>();
         auto eigenvalues_a = eigenvalues.packed_accessor32<scalar_t, 2>();
 
@@ -213,7 +168,7 @@ std::vector<torch::Tensor> eigen_cpu_forward(torch::Tensor matrices) {
 
 #ifndef GMC_CMAKE_TEST_BUILD
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
-  m.def("forward", &eigen_cpu_forward, "evaluate_inversed forward");
+  m.def("forward", &gpe::symeig_cpu_forward, "evaluate_inversed forward");
 //  m.def("backward", &eigen_cpu_backward, "evaluate_inversed backward");
 }
 #endif

@@ -49,7 +49,7 @@ torch::Tensor cuda_bvh_forward_impl(torch::Tensor mixture, torch::Tensor xes) {
     using namespace torch::indexing;
     namespace F = torch::nn::functional;
     using build_lbvh = lbvh::bvh<float, Gaussian<2, float>>;
-    auto n = gm::check_input_and_get_ns(mixture, xes);
+    auto n = gpe::check_input_and_get_ns(mixture, xes);
 
     torch::Tensor sum = torch::zeros({n.batch, n.layers, n.xes}, torch::dtype(mixture.dtype()).device(mixture.device()));
 
@@ -65,11 +65,11 @@ torch::Tensor cuda_bvh_forward_impl(torch::Tensor mixture, torch::Tensor xes) {
         constexpr float threshold = 0.01f;
         // double scalar = sqrt(-2 * log(threshold / m_amplitude));
 
-        torch::Tensor factors = -2 * torch::log(threshold / gm::weights(mixture));
+        torch::Tensor factors = -2 * torch::log(threshold / gpe::weights(mixture));
         factors = factors.where(factors > 0, torch::zeros({1, 1, 1}, factors.device()));
         factors = torch::sqrt(factors);
 
-        torch::Tensor covs = gm::covariances(mixture).inverse();
+        torch::Tensor covs = gpe::covariances(mixture).inverse();
         torch::Tensor eigenvalues;
         torch::Tensor eigenvectors;
 //        std::cout << "covs.sizes()=" << covs.sizes() << std::endl;
@@ -95,7 +95,7 @@ torch::Tensor cuda_bvh_forward_impl(torch::Tensor mixture, torch::Tensor xes) {
         // https://members.loria.fr/SHornus/ellipsoid-bbox.html
         // we take the norm over the eigenvectors, that is analogous to simon fraiss' code in gmvis/core/Gaussian.cpp
         auto delta = torch::norm(ellipsoidM, 2, {-2});
-        auto centroid = gm::positions(mixture);
+        auto centroid = gpe::positions(mixture);
         auto upper = centroid + delta;
         auto lower = centroid - delta;
 
@@ -127,8 +127,8 @@ torch::Tensor cuda_bvh_forward_impl(torch::Tensor mixture, torch::Tensor xes) {
 }
 
 //std::vector<torch::Tensor> cuda_parallel_backward_impl(torch::Tensor grad_output, torch::Tensor mixture, torch::Tensor xes, bool requires_grad_mixture, bool requires_grad_xes) {
-//    gm::check_mixture(mixture);
-//    auto n = gm::check_input_and_get_ns(mixture, xes);
+//    gpe::check_mixture(mixture);
+//    auto n = gpe::check_input_and_get_ns(mixture, xes);
 
 //    TORCH_CHECK(mixture.device().is_cuda(), "mixture must be a CUDA tensor")
 //    TORCH_CHECK(grad_output.device().is_cuda(), "grad_output must be a CUDA tensor");

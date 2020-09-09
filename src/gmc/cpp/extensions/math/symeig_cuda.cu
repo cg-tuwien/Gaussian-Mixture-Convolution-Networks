@@ -1,177 +1,82 @@
 ////#include <torch/extension.h>
-//#include <torch/script.h>
+#include <torch/script.h>
 
 //#include <cuda.h>
-//#include <cuda_runtime.h>
+#include <cuda_runtime.h>
 
-//#include <vector>
-//#include <algorithm>
+#include <stdio.h>
+#include <vector>
+#include <tuple>
+#include <algorithm>
+#include <thrust/tuple.h>
 
-//#include "common.h"
+#include "math/matrix.h"
+#include "math/symeig_detail.h"
+#include "common.h"
 
-//#ifndef __CUDACC__
-//constexpr dim3 blockIdx;
-//constexpr dim3 blockDim;
-//constexpr dim3 threadIdx;
-//using std::min;
-//using std::max;
-//#endif
+#ifndef __CUDACC__
+constexpr dim3 blockIdx;
+constexpr dim3 blockDim;
+constexpr dim3 threadIdx;
+using std::min;
+using std::max;
+#endif
 
-//template <typename scalar_t, int DIMS>
-//__global__ void kernel_forward(const torch::PackedTensorAccessor32<scalar_t, 4, torch::RestrictPtrTraits> mixture_a,
-//                      const torch::PackedTensorAccessor32<scalar_t, 4, torch::RestrictPtrTraits> xes_a,
-//                      torch::PackedTensorAccessor32<scalar_t, 3, torch::RestrictPtrTraits> sum_a,
-//                      const gm::MixtureAndXesNs n) {
-//    const auto batch_index = blockIdx.x / n.layers;
-//    const auto layer_index = blockIdx.x - batch_index * n.layers;
-//    const auto batch_xes_index = min(batch_index, n.batch_xes - 1);
-//    const auto layer_xes_index = min(layer_index, n.layers_xes - 1);
-//    const auto xes_index = blockIdx.y;
-//    const auto component_index = blockIdx.z * blockDim.x + threadIdx.x;
+template <typename scalar_t, int DIMS>
+__global__ void kernel_forward(const torch::PackedTensorAccessor32<scalar_t, 3, torch::RestrictPtrTraits> matrices_a,
+                               torch::PackedTensorAccessor32<scalar_t, 2, torch::RestrictPtrTraits> eigenvalues_a,
+                               torch::PackedTensorAccessor32<scalar_t, 3, torch::RestrictPtrTraits> eigenvectors_a,
+                               const uint n_batch) {
+    using Vec = glm::vec<DIMS, scalar_t>;
+    using Mat = glm::mat<DIMS, DIMS, scalar_t>;
 
-//    if (component_index >= uint(n.components))
-//        return;
-////    printf("block %d/%d/%d, thread %d: batch_index=%d, layer_index=%d, component_index=%d, xes_index=%d \n",
-////           blockIdx.x, blockIdx.y, blockIdx.z, threadIdx.x,
-////           batch_index, layer_index, component_index, xes_index);
+    const auto i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n_batch)
+        return;
 
-
-//    const auto& x_pos = gm::vec<DIMS>(xes_a[batch_xes_index][layer_xes_index][xes_index][0]);
-
-//    const auto& c_weight = gm::weight(mixture_a[batch_index][layer_index][component_index]);
-//    const auto& c_pos = gm::position<DIMS>(mixture_a[batch_index][layer_index][component_index]);
-//    const auto& c_cov = gm::covariance<DIMS>(mixture_a[batch_index][layer_index][component_index]);
-//    const auto w = gm::evaluate_gaussian(x_pos, c_weight, c_pos, c_cov);
-
-////    sum_a[batch_layer_index][xes_index] += w; // test performance impact of atomicAdd; but this will give a wrong result.
-//    atomicAdd(&sum_a[batch_index][layer_index][xes_index], w);
-//}
+    const auto& mat = gpe::mat<DIMS>(matrices_a[i][0][0]);
+    Vec& eigenvalues = gpe::vec<DIMS>(eigenvalues_a[i][0]);
+    Mat& eigenvectors = gpe::mat<DIMS>(eigenvectors_a[i][0][0]);
+    thrust::tie(eigenvalues, eigenvectors) = gpe::detail::compute_symeig(mat);
+}
 
 
-//template <typename scalar_t, int DIMS>
-//__global__ void kernel_backward(const torch::PackedTensorAccessor32<scalar_t, 4, torch::RestrictPtrTraits> mixture_a,
-//                      const torch::PackedTensorAccessor32<scalar_t, 4, torch::RestrictPtrTraits> xes_a,
-//                      torch::PackedTensorAccessor32<scalar_t, 4, torch::RestrictPtrTraits> grad_mixture_a,
-//                      torch::PackedTensorAccessor32<scalar_t, 4, torch::RestrictPtrTraits> grad_xes_a,
-//                      torch::PackedTensorAccessor32<scalar_t, 3, torch::RestrictPtrTraits> grad_output_a,
-//                      const gm::MixtureAndXesNs n, bool requires_grad_mixture, bool requires_grad_xes) {
-//    const auto batch_index = blockIdx.x / n.layers;
-//    const auto layer_index = blockIdx.x - batch_index * n.layers;
-//    const auto batch_xes_index = min(batch_index, n.batch_xes - 1);
-//    const auto layer_xes_index = min(layer_index, n.layers_xes - 1);
-//    const auto xes_index = blockIdx.y;
-//    const auto component_index = blockIdx.z * blockDim.x + threadIdx.x;
+std::vector<torch::Tensor> symeig_cuda_forward_impl(const torch::Tensor& matrices) {
+    using namespace torch::indexing;
+    // currently only 2x2 matrices
+    TORCH_CHECK(matrices.sizes().size() >= 2);
+    TORCH_CHECK(matrices.size(-1) == 2 && matrices.size(-2) == 2);
+    TORCH_CHECK(matrices.device().is_cuda(), "this one is just for cuda..");
 
-//    if (component_index >= uint(n.components))
-//        return;
-////    printf("block %d/%d/%d, thread %d: batch_index=%d, layer_index=%d, component_index=%d, xes_index=%d \n",
-////           blockIdx.x, blockIdx.y, blockIdx.z, threadIdx.x,
-////           batch_index, layer_index, component_index, xes_index);
+    const auto original_shape = matrices.sizes().vec();
+    const auto n_dims = original_shape.back();
+    const auto flattened_matrices = matrices.view({-1, n_dims, n_dims});
+    const uint n_batch = flattened_matrices.size(0);
 
+    torch::Tensor eigenvectors = torch::zeros_like(flattened_matrices);
+    torch::Tensor eigenvalues = torch::zeros({n_batch, n_dims}, at::TensorOptions(matrices.device()).dtype(matrices.dtype()));
 
-//    const auto& x_pos = gm::vec<DIMS>(xes_a[batch_xes_index][layer_xes_index][xes_index][0]);
+    const dim3 dimBlock = dim3(128);
+    const dim3 dimGrid = dim3((n_batch + dimBlock.x - 1) / dimBlock.x);
+    std::cout << "dimBlock=" << dimBlock.x << "/" << dimBlock.y << "/" << dimBlock.z << "  dimGrid=" << dimGrid.x << "/" << dimGrid.y << "/" << dimGrid.z << std::endl;
 
-////    glm::vec<DIMS, scalar_t>& grad_xes = gm::vec<DIMS>(grad_xes_a[batch_layer_index][xes_index][0]);
+    AT_DISPATCH_FLOATING_TYPES(matrices.scalar_type(), "eval_inversed_omp", ([&] {
+        const auto matrices_a = flattened_matrices.packed_accessor32<scalar_t, 3, torch::RestrictPtrTraits>();
+        auto eigenvalues_a = eigenvalues.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>();
+        auto eigenvectors_a = eigenvectors.packed_accessor32<scalar_t, 3, torch::RestrictPtrTraits>();
 
-////    auto& grad_c_weight = gm::weight(grad_mixture_a[batch_layer_index][component_index]);
-////    auto& grad_c_pos = gm::position<DIMS>(grad_mixture_a[batch_layer_index][component_index]);
-////    auto& grad_c_cov = gm::covariance<DIMS>(grad_mixture_a[batch_layer_index][component_index]);
-
-//    const auto& c_weight = gm::weight(mixture_a[batch_index][layer_index][component_index]);
-//    const auto& c_pos = gm::position<DIMS>(mixture_a[batch_index][layer_index][component_index]);
-//    const auto& c_cov = gm::covariance<DIMS>(mixture_a[batch_index][layer_index][component_index]);
-
-//    const auto t = x_pos - c_pos;
-//    const auto v = scalar_t(-0.5) * glm::dot(t, (c_cov * t));
-//    const auto exp = gm::exp(v);
-//    const auto weighted_exp = c_weight * exp;
-//    const auto local_grad_c_pos = weighted_exp * t * c_cov;
-
-//    if (requires_grad_xes) {
-//        const auto grad_xes_addition = - grad_output_a[batch_index][layer_index][xes_index] * local_grad_c_pos;
-//        for (uint i = 0; i < DIMS; ++i) {
-//            atomicAdd(&grad_xes_a[batch_xes_index][layer_xes_index][xes_index][i], grad_xes_addition[i]);
-//        }
-//    }
-//    if (requires_grad_mixture) {
-//        const auto grad_c_weight_addition = exp * grad_output_a[batch_index][layer_index][xes_index];
-//        const auto grad_c_pos_addition = local_grad_c_pos * grad_output_a[batch_index][layer_index][xes_index];
-//        const auto grad_c_cov_addition = - c_weight * scalar_t(0.5) * exp * grad_output_a[batch_index][layer_index][xes_index] * glm::outerProduct(t, t);
-//        atomicAdd(&grad_mixture_a[batch_index][layer_index][component_index][0], grad_c_weight_addition);
-//        for (uint i = 0; i < DIMS; ++i) {
-//            atomicAdd(&grad_mixture_a[batch_index][layer_index][component_index][1 + i], grad_c_pos_addition[i]);
-//            for (uint j = 0; j < DIMS; ++j)
-//                atomicAdd(&grad_mixture_a[batch_index][layer_index][component_index][1 + DIMS + i*DIMS + j], grad_c_cov_addition[i][j]);
-//        }
-//    }
-
-//}
-
-//torch::Tensor cuda_parallel_forward_impl(torch::Tensor mixture, torch::Tensor xes) {
-//    using namespace torch::indexing;
-//    auto n = gm::check_input_and_get_ns(mixture, xes);
-
-//    torch::Tensor sum = torch::zeros({n.batch, n.layers, n.xes}, torch::dtype(mixture.dtype()).device(mixture.device()));
-
-//    TORCH_CHECK(mixture.device().is_cuda(), "mixture must be a CUDA tensor");
-//    TORCH_CHECK(n.batch * n.layers < 65535, "n_batch x n_layers must be smaller than 65535 for CUDA");
-//    TORCH_CHECK(n.xes < 65535, "number of xes must be smaller than 65535 for CUDA");
-
-
-//    dim3 dimBlock = dim3(128);
-//    const dim3 dimGrid = dim3(n.batch * n.layers,
-//                              n.xes,
-//                              (n.components + dimBlock.z - 1) / dimBlock.z);
-////    std::cout << "forward: dimBlock=" << dimBlock.x << "/" << dimBlock.y << "/" << dimBlock.z << ", dimGrid=" << dimGrid.x << "/" << dimGrid.y << "/" << dimGrid.z << std::endl;
-
-
-//    AT_DISPATCH_FLOATING_TYPES(mixture.scalar_type(), "eval_inversed_omp", ([&] {
-//        auto mixture_a = mixture.packed_accessor32<scalar_t, 4, torch::RestrictPtrTraits>();
-//        auto xes_a = xes.packed_accessor32<scalar_t, 4, torch::RestrictPtrTraits>();
-//        auto sum_a = sum.packed_accessor32<scalar_t, 3, torch::RestrictPtrTraits>();
-
-//        if (n.dims == 2)
-//            kernel_forward<scalar_t, 2><<<dimGrid, dimBlock>>>(mixture_a, xes_a, sum_a, n);
+        if (n_dims == 2)
+            kernel_forward<scalar_t, 2><<<dimGrid, dimBlock>>>(matrices_a, eigenvalues_a, eigenvectors_a, n_batch);
 //        else
-//            kernel_forward<scalar_t, 3><<<dimGrid, dimBlock>>>(mixture_a, xes_a, sum_a, n);
-//    }));
-//    return sum;
-//}
+//            execute_parallel_forward<scalar_t, 3>(mixture_a, xes_a, sum_a, n);
+        cudaDeviceSynchronize();
+    }));
+    cudaDeviceSynchronize();
+    std::cout << "done" << std::endl;
+    auto eigenvalues_shape = original_shape;
 
-//std::vector<torch::Tensor> cuda_parallel_backward_impl(torch::Tensor grad_output, torch::Tensor mixture, torch::Tensor xes, bool requires_grad_mixture, bool requires_grad_xes) {
-//    gm::check_mixture(mixture);
-//    auto n = gm::check_input_and_get_ns(mixture, xes);
+    eigenvalues_shape.pop_back();
 
-//    TORCH_CHECK(mixture.device().is_cuda(), "mixture must be a CUDA tensor")
-//    TORCH_CHECK(grad_output.device().is_cuda(), "grad_output must be a CUDA tensor");
-//    TORCH_CHECK(grad_output.dim() == 3, "grad_output has wrong number of dimensions");
-//    TORCH_CHECK(grad_output.size(0) == n.batch, "grad_output has wrong batch dimension");
-//    TORCH_CHECK(grad_output.size(1) == n.layers, "grad_output has wrong layer dimension");
-//    TORCH_CHECK(grad_output.size(2) == n.xes, "grad_output has wrong xes dimension");
-//    TORCH_CHECK(grad_output.dtype() == mixture.dtype(), "grad_output dtype does not match with mixture dtype")
+    return {eigenvalues.view(eigenvalues_shape), eigenvectors.view(original_shape)};
+}
 
-
-//    torch::Tensor grad_mixture = torch::zeros({n.batch, n.layers, n.components, mixture.size(3)}, torch::dtype(mixture.dtype()).device(mixture.device()));
-//    torch::Tensor grad_xes = torch::zeros({n.batch_xes, n.layers_xes, n.xes, n.dims}, torch::dtype(mixture.dtype()).device(mixture.device()));
-
-//    dim3 dimBlock = dim3(128);
-//    const dim3 dimGrid = dim3(n.batch * n.layers,
-//                              n.xes,
-//                              (n.components + dimBlock.z - 1) / dimBlock.z);
-////    std::cout << "forward: dimBlock=" << dimBlock.x << "/" << dimBlock.y << "/" << dimBlock.z << ", dimGrid=" << dimGrid.x << "/" << dimGrid.y << "/" << dimGrid.z << std::endl;
-
-//    AT_DISPATCH_FLOATING_TYPES(mixture.scalar_type(), "eval_inversed_omp_backward", ([&] {
-//        auto mixture_a = mixture.packed_accessor32<scalar_t, 4, torch::RestrictPtrTraits>();
-//        auto xes_a = xes.packed_accessor32<scalar_t, 4, torch::RestrictPtrTraits>();
-//        auto grad_mixture_a = grad_mixture.packed_accessor32<scalar_t, 4, torch::RestrictPtrTraits>();
-//        auto grad_xes_a = grad_xes.packed_accessor32<scalar_t, 4, torch::RestrictPtrTraits>();
-//        auto grad_output_a = grad_output.packed_accessor32<scalar_t, 3, torch::RestrictPtrTraits>();
-
-//        if (n.dims == 2)
-//            kernel_backward<scalar_t, 2><<<dimGrid, dimBlock>>>(mixture_a, xes_a, grad_mixture_a, grad_xes_a, grad_output_a, n, requires_grad_mixture, requires_grad_xes);
-//        else
-//            kernel_backward<scalar_t, 3><<<dimGrid, dimBlock>>>(mixture_a, xes_a, grad_mixture_a, grad_xes_a, grad_output_a, n, requires_grad_mixture, requires_grad_xes);
-//    }));
-
-//    return {grad_mixture, grad_xes};
-//}
