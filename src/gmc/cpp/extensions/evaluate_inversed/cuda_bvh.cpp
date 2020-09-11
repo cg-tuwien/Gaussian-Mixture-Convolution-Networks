@@ -8,11 +8,11 @@
 // I'm really guessing here, didn't test anything, just copied the example from the docs.
 // Ye, and I believe that the cuda compiler also doesn't like <torch/extension.h> (depending on the version of pytorch / pybind / cuda / gcc)
 // CUDA forward declarations
-torch::Tensor cuda_bvh_forward_impl(torch::Tensor mixture, torch::Tensor xes);
+torch::Tensor cuda_bvh_forward_impl(const torch::Tensor& mixture, const torch::Tensor& xes);
 //std::vector<torch::Tensor> cuda_parallel_backward_impl(torch::Tensor grad_output, torch::Tensor mixture, torch::Tensor xes, bool requires_grad_mixture, bool requires_grad_xes);
 
 
-torch::Tensor cuda_bvh_forward(torch::Tensor mixture, torch::Tensor xes) {
+torch::Tensor cuda_bvh_forward(const torch::Tensor& mixture, const torch::Tensor& xes) {
     const at::cuda::OptionalCUDAGuard device_guard(device_of(mixture));
     return cuda_bvh_forward_impl(mixture, xes);
 }

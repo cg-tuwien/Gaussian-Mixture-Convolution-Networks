@@ -107,7 +107,7 @@ __global__ void kernel_backward(const torch::PackedTensorAccessor32<scalar_t, 4,
 
 }
 
-torch::Tensor cuda_parallel_forward_impl(torch::Tensor mixture, torch::Tensor xes) {
+torch::Tensor cuda_parallel_forward_impl(const torch::Tensor& mixture, const torch::Tensor& xes) {
     using namespace torch::indexing;
     auto n = gpe::check_input_and_get_ns(mixture, xes);
 
@@ -140,7 +140,7 @@ torch::Tensor cuda_parallel_forward_impl(torch::Tensor mixture, torch::Tensor xe
     return sum;
 }
 
-std::vector<torch::Tensor> cuda_parallel_backward_impl(torch::Tensor grad_output, torch::Tensor mixture, torch::Tensor xes, bool requires_grad_mixture, bool requires_grad_xes) {
+std::vector<torch::Tensor> cuda_parallel_backward_impl(const torch::Tensor& grad_output, const torch::Tensor& mixture, const torch::Tensor& xes, bool requires_grad_mixture, bool requires_grad_xes) {
     gpe::check_mixture(mixture);
     auto n = gpe::check_input_and_get_ns(mixture, xes);
 

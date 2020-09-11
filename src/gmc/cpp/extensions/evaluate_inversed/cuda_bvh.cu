@@ -43,7 +43,7 @@ struct aabb_getter
     }
 };
 
-torch::Tensor cuda_bvh_forward_impl(torch::Tensor mixture, torch::Tensor xes) {
+torch::Tensor cuda_bvh_forward_impl(const at::Tensor& mixture, const at::Tensor& xes) {
     using namespace torch::indexing;
     namespace F = torch::nn::functional;
     using build_lbvh = lbvh::bvh<float, Gaussian<2, float>>;

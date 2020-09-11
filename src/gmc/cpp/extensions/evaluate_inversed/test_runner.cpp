@@ -12,10 +12,10 @@
 #include "common.h"
 #include "math/symeig.h"
 
-torch::Tensor cpu_parallel_forward(torch::Tensor mixture, torch::Tensor xes);
-torch::Tensor cuda_parallel_forward(torch::Tensor mixture, torch::Tensor xes);
+torch::Tensor cpu_parallel_forward(const torch::Tensor& mixture, const torch::Tensor& xes);
+torch::Tensor cuda_parallel_forward(const torch::Tensor& mixture, const torch::Tensor& xes);
 
-torch::Tensor cuda_bvh_forward_impl(torch::Tensor mixture, torch::Tensor xes);
+torch::Tensor cuda_bvh_forward(const torch::Tensor& mixture, const torch::Tensor& xes);
 
 constexpr uint N_BATCHES = 1;
 constexpr uint N_LAYERS = 1;
