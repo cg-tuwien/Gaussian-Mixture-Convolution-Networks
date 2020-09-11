@@ -16,6 +16,7 @@ set(CMAKE_CUDA_ARCHITECTURES 60)
 # string(APPEND CMAKE_CXX_FLAGS " -D_GLIBCXX_USE_CXX11_ABI=0")
 string(APPEND CMAKE_CUDA_FLAGS " -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --expt-extended-lambda --expt-relaxed-constexpr --compiler-options '-fPIC'")
 string(APPEND CMAKE_CUDA_FLAGS_RELEASE " --use_fast_math")
+string(APPEND CMAKE_CUDA_FLAGS_DEBUG " -g -G")
 
 # set(CMAKE_CXX_FLAGS -D_GLIBCXX_USE_CXX11_ABI=0 -O3 --use_fast_math)
 
@@ -26,12 +27,6 @@ set (MY_ANACONDA_PATH "/home/madam/bin/anaconda3")
 list(APPEND CMAKE_PREFIX_PATH "${MY_ANACONDA_PATH}/lib/python3.7/site-packages/torch/")
 
 
-set(CUDNN_INCLUDE_PATH
-   ${MY_ANACONDA_PATH}/pkgs/cudnn-7.6.4-cuda10.1_0/include/
-   )
-set (CUDNN_LIBRARY_PATH
-   ${MY_ANACONDA_PATH}/pkgs/cudnn-7.6.4-cuda10.1_0/lib/libcudnn.so
-   )
 
 
 
