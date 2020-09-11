@@ -1,9 +1,51 @@
 #ifndef LBVH_PREDICATOR_H
 #define LBVH_PREDICATOR_H
+#include "utility.h"
 #include "aabb.h"
 
 namespace lbvh
 {
+
+template<typename Real>
+struct query_inside
+{
+    __device__ __host__
+    query_inside(const typename vector_of<Real>::type& point): point(point) {}
+
+    query_inside()  = default;
+    ~query_inside() = default;
+    query_inside(const query_inside&) = default;
+    query_inside(query_inside&&)      = default;
+    query_inside& operator=(const query_inside&) = default;
+    query_inside& operator=(query_inside&&)      = default;
+
+    __device__ __host__
+    inline bool operator()(const aabb<Real>& box) const noexcept
+    {
+        return inside(point, box);
+    }
+
+    typename vector_of<Real>::type point;
+};
+
+//template<typename Real>
+//__device__ __host__
+//query_inside<Real> inside_aabb(const typename vector_of<Real>::type& point) noexcept
+//{
+//    return query_inside<Real>(point);
+//}
+
+__device__ __host__
+query_inside<float> inside_aabb(const float4& point) noexcept
+{
+    return query_inside<float>(point);
+}
+
+__device__ __host__
+query_inside<double> inside_aabb(const double4& point) noexcept
+{
+    return query_inside<double>(point);
+}
 
 template<typename Real>
 struct query_overlap

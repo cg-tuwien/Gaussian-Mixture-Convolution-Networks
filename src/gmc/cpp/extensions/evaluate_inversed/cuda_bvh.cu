@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <chrono>
 #include <vector>
+#include <stdio.h>
 
 #include <cuda.h>
 #include <cuda_runtime.h>
@@ -13,6 +14,8 @@
 #include "common.h"
 #include "lbvh/aabb.h"
 #include "lbvh/bvh.h"
+#include "lbvh/query.h"
+#include "lbvh/predicator.h"
 #include "math/symeig.h"
 
 #ifndef __CUDACC__
@@ -50,18 +53,21 @@ torch::Tensor cuda_bvh_forward_impl(const at::Tensor& mixture, const at::Tensor&
     auto n = gpe::check_input_and_get_ns(mixture, xes);
 
     torch::Tensor sum = torch::zeros({n.batch, n.layers, n.xes}, torch::dtype(mixture.dtype()).device(mixture.device()));
+//    const auto xes_a = xes.packed_accessor32<float, 4, torch::RestrictPtrTraits>();
+//    auto sum_a = sum.packed_accessor32<float, 3, torch::RestrictPtrTraits>();
 
     TORCH_CHECK(mixture.device().is_cuda(), "mixture must be a CUDA tensor");
     TORCH_CHECK(n.batch * n.layers < 65535, "n_batch x n_layers must be smaller than 65535 for CUDA");
     TORCH_CHECK(n.xes < 65535, "number of xes must be smaller than 65535 for CUDA");
+    TORCH_CHECK(n.components > 1, "number of components must be greater 1 for this implementation");
 
     TORCH_CHECK(n.dims == 2, "atm only 2d gaussians");
     TORCH_CHECK(mixture.dtype() == caffe2::TypeMeta::Make<float>(), "atm only float");
 
     torch::Tensor aabbs;
     {
-        constexpr float threshold = 0.01f;
-        // double scalar = sqrt(-2 * log(threshold / m_amplitude));
+        auto start = std::chrono::steady_clock::now();
+        constexpr float threshold = 0.0001f;
 
         torch::Tensor factors = -2 * torch::log(threshold / gpe::weights(mixture));
         factors = factors.where(factors > 0, torch::zeros({1, 1, 1}, factors.device()));
@@ -70,24 +76,16 @@ torch::Tensor cuda_bvh_forward_impl(const at::Tensor& mixture, const at::Tensor&
         torch::Tensor covs = gpe::covariances(mixture).inverse();
         torch::Tensor eigenvalues;
         torch::Tensor eigenvectors;
-//        std::cout << "covs.sizes()=" << covs.sizes() << std::endl;
-        auto start = std::chrono::steady_clock::now();
 
-        /// TODO: torch::symeig is too slow in pytorch version 1.6.
         std::tie(eigenvalues, eigenvectors) = gpe::symeig(covs);
-        auto end = std::chrono::steady_clock::now();
         /*
          * eigenvectors is a tensor of [*, *, *, d, d], where d is the dimensionality (2 or 3)
          * the eigenvectors are in the rows of that d * d matrix.
          */
-//        std::cout << "eigenvalues.sizes()=" << eigenvalues.sizes() << std::endl;
-//        std::cout << "eigenvalues.unsqueeze(-1).sizes()=" << eigenvalues.unsqueeze(-1).sizes() << std::endl;
-//        std::cout << "eigenvectors.sizes()=" << eigenvectors.sizes() << std::endl;
         eigenvalues = sqrt(eigenvalues);
         eigenvectors = eigenvalues.unsqueeze(-1) * eigenvectors;
 
         auto ellipsoidM = factors.unsqueeze(-1).unsqueeze(-1) * eigenvectors;
-//        std::cout << "ellipsoidM.sizes()=" << ellipsoidM.sizes() << std::endl;
 
         // https://stackoverflow.com/a/24112864/4032670
         // https://members.loria.fr/SHornus/ellipsoid-bbox.html
@@ -101,14 +99,13 @@ torch::Tensor cuda_bvh_forward_impl(const at::Tensor& mixture, const at::Tensor&
         upper = F::pad(upper, F::PadFuncOptions({0, 4-n.dims}));
         lower = F::pad(lower, F::PadFuncOptions({0, 4-n.dims}));
         aabbs = torch::cat({upper, lower}, -1).contiguous();
-//        std::cout << "mixture: " << mixture << std::endl;
-//        std::cout << "aabbs: " << aabbs << std::endl;
 
+        auto end = std::chrono::steady_clock::now();
         std::cout << "elapsed time: " << std::chrono::duration_cast<std::chrono::milliseconds>(end-start).count() << "ms\n";
     }
 
-    for (uint batch_id = 0; batch_id < n.batch; ++batch_id) {
-        for (uint layer_id = 0; layer_id < n.layers; ++layer_id) {
+    for (int batch_id = 0; batch_id < int(n.batch); ++batch_id) {
+        for (int layer_id = 0; layer_id < int(n.layers); ++layer_id) {
             torch::Tensor current_mixture = mixture[batch_id][layer_id];
             TORCH_CHECK(current_mixture.is_contiguous(), "mixtures must be contiguous");
             auto mixture_begin = static_cast<Gaussian<2, float>*>(current_mixture.data_ptr());
@@ -116,7 +113,30 @@ torch::Tensor cuda_bvh_forward_impl(const at::Tensor& mixture, const at::Tensor&
             auto aabbs_begin = static_cast<lbvh::aabb<float>*>(aabbs.data_ptr());
 
             auto bvh = build_lbvh(mixture_begin, mixture_end, aabbs_begin);
+            auto batch_id_xes = std::min(batch_id, int(n.batch_xes)-1);
+            auto layer_id_xes = std::min(layer_id, int(n.layers_xes)-1);
+            const auto current_xes = xes.index({batch_id_xes, layer_id_xes});
+            auto current_sum = sum.index({batch_id, layer_id});
+            const auto xes_a = current_xes.packed_accessor32<float, 2, torch::RestrictPtrTraits>();
+            auto sum_a = current_sum.packed_accessor32<float, 1, torch::RestrictPtrTraits>();
 
+            const auto bvh_dev = bvh.get_device_repr();
+            thrust::for_each(thrust::device,
+                thrust::make_counting_iterator<std::size_t>(0),
+                thrust::make_counting_iterator<std::size_t>(n.xes),
+                [bvh_dev, xes_a, sum_a] __device__ (std::size_t idx) mutable {
+                    const float& v = xes_a[idx][0];
+                    const auto& x_pos = gpe::vec<2>(v);
+                    unsigned int buffer[20];
+                    auto point = float4{x_pos.x, x_pos.y, 0, 0};
+                    const auto num_found = lbvh::query_device(bvh_dev, lbvh::inside_aabb(point), buffer, 20);
+//                    printf("point (%f/%f): %d gaussians\n", point.x, point.y, num_found);
+                    for (int i = 0; i < std::min(19u, num_found); i++) {
+                        const auto& g = bvh_dev.objects[buffer[i]];
+                        sum_a[idx] += gpe::evaluate_gaussian(x_pos, g.weight, g.position, g.covariance);
+                    }
+                    return ;
+                });
         }
     }
 

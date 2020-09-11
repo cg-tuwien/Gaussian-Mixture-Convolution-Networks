@@ -16,6 +16,17 @@ struct aabb
 
 template<typename T>
 __device__ __host__
+inline bool inside(const typename vector_of<T>::type& point, const aabb<T>& box) noexcept
+{
+    if (point.x < box.lower.x || point.x > box.upper.x) return false;
+    if (point.y < box.lower.y || point.y > box.upper.y) return false;
+    if (point.z < box.lower.z || point.z > box.upper.z) return false;
+    if (point.w < box.lower.w || point.w > box.upper.w) return false;
+    return true;
+}
+
+template<typename T>
+__device__ __host__
 inline bool intersects(const aabb<T>& lhs, const aabb<T>& rhs) noexcept
 {
     if(lhs.upper.x < rhs.lower.x || rhs.upper.x < lhs.lower.x) {return false;}

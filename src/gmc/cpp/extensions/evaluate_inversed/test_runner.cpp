@@ -22,7 +22,7 @@ constexpr uint N_LAYERS = 1;
 constexpr uint LIMIT_N_BATCH = 100;
 
 void show(torch::Tensor mixture, const uint resolution, const uint n_batch_limit) {
-    const auto eval_fun = mixture.is_cuda() ? &cuda_bvh_forward_impl : &cpu_parallel_forward;
+    const auto eval_fun = mixture.is_cuda() ? &cuda_bvh_forward : &cpu_parallel_forward;
     using namespace torch::indexing;
     const auto n_batch = std::min(gpe::n_batch(mixture), n_batch_limit);
     mixture = mixture.index({Slice(None, n_batch)});
@@ -33,8 +33,8 @@ void show(torch::Tensor mixture, const uint resolution, const uint n_batch_limit
     const auto invCovs = gpe::covariances(mixture).inverse().transpose(-1, -2);
     mixture = gpe::pack_mixture(weights, positions, invCovs.contiguous());
 
-    const auto minPos = positions.min().item().toFloat() - 0.1f;
-    const auto maxPos = positions.max().item().toFloat() + 0.1f;
+    const auto minPos = positions.min().item().toFloat() - 1.1f;
+    const auto maxPos = positions.max().item().toFloat() + 1.1f;
 
     const auto mesh = torch::meshgrid({torch::arange(minPos, maxPos, 1.00001f * (maxPos - minPos) / float(resolution), mixture.device()),
                                        torch::arange(minPos, maxPos, 1.00001f * (maxPos - minPos) / float(resolution), mixture.device())});
@@ -44,7 +44,9 @@ void show(torch::Tensor mixture, const uint resolution, const uint n_batch_limit
     std::cout << "xes.sizes() = " << xes.sizes() << std::endl;
 
     auto rendering = eval_fun(mixture, xes).cpu().view({n_batch, n_layers, resolution, resolution});
-    std::cout << "rendering.sizes() = " << rendering.sizes() << std::endl;
+    std::cout << "rendering.sizes() = " << rendering.sizes()
+              << ", min=" << rendering.min().item<float>()
+              << ", max=" << rendering.max().item<float>() << std::endl;
     rendering -= rendering.min();
     rendering /= rendering.max();
     rendering *= 255;
@@ -69,8 +71,10 @@ int main(int argc, char *argv[]) {
 
         for (uint i = 0; i < N_LAYERS; i++) {
             auto mixture = container.attr(std::to_string(i)).toTensor();//.index({Slice(), Slice(0, 1), Slice(0, 50), Slice()});
-//            auto mixture = torch::tensor({0.02f, 0.f, 0.f, 1.01f, 1.f, 1.f, 1.0f}).view({1, 1, 1, 7});
-            show(mixture.cuda(), 128, LIMIT_N_BATCH);
+//            auto mixture = torch::tensor({{0.02f, 0.f, 0.f, 1.01f, 1.f, 1.f, 1.0f},
+//                                          {0.02f, 5.f, 5.f, 1.01f, 0.5f, 0.5f, 4.0f}}).view({1, 1, 2, 7});
+            mixture = mixture.cuda();
+            show(mixture, 128, LIMIT_N_BATCH);
 
             std::cout << "layer " << i << ": " << mixture.sizes() << " device: " << mixture.device() << std::endl;
 
