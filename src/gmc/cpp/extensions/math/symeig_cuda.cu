@@ -69,7 +69,6 @@ std::vector<torch::Tensor> symeig_cuda_forward_impl(const torch::Tensor& matrice
             kernel_forward<scalar_t, 2><<<dimGrid, dimBlock>>>(matrices_a, eigenvalues_a, eigenvectors_a, n_batch);
 //        else
 //            execute_parallel_forward<scalar_t, 3>(mixture_a, xes_a, sum_a, n);
-        cudaDeviceSynchronize();
     }));
     cudaDeviceSynchronize();
     std::cout << "done" << std::endl;

@@ -1,8 +1,12 @@
 #ifndef LBVH_AABB_H
 #define LBVH_AABB_H
-#include "utility.h"
-#include <thrust/swap.h>
+
 #include <cmath>
+#include <ostream>
+
+#include <thrust/swap.h>
+
+#include "utility.h"
 
 namespace lbvh
 {
@@ -14,6 +18,21 @@ struct aabb
     typename vector_of<T>::type lower;
 };
 
+std::ostream& operator <<(std::ostream& stream, const float4& v) {
+    stream << v.x << "/" << v.y << "/" << v.z << "/" << v.w;
+    return stream;
+}
+std::ostream& operator <<(std::ostream& stream, const double4& v) {
+    stream << v.x << "/" << v.y << "/" << v.z << "/" << v.w;
+    return stream;
+}
+
+template<typename scalar_t>
+std::ostream& operator <<(std::ostream& stream, const aabb<scalar_t>& b) {
+    stream << "AABB[" << b.lower << "; " << b.upper << "]";
+    return stream;
+}
+
 template<typename T>
 __device__ __host__
 inline bool inside(const typename vector_of<T>::type& point, const aabb<T>& box) noexcept
@@ -21,7 +40,6 @@ inline bool inside(const typename vector_of<T>::type& point, const aabb<T>& box)
     if (point.x < box.lower.x || point.x > box.upper.x) return false;
     if (point.y < box.lower.y || point.y > box.upper.y) return false;
     if (point.z < box.lower.z || point.z > box.upper.z) return false;
-    if (point.w < box.lower.w || point.w > box.upper.w) return false;
     return true;
 }
 

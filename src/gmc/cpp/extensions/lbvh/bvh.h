@@ -430,12 +430,28 @@ class bvh
         return;
     }
 
-  private:
+    thrust::device_vector<object_type> getObjects() const
+    {
+        return objects_d_;
+    }
+
+    thrust::device_vector<aabb_type> getAabbs() const
+    {
+        return aabbs_;
+    }
+
+    thrust::device_vector<node_type> getNodes() const
+    {
+        return nodes_;
+    }
+private:
 
     thrust::device_vector<object_type>   objects_d_;
     thrust::device_vector<aabb_type>     aabbs_;
     thrust::device_vector<node_type>     nodes_;
 };
+
+
 
 } // lbvh
 #endif// LBVH_BVH_H
