@@ -1,4 +1,6 @@
 import os
+import gc
+import torch
 from typing import List
 
 from gmc import mixture
@@ -28,18 +30,21 @@ def execute_fitting(training_name: str, model_path: str, genpc_path: str, gengmm
         scaler.set_pointcloud_batch(batch)
         batch_scaled = scaler.scale_down_pc(batch)
 
-        for i in range(len(generators)):
-            gen_id = training_name + "/" + generator_identifiers[i]
+        for j in range(len(generators)):
+            gc.collect()
+            torch.cuda.empty_cache()
+
+            gen_id = training_name + "/" + generator_identifiers[j]
 
             # Create Logger
             logger = GMLogger(names=names, log_prefix=gen_id, log_path=log_path,
                               log_positions=log_positions, gm_n_components=n_gaussians,
                               log_loss_console=log_loss_console, log_loss_tb=log_loss_tb,
                               log_rendering_tb=log_rendering_tb, log_gm=log_gm, pointclouds=batch, scaler=scaler)
-            generators[i].set_logging(logger)
+            generators[j].set_logging(logger)
 
             # Generate GMM
-            gmbatch, gmmbatch = generators[i].generate(batch_scaled)
+            gmbatch, gmmbatch = generators[j].generate(batch_scaled)
 
             # Save resulting GMs
             data_loading.save_gms(scaler.scale_up_gm(gmbatch), scaler.scale_up_gmm(gmmbatch),
