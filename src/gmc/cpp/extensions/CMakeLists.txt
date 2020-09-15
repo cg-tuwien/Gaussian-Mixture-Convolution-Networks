@@ -55,6 +55,7 @@ endif()
 set(MY_INCLUDE_PATHS
     ${MY_ANACONDA_PATH}/include/python3.7m/
     ../glm
+    ../cub
     .
 )
 

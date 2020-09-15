@@ -16,8 +16,7 @@
 #include <thrust/iterator/counting_iterator.h>
 #include <thrust/execution_policy.h>
 
-//#include <cub/device/device_segmentd_radix_sort.cuh>
-#include "cub/device/device_segmentd_radix_sort.cuh"
+#include <cub/device/device_segmented_radix_sort.h>
 
 #include <torch/script.h>
 #include <torch/nn/functional.h>
