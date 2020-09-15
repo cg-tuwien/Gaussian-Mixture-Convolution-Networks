@@ -20,6 +20,12 @@ constexpr dim3 blockDim;
 constexpr dim3 threadIdx;
 using std::min;
 using std::max;
+
+namespace torch {
+template <typename T>
+struct RestrictPtrTraits {
+  typedef T* __restrict__ PtrType;
+};
 #endif
 
 template <typename scalar_t, int DIMS>
@@ -58,7 +64,7 @@ std::tuple<torch::Tensor, torch::Tensor> symeig_cuda_forward_impl(const torch::T
 
     const dim3 dimBlock = dim3(128);
     const dim3 dimGrid = dim3((n_batch + dimBlock.x - 1) / dimBlock.x);
-    std::cout << "dimBlock=" << dimBlock.x << "/" << dimBlock.y << "/" << dimBlock.z << "  dimGrid=" << dimGrid.x << "/" << dimGrid.y << "/" << dimGrid.z << std::endl;
+//    std::cout << "dimBlock=" << dimBlock.x << "/" << dimBlock.y << "/" << dimBlock.z << "  dimGrid=" << dimGrid.x << "/" << dimGrid.y << "/" << dimGrid.z << std::endl;
 
     AT_DISPATCH_FLOATING_TYPES(matrices.scalar_type(), "eval_inversed_omp", ([&] {
         const auto matrices_a = flattened_matrices.packed_accessor32<scalar_t, 3, torch::RestrictPtrTraits>();
@@ -70,8 +76,7 @@ std::tuple<torch::Tensor, torch::Tensor> symeig_cuda_forward_impl(const torch::T
 //        else
 //            execute_parallel_forward<scalar_t, 3>(mixture_a, xes_a, sum_a, n);
     }));
-    cudaDeviceSynchronize();
-    std::cout << "done" << std::endl;
+//    cudaDeviceSynchronize();
     auto eigenvalues_shape = original_shape;
 
     eigenvalues_shape.pop_back();

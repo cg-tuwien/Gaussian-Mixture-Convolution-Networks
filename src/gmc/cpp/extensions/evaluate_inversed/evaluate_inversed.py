@@ -22,10 +22,10 @@ cuda = load('evaluate_inversed_cuda_parallel', [source_dir + '/cuda_parallel.cpp
                                 extra_include_paths=extra_include_paths,
                                 verbose=True, extra_cflags=cuda_extra_cflags, extra_cuda_cflags=cuda_extra_cuda_cflags)
 
-cuda_bvh = load('evaluate_inversed_cuda_bvh', [source_dir + '/cuda_bvh.cpp', source_dir + '/cuda_bvh.cu',
-                                               source_dir + '/../math/symeig_cuda.cpp', source_dir + '/../math/symeig_cuda.cu'],
-                                extra_include_paths=extra_include_paths,
-                                verbose=True, extra_cflags=cuda_extra_cflags, extra_cuda_cflags=cuda_extra_cuda_cflags)
+# cuda_bvh = load('evaluate_inversed_cuda_bvh', [source_dir + '/cuda_bvh.cpp', source_dir + '/cuda_bvh.cu',
+#                                                source_dir + '/../math/symeig_cuda.cpp', source_dir + '/../math/symeig_cuda.cu'],
+#                                 extra_include_paths=extra_include_paths,
+#                                 verbose=True, extra_cflags=cuda_extra_cflags, extra_cuda_cflags=cuda_extra_cuda_cflags)
 cpu = load('evaluate_inversed_cpu_parallel', [source_dir + '/cpu_parallel.cpp'],
                                 extra_include_paths=extra_include_paths,
                                 verbose=True, extra_cflags=cpp_extra_cflags, extra_ldflags=["-lpthread"])
@@ -41,7 +41,7 @@ class EvaluateInversed(torch.autograd.Function):
 
         ctx.save_for_backward(mixture, xes)
         if mixture.is_cuda:
-            output = cuda_bvh.forward(mixture, xes)
+            output = cuda.forward(mixture, xes)
         else:
             output = cpu.forward(mixture, xes)
         return output

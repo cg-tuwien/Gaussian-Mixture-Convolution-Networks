@@ -15,6 +15,12 @@ constexpr dim3 blockDim;
 constexpr dim3 threadIdx;
 using std::min;
 using std::max;
+
+namespace torch {
+template <typename T>
+struct RestrictPtrTraits {
+  typedef T* __restrict__ PtrType;
+};
 #endif
 
 template <typename scalar_t, int DIMS>
