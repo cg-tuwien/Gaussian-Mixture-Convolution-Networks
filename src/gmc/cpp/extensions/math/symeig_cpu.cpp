@@ -1,4 +1,4 @@
-#include "math/symeig.h"
+#include "math/symeig_cpu.h"
 #include <vector>
 #include <algorithm>
 #include <iostream>
@@ -33,7 +33,7 @@ void execute_parallel_forward(const torch::PackedTensorAccessor32<scalar_t, 3>& 
 }
 }
 
-std::vector<torch::Tensor> gpe::symeig_cpu_forward(const torch::Tensor& matrices) {
+std::tuple<at::Tensor, at::Tensor> gpe::symeig_cpu_forward(const torch::Tensor& matrices) {
     using namespace torch::indexing;
     // currently only 2x2 matrices
     TORCH_CHECK(matrices.size(-1) == 2 && matrices.size(-2) == 2);
@@ -167,7 +167,7 @@ std::vector<torch::Tensor> gpe::symeig_cpu_forward(const torch::Tensor& matrices
 //}
 
 #ifndef GMC_CMAKE_TEST_BUILD
-PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
+PYBIND11_MODULE(symeig_cpu, m) {
   m.def("forward", &gpe::symeig_cpu_forward, "evaluate_inversed forward");
 //  m.def("backward", &eigen_cpu_backward, "evaluate_inversed backward");
 }

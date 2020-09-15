@@ -309,12 +309,15 @@ class bvh
 
 
         thrust::copy_n(aabbBegin, num_objects, aabbs_.begin() + num_internal_nodes);
+
+        // TODO: would be easy with torch, involves min/max and that's all
         const auto aabb_whole = thrust::reduce(
             aabbs_.begin() + num_internal_nodes, aabbs_.end(), default_aabb,
             [] __device__ (const aabb_type& lhs, const aabb_type& rhs) {
                 return merge(lhs, rhs);
             });
 
+        // TODO: easy, either some scaling and translation using torch + thrust transform, or custom kernel.
         thrust::device_vector<unsigned int> morton(num_objects);
         thrust::transform(this->objects_d_.begin(), this->objects_d_.end(),
             aabbs_.begin() + num_internal_nodes, morton.begin(),
@@ -322,7 +325,8 @@ class bvh
 
         // --------------------------------------------------------------------
         // sort object-indices by morton code
-
+        // TODO: either torch, or http://www.orangeowlsolutions.com/archives/1297 (2 sorts), or, we can prepend the gm index to the morton code?
+        //       or, this would be the fastest (probably): https://nvlabs.github.io/cub/structcub_1_1_device_segmented_radix_sort.html
         thrust::device_vector<unsigned int> indices(num_objects);
         thrust::copy(thrust::make_counting_iterator<index_type>(0),
                      thrust::make_counting_iterator<index_type>(num_objects),
@@ -335,7 +339,7 @@ class bvh
 
         // --------------------------------------------------------------------
         // check morton codes are unique
-
+        // TODO: example on how to prepend gm index, as for unique morton codes, that transform can be done for all mixtures at once.
         thrust::device_vector<unsigned long long int> morton64(num_objects);
         const auto uniqued = thrust::unique_copy(morton.begin(), morton.end(),
                                                  morton64.begin());
@@ -356,7 +360,7 @@ class bvh
 
         // --------------------------------------------------------------------
         // construct leaf nodes and aabbs
-
+        // TODO: we can build our own kernel here.
         node_type default_node;
         default_node.parent_idx = 0xFFFFFFFF;
         default_node.left_idx   = 0xFFFFFFFF;
@@ -378,7 +382,7 @@ class bvh
 
         // --------------------------------------------------------------------
         // construct internal nodes
-
+        // TODO: can also be done for all at once
         const auto self = this->get_device_repr();
         if(morton_code_is_unique)
         {
@@ -393,7 +397,7 @@ class bvh
 
         // --------------------------------------------------------------------
         // create AABB for each node by bottom-up strategy
-
+        // TODO: would also work.
         thrust::device_vector<int> flag_container(num_internal_nodes, 0);
         const auto flags = flag_container.data().get();
 

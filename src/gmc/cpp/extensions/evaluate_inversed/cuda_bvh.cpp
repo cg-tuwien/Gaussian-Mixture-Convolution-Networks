@@ -25,7 +25,7 @@ torch::Tensor cuda_bvh_forward(const torch::Tensor& mixture, const torch::Tensor
 
 #ifndef GMC_CMAKE_TEST_BUILD
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
-  m.def("forward", &cuda_parallel_forward, "evaluate_inversed forward (CUDA)");
-  m.def("backward", &cuda_parallel_backward, "evaluate_inversed backward (CUDA)");
+  m.def("forward", &cuda_bvh_forward, "cuda_bvh_forward forward (CUDA)");
+//  m.def("backward", &cuda_parallel_backward, "evaluate_inversed backward (CUDA)");
 }
 #endif

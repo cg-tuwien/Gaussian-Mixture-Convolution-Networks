@@ -41,7 +41,7 @@ __global__ void kernel_forward(const torch::PackedTensorAccessor32<scalar_t, 3, 
 }
 
 
-std::vector<torch::Tensor> symeig_cuda_forward_impl(const torch::Tensor& matrices) {
+std::tuple<torch::Tensor, torch::Tensor> symeig_cuda_forward_impl(const torch::Tensor& matrices) {
     using namespace torch::indexing;
     // currently only 2x2 matrices
     TORCH_CHECK(matrices.sizes().size() >= 2);

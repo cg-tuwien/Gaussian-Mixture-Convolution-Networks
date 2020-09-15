@@ -77,6 +77,8 @@ set(LBVH_HEADERS
 
 set(MATH_SOURCES
     math/symeig.h
+    math/symeig_cuda.h
+    math/symeig_cpu.h
     math/symeig_detail.h
     math/scalar.h
     math/matrix.h

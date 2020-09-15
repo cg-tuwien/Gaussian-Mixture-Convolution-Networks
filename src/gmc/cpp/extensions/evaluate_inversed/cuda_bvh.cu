@@ -19,7 +19,7 @@
 #include "lbvh/bvh.h"
 #include "lbvh/query.h"
 #include "lbvh/predicator.h"
-#include "math/symeig.h"
+#include "math/symeig_cuda.h"
 
 #ifndef __CUDACC__
 constexpr dim3 blockIdx;
@@ -48,7 +48,7 @@ inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=t
 }
 
 // __device__ code can't do constexpr variables
-#define GPE_BVH_BUFFER_SIZE 100u
+#define GPE_BVH_BUFFER_SIZE 20u
 
 template<int N_DIMS, typename scalar_t>
 struct Gaussian {
@@ -74,9 +74,44 @@ std::ostream& operator <<(std::ostream& stream, const Gaussian<N_DIMS, scalar_t>
     return stream;
 }
 
+torch::Tensor compute_aabbs(const at::Tensor& mixture, const gpe::MixtureAndXesNs& n) {
+    namespace F = torch::nn::functional;
+    constexpr float threshold = 0.0001f;
+
+    torch::Tensor factors = -2 * torch::log(threshold / torch::abs(gpe::weights(mixture)));
+    factors = factors.where(factors > 0, torch::zeros({1, 1, 1}, factors.device()));
+    factors = torch::sqrt(factors);
+
+    torch::Tensor covs = gpe::covariances(mixture).inverse();
+    torch::Tensor eigenvalues;
+    torch::Tensor eigenvectors;
+
+    std::tie(eigenvalues, eigenvectors) = gpe::symeig_cuda_forward(covs);
+    /*
+     * eigenvectors is a tensor of [*, *, *, d, d], where d is the dimensionality (2 or 3)
+     * the eigenvectors are in the rows of that d * d matrix.
+     */
+    eigenvalues = torch::sqrt(eigenvalues);
+    eigenvectors = eigenvalues.unsqueeze(-1) * eigenvectors;
+
+    auto ellipsoidM = factors.unsqueeze(-1).unsqueeze(-1) * eigenvectors;
+
+    // https://stackoverflow.com/a/24112864/4032670
+    // https://members.loria.fr/SHornus/ellipsoid-bbox.html
+    // we take the norm over the eigenvectors, that is analogous to simon fraiss' code in gmvis/core/Gaussian.cpp
+    auto delta = torch::norm(ellipsoidM, 2, {-2});
+    auto centroid = gpe::positions(mixture);
+    auto upper = centroid + delta;
+    auto lower = centroid - delta;
+
+    // bring that thing into a format that can be read by our lbvh builder
+    upper = F::pad(upper, F::PadFuncOptions({0, 4-n.dims}));
+    lower = F::pad(lower, F::PadFuncOptions({0, 4-n.dims}));
+    return torch::cat({upper, lower}, -1).contiguous();
+}
+
 torch::Tensor cuda_bvh_forward_impl(const at::Tensor& mixture, const at::Tensor& xes) {
     using namespace torch::indexing;
-    namespace F = torch::nn::functional;
     using LBVH = lbvh::bvh<float, Gaussian<2, float>>;
 
     auto start = std::chrono::steady_clock::now();
@@ -94,41 +129,7 @@ torch::Tensor cuda_bvh_forward_impl(const at::Tensor& mixture, const at::Tensor&
     TORCH_CHECK(n.dims == 2, "atm only 2d gaussians");
     TORCH_CHECK(mixture.dtype() == caffe2::TypeMeta::Make<float>(), "atm only float");
 
-    torch::Tensor aabbs;
-    {
-        constexpr float threshold = 0.0001f;
-
-        torch::Tensor factors = -2 * torch::log(threshold / torch::abs(gpe::weights(mixture)));
-        factors = factors.where(factors > 0, torch::zeros({1, 1, 1}, factors.device()));
-        factors = torch::sqrt(factors);
-
-        torch::Tensor covs = gpe::covariances(mixture).inverse();
-        torch::Tensor eigenvalues;
-        torch::Tensor eigenvectors;
-
-        std::tie(eigenvalues, eigenvectors) = gpe::symeig(covs);
-        /*
-         * eigenvectors is a tensor of [*, *, *, d, d], where d is the dimensionality (2 or 3)
-         * the eigenvectors are in the rows of that d * d matrix.
-         */
-        eigenvalues = torch::sqrt(eigenvalues);
-        eigenvectors = eigenvalues.unsqueeze(-1) * eigenvectors;
-
-        auto ellipsoidM = factors.unsqueeze(-1).unsqueeze(-1) * eigenvectors;
-
-        // https://stackoverflow.com/a/24112864/4032670
-        // https://members.loria.fr/SHornus/ellipsoid-bbox.html
-        // we take the norm over the eigenvectors, that is analogous to simon fraiss' code in gmvis/core/Gaussian.cpp
-        auto delta = torch::norm(ellipsoidM, 2, {-2});
-        auto centroid = gpe::positions(mixture);
-        auto upper = centroid + delta;
-        auto lower = centroid - delta;
-
-        // bring that thing into a format that can be read by our lbvh builder
-        upper = F::pad(upper, F::PadFuncOptions({0, 4-n.dims}));
-        lower = F::pad(lower, F::PadFuncOptions({0, 4-n.dims}));
-        aabbs = torch::cat({upper, lower}, -1).contiguous();
-    }
+    const torch::Tensor aabbs = compute_aabbs(mixture, n);
 
     for (int batch_id = 0; batch_id < int(n.batch); ++batch_id) {
         for (int layer_id = 0; layer_id < int(n.layers); ++layer_id) {
