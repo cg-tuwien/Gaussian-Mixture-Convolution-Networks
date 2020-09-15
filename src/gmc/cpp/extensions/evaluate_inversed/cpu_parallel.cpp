@@ -63,7 +63,7 @@ void execute_parallel_forward(const torch::PackedTensorAccessor32<scalar_t, 4>& 
                       const gpe::MixtureAndXesNs& n) {
 
     const auto nXes_x_nLayers = int(n.xes * n.layers);
-    #pragma omp parallel for num_threads(16)
+    #pragma omp parallel for num_threads(omp_get_num_procs())
     for (int i = 0; i < n.batch * n.layers * n.xes; ++i) {
         const auto batch_index = int(i) / nXes_x_nLayers;
         const auto remaining = (int(i) - batch_index * nXes_x_nLayers);
@@ -119,7 +119,7 @@ void execute_parallel_backward(const torch::PackedTensorAccessor32<scalar_t, 4>&
                       const gpe::MixtureAndXesNs& n, bool requires_grad_mixture, bool requires_grad_xes) {
 
     const auto nXes_x_nLayers = int(n.xes * n.layers);
-    #pragma omp parallel for num_threads(16)
+    #pragma omp parallel for num_threads(omp_get_num_procs())
     for (int i = 0; i < n.batch * n.layers * n.xes; ++i) {
         const auto batch_index = int(i) / nXes_x_nLayers;
         const auto remaining = (int(i) - batch_index * nXes_x_nLayers);
