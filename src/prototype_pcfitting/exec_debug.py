@@ -11,21 +11,23 @@ gengmm_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_test/gm
 log_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_test/logs"
 
 # Define Point Count, Gaussian Count and Batch Size
-n_points = 20000
-n_gaussians = 100
+# n_points = 20000
+n_points = 1000000
+# n_gaussians = 100
+n_gaussians = 10000
 batch_size = 1
 
 # Define GMM Generators
 # terminator = RelChangeTerminationCriterion(0.1, 250)
 generators = [EMGenerator(n_gaussians=n_gaussians, n_sample_points=1000,
-                                       termination_criterion=MaxIterationTerminationCriterion(1000))]
+                                       termination_criterion=MaxIterationTerminationCriterion(100))]
 generator_identifiers = ["EM"]
 
 # Logging options (see readme.txt)
-log_positions = 0
+log_positions = 101
 log_loss_console = 1
-log_loss_tb = 0
-log_rendering_tb = 0
+log_loss_tb = 1
+log_rendering_tb = 5
 log_gm = 1
 
 # Read in Name
