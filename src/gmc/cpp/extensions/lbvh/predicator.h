@@ -20,7 +20,7 @@ struct query_inside
     query_inside& operator=(query_inside&&)      = default;
 
     __device__ __host__
-    inline bool operator()(const aabb<Real>& box) const noexcept
+    inline bool operator()(const Aabb<Real>& box) const noexcept
     {
         return inside(point, box);
     }
@@ -51,7 +51,7 @@ template<typename Real>
 struct query_overlap
 {
     __device__ __host__
-    query_overlap(const aabb<Real>& tgt): target(tgt) {}
+    query_overlap(const Aabb<Real>& tgt): target(tgt) {}
 
     query_overlap()  = default;
     ~query_overlap() = default;
@@ -61,17 +61,17 @@ struct query_overlap
     query_overlap& operator=(query_overlap&&)      = default;
 
     __device__ __host__
-    inline bool operator()(const aabb<Real>& box) noexcept
+    inline bool operator()(const Aabb<Real>& box) noexcept
     {
         return intersects(box, target);
     }
 
-    aabb<Real> target;
+    Aabb<Real> target;
 };
 
 template<typename Real>
 __device__ __host__
-query_overlap<Real> overlaps(const aabb<Real>& region) noexcept
+query_overlap<Real> overlaps(const Aabb<Real>& region) noexcept
 {
     return query_overlap<Real>(region);
 }

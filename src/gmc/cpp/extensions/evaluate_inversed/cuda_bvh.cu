@@ -10,7 +10,6 @@
 #include <thrust/device_vector.h>
 
 #include <torch/script.h>
-#include <torch/nn/functional.h>
 
 #include <glm/glm.hpp>
 
@@ -74,42 +73,6 @@ std::ostream& operator <<(std::ostream& stream, const Gaussian<N_DIMS, scalar_t>
     return stream;
 }
 
-torch::Tensor compute_aabbs(const at::Tensor& mixture, const gpe::MixtureAndXesNs& n) {
-    namespace F = torch::nn::functional;
-    constexpr float threshold = 0.0001f;
-
-    torch::Tensor factors = -2 * torch::log(threshold / torch::abs(gpe::weights(mixture)));
-    factors = factors.where(factors > 0, torch::zeros({1, 1, 1}, factors.device()));
-    factors = torch::sqrt(factors);
-
-    torch::Tensor covs = gpe::covariances(mixture).inverse();
-    torch::Tensor eigenvalues;
-    torch::Tensor eigenvectors;
-
-    std::tie(eigenvalues, eigenvectors) = gpe::symeig_cuda_forward(covs);
-    /*
-     * eigenvectors is a tensor of [*, *, *, d, d], where d is the dimensionality (2 or 3)
-     * the eigenvectors are in the rows of that d * d matrix.
-     */
-    eigenvalues = torch::sqrt(eigenvalues);
-    eigenvectors = eigenvalues.unsqueeze(-1) * eigenvectors;
-
-    auto ellipsoidM = factors.unsqueeze(-1).unsqueeze(-1) * eigenvectors;
-
-    // https://stackoverflow.com/a/24112864/4032670
-    // https://members.loria.fr/SHornus/ellipsoid-bbox.html
-    // we take the norm over the eigenvectors, that is analogous to simon fraiss' code in gmvis/core/Gaussian.cpp
-    auto delta = torch::norm(ellipsoidM, 2, {-2});
-    auto centroid = gpe::positions(mixture);
-    auto upper = centroid + delta;
-    auto lower = centroid - delta;
-
-    // bring that thing into a format that can be read by our lbvh builder
-    upper = F::pad(upper, F::PadFuncOptions({0, 4-n.dims}));
-    lower = F::pad(lower, F::PadFuncOptions({0, 4-n.dims}));
-    return torch::cat({upper, lower}, -1).contiguous();
-}
-
 torch::Tensor cuda_bvh_forward_impl(const at::Tensor& mixture, const at::Tensor& xes) {
     using namespace torch::indexing;
     using LBVH = lbvh::bvh<float, Gaussian<2, float>>;
@@ -129,43 +92,45 @@ torch::Tensor cuda_bvh_forward_impl(const at::Tensor& mixture, const at::Tensor&
     TORCH_CHECK(n.dims == 2, "atm only 2d gaussians");
     TORCH_CHECK(mixture.dtype() == caffe2::TypeMeta::Make<float>(), "atm only float");
 
-    const torch::Tensor aabbs = compute_aabbs(mixture, n);
+    auto bvh = LBVH(mixture);
 
-    for (int batch_id = 0; batch_id < int(n.batch); ++batch_id) {
-        for (int layer_id = 0; layer_id < int(n.layers); ++layer_id) {
-            torch::Tensor current_mixture = mixture.index({batch_id, layer_id});
-            TORCH_CHECK(current_mixture.is_contiguous(), "mixtures must be contiguous");
-            auto mixture_begin = static_cast<Gaussian<2, float>*>(current_mixture.data_ptr());
-            auto mixture_end = mixture_begin + n.components;
-            torch::Tensor current_aabbs = aabbs.index({batch_id, layer_id});
-            auto aabbs_begin = static_cast<lbvh::aabb<float>*>(current_aabbs.data_ptr());
+//    const torch::Tensor aabbs = compute_aabbs(mixture, n);
 
-            auto bvh = LBVH(mixture_begin, mixture_end, aabbs_begin);
-            auto batch_id_xes = std::min(batch_id, int(n.batch_xes)-1);
-            auto layer_id_xes = std::min(layer_id, int(n.layers_xes)-1);
-            const auto current_xes = xes.index({batch_id_xes, layer_id_xes});
-            auto current_sum = sum.index({batch_id, layer_id});
-            const auto xes_a = current_xes.packed_accessor32<float, 2, torch::RestrictPtrTraits>();
-            auto sum_a = current_sum.packed_accessor32<float, 1, torch::RestrictPtrTraits>();
+//    for (int batch_id = 0; batch_id < int(n.batch); ++batch_id) {
+//        for (int layer_id = 0; layer_id < int(n.layers); ++layer_id) {
+//            torch::Tensor current_mixture = mixture.index({batch_id, layer_id});
+//            TORCH_CHECK(current_mixture.is_contiguous(), "mixtures must be contiguous");
+//            auto mixture_begin = static_cast<Gaussian<2, float>*>(current_mixture.data_ptr());
+//            auto mixture_end = mixture_begin + n.components;
+//            torch::Tensor current_aabbs = aabbs.index({batch_id, layer_id});
+//            auto aabbs_begin = static_cast<lbvh::Aabb<float>*>(current_aabbs.data_ptr());
 
-            const auto bvh_dev = bvh.get_device_repr();
-            thrust::for_each(thrust::device,
-                thrust::make_counting_iterator<std::size_t>(0),
-                thrust::make_counting_iterator<std::size_t>(n.xes),
-                [bvh_dev, xes_a, sum_a, n] __device__ (std::size_t idx) mutable {
-                    const float& v = xes_a[idx][0];
-                    const auto& x_pos = gpe::vec<2>(v);
-                    unsigned int buffer[GPE_BVH_BUFFER_SIZE];
-                    auto point = float4{x_pos.x, x_pos.y, 0, 0};
-                    const auto num_found = lbvh::query_device(bvh_dev, lbvh::inside_aabb(point), buffer, GPE_BVH_BUFFER_SIZE);
-                    for (int i = 0; i < min(GPE_BVH_BUFFER_SIZE, num_found); i++) {
-                        const auto& g = bvh_dev.objects[buffer[i]];
-                        sum_a[idx] += gpe::evaluate_gaussian(x_pos, g.weight, g.position, g.covariance);
-                    }
-                    return ;
-                });
-        }
-    }
+//            auto bvh = LBVH(mixture_begin, mixture_end, aabbs_begin);
+//            auto batch_id_xes = std::min(batch_id, int(n.batch_xes)-1);
+//            auto layer_id_xes = std::min(layer_id, int(n.layers_xes)-1);
+//            const auto current_xes = xes.index({batch_id_xes, layer_id_xes});
+//            auto current_sum = sum.index({batch_id, layer_id});
+//            const auto xes_a = current_xes.packed_accessor32<float, 2, torch::RestrictPtrTraits>();
+//            auto sum_a = current_sum.packed_accessor32<float, 1, torch::RestrictPtrTraits>();
+
+//            const auto bvh_dev = bvh.get_device_repr();
+//            thrust::for_each(thrust::device,
+//                thrust::make_counting_iterator<std::size_t>(0),
+//                thrust::make_counting_iterator<std::size_t>(n.xes),
+//                [bvh_dev, xes_a, sum_a, n] __device__ (std::size_t idx) mutable {
+//                    const float& v = xes_a[idx][0];
+//                    const auto& x_pos = gpe::vec<2>(v);
+//                    unsigned int buffer[GPE_BVH_BUFFER_SIZE];
+//                    auto point = float4{x_pos.x, x_pos.y, 0, 0};
+//                    const auto num_found = lbvh::query_device(bvh_dev, lbvh::inside_aabb(point), buffer, GPE_BVH_BUFFER_SIZE);
+//                    for (int i = 0; i < min(GPE_BVH_BUFFER_SIZE, num_found); i++) {
+//                        const auto& g = bvh_dev.objects[buffer[i]];
+//                        sum_a[idx] += gpe::evaluate_gaussian(x_pos, g.weight, g.position, g.covariance);
+//                    }
+//                    return ;
+//                });
+//        }
+//    }
 
 
     gpuErrchk(cudaDeviceSynchronize());

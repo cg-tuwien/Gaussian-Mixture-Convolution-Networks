@@ -1,7 +1,5 @@
 #ifndef LBVH_BVH_H
 #define LBVH_BVH_H
-#include "aabb.h"
-#include "morton_code.h"
 #include <thrust/swap.h>
 #include <thrust/pair.h>
 #include <thrust/tuple.h>
@@ -17,6 +15,35 @@
 #include <thrust/iterator/constant_iterator.h>
 #include <thrust/iterator/counting_iterator.h>
 #include <thrust/execution_policy.h>
+
+//#include <cub/device/device_segmentd_radix_sort.cuh>
+#include "cub/device/device_segmentd_radix_sort.cuh"
+
+#include <torch/script.h>
+#include <torch/nn/functional.h>
+
+#include "lbvh/aabb.h"
+#include "lbvh/morton_code.h"
+
+#include "common.h"
+#include "math/symeig_cuda.h"
+
+#ifndef __CUDACC__
+int atomicCAS(int* address, int compare, int val);
+
+constexpr dim3 blockIdx;
+constexpr dim3 blockDim;
+constexpr dim3 threadIdx;
+using std::min;
+using std::max;
+
+namespace torch {
+template <typename T>
+struct RestrictPtrTraits {
+  typedef T* __restrict__ PtrType;
+};
+}
+#endif
 
 namespace lbvh
 {
@@ -37,7 +64,7 @@ template<typename Real, typename Object>
 struct basic_device_bvh<Real, Object, false>
 {
     using real_type  = Real;
-    using aabb_type  = aabb<real_type>;
+    using aabb_type  = Aabb<real_type>;
     using node_type  = detail::node;
     using index_type = std::uint32_t;
     using object_type = Object;
@@ -53,7 +80,7 @@ template<typename Real, typename Object>
 struct basic_device_bvh<Real, Object, true>
 {
     using real_type  = Real;
-    using aabb_type  = aabb<real_type>;
+    using aabb_type  = Aabb<real_type>;
     using node_type  = detail::node;
     using index_type = std::uint32_t;
     using object_type = Object;
@@ -192,12 +219,106 @@ void construct_internal_nodes(const basic_device_bvh<Real, Object, IsConst>& sel
     return;
 }
 
+torch::Tensor compute_aabbs(const at::Tensor& mixture) {
+    namespace F = torch::nn::functional;
+    constexpr float threshold = 0.0001f;
+
+    auto n = gpe::get_ns(mixture);
+
+    torch::Tensor factors = -2 * torch::log(threshold / torch::abs(gpe::weights(mixture)));
+    factors = factors.where(factors > 0, torch::zeros({1, 1, 1}, factors.device()));
+    factors = torch::sqrt(factors);
+
+    torch::Tensor covs = gpe::covariances(mixture).inverse();
+    torch::Tensor eigenvalues;
+    torch::Tensor eigenvectors;
+
+    std::tie(eigenvalues, eigenvectors) = gpe::symeig_cuda_forward(covs);
+    /*
+     * eigenvectors is a tensor of [*, *, *, d, d], where d is the dimensionality (2 or 3)
+     * the eigenvectors are in the rows of that d * d matrix.
+     */
+    eigenvalues = torch::sqrt(eigenvalues);
+    eigenvectors = eigenvalues.unsqueeze(-1) * eigenvectors;
+
+    auto ellipsoidM = factors.unsqueeze(-1).unsqueeze(-1) * eigenvectors;
+
+    // https://stackoverflow.com/a/24112864/4032670
+    // https://members.loria.fr/SHornus/ellipsoid-bbox.html
+    // we take the norm over the eigenvectors, that is analogous to simon fraiss' code in gmvis/core/Gaussian.cpp
+    auto delta = torch::norm(ellipsoidM, 2, {-2});
+    auto centroid = gpe::positions(mixture);
+    auto upper = centroid + delta;
+    auto lower = centroid - delta;
+
+    // bring that thing into a format that can be read by our lbvh builder
+    // https://pytorch.org/docs/master/nn.functional.html#torch.nn.functional.pad
+    upper = F::pad(upper, F::PadFuncOptions({0, 4-n.dims}));
+    lower = F::pad(lower, F::PadFuncOptions({0, 4-n.dims}));
+    return torch::cat({upper, lower}, -1).contiguous();
+}
+
+torch::Tensor compute_aabb_whole(const torch::Tensor& aabbs) {
+    using namespace torch::indexing;
+    const auto upper = std::get<0>(aabbs.index({Ellipsis, Slice(None, 4)}).max(-2));
+    const auto lower = std::get<0>(aabbs.index({Ellipsis, Slice(4, None)}).min(-2));
+    return torch::cat({upper, lower}, -1).contiguous();
+}
+
+template<typename scalar_t>
+__global__ void kernel(const torch::PackedTensorAccessor32<scalar_t, 3, torch::RestrictPtrTraits> aabb_a,
+                       const torch::PackedTensorAccessor32<scalar_t, 2, torch::RestrictPtrTraits> aabb_whole_a,
+                       torch::PackedTensorAccessor32<scalar_t, 2, torch::RestrictPtrTraits> morton_codes_a,
+                       const unsigned n_mixtures, const unsigned n_components) {
+        const auto mixture_id = blockIdx.x * blockDim.x + threadIdx.x;
+        const auto component_id = blockIdx.y * blockDim.y + threadIdx.y;
+        if (mixture_id >= n_mixtures || component_id >= n_components)
+            return;
+        const auto& aabb = reinterpret_cast<const Aabb<float>&>(aabb_a[mixture_id][component_id][0]);
+        const auto& whole = reinterpret_cast<const Aabb<float>&>(aabb_whole_a[mixture_id][0]);
+        auto& morton_code = reinterpret_cast<uint64_t&>(morton_codes_a[mixture_id][component_id]);
+
+        auto p = centroid(aabb);
+        p.x -= whole.lower.x;
+        p.y -= whole.lower.y;
+        p.z -= whole.lower.z;
+        p.x /= (whole.upper.x - whole.lower.x);
+        p.y /= (whole.upper.y - whole.lower.y);
+        p.z /= (whole.upper.z - whole.lower.z);
+        morton_code = lbvh::morton_code(p);
+
+        morton_code <<= 32;
+        morton_code |= component_id;
+};
+
+torch::Tensor compute_morton_codes(const torch::Tensor& aabbs, const torch::Tensor& aabb_whole) {
+    const auto n_components = aabbs.size(-2);
+    const auto aabbs_view = aabbs.view({-1, n_components, 8});
+    const auto aabb_whole_view = aabb_whole.view({-1, 8});
+    const auto aabb_a = aabbs_view.packed_accessor32<float, 3, torch::RestrictPtrTraits>();
+    const auto aabb_whole_a = aabb_whole_view.packed_accessor32<float, 2, torch::RestrictPtrTraits>();
+
+    const auto n_mixtures = aabbs_view.size(0);
+
+    auto morton_codes = torch::tensor({n_mixtures, n_components}, torch::TensorOptions(aabbs.device()).dtype(torch::ScalarType::Long));
+    auto morton_codes_a = morton_codes.packed_accessor32<float, 2, torch::RestrictPtrTraits>();
+
+    const dim3 dimBlock = dim3(128, 64, 1);
+    const dim3 dimGrid = dim3((n_mixtures + dimBlock.x - 1) / dimBlock.x,
+                              (n_components + dimBlock.y - 1) / dimBlock.y);
+    kernel<<<dimGrid, dimBlock>>>(aabb_a, aabb_whole_a, morton_codes_a, n_mixtures, n_components);
+}
+
+void sort_morton_codes(torch::Tensor& morton_codes, torch::Tensor& object_aabbs) {
+
+}
+
 } // detail
 
 template<typename Real, typename Object>
 struct default_morton_code_calculator
 {
-    default_morton_code_calculator(aabb<Real> w): whole(w) {}
+    default_morton_code_calculator(Aabb<Real> w): whole(w) {}
     default_morton_code_calculator()  = default;
     ~default_morton_code_calculator() = default;
     default_morton_code_calculator(default_morton_code_calculator const&) = default;
@@ -206,7 +327,7 @@ struct default_morton_code_calculator
     default_morton_code_calculator& operator=(default_morton_code_calculator&&)      = default;
 
     __device__ __host__
-    inline unsigned int operator()(const Object&, const aabb<Real>& box) noexcept
+    inline unsigned int operator()(const Object&, const Aabb<Real>& box) noexcept
     {
         auto p = centroid(box);
         p.x -= whole.lower.x;
@@ -217,7 +338,7 @@ struct default_morton_code_calculator
         p.z /= (whole.upper.z - whole.lower.z);
         return morton_code(p);
     }
-    aabb<Real> whole;
+    Aabb<Real> whole;
 };
 
 template<typename Real, typename Object>
@@ -233,41 +354,16 @@ class bvh
     using real_type   = Real;
     using index_type = std::uint32_t;
     using object_type = Object;
-    using aabb_type   = aabb<real_type>;
+    using aabb_type   = Aabb<real_type>;
     using node_type   = detail::node;
     using morton_code_calculator_type = MortonCodeCalculator;
 
   public:
 
-    template<typename InputIterator, typename AabbIterator>
-    bvh(InputIterator first, InputIterator last, AabbIterator first_aabb)
-        : objects_d_(first, last)
+    bvh(const torch::Tensor& mixture)
+        : m_mixture(mixture)
     {
-        this->construct(first_aabb);
-    }
-
-    bvh()                      = default;
-    ~bvh()                     = default;
-    bvh(const bvh&)            = default;
-    bvh(bvh&&)                 = default;
-    bvh& operator=(const bvh&) = default;
-    bvh& operator=(bvh&&)      = default;
-
-    void clear()
-    {
-        this->objects_d_.clear();
-        this->aabbs_.clear();
-        this->nodes_.clear();
-        return ;
-    }
-
-    template<typename InputIterator>
-    void assign(InputIterator first, InputIterator last)
-    {
-        this->objects_h_.assign(first, last);
-        this->objects_d_ = this->objects_h_;
         this->construct();
-        return;
     }
 
     bvh_device<real_type, object_type> get_device_repr()       noexcept
@@ -287,150 +383,112 @@ class bvh
         };
     }
 
-    template<typename AabbIterator>
-    void construct(AabbIterator aabbBegin)
+    void construct()
     {
-        if(objects_d_.size() == 0u) {return;}
+        auto n = gpe::get_ns(m_mixture);
 
-        const unsigned int num_objects        = objects_d_.size();
+        const unsigned int num_objects        = n.components;
         const unsigned int num_internal_nodes = num_objects - 1;
         const unsigned int num_nodes          = num_objects * 2 - 1;
 
+        auto object_aabbs = detail::compute_aabbs(m_mixture);
+        const auto aabb_whole = detail::compute_aabb_whole(object_aabbs);
+
         // --------------------------------------------------------------------
-        // calculate morton code of each points
-
-        const auto inf = std::numeric_limits<real_type>::infinity();
-        aabb_type default_aabb;
-        default_aabb.upper.x = -inf; default_aabb.lower.x = inf;
-        default_aabb.upper.y = -inf; default_aabb.lower.y = inf;
-        default_aabb.upper.z = -inf; default_aabb.lower.z = inf;
-
-        this->aabbs_.resize(num_nodes, default_aabb);
-
-
-        thrust::copy_n(aabbBegin, num_objects, aabbs_.begin() + num_internal_nodes);
-
-        // TODO: would be easy with torch, involves min/max and that's all
-        const auto aabb_whole = thrust::reduce(
-            aabbs_.begin() + num_internal_nodes, aabbs_.end(), default_aabb,
-            [] __device__ (const aabb_type& lhs, const aabb_type& rhs) {
-                return merge(lhs, rhs);
-            });
-
+        // calculate morton code of each AABB
+        // we produce unique morton codes by extending the actual morton code with the index.
         // TODO: easy, either some scaling and translation using torch + thrust transform, or custom kernel.
-        thrust::device_vector<unsigned int> morton(num_objects);
-        thrust::transform(this->objects_d_.begin(), this->objects_d_.end(),
-            aabbs_.begin() + num_internal_nodes, morton.begin(),
-            morton_code_calculator_type(aabb_whole));
+        auto morton_codes = detail::compute_morton_codes(object_aabbs, aabb_whole);
+
 
         // --------------------------------------------------------------------
         // sort object-indices by morton code
         // TODO: either torch, or http://www.orangeowlsolutions.com/archives/1297 (2 sorts), or, we can prepend the gm index to the morton code?
         //       or, this would be the fastest (probably): https://nvlabs.github.io/cub/structcub_1_1_device_segmented_radix_sort.html
-        thrust::device_vector<unsigned int> indices(num_objects);
-        thrust::copy(thrust::make_counting_iterator<index_type>(0),
-                     thrust::make_counting_iterator<index_type>(num_objects),
-                     indices.begin());
-        // keep indices ascending order
-        thrust::stable_sort_by_key(morton.begin(), morton.end(),
-            thrust::make_zip_iterator(
-                thrust::make_tuple(aabbs_.begin() + num_internal_nodes,
-                                   indices.begin())));
 
-        // --------------------------------------------------------------------
-        // check morton codes are unique
-        // TODO: example on how to prepend gm index, as for unique morton codes, that transform can be done for all mixtures at once.
-        thrust::device_vector<unsigned long long int> morton64(num_objects);
-        const auto uniqued = thrust::unique_copy(morton.begin(), morton.end(),
-                                                 morton64.begin());
+        detail::sort_morton_codes(morton_codes, object_aabbs);
 
-        const bool morton_code_is_unique = (morton64.end() == uniqued);
-        if(!morton_code_is_unique)
-        {
-            thrust::transform(morton.begin(), morton.end(), indices.begin(),
-                morton64.begin(),
-                [] __device__ (const unsigned int m, const unsigned int idx)
-                {
-                    unsigned long long int m64 = m;
-                    m64 <<= 32;
-                    m64 |= idx;
-                    return m64;
-                });
-        }
+        // assemble aabb array (internal nodes will be filled later)
+        const auto internal_aabbs = torch::zeros({n.batch, n.layers, num_internal_nodes, 8});
+        m_aabbs = torch::cat({internal_aabbs, object_aabbs}, 3).contiguous();
 
-        // --------------------------------------------------------------------
-        // construct leaf nodes and aabbs
-        // TODO: we can build our own kernel here.
-        node_type default_node;
-        default_node.parent_idx = 0xFFFFFFFF;
-        default_node.left_idx   = 0xFFFFFFFF;
-        default_node.right_idx  = 0xFFFFFFFF;
-        default_node.object_idx = 0xFFFFFFFF;
-        this->nodes_.resize(num_nodes, default_node);
+//        thrust::device_vector<unsigned int> indices(num_objects);
+//        thrust::copy(thrust::make_counting_iterator<index_type>(0),
+//                     thrust::make_counting_iterator<index_type>(num_objects),
+//                     indices.begin());
+//        // keep indices ascending order
+//        thrust::stable_sort_by_key(morton.begin(), morton.end(),
+//            thrust::make_zip_iterator(
+//                thrust::make_tuple(aabbs_.begin() + num_internal_nodes,
+//                                   indices.begin())));
 
-        thrust::transform(indices.begin(), indices.end(),
-            this->nodes_.begin() + num_internal_nodes,
-            [] __device__ (const index_type idx)
-            {
-                node_type n;
-                n.parent_idx = 0xFFFFFFFF;
-                n.left_idx   = 0xFFFFFFFF;
-                n.right_idx  = 0xFFFFFFFF;
-                n.object_idx = idx;
-                return n;
-            });
+//        // --------------------------------------------------------------------
+//        // construct leaf nodes and aabbs
+//        // TODO: we can build our own kernel here.
+//        node_type default_node;
+//        default_node.parent_idx = 0xFFFFFFFF;
+//        default_node.left_idx   = 0xFFFFFFFF;
+//        default_node.right_idx  = 0xFFFFFFFF;
+//        default_node.object_idx = 0xFFFFFFFF;
+//        this->nodes_.resize(num_nodes, default_node);
 
-        // --------------------------------------------------------------------
-        // construct internal nodes
-        // TODO: can also be done for all at once
-        const auto self = this->get_device_repr();
-        if(morton_code_is_unique)
-        {
-            const unsigned int* node_code = morton.data().get();
-            detail::construct_internal_nodes(self, node_code, num_objects);
-        }
-        else // 64bit version
-        {
-            const unsigned long long int* node_code = morton64.data().get();
-            detail::construct_internal_nodes(self, node_code, num_objects);
-        }
+//        thrust::transform(indices.begin(), indices.end(),
+//            this->nodes_.begin() + num_internal_nodes,
+//            [] __device__ (const index_type idx)
+//            {
+//                node_type n;
+//                n.parent_idx = 0xFFFFFFFF;
+//                n.left_idx   = 0xFFFFFFFF;
+//                n.right_idx  = 0xFFFFFFFF;
+//                n.object_idx = idx;
+//                return n;
+//            });
 
-        // --------------------------------------------------------------------
-        // create AABB for each node by bottom-up strategy
-        // TODO: would also work.
-        thrust::device_vector<int> flag_container(num_internal_nodes, 0);
-        const auto flags = flag_container.data().get();
+//        // --------------------------------------------------------------------
+//        // construct internal nodes
+//        // TODO: can also be done for all at once
+//        const auto self = this->get_device_repr();
+//        {
+//            const unsigned long long int* node_code = morton64.data().get();
+//            detail::construct_internal_nodes(self, node_code, num_objects);
+//        }
 
-        thrust::for_each(thrust::device,
-            thrust::make_counting_iterator<index_type>(num_internal_nodes),
-            thrust::make_counting_iterator<index_type>(num_nodes),
-            [self, flags] __device__ (index_type idx)
-            {
-                unsigned int parent = self.nodes[idx].parent_idx;
-                while(parent != 0xFFFFFFFF) // means idx == 0
-                {
-                    const int old = atomicCAS(flags + parent, 0, 1);
-                    if(old == 0)
-                    {
-                        // this is the first thread entered here.
-                        // wait the other thread from the other child node.
-                        return;
-                    }
-                    assert(old == 1);
-                    // here, the flag has already been 1. it means that this
-                    // thread is the 2nd thread. merge AABB of both childlen.
+//        // --------------------------------------------------------------------
+//        // create AABB for each node by bottom-up strategy
+//        // TODO: would also work.
+//        thrust::device_vector<int> flag_container(num_internal_nodes, 0);
+//        const auto flags = flag_container.data().get();
 
-                    const auto lidx = self.nodes[parent].left_idx;
-                    const auto ridx = self.nodes[parent].right_idx;
-                    const auto lbox = self.aabbs[lidx];
-                    const auto rbox = self.aabbs[ridx];
-                    self.aabbs[parent] = merge(lbox, rbox);
+//        thrust::for_each(thrust::device,
+//            thrust::make_counting_iterator<index_type>(num_internal_nodes),
+//            thrust::make_counting_iterator<index_type>(num_nodes),
+//            [self, flags] __device__ (index_type idx)
+//            {
+//                unsigned int parent = self.nodes[idx].parent_idx;
+//                while(parent != 0xFFFFFFFF) // means idx == 0
+//                {
+//                    const int old = atomicCAS(flags + parent, 0, 1);
+//                    if(old == 0)
+//                    {
+//                        // this is the first thread entered here.
+//                        // wait the other thread from the other child node.
+//                        return;
+//                    }
+//                    assert(old == 1);
+//                    // here, the flag has already been 1. it means that this
+//                    // thread is the 2nd thread. merge AABB of both childlen.
 
-                    // look the next parent...
-                    parent = self.nodes[parent].parent_idx;
-                }
-                return;
-            });
+//                    const auto lidx = self.nodes[parent].left_idx;
+//                    const auto ridx = self.nodes[parent].right_idx;
+//                    const auto lbox = self.aabbs[lidx];
+//                    const auto rbox = self.aabbs[ridx];
+//                    self.aabbs[parent] = merge(lbox, rbox);
+
+//                    // look the next parent...
+//                    parent = self.nodes[parent].parent_idx;
+//                }
+//                return;
+//            });
         return;
     }
 
@@ -449,6 +507,9 @@ class bvh
         return nodes_;
     }
 private:
+    const torch::Tensor m_mixture;
+    torch::Tensor m_aabbs;
+    torch::Tensor m_nodes;
 
     thrust::device_vector<object_type>   objects_d_;
     thrust::device_vector<aabb_type>     aabbs_;

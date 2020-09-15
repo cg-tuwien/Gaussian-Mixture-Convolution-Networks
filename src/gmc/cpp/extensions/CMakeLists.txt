@@ -109,5 +109,3 @@ target_link_libraries(evaluate_inversed_tester PUBLIC OpenMP::OpenMP_CXX torch Q
 #add_executable(em_fitting ${HEADERS} ${EM_FITTING_SOURCES})
 #target_link_libraries(em_fitting PUBLIC OpenMP::OpenMP_CXX ${PYTORCH_LIBS})
 
-###### add to python pytorch cuda flags:
-# --expt-extended-lambda
