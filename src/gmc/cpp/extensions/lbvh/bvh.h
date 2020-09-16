@@ -1,5 +1,11 @@
 #ifndef LBVH_BVH_H
 #define LBVH_BVH_H
+
+#include <type_traits>
+#include <iostream>
+
+#include <cuda_runtime.h>
+
 #include <thrust/swap.h>
 #include <thrust/pair.h>
 #include <thrust/tuple.h>
@@ -43,6 +49,16 @@ struct RestrictPtrTraits {
 };
 }
 #endif
+
+#define gpuErrchk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
+inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=true)
+{
+   if (code != cudaSuccess)
+   {
+      fprintf(stderr,"GPUassert: %s %s %d\n", cudaGetErrorString(code), file, line);
+      if (abort) exit(code);
+   }
+}
 
 namespace lbvh
 {
@@ -264,119 +280,63 @@ torch::Tensor compute_aabb_whole(const torch::Tensor& aabbs) {
     return torch::cat({upper, lower}, -1).contiguous();
 }
 
-template<typename scalar_t>
-__global__ void kernel(const torch::PackedTensorAccessor32<scalar_t, 3, torch::RestrictPtrTraits> aabb_a,
-                       const torch::PackedTensorAccessor32<scalar_t, 2, torch::RestrictPtrTraits> aabb_whole_a,
-                       torch::PackedTensorAccessor32<scalar_t, 2, torch::RestrictPtrTraits> morton_codes_a,
-                       const unsigned n_mixtures, const unsigned n_components) {
-        const auto mixture_id = blockIdx.x * blockDim.x + threadIdx.x;
-        const auto component_id = blockIdx.y * blockDim.y + threadIdx.y;
-        if (mixture_id >= n_mixtures || component_id >= n_components)
-            return;
-        const auto& aabb = reinterpret_cast<const Aabb<float>&>(aabb_a[mixture_id][component_id][0]);
-        const auto& whole = reinterpret_cast<const Aabb<float>&>(aabb_whole_a[mixture_id][0]);
-        auto& morton_code = reinterpret_cast<uint64_t&>(morton_codes_a[mixture_id][component_id]);
+template<typename morton_type>
+struct morton_torch_tensor_type;
 
-        auto p = centroid(aabb);
-        p.x -= whole.lower.x;
-        p.y -= whole.lower.y;
-        p.z -= whole.lower.z;
-        p.x /= (whole.upper.x - whole.lower.x);
-        p.y /= (whole.upper.y - whole.lower.y);
-        p.z /= (whole.upper.z - whole.lower.z);
-        morton_code = lbvh::morton_code(p);
-
-        morton_code <<= 32;
-        morton_code |= component_id;
+template<>
+struct morton_torch_tensor_type<int32_t> {
+    static inline constexpr torch::ScalarType id() { return torch::ScalarType::Int; }
 };
 
-torch::Tensor compute_morton_codes(const torch::Tensor& aabbs, const torch::Tensor& aabb_whole) {
-    const auto n_components = aabbs.size(-2);
-    const auto aabbs_view = aabbs.view({-1, n_components, 8});
-    const auto aabb_whole_view = aabb_whole.view({-1, 8});
-    const auto aabb_a = aabbs_view.packed_accessor32<float, 3, torch::RestrictPtrTraits>();
-    const auto aabb_whole_a = aabb_whole_view.packed_accessor32<float, 2, torch::RestrictPtrTraits>();
-
-    const auto n_mixtures = aabbs_view.size(0);
-
-    auto morton_codes = torch::tensor({n_mixtures, n_components}, torch::TensorOptions(aabbs.device()).dtype(torch::ScalarType::Long));
-    auto morton_codes_a = morton_codes.packed_accessor32<float, 2, torch::RestrictPtrTraits>();
-
-    const dim3 dimBlock = dim3(128, 64, 1);
-    const dim3 dimGrid = dim3((n_mixtures + dimBlock.x - 1) / dimBlock.x,
-                              (n_components + dimBlock.y - 1) / dimBlock.y);
-    kernel<<<dimGrid, dimBlock>>>(aabb_a, aabb_whole_a, morton_codes_a, n_mixtures, n_components);
-}
-
-std::tuple<torch::Tensor, torch::Tensor> sort_morton_codes(const torch::Tensor& morton_codes, const torch::Tensor& object_aabbs) {
-    auto sorted_morton_codes = morton_codes.clone();
-    auto sorted_aabbs = object_aabbs.clone();
-
-    // Declare, allocate, and initialize device-accessible pointers for sorting data
-    int num_items = morton_codes.numel();                               // e.g., 8
-    int num_segments = morton_codes.size(0);                            // e.g., 4
-    int num_components = morton_codes.size(1);                          // 2
-    const auto offsets = torch::arange(0, num_segments + 1, torch::TensorOptions(morton_codes.device()).dtype(torch::ScalarType::Int)) * num_components;
-    int* d_offsets = offsets.data_ptr<int>();                           // e.g., [0, 2, 4, 6, 8]
-    const uint64_t* d_keys_in = reinterpret_cast<const uint64_t*>(morton_codes.data_ptr<int64_t>());        // e.g., [8, 6, 7, 5, 3, 0, 9, 8]
-    uint64_t* d_keys_out = reinterpret_cast<uint64_t*>(sorted_morton_codes.data_ptr<int64_t>());            // e.g., [-, -, -, -, -, -, -, -]
-    const Aabb<float>* d_values_in = reinterpret_cast<const Aabb<float>*>(object_aabbs.data_ptr<float>());  // e.g., [0, 1, 2, 3, 4, 5, 6, 7]
-    Aabb<float>* d_values_out = reinterpret_cast<Aabb<float>*>(sorted_aabbs.data_ptr<float>());             // e.g., [-, -, -, -, -, -, -, -]
-
-    // Determine temporary device storage requirements
-    void     *d_temp_storage = NULL;
-    size_t   temp_storage_bytes = 0;
-    cub::DeviceSegmentedRadixSort::SortPairs(d_temp_storage, temp_storage_bytes,
-        d_keys_in, d_keys_out, d_values_in, d_values_out,
-        num_items, num_segments, d_offsets, d_offsets + 1);
-    // Allocate temporary storage
-    cudaMalloc(&d_temp_storage, temp_storage_bytes);
-    // Run sorting operation
-    cub::DeviceSegmentedRadixSort::SortPairs(d_temp_storage, temp_storage_bytes,
-        d_keys_in, d_keys_out, d_values_in, d_values_out,
-        num_items, num_segments, d_offsets, d_offsets + 1);
-    // d_keys_out            <-- [6, 8, 5, 7, 0, 3, 8, 9]
-    // d_values_out          <-- [1, 0, 3, 2, 5, 4, 7, 6]
-    cudaFree(d_temp_storage);
-
-    return std::make_tuple(sorted_morton_codes, sorted_aabbs);
-}
+template<>
+struct morton_torch_tensor_type<int64_t> {
+    static inline constexpr torch::ScalarType id() { return torch::ScalarType::Long; }
+};
 
 } // detail
 
-template<typename Real, typename Object>
-struct default_morton_code_calculator
-{
-    default_morton_code_calculator(Aabb<Real> w): whole(w) {}
-    default_morton_code_calculator()  = default;
-    ~default_morton_code_calculator() = default;
-    default_morton_code_calculator(default_morton_code_calculator const&) = default;
-    default_morton_code_calculator(default_morton_code_calculator&&)      = default;
-    default_morton_code_calculator& operator=(default_morton_code_calculator const&) = default;
-    default_morton_code_calculator& operator=(default_morton_code_calculator&&)      = default;
+namespace kernels {
 
-    __device__ __host__
-    inline unsigned int operator()(const Object&, const Aabb<Real>& box) noexcept
-    {
-        auto p = centroid(box);
-        p.x -= whole.lower.x;
-        p.y -= whole.lower.y;
-        p.z -= whole.lower.z;
-        p.x /= (whole.upper.x - whole.lower.x);
-        p.y /= (whole.upper.y - whole.lower.y);
-        p.z /= (whole.upper.z - whole.lower.z);
-        return morton_code(p);
-    }
-    Aabb<Real> whole;
-};
+template<typename scalar_t, typename morton_torch_t>
+__global__ void compute_morton_codes(const torch::PackedTensorAccessor32<scalar_t, 3, torch::RestrictPtrTraits> aabb_a,
+                       const torch::PackedTensorAccessor32<scalar_t, 2, torch::RestrictPtrTraits> aabb_whole_a,
+                       torch::PackedTensorAccessor32<morton_torch_t, 2, torch::RestrictPtrTraits> morton_codes_a,
+                       const unsigned n_mixtures, const unsigned n_components) {
+    using morton_cuda_t = std::make_unsigned_t<morton_torch_t>;
+
+    const auto mixture_id = blockIdx.x * blockDim.x + threadIdx.x;
+    const auto component_id = blockIdx.y * blockDim.y + threadIdx.y;
+    if (mixture_id >= n_mixtures || component_id >= n_components)
+        return;
+
+    const auto& aabb = reinterpret_cast<const Aabb<float>&>(aabb_a[mixture_id][component_id][0]);
+    const auto& whole = reinterpret_cast<const Aabb<float>&>(aabb_whole_a[mixture_id][0]);
+    auto& morton_code = reinterpret_cast<morton_cuda_t&>(morton_codes_a[mixture_id][component_id]);
+
+    auto p = centroid(aabb);
+    p.x -= whole.lower.x;
+    p.y -= whole.lower.y;
+    p.z -= whole.lower.z;
+    p.x /= (whole.upper.x - whole.lower.x);
+    p.y /= (whole.upper.y - whole.lower.y);
+    p.z /= (whole.upper.z - whole.lower.z);
+    morton_code = lbvh::morton_code(p);
+
+    morton_code << sizeof (morton_torch_t) * 2;
+//    morton_code <<= 32;
+    morton_code |= component_id;
+//    morton_code = component_id;
+}
+
+} // kernels
+
 
 template<typename Real, typename Object>
 using  bvh_device = detail::basic_device_bvh<Real, Object, false>;
 template<typename Real, typename Object>
 using cbvh_device = detail::basic_device_bvh<Real, Object, true>;
 
-template<typename Real, typename Object,
-         typename MortonCodeCalculator = default_morton_code_calculator<Real, Object>>
+template<typename Real, typename Object>
 class bvh
 {
   public:
@@ -385,7 +345,11 @@ class bvh
     using object_type = Object;
     using aabb_type   = Aabb<real_type>;
     using node_type   = detail::node;
-    using morton_code_calculator_type = MortonCodeCalculator;
+
+    using scalar_t = real_type;
+    using morton_torch_t = int64_t;
+    using morton_cuda_t = std::make_unsigned<morton_torch_t>::type;
+
 
   public:
 
@@ -421,13 +385,17 @@ class bvh
         const unsigned int num_nodes          = num_objects * 2 - 1;
 
         auto object_aabbs = detail::compute_aabbs(m_mixture);
+        std::cout << "object_aabbs:" << object_aabbs << std::endl;
         const auto aabb_whole = detail::compute_aabb_whole(object_aabbs);
+        std::cout << "aabb_whole:" << aabb_whole << std::endl;
 
         // --------------------------------------------------------------------
         // calculate morton code of each AABB
         // we produce unique morton codes by extending the actual morton code with the index.
         // TODO: easy, either some scaling and translation using torch + thrust transform, or custom kernel.
-        auto morton_codes = detail::compute_morton_codes(object_aabbs, aabb_whole);
+        auto morton_codes = compute_morton_codes(object_aabbs, aabb_whole);
+        std::cout << "morton_codes:" << std::hex << morton_codes.cpu() << std::dec << std::endl;
+        std::cout << "morton_codes:" << morton_codes.cpu() << std::endl;
 
 
         // --------------------------------------------------------------------
@@ -435,11 +403,18 @@ class bvh
         // TODO: either torch, or http://www.orangeowlsolutions.com/archives/1297 (2 sorts), or, we can prepend the gm index to the morton code?
         //       or, this would be the fastest (probably): https://nvlabs.github.io/cub/structcub_1_1_device_segmented_radix_sort.html
 
-        std::tie(morton_codes, object_aabbs) = detail::sort_morton_codes(morton_codes, object_aabbs);
+        std::tie(morton_codes, object_aabbs) = sort_morton_codes(morton_codes, object_aabbs);
+        std::cout << "sorted morton_codes:" << std::hex << morton_codes << std::dec << std::endl;
+        const torch::Tensor mccpu = morton_codes.cpu().contiguous();
+        for (int i = 0; i < 10; ++i) {
+            std::cout << std::hex << mccpu.data_ptr<int>()[i] << std::endl;
+        }
+        std::cout << "sorted object_aabbs:" << object_aabbs << std::endl;
 
         // assemble aabb array (internal nodes will be filled later)
         const auto internal_aabbs = torch::zeros({n.batch, n.layers, num_internal_nodes, 8});
         m_aabbs = torch::cat({internal_aabbs, object_aabbs}, 3).contiguous();
+        std::cout << "m_aabbs:" << m_aabbs << std::endl;
 
 //        thrust::device_vector<unsigned int> indices(num_objects);
 //        thrust::copy(thrust::make_counting_iterator<index_type>(0),
@@ -535,6 +510,64 @@ class bvh
     {
         return nodes_;
     }
+protected:
+    torch::Tensor compute_morton_codes(const torch::Tensor& aabbs, const torch::Tensor& aabb_whole) const {
+        const auto n_components = aabbs.size(-2);
+        const auto aabbs_view = aabbs.view({-1, n_components, 8});
+        const auto aabb_whole_view = aabb_whole.view({-1, 8});
+        const auto aabb_a = aabbs_view.packed_accessor32<float, 3, torch::RestrictPtrTraits>();
+        const auto aabb_whole_a = aabb_whole_view.packed_accessor32<float, 2, torch::RestrictPtrTraits>();
+
+        const auto n_mixtures = aabbs_view.size(0);
+
+        auto morton_codes = torch::empty({n_mixtures, n_components}, torch::TensorOptions(aabbs.device()).dtype(detail::morton_torch_tensor_type<morton_torch_t>::id()));
+        auto morton_codes_a = morton_codes.packed_accessor32<morton_torch_t, 2, torch::RestrictPtrTraits>();
+
+        dim3 dimBlock = dim3(1, 128, 1);
+        dim3 dimGrid = dim3((n_mixtures + dimBlock.x - 1) / dimBlock.x,
+                                  (n_components + dimBlock.y - 1) / dimBlock.y);
+        kernels::compute_morton_codes<scalar_t, morton_torch_t><<<dimGrid, dimBlock>>>(aabb_a, aabb_whole_a, morton_codes_a, n_mixtures, n_components);
+
+        gpuErrchk(cudaPeekAtLastError());
+        gpuErrchk(cudaDeviceSynchronize());
+        return morton_codes;
+    }
+
+    std::tuple<torch::Tensor, torch::Tensor> sort_morton_codes(const torch::Tensor& morton_codes, const torch::Tensor& object_aabbs) const {
+        auto sorted_morton_codes = morton_codes.clone();
+        auto sorted_aabbs = object_aabbs.clone();
+
+        // Declare, allocate, and initialize device-accessible pointers for sorting data
+        int num_items = morton_codes.numel();                               // e.g., 8
+        int num_segments = morton_codes.size(0);                            // e.g., 4
+        int num_components = morton_codes.size(1);                          // 2
+        const auto offsets = torch::arange(0, num_segments + 1, torch::TensorOptions(morton_codes.device()).dtype(torch::ScalarType::Int)) * num_components;
+        std::cout << "offsets: " << offsets << std::endl;
+        int* d_offsets = offsets.data_ptr<int>();                           // e.g., [0, 2, 4, 6, 8]
+        const morton_cuda_t* d_keys_in = reinterpret_cast<const morton_cuda_t*>(morton_codes.data_ptr<morton_torch_t>());   // e.g., [8, 6, 7, 5, 3, 0, 9, 8]
+        morton_cuda_t* d_keys_out = reinterpret_cast<morton_cuda_t*>(sorted_morton_codes.data_ptr<morton_torch_t>());       // e.g., [-, -, -, -, -, -, -, -]
+        const Aabb<float>* d_values_in = reinterpret_cast<const Aabb<float>*>(object_aabbs.data_ptr<float>());              // e.g., [0, 1, 2, 3, 4, 5, 6, 7]
+        Aabb<float>* d_values_out = reinterpret_cast<Aabb<float>*>(sorted_aabbs.data_ptr<float>());                         // e.g., [-, -, -, -, -, -, -, -]
+
+        // Determine temporary device storage requirements
+        void     *d_temp_storage = NULL;
+        size_t   temp_storage_bytes = 0;
+        cub::DeviceSegmentedRadixSort::SortPairs(d_temp_storage, temp_storage_bytes,
+            d_keys_in, d_keys_out, d_values_in, d_values_out,
+            num_items, num_segments, d_offsets, d_offsets + 1);
+        // Allocate temporary storage
+        cudaMalloc(&d_temp_storage, temp_storage_bytes);
+        // Run sorting operation
+        cub::DeviceSegmentedRadixSort::SortPairs(d_temp_storage, temp_storage_bytes,
+            d_keys_in, d_keys_out, d_values_in, d_values_out,
+            num_items, num_segments, d_offsets, d_offsets + 1);
+        // d_keys_out            <-- [6, 8, 5, 7, 0, 3, 8, 9]
+        // d_values_out          <-- [1, 0, 3, 2, 5, 4, 7, 6]
+        cudaFree(d_temp_storage);
+
+        return std::make_tuple(sorted_morton_codes, sorted_aabbs);
+    }
+
 private:
     const torch::Tensor m_mixture;
     torch::Tensor m_aabbs;
