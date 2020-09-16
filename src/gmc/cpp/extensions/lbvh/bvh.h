@@ -16,7 +16,7 @@
 #include <thrust/iterator/counting_iterator.h>
 #include <thrust/execution_policy.h>
 
-#include <cub/device/device_segmented_radix_sort.h>
+#include <cub/device/device_segmented_radix_sort.cuh>
 
 #include <torch/script.h>
 #include <torch/nn/functional.h>
@@ -308,8 +308,38 @@ torch::Tensor compute_morton_codes(const torch::Tensor& aabbs, const torch::Tens
     kernel<<<dimGrid, dimBlock>>>(aabb_a, aabb_whole_a, morton_codes_a, n_mixtures, n_components);
 }
 
-void sort_morton_codes(torch::Tensor& morton_codes, torch::Tensor& object_aabbs) {
+std::tuple<torch::Tensor, torch::Tensor> sort_morton_codes(const torch::Tensor& morton_codes, const torch::Tensor& object_aabbs) {
+    auto sorted_morton_codes = morton_codes.clone();
+    auto sorted_aabbs = object_aabbs.clone();
 
+    // Declare, allocate, and initialize device-accessible pointers for sorting data
+    int num_items = morton_codes.numel();                               // e.g., 8
+    int num_segments = morton_codes.size(0);                            // e.g., 4
+    int num_components = morton_codes.size(1);                          // 2
+    const auto offsets = torch::arange(0, num_segments + 1, torch::TensorOptions(morton_codes.device()).dtype(torch::ScalarType::Int)) * num_components;
+    int* d_offsets = offsets.data_ptr<int>();                           // e.g., [0, 2, 4, 6, 8]
+    const uint64_t* d_keys_in = reinterpret_cast<const uint64_t*>(morton_codes.data_ptr<int64_t>());        // e.g., [8, 6, 7, 5, 3, 0, 9, 8]
+    uint64_t* d_keys_out = reinterpret_cast<uint64_t*>(sorted_morton_codes.data_ptr<int64_t>());            // e.g., [-, -, -, -, -, -, -, -]
+    const Aabb<float>* d_values_in = reinterpret_cast<const Aabb<float>*>(object_aabbs.data_ptr<float>());  // e.g., [0, 1, 2, 3, 4, 5, 6, 7]
+    Aabb<float>* d_values_out = reinterpret_cast<Aabb<float>*>(sorted_aabbs.data_ptr<float>());             // e.g., [-, -, -, -, -, -, -, -]
+
+    // Determine temporary device storage requirements
+    void     *d_temp_storage = NULL;
+    size_t   temp_storage_bytes = 0;
+    cub::DeviceSegmentedRadixSort::SortPairs(d_temp_storage, temp_storage_bytes,
+        d_keys_in, d_keys_out, d_values_in, d_values_out,
+        num_items, num_segments, d_offsets, d_offsets + 1);
+    // Allocate temporary storage
+    cudaMalloc(&d_temp_storage, temp_storage_bytes);
+    // Run sorting operation
+    cub::DeviceSegmentedRadixSort::SortPairs(d_temp_storage, temp_storage_bytes,
+        d_keys_in, d_keys_out, d_values_in, d_values_out,
+        num_items, num_segments, d_offsets, d_offsets + 1);
+    // d_keys_out            <-- [6, 8, 5, 7, 0, 3, 8, 9]
+    // d_values_out          <-- [1, 0, 3, 2, 5, 4, 7, 6]
+    cudaFree(d_temp_storage);
+
+    return std::make_tuple(sorted_morton_codes, sorted_aabbs);
 }
 
 } // detail
@@ -405,7 +435,7 @@ class bvh
         // TODO: either torch, or http://www.orangeowlsolutions.com/archives/1297 (2 sorts), or, we can prepend the gm index to the morton code?
         //       or, this would be the fastest (probably): https://nvlabs.github.io/cub/structcub_1_1_device_segmented_radix_sort.html
 
-        detail::sort_morton_codes(morton_codes, object_aabbs);
+        std::tie(morton_codes, object_aabbs) = detail::sort_morton_codes(morton_codes, object_aabbs);
 
         // assemble aabb array (internal nodes will be filled later)
         const auto internal_aabbs = torch::zeros({n.batch, n.layers, num_internal_nodes, 8});
