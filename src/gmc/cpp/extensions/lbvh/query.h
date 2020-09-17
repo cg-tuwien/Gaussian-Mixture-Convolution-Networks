@@ -71,12 +71,11 @@ unsigned int query_device(
     return num_found;
 }
 
-template<typename Real, typename Objects, bool IsConst, typename OutputIterator, typename Predicate, typename Function>
+template<typename Real, typename Objects, bool IsConst, typename Predicate, typename Function>
 __device__
 unsigned int query_device_with_fun(
         const detail::basic_device_bvh<Real, Objects, IsConst>& bvh,
-        const Predicate& predicate, OutputIterator outiter,
-        Function fun) noexcept
+        const Predicate& predicate, Function fun) noexcept
 {
     using bvh_type   = detail::basic_device_bvh<Real, Objects, IsConst>;
     using index_type = typename bvh_type::index_type;
