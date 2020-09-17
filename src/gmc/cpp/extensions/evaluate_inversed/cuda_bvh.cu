@@ -94,14 +94,13 @@ __global__ void evaluate_inversed_bvh(const torch::PackedTensorAccessor32<scalar
     lbvh::detail::basic_device_bvh<scalar_t, G, true> bvh {num_nodes, num_objects, bvh_nodes, bvh_aabbs, bvh_gaussians};
 
     const auto& x_pos = gpe::vec<2>(xes[batch_xes_index][layer_xes_index][xes_index][0]);
-    unsigned int buffer[GPE_BVH_BUFFER_SIZE];
     auto point = float4{x_pos.x, x_pos.y, 0, 0};
-    const auto num_found = lbvh::query_device(bvh, lbvh::inside_aabb(point), buffer, GPE_BVH_BUFFER_SIZE);
-    for (int i = 0; i < min(GPE_BVH_BUFFER_SIZE, num_found); i++) {
-        const auto& g = bvh.objects[buffer[i]];
-        sums[batch_index][layer_index][xes_index] += gpe::evaluate_gaussian(x_pos, g.weight, g.position, g.covariance);
-    }
-    sums[batch_index][layer_index][xes_index] += 1;//gpe::evaluate_gaussian(x_pos, g.weight, g.position, g.covariance);
+    auto& sum = sums[batch_index][layer_index][xes_index];
+    auto evaluate = [bvh, &sum, &x_pos] (unsigned index) {
+        const auto& g = bvh.objects[index];
+        sum += gpe::evaluate_gaussian(x_pos, g.weight, g.position, g.covariance);
+    };
+    const auto num_found = lbvh::query_device_with_fun(bvh, lbvh::inside_aabb(point), evaluate);
 }
 
 torch::Tensor cuda_bvh_forward_impl(const at::Tensor& mixture, const at::Tensor& xes) {

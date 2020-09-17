@@ -71,6 +71,60 @@ unsigned int query_device(
     return num_found;
 }
 
+template<typename Real, typename Objects, bool IsConst, typename OutputIterator, typename Predicate, typename Function>
+__device__
+unsigned int query_device_with_fun(
+        const detail::basic_device_bvh<Real, Objects, IsConst>& bvh,
+        const Predicate& predicate, OutputIterator outiter,
+        Function fun) noexcept
+{
+    using bvh_type   = detail::basic_device_bvh<Real, Objects, IsConst>;
+    using index_type = typename bvh_type::index_type;
+    using aabb_type  = typename bvh_type::aabb_type;
+    using node_type  = typename bvh_type::node_type;
+
+    index_type  stack[64]; // is it okay?
+    index_type* stack_ptr = stack;
+    *stack_ptr++ = 0; // root node is always 0
+
+    unsigned int num_found = 0;
+    do
+    {
+        const index_type node  = *--stack_ptr;
+        const index_type L_idx = bvh.nodes[node].left_idx;
+        const index_type R_idx = bvh.nodes[node].right_idx;
+
+        if(predicate(bvh.aabbs[L_idx]))
+        {
+            const auto obj_idx = bvh.nodes[L_idx].object_idx;
+            if(obj_idx != 0xFFFFFFFF)
+            {
+                fun(obj_idx);
+                ++num_found;
+            }
+            else // the node is not a leaf.
+            {
+                *stack_ptr++ = L_idx;
+            }
+        }
+        if(predicate(bvh.aabbs[R_idx]))
+        {
+            const auto obj_idx = bvh.nodes[R_idx].object_idx;
+            if(obj_idx != 0xFFFFFFFF)
+            {
+                fun(obj_idx);
+                ++num_found;
+            }
+            else // the node is not a leaf.
+            {
+                *stack_ptr++ = R_idx;
+            }
+        }
+    }
+    while (stack < stack_ptr);
+    return num_found;
+}
+
 // query object index that is the nearst to the query point.
 //
 // requirements:
