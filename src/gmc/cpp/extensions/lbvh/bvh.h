@@ -352,6 +352,48 @@ __global__ void create_internal_nodes(const torch::PackedTensorAccessor32<morton
     reinterpret_cast<detail::Node&>(nodes_a[mixture_id][int(node.right_idx)][0]).parent_idx = node_id;
 }
 
+template <typename scalar_t>
+__global__ void create_aabbs_for_internal_nodes(torch::PackedTensorAccessor32<int, 2, torch::RestrictPtrTraits> flags,
+                                                const torch::PackedTensorAccessor32<int32_t, 3, torch::RestrictPtrTraits> nodes,
+                                                torch::PackedTensorAccessor32<scalar_t, 3, torch::RestrictPtrTraits> aabbs,
+                                                const unsigned n_mixtures, const unsigned n_internal_nodes, const unsigned n_nodes)
+{
+
+    const auto mixture_id = blockIdx.x * blockDim.x + threadIdx.x;
+    const auto node_id = blockIdx.y * blockDim.y + threadIdx.y + n_internal_nodes;
+    if (mixture_id >= n_mixtures || node_id >= n_nodes)
+        return;
+
+
+    const auto* node = &reinterpret_cast<const detail::Node&>(nodes[mixture_id][node_id][0]);
+    printf("m%d# start node %d: parent %d, left %d, right %d, obj %d\n", mixture_id, node_id, node->parent_idx, node->left_idx, node->right_idx, node->object_idx);
+    while(node->parent_idx != 0xFFFFFFFF) // means idx == 0
+    {
+        auto* flag = &reinterpret_cast<int&>(flags[mixture_id][node->parent_idx]);
+        const int old = atomicCAS(flag, 0, 1);
+        if(old == 0)
+        {
+            // this is the first thread entered here.
+            // wait the other thread from the other child node.
+            return;
+        }
+        assert(old == 1);
+        // here, the flag has already been 1. it means that this
+        // thread is the 2nd thread. merge AABB of both childlen.
+
+        auto& current_aabb = reinterpret_cast<Aabb<scalar_t>&>(aabbs[mixture_id][node->parent_idx][0]);
+        const auto node_id = node->parent_idx;
+        node = &reinterpret_cast<const detail::Node&>(nodes[mixture_id][node->parent_idx][0]);
+        const auto& left_aabb = reinterpret_cast<Aabb<scalar_t>&>(aabbs[mixture_id][node->left_idx][0]);
+        const auto& right_aabb = reinterpret_cast<Aabb<scalar_t>&>(aabbs[mixture_id][node->right_idx][0]);
+
+        current_aabb = merge(left_aabb, right_aabb);
+
+        printf("m%d# node %d: parent %d, left %d, right %d, obj %d\n", mixture_id, node_id, node->parent_idx, node->left_idx, node->right_idx, node->object_idx);
+    }
+    return;
+}
+
 } // kernels
 
 
@@ -383,44 +425,42 @@ class bvh
         this->construct();
     }
 
-    bvh_device<real_type, object_type> get_device_repr()       noexcept
-    {
-        return bvh_device<real_type, object_type>{
-            static_cast<unsigned int>(nodes_.size()),
-            static_cast<unsigned int>(objects_d_.size()),
-            nodes_.data().get(), aabbs_.data().get(), objects_d_.data().get()
-        };
-    }
-    cbvh_device<real_type, object_type> get_device_repr() const noexcept
-    {
-        return cbvh_device<real_type, object_type>{
-            static_cast<unsigned int>(nodes_.size()),
-            static_cast<unsigned int>(objects_d_.size()),
-            nodes_.data().get(), aabbs_.data().get(), objects_d_.data().get()
-        };
-    }
-
     void construct()
     {
         using namespace torch::indexing;
 
-        const unsigned int num_objects        = m_n.components;
-        const unsigned int num_internal_nodes = num_objects - 1;
-        const unsigned int num_nodes          = num_objects * 2 - 1;
+        m_n_leaf_nodes = m_n.components;
+        m_n_internal_nodes = m_n_leaf_nodes - 1;
+        m_n_nodes = m_n_leaf_nodes * 2 - 1;
 
-        auto print_nodes = [this, num_nodes]() {
+        auto print_nodes = [this]() {
             std::cout << "nodes: " << m_nodes.sizes() << " " << (m_nodes.is_cuda() ? "(cuda)" : "(cpu)") << std::endl;
             const torch::Tensor ncpu = m_nodes.cpu().contiguous();
             for (int i = 0; i < m_n.batch * m_n.layers; ++i) {
-                for (int j = 0; j < num_nodes; ++j) {
+                for (int j = 0; j < this->m_n_nodes; ++j) {
                     for (int k = 0; k < 4; ++k) {
-                        const auto index = i * num_nodes * 4 + j * 4 + k;
+                        const auto index = i * this->m_n_nodes * 4 + j * 4 + k;
                         std::cout << ncpu.data_ptr<int>()[index] << ", ";
                     }
                     std::cout << " || ";
                 }
                 std::cout << std::endl;
             }
+        };
+
+        auto print_morton_codes = [this](const torch::Tensor& morton_codes) {
+            std::ios_base::fmtflags f(std::cout.flags());
+            std::cout << "morton codes: " << morton_codes.sizes() << " " << (morton_codes.is_cuda() ? "(cuda)" : "(cpu)") << std::endl;
+            const torch::Tensor mccpu = morton_codes.cpu().contiguous();
+            for (int i = 0; i < m_n.batch * m_n.layers; ++i) {
+                std::cout << std::hex;
+                for (int j = 0; j < m_n.components; ++j) {
+                    const auto index = i * m_n.components + j;
+                    std::cout << "0x" << std::setw(16) << mccpu.data_ptr<morton_torch_t>()[index] << "; ";
+                }
+                std::cout << std::dec << std::endl;
+            }
+            std::cout.flags(f);
         };
 
         auto object_aabbs = detail::compute_aabbs(m_mixture);
@@ -435,20 +475,7 @@ class bvh
         // we produce unique morton codes by extending the actual morton code with the index.
         // TODO: easy, either some scaling and translation using torch + thrust transform, or custom kernel.
         torch::Tensor morton_codes = compute_morton_codes(object_aabbs, aabb_whole);
-        {
-            std::ios_base::fmtflags f(std::cout.flags());
-            std::cout << "morton codes: " << morton_codes.sizes() << " " << (morton_codes.is_cuda() ? "(cuda)" : "(cpu)") << std::endl;
-            const torch::Tensor mccpu = morton_codes.cpu().contiguous();
-            for (int i = 0; i < m_n.batch * m_n.layers; ++i) {
-                std::cout << std::hex;
-                for (int j = 0; j < m_n.components; ++j) {
-                    const auto index = i * m_n.components + j;
-                    std::cout << "0x" << std::setw(16) << mccpu.data_ptr<morton_torch_t>()[index] << "; ";
-                }
-                std::cout << std::dec << std::endl;
-            }
-            std::cout.flags(f);
-        }
+        print_morton_codes(morton_codes);
 
 
         // --------------------------------------------------------------------
@@ -457,30 +484,18 @@ class bvh
         //       or, this would be the fastest (probably): https://nvlabs.github.io/cub/structcub_1_1_device_segmented_radix_sort.html (implemented; test whether prepending would be faster)
 
         std::tie(morton_codes, object_aabbs) = sort_morton_codes(morton_codes, object_aabbs);
-        {
-            std::ios_base::fmtflags f(std::cout.flags());
-            std::cout << "sorted morton codes: " << morton_codes.sizes() << " " << (morton_codes.is_cuda() ? "(cuda)" : "(cpu)") << std::endl;
-            const torch::Tensor mccpu = morton_codes.cpu().contiguous();
-            for (int i = 0; i < m_n.batch * m_n.layers; ++i) {
-                std::cout << std::hex;
-                for (int j = 0; j < m_n.components; ++j) {
-                    const auto index = i * m_n.components + j;
-                    std::cout << "0x" << std::setw(16) << mccpu.data_ptr<morton_torch_t>()[index] << "; ";
-                }
-                std::cout << std::dec << std::endl;
-            }
-            std::cout.flags(f);
-        }
+        print_morton_codes(morton_codes);
+
         std::cout << "sorted object_aabbs:" << object_aabbs << std::endl;
 
         // assemble aabb array
-        const auto internal_aabbs = torch::zeros({m_n.batch, m_n.layers, num_internal_nodes, 8}, torch::TensorOptions(device).dtype(object_aabbs.dtype()));
+        const auto internal_aabbs = torch::zeros({m_n.batch, m_n.layers, m_n_internal_nodes, 8}, torch::TensorOptions(device).dtype(object_aabbs.dtype()));
         std::cout << "internal: " << internal_aabbs.sizes() << "  object: " << object_aabbs.sizes() << std::endl;
         m_aabbs = torch::cat({internal_aabbs, object_aabbs}, 2).contiguous();
         std::cout << "m_aabbs:" << m_aabbs << std::endl;
 
         // construct nodes and create leaf nodes
-        m_nodes = torch::ones({m_n.batch, m_n.layers, num_nodes, 4}, torch::TensorOptions(device).dtype(torch::ScalarType::Int)) * -1;
+        m_nodes = torch::ones({m_n.batch, m_n.layers, m_n_nodes, 4}, torch::TensorOptions(device).dtype(torch::ScalarType::Int)) * -1;
         print_nodes();
         this->create_leaf_nodes(morton_codes);
         print_nodes();
@@ -489,59 +504,11 @@ class bvh
         this->create_internal_nodes(morton_codes);
         print_nodes();
 
-//        // --------------------------------------------------------------------
-//        // create AABB for each node by bottom-up strategy
-//        // TODO: would also work.
-//        thrust::device_vector<int> flag_container(num_internal_nodes, 0);
-//        const auto flags = flag_container.data().get();
-
-//        thrust::for_each(thrust::device,
-//            thrust::make_counting_iterator<index_type>(num_internal_nodes),
-//            thrust::make_counting_iterator<index_type>(num_nodes),
-//            [self, flags] __device__ (index_type idx)
-//            {
-//                unsigned int parent = self.nodes[idx].parent_idx;
-//                while(parent != 0xFFFFFFFF) // means idx == 0
-//                {
-//                    const int old = atomicCAS(flags + parent, 0, 1);
-//                    if(old == 0)
-//                    {
-//                        // this is the first thread entered here.
-//                        // wait the other thread from the other child node.
-//                        return;
-//                    }
-//                    assert(old == 1);
-//                    // here, the flag has already been 1. it means that this
-//                    // thread is the 2nd thread. merge AABB of both childlen.
-
-//                    const auto lidx = self.nodes[parent].left_idx;
-//                    const auto ridx = self.nodes[parent].right_idx;
-//                    const auto lbox = self.aabbs[lidx];
-//                    const auto rbox = self.aabbs[ridx];
-//                    self.aabbs[parent] = merge(lbox, rbox);
-
-//                    // look the next parent...
-//                    parent = self.nodes[parent].parent_idx;
-//                }
-//                return;
-//            });
-        return;
+        // create AABB for each node by bottom-up strategy
+        this->create_aabbs_for_internal_nodes();
+        std::cout << "m_aabbs:" << m_aabbs << std::endl;
     }
 
-    thrust::device_vector<object_type> getObjects() const
-    {
-        return objects_d_;
-    }
-
-    thrust::device_vector<aabb_type> getAabbs() const
-    {
-        return aabbs_;
-    }
-
-    thrust::device_vector<node_type> getNodes() const
-    {
-        return nodes_;
-    }
 protected:
     torch::Tensor compute_morton_codes(const torch::Tensor& aabbs, const torch::Tensor& aabb_whole) const {
         const auto aabbs_view = aabbs.view({-1, m_n.components, 8});
@@ -552,13 +519,13 @@ protected:
         const auto n_mixtures = aabbs_view.size(0);
         assert(n_mixtures == m_n.batch * m_n.layers);
 
-        auto morton_codes = torch::empty({n_mixtures, m_n.components}, torch::TensorOptions(aabbs.device()).dtype(detail::morton_torch_tensor_type<morton_torch_t>::id()));
+        auto morton_codes = torch::empty({n_mixtures, m_n_leaf_nodes}, torch::TensorOptions(aabbs.device()).dtype(detail::morton_torch_tensor_type<morton_torch_t>::id()));
         auto morton_codes_a = morton_codes.packed_accessor32<morton_torch_t, 2, torch::RestrictPtrTraits>();
 
         dim3 dimBlock = dim3(1, 128, 1);
         dim3 dimGrid = dim3((n_mixtures + dimBlock.x - 1) / dimBlock.x,
-                                  (m_n.components + dimBlock.y - 1) / dimBlock.y);
-        kernels::compute_morton_codes<scalar_t, morton_torch_t><<<dimGrid, dimBlock>>>(aabb_a, aabb_whole_a, morton_codes_a, n_mixtures, m_n.components);
+                                  (m_n_leaf_nodes + dimBlock.y - 1) / dimBlock.y);
+        kernels::compute_morton_codes<scalar_t, morton_torch_t><<<dimGrid, dimBlock>>>(aabb_a, aabb_whole_a, morton_codes_a, n_mixtures, m_n_leaf_nodes);
 
         gpuErrchk(cudaPeekAtLastError());
         gpuErrchk(cudaDeviceSynchronize());
@@ -648,22 +615,43 @@ protected:
         // no support for negative slicing indexes at the time of writing v
         auto nodes_view = m_nodes.view({n_mixtures, -1, sizeof(detail::Node)/sizeof (int32_t)});
         auto nodes_a = nodes_view.packed_accessor32<int32_t, 3, torch::RestrictPtrTraits>();
-        const auto morton_codes_view = morton_codes.view({n_mixtures, m_n.components});
+        const auto morton_codes_view = morton_codes.view({n_mixtures, m_n_leaf_nodes});
         const auto morton_codes_a = morton_codes_view.packed_accessor32<morton_torch_t, 2, torch::RestrictPtrTraits>();
 
-        auto n_internal_nodes = m_nodes.size(-2) - m_n.components;
         dim3 dimBlock = dim3(1, 128, 1);
         dim3 dimGrid = dim3((n_mixtures + dimBlock.x - 1) / dimBlock.x,
-                            (n_internal_nodes + dimBlock.y - 1) / dimBlock.y);
+                            (m_n_internal_nodes + dimBlock.y - 1) / dimBlock.y);
         kernels::create_internal_nodes<scalar_t, morton_torch_t><<<dimGrid, dimBlock>>>(morton_codes_a, nodes_a,
-                                                                                        n_mixtures, n_internal_nodes, m_n.components);
+                                                                                        n_mixtures, m_n_internal_nodes, m_n_leaf_nodes);
 
+        gpuErrchk(cudaPeekAtLastError());
+        gpuErrchk(cudaDeviceSynchronize());
+    }
+
+    void create_aabbs_for_internal_nodes() {
+        auto n_mixtures = m_n.batch * m_n.layers;
+        auto flag_container = torch::zeros({n_mixtures, m_n_internal_nodes}, torch::TensorOptions(m_mixture.device()).dtype(torch::ScalarType::Int));
+        const auto flags_a = flag_container.packed_accessor32<int, 2, torch::RestrictPtrTraits>();
+
+        auto nodes_view = m_nodes.view({n_mixtures, m_n_nodes, sizeof(detail::Node)/sizeof (int32_t)});
+        auto nodes_a = nodes_view.packed_accessor32<int32_t, 3, torch::RestrictPtrTraits>();
+        const auto aabbs_view = m_aabbs.view({-1, m_n_nodes, 8});
+        const auto aabb_a = aabbs_view.packed_accessor32<float, 3, torch::RestrictPtrTraits>();
+
+        dim3 dimBlock = dim3(1, 128, 1);
+        dim3 dimGrid = dim3((n_mixtures + dimBlock.x - 1) / dimBlock.x,
+                            (m_n_leaf_nodes + dimBlock.y - 1) / dimBlock.y);
+        kernels::create_aabbs_for_internal_nodes<scalar_t><<<dimGrid, dimBlock>>>(flags_a, nodes_a, aabb_a,
+                                                                                  n_mixtures, m_n_internal_nodes, m_n_nodes);
         gpuErrchk(cudaPeekAtLastError());
         gpuErrchk(cudaDeviceSynchronize());
     }
 
 private:
     gpe::MixtureNs m_n;
+    unsigned m_n_internal_nodes;
+    unsigned m_n_leaf_nodes;
+    unsigned m_n_nodes;
     const torch::Tensor m_mixture;
     torch::Tensor m_aabbs;
     torch::Tensor m_nodes;
