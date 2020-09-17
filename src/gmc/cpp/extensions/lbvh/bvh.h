@@ -3,6 +3,7 @@
 
 #include <type_traits>
 #include <iostream>
+#include <ios>
 
 #include <cuda_runtime.h>
 
@@ -322,8 +323,9 @@ __global__ void compute_morton_codes(const torch::PackedTensorAccessor32<scalar_
     p.z /= (whole.upper.z - whole.lower.z);
     morton_code = lbvh::morton_code(p);
 
-    morton_code << sizeof (morton_torch_t) * 2;
-//    morton_code <<= 32;
+//    morton_code << sizeof (morton_torch_t) * 2;
+//    morton_code = mixture_id;
+    morton_code <<= 32;
     morton_code |= component_id;
 //    morton_code = component_id;
 }
@@ -393,9 +395,21 @@ class bvh
         // calculate morton code of each AABB
         // we produce unique morton codes by extending the actual morton code with the index.
         // TODO: easy, either some scaling and translation using torch + thrust transform, or custom kernel.
-        auto morton_codes = compute_morton_codes(object_aabbs, aabb_whole);
-        std::cout << "morton_codes:" << std::hex << morton_codes.cpu() << std::dec << std::endl;
-        std::cout << "morton_codes:" << morton_codes.cpu() << std::endl;
+        torch::Tensor morton_codes = compute_morton_codes(object_aabbs, aabb_whole);
+        {
+            std::ios_base::fmtflags f(std::cout.flags());
+            std::cout << "morton codes: " << morton_codes.sizes() << " " << (morton_codes.is_cuda() ? "(cuda)" : "(cpu)") << std::endl;
+            const torch::Tensor mccpu = morton_codes.cpu().contiguous();
+            for (int i = 0; i < morton_codes.size(0); ++i) {
+                std::cout << std::hex;
+                for (int j = 0; j < morton_codes.size(1); ++j) {
+                    const auto index = i * morton_codes.size(1) + j;
+                    std::cout << "0x" << std::setw(16) << mccpu.data_ptr<morton_torch_t>()[index] << "; ";
+                }
+                std::cout << std::dec << std::endl;
+            }
+            std::cout.flags(f);
+        }
 
 
         // --------------------------------------------------------------------
@@ -404,16 +418,26 @@ class bvh
         //       or, this would be the fastest (probably): https://nvlabs.github.io/cub/structcub_1_1_device_segmented_radix_sort.html
 
         std::tie(morton_codes, object_aabbs) = sort_morton_codes(morton_codes, object_aabbs);
-        std::cout << "sorted morton_codes:" << std::hex << morton_codes << std::dec << std::endl;
-        const torch::Tensor mccpu = morton_codes.cpu().contiguous();
-        for (int i = 0; i < 10; ++i) {
-            std::cout << std::hex << mccpu.data_ptr<int>()[i] << std::endl;
+        {
+            std::ios_base::fmtflags f(std::cout.flags());
+            std::cout << "sorted morton codes: " << morton_codes.sizes() << " " << (morton_codes.is_cuda() ? "(cuda)" : "(cpu)") << std::endl;
+            const torch::Tensor mccpu = morton_codes.cpu().contiguous();
+            for (int i = 0; i < morton_codes.size(0); ++i) {
+                std::cout << std::hex;
+                for (int j = 0; j < morton_codes.size(1); ++j) {
+                    const auto index = i * morton_codes.size(1) + j;
+                    std::cout << "0x" << std::setw(16) << mccpu.data_ptr<morton_torch_t>()[index] << "; ";
+                }
+                std::cout << std::dec << std::endl;
+            }
+            std::cout.flags(f);
         }
         std::cout << "sorted object_aabbs:" << object_aabbs << std::endl;
 
         // assemble aabb array (internal nodes will be filled later)
-        const auto internal_aabbs = torch::zeros({n.batch, n.layers, num_internal_nodes, 8});
-        m_aabbs = torch::cat({internal_aabbs, object_aabbs}, 3).contiguous();
+        const auto internal_aabbs = torch::zeros({n.batch, n.layers, num_internal_nodes, 8}, torch::TensorOptions(object_aabbs.device()).dtype(object_aabbs.dtype()));
+        std::cout << "internal: " << internal_aabbs.sizes() << "  object: " << object_aabbs.sizes() << std::endl;
+        m_aabbs = torch::cat({internal_aabbs, object_aabbs}, 2).contiguous();
         std::cout << "m_aabbs:" << m_aabbs << std::endl;
 
 //        thrust::device_vector<unsigned int> indices(num_objects);
@@ -552,17 +576,36 @@ protected:
         // Determine temporary device storage requirements
         void     *d_temp_storage = NULL;
         size_t   temp_storage_bytes = 0;
-        cub::DeviceSegmentedRadixSort::SortPairs(d_temp_storage, temp_storage_bytes,
-            d_keys_in, d_keys_out, d_values_in, d_values_out,
-            num_items, num_segments, d_offsets, d_offsets + 1);
+        cub::DeviceSegmentedRadixSort::SortPairs(
+//        cub::DeviceSegmentedRadixSort::SortKeys(
+                    d_temp_storage, temp_storage_bytes,
+                    d_keys_in, d_keys_out,
+                    d_values_in, d_values_out,
+                    num_items, num_segments,
+                    d_offsets, d_offsets + 1);
+
+        gpuErrchk(cudaPeekAtLastError());
+        gpuErrchk(cudaDeviceSynchronize());
+
         // Allocate temporary storage
         cudaMalloc(&d_temp_storage, temp_storage_bytes);
+
+        gpuErrchk(cudaPeekAtLastError());
+        gpuErrchk(cudaDeviceSynchronize());
         // Run sorting operation
-        cub::DeviceSegmentedRadixSort::SortPairs(d_temp_storage, temp_storage_bytes,
-            d_keys_in, d_keys_out, d_values_in, d_values_out,
-            num_items, num_segments, d_offsets, d_offsets + 1);
+        cub::DeviceSegmentedRadixSort::SortPairs(
+//        cub::DeviceSegmentedRadixSort::SortKeys(
+                    d_temp_storage, temp_storage_bytes,
+                    d_keys_in, d_keys_out,
+                    d_values_in, d_values_out,
+                    num_items, num_segments,
+                    d_offsets, d_offsets + 1);
         // d_keys_out            <-- [6, 8, 5, 7, 0, 3, 8, 9]
         // d_values_out          <-- [1, 0, 3, 2, 5, 4, 7, 6]
+
+        gpuErrchk(cudaPeekAtLastError());
+        gpuErrchk(cudaDeviceSynchronize());
+
         cudaFree(d_temp_storage);
 
         return std::make_tuple(sorted_morton_codes, sorted_aabbs);
