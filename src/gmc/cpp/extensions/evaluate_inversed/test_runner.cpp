@@ -18,7 +18,7 @@ torch::Tensor cuda_parallel_forward(const torch::Tensor& mixture, const torch::T
 torch::Tensor cuda_bvh_forward(const torch::Tensor& mixture, const torch::Tensor& xes);
 
 constexpr uint N_BATCHES = 1;
-constexpr uint N_LAYERS = 1;
+constexpr uint N_LAYERS = 3;
 constexpr uint LIMIT_N_BATCH = 100;
 
 void show(torch::Tensor mixture, const uint resolution, const uint n_batch_limit) {
@@ -41,27 +41,27 @@ void show(torch::Tensor mixture, const uint resolution, const uint n_batch_limit
     auto xv = mesh[0];
     auto yv = mesh[1];
     auto xes = torch::cat({xv.reshape({-1, 1}), yv.reshape({-1, 1})}, 1).view({1, 1, -1, 2});
-    std::cout << "xes.sizes() = " << xes.sizes() << std::endl;
+//    std::cout << "xes.sizes() = " << xes.sizes() << std::endl;
 
     auto start = std::chrono::steady_clock::now();
     auto rendering = eval_fun(mixture, xes).cpu().view({n_batch, n_layers, resolution, resolution});
     auto end = std::chrono::steady_clock::now();
     std::cout << "elapsed time: " << std::chrono::duration_cast<std::chrono::milliseconds>(end-start).count() << "ms\n";
-    std::cout << "rendering.sizes() = " << rendering.sizes()
-              << ", min=" << rendering.min().item<float>()
-              << ", max=" << rendering.max().item<float>() << std::endl;
-    rendering -= rendering.min();
-    rendering /= rendering.max();
-    rendering *= 255;
-    rendering = rendering.to(torch::ScalarType::Char);
-    rendering = rendering.transpose(2, 3).transpose(1, 2).contiguous();
-    QImage qRendering((uchar*) rendering.data_ptr(), int(resolution * n_layers), int(resolution * n_batch), QImage::Format_Grayscale8);
-    QLabel* myLabel = new QLabel();
-    myLabel->setPixmap(QPixmap::fromImage(qRendering));
+//    std::cout << "rendering.sizes() = " << rendering.sizes()
+//              << ", min=" << rendering.min().item<float>()
+//              << ", max=" << rendering.max().item<float>() << std::endl;
+//    rendering -= rendering.min();
+//    rendering /= rendering.max();
+//    rendering *= 255;
+//    rendering = rendering.to(torch::ScalarType::Char);
+//    rendering = rendering.transpose(2, 3).transpose(1, 2).contiguous();
+//    QImage qRendering((uchar*) rendering.data_ptr(), int(resolution * n_layers), int(resolution * n_batch), QImage::Format_Grayscale8);
+//    QLabel* myLabel = new QLabel();
+//    myLabel->setPixmap(QPixmap::fromImage(qRendering));
 
-    QScrollArea* scrollarea = new QScrollArea();
-    scrollarea->setWidget(myLabel);
-    scrollarea->show();
+//    QScrollArea* scrollarea = new QScrollArea();
+//    scrollarea->setWidget(myLabel);
+//    scrollarea->show();
 }
 
 int main(int argc, char *argv[]) {
@@ -77,15 +77,16 @@ int main(int argc, char *argv[]) {
 //            auto mixture = torch::tensor({{0.02f, 0.f, 0.f, 1.01f, 1.f, 1.f, 1.0f},
 //                                          {0.02f, 5.f, 5.f, 1.01f, 0.5f, 0.5f, 4.0f}}).view({1, 1, 2, 7});
             mixture = mixture.cuda();
+            std::cout << "layer " << i << ": " << mixture.sizes() << " device: " << mixture.device() << std::endl;
             show(mixture, 128, LIMIT_N_BATCH);
 
-            std::cout << "layer " << i << ": " << mixture.sizes() << " device: " << mixture.device() << std::endl;
 
         }
     }
 
 
 //    torch::load(d, "/home/madam/Documents/work/tuw/gmc_net/data/fitting_input/fitting_input_batch0_netlayer0.tensor");
-
-    return a.exec();
+    std::cout << "DONE" << std::endl;
+//    return a.exec();
+    return 0;
 }

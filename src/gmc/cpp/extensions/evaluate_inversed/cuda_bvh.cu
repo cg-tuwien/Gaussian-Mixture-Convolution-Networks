@@ -133,8 +133,8 @@ torch::Tensor cuda_bvh_forward_impl(const at::Tensor& mixture, const at::Tensor&
     dim3 dimGrid = dim3((n.batch + dimBlock.x - 1) / dimBlock.x,
                         (n.layers + dimBlock.y - 1) / dimBlock.y,
                         (n.xes + dimBlock.z - 1) / dimBlock.z);
-    printf("dimBlock=(%d, %d, %d)\n", dimBlock.x, dimBlock.y, dimBlock.z);
-    printf("dimGrid=(%d, %d, %d)\n", dimGrid.x, dimGrid.y, dimGrid.z);
+//    printf("dimBlock=(%d, %d, %d)\n", dimBlock.x, dimBlock.y, dimBlock.z);
+//    printf("dimGrid=(%d, %d, %d)\n", dimGrid.x, dimGrid.y, dimGrid.z);
     evaluate_inversed_bvh<float, 2><<<dimGrid, dimBlock>>>(mixture_a, nodes_a, aabbs_a, xes_a, sum_a, n);
 
     gpuErrchk(cudaPeekAtLastError());
