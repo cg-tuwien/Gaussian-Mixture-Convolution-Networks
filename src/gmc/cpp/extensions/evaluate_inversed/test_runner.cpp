@@ -43,7 +43,10 @@ void show(torch::Tensor mixture, const uint resolution, const uint n_batch_limit
     auto xes = torch::cat({xv.reshape({-1, 1}), yv.reshape({-1, 1})}, 1).view({1, 1, -1, 2});
     std::cout << "xes.sizes() = " << xes.sizes() << std::endl;
 
+    auto start = std::chrono::steady_clock::now();
     auto rendering = eval_fun(mixture, xes).cpu().view({n_batch, n_layers, resolution, resolution});
+    auto end = std::chrono::steady_clock::now();
+    std::cout << "elapsed time: " << std::chrono::duration_cast<std::chrono::milliseconds>(end-start).count() << "ms\n";
     std::cout << "rendering.sizes() = " << rendering.sizes()
               << ", min=" << rendering.min().item<float>()
               << ", max=" << rendering.max().item<float>() << std::endl;
@@ -70,7 +73,7 @@ int main(int argc, char *argv[]) {
         auto list = container.attributes();
 
         for (uint i = 0; i < N_LAYERS; i++) {
-            auto mixture = container.attr(std::to_string(i)).toTensor().index({Slice(0, 2), Slice(0, 1), Slice(0, 5), Slice()});
+            auto mixture = container.attr(std::to_string(i)).toTensor();//.index({Slice(0, 2), Slice(0, 1), Slice(0, 5), Slice()});
 //            auto mixture = torch::tensor({{0.02f, 0.f, 0.f, 1.01f, 1.f, 1.f, 1.0f},
 //                                          {0.02f, 5.f, 5.f, 1.01f, 0.5f, 0.5f, 4.0f}}).view({1, 1, 2, 7});
             mixture = mixture.cuda();
