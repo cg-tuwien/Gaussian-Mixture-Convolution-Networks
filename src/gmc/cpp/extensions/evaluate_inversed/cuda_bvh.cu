@@ -100,7 +100,6 @@ torch::Tensor cuda_bvh_forward_impl(const at::Tensor& mixture, const at::Tensor&
     auto n = gpe::check_input_and_get_ns(mixture, xes);
 
     torch::Tensor sum = torch::zeros({n.batch, n.layers, n.xes}, torch::dtype(mixture.dtype()).device(mixture.device()));
-    const auto xes_a = xes.packed_accessor32<float, 4, torch::RestrictPtrTraits>();
     auto sum_a = sum.packed_accessor32<float, 3, torch::RestrictPtrTraits>();
 
     TORCH_CHECK(mixture.device().is_cuda(), "mixture must be a CUDA tensor");
@@ -119,13 +118,30 @@ torch::Tensor cuda_bvh_forward_impl(const at::Tensor& mixture, const at::Tensor&
     // mixture(batch, layer, component, data)
     // xes(batch, layer, n, data)
 
+    auto xes_copy = xes;
+    if (n.xes == n.components && n.batch == n.batch_xes && n.layers == n.layers_xes) {
+        auto indices = bvh.m_nodes.index({Slice(), Slice(), Slice(bvh.m_n_internal_nodes, None), 3}).to(torch::ScalarType::Long);
+        indices = indices.view({n.batch, n.layers, n.components, 1}).expand_as(xes);
+//        std::cout << "indices.sizes() = " << indices.sizes() << std::endl;
+        xes_copy = torch::gather(xes, 2, indices);
+//        std::cout << "xes_copy.sizes() = " << xes_copy.sizes() << std::endl;
+    }
+//    std::cout << "xes: " << xes << std::endl;
+//    std::cout << "xes_copy: " << xes_copy << std::endl;
+//    std::cout << "gpe::positions(mixture): " << gpe::positions(mixture) << std::endl;
+    const auto xes_a = xes_copy.packed_accessor32<float, 4, torch::RestrictPtrTraits>();
+
     dim3 dimBlock = dim3(1, 1, LBVH_N_QUERY_THREADS);
     dim3 dimGrid = dim3((n.batch + dimBlock.x - 1) / dimBlock.x,
                         (n.layers + dimBlock.y - 1) / dimBlock.y,
                         (n.xes + dimBlock.z - 1) / dimBlock.z);
 //    printf("dimBlock=(%d, %d, %d)\n", dimBlock.x, dimBlock.y, dimBlock.z);
 //    printf("dimGrid=(%d, %d, %d)\n", dimGrid.x, dimGrid.y, dimGrid.z);
+    auto start = std::chrono::system_clock::now();
     evaluate_inversed_bvh<float, 2><<<dimGrid, dimBlock>>>(mixture_a, nodes_a, aabbs_a, xes_a, sum_a, n);
+    cudaDeviceSynchronize();
+    auto end = std::chrono::high_resolution_clock::now();
+    std::cout << "evaluate_inversed_bvh elapsed time: " << std::chrono::duration_cast<std::chrono::milliseconds>(end-start).count() << "ms\n";
 
     gpuErrchk(cudaPeekAtLastError());
     gpuErrchk(cudaDeviceSynchronize());
