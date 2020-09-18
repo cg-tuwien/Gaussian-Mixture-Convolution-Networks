@@ -506,12 +506,12 @@ class bvh
             std::cout.flags(f);
         };
 
-        auto timepoint = std::chrono::high_resolution_clock::now();
-        auto watch_stop = [&timepoint](const std::string& name = "") {
-            cudaDeviceSynchronize();
-            if (name.length() > 0)
-                std::cout << name << ": " << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now()-timepoint).count() << "ms\n";
-            timepoint = std::chrono::high_resolution_clock::now();
+//        auto timepoint = std::chrono::high_resolution_clock::now();
+        auto watch_stop = [/*&timepoint*/](const std::string& name = "") {
+//            cudaDeviceSynchronize();
+//            if (name.length() > 0)
+//                std::cout << name << ": " << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now()-timepoint).count() << "ms\n";
+//            timepoint = std::chrono::high_resolution_clock::now();
         };
         watch_stop();
 //        auto object_aabbs = detail::compute_aabbs(m_mixture);
