@@ -12,7 +12,6 @@
 #include <cuda_runtime.h>
 
 #include "common.h"
-#include "math/symeig.h"
 
 torch::Tensor cpu_parallel_forward(const torch::Tensor& mixture, const torch::Tensor& xes);
 torch::Tensor cuda_parallel_forward(const torch::Tensor& mixture, const torch::Tensor& xes);

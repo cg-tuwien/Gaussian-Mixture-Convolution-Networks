@@ -4,24 +4,9 @@
 #include <type_traits>
 #include <iostream>
 #include <ios>
+#include <chrono>
 
 #include <cuda_runtime.h>
-
-#include <thrust/swap.h>
-#include <thrust/pair.h>
-#include <thrust/tuple.h>
-#include <thrust/host_vector.h>
-#include <thrust/device_vector.h>
-#include <thrust/functional.h>
-#include <thrust/scan.h>
-#include <thrust/sort.h>
-#include <thrust/fill.h>
-#include <thrust/for_each.h>
-#include <thrust/transform.h>
-#include <thrust/reduce.h>
-#include <thrust/iterator/constant_iterator.h>
-#include <thrust/iterator/counting_iterator.h>
-#include <thrust/execution_policy.h>
 
 #include <cub/device/device_segmented_radix_sort.cuh>
 
@@ -464,9 +449,16 @@ class bvh
             std::cout.flags(f);
         };
 
+        cudaDeviceSynchronize();
+        auto timepoint = std::chrono::steady_clock::now();
         auto object_aabbs = detail::compute_aabbs(m_mixture);
+        cudaDeviceSynchronize();
+        std::cout << "compute_aabbs: " << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now()-timepoint).count() << "ms\n";
 //        std::cout << "object_aabbs:" << object_aabbs << std::endl;
+        timepoint = std::chrono::steady_clock::now();
         const auto aabb_whole = detail::compute_aabb_whole(object_aabbs);
+        cudaDeviceSynchronize();
+        std::cout << "compute_aabb_whole: " << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now()-timepoint).count() << "ms\n";
 //        std::cout << "aabb_whole:" << aabb_whole << std::endl;
 
         auto device = m_mixture.device();
@@ -475,7 +467,10 @@ class bvh
         // calculate morton code of each AABB
         // we produce unique morton codes by extending the actual morton code with the index.
         // TODO: easy, either some scaling and translation using torch + thrust transform, or custom kernel.
+        timepoint = std::chrono::steady_clock::now();
         torch::Tensor morton_codes = compute_morton_codes(object_aabbs, aabb_whole);
+        cudaDeviceSynchronize();
+        std::cout << "compute_morton_codes: " << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now()-timepoint).count() << "ms\n";
 //        print_morton_codes(morton_codes);
 
 
@@ -484,29 +479,44 @@ class bvh
         // TODO: http://www.orangeowlsolutions.com/archives/1297 (2 sorts), or, we can prepend the gm index to the morton code?
         //       or, this would be the fastest (probably): https://nvlabs.github.io/cub/structcub_1_1_device_segmented_radix_sort.html (implemented; test whether prepending would be faster)
 
+        timepoint = std::chrono::steady_clock::now();
         std::tie(morton_codes, object_aabbs) = sort_morton_codes(morton_codes, object_aabbs);
+        cudaDeviceSynchronize();
+        std::cout << "sort_morton_codes: " << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now()-timepoint).count() << "ms\n";
 //        print_morton_codes(morton_codes);
 
 //        std::cout << "sorted object_aabbs:" << object_aabbs << std::endl;
 
         // assemble aabb array
+        timepoint = std::chrono::steady_clock::now();
         const auto internal_aabbs = torch::zeros({m_n.batch, m_n.layers, m_n_internal_nodes, 8}, torch::TensorOptions(device).dtype(object_aabbs.dtype()));
 //        std::cout << "internal: " << internal_aabbs.sizes() << "  object: " << object_aabbs.sizes() << std::endl;
         m_aabbs = torch::cat({internal_aabbs, object_aabbs}, 2).contiguous();
 //        std::cout << "m_aabbs:" << m_aabbs << std::endl;
+        cudaDeviceSynchronize();
+        std::cout << "assemble aabb array: " << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now()-timepoint).count() << "ms\n";
 
         // construct nodes and create leaf nodes
+        timepoint = std::chrono::steady_clock::now();
         m_nodes = torch::ones({m_n.batch, m_n.layers, m_n_nodes, 4}, torch::TensorOptions(device).dtype(torch::ScalarType::Short)) * -1;
 //        print_nodes();
         this->create_leaf_nodes(morton_codes);
+        cudaDeviceSynchronize();
+        std::cout << "construct nodes and create_leaf_nodes: " << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now()-timepoint).count() << "ms\n";
 //        print_nodes();
 
         // create internal nodes
+        timepoint = std::chrono::steady_clock::now();
         this->create_internal_nodes(morton_codes);
+        cudaDeviceSynchronize();
+        std::cout << "create_internal_nodes: " << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now()-timepoint).count() << "ms\n";
 //        print_nodes();
 
         // create AABB for each node by bottom-up strategy
+        timepoint = std::chrono::steady_clock::now();
         this->create_aabbs_for_internal_nodes();
+        cudaDeviceSynchronize();
+        std::cout << "create_internal_nodes: " << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now()-timepoint).count() << "ms\n";
 //        std::cout << "m_aabbs:" << m_aabbs << std::endl;
     }
 
