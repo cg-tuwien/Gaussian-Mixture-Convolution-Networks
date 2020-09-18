@@ -129,7 +129,7 @@ torch::Tensor cuda_bvh_forward_impl(const at::Tensor& mixture, const at::Tensor&
     // mixture(batch, layer, component, data)
     // xes(batch, layer, n, data)
 
-    dim3 dimBlock = dim3(1, 1, 64);
+    dim3 dimBlock = dim3(1, 1, 32);
     dim3 dimGrid = dim3((n.batch + dimBlock.x - 1) / dimBlock.x,
                         (n.layers + dimBlock.y - 1) / dimBlock.y,
                         (n.xes + dimBlock.z - 1) / dimBlock.z);

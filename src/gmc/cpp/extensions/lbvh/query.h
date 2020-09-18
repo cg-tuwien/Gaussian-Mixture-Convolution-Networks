@@ -78,20 +78,21 @@ unsigned int query_device_with_fun(
         const Predicate& predicate, Function fun) noexcept
 {
     using bvh_type   = detail::basic_device_bvh<Real, Objects, IsConst>;
-    using index_type = typename bvh_type::index_type;
+    using index_type = uint16_t;
     using aabb_type  = typename bvh_type::aabb_type;
     using node_type  = typename bvh_type::node_type;
 
-    index_type  stack[64]; // is it okay?
-    index_type* stack_ptr = stack;
-    *stack_ptr++ = 0; // root node is always 0
+    __shared__ index_type stack[16][32]; // is it okay?
+    index_type* stack_ptr = &stack[0][threadIdx.z];
+    *stack_ptr = 0; // root node is always 0
+    stack_ptr += 32;
 
-    unsigned int num_found = 0;
     do
     {
-        const index_type node  = *--stack_ptr;
-        const index_type L_idx = bvh.nodes[node].left_idx;
-        const index_type R_idx = bvh.nodes[node].right_idx;
+        stack_ptr -= 32;
+        const index_type current_idx  = *stack_ptr;
+        const index_type L_idx = bvh.nodes[current_idx].left_idx;
+        const index_type R_idx = bvh.nodes[current_idx].right_idx;
 
         if(predicate(bvh.aabbs[L_idx]))
         {
@@ -99,11 +100,11 @@ unsigned int query_device_with_fun(
             if(obj_idx != 0xFFFFFFFF)
             {
                 fun(obj_idx);
-                ++num_found;
             }
             else // the node is not a leaf.
             {
-                *stack_ptr++ = L_idx;
+                *stack_ptr = L_idx;
+                stack_ptr += 32;
             }
         }
         if(predicate(bvh.aabbs[R_idx]))
@@ -112,16 +113,15 @@ unsigned int query_device_with_fun(
             if(obj_idx != 0xFFFFFFFF)
             {
                 fun(obj_idx);
-                ++num_found;
             }
             else // the node is not a leaf.
             {
-                *stack_ptr++ = R_idx;
+                *stack_ptr = R_idx;
+                stack_ptr += 32;
             }
         }
     }
-    while (stack < stack_ptr);
-    return num_found;
+    while (&stack[0][threadIdx.z] < stack_ptr);
 }
 
 // query object index that is the nearst to the query point.
