@@ -66,11 +66,25 @@ __forceinline__ __device__ double exp(double x) {
     return ::exp(x);
 }
 
+__forceinline__ __device__ float log(float x) {
+    return ::logf(x);
+}
+__forceinline__ __device__ double log(double x) {
+    return ::log(x);
+}
+
 __forceinline__ __device__ float sqrt(float x) {
     return ::sqrtf(x);
 }
 __forceinline__ __device__ double sqrt(double x) {
     return ::sqrt(x);
+}
+
+__forceinline__ __device__ float abs(float x) {
+    return ::fabsf(x);
+}
+__forceinline__ __device__ double abs(double x) {
+    return ::fabs(x);
 }
 
 template <typename scalar_t>
@@ -79,10 +93,19 @@ inline scalar_t exp(scalar_t x) {
 }
 
 template <typename scalar_t>
+inline scalar_t log(scalar_t x) {
+    return std::log(x);
+}
+
+template <typename scalar_t>
 inline scalar_t sqrt(scalar_t x) {
     return std::sqrt(x);
 }
 
+template <typename scalar_t>
+inline scalar_t abs(scalar_t x) {
+    return std::abs(x);
+}
 
 }
 

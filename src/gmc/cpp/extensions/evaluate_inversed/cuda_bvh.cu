@@ -36,16 +36,6 @@ struct RestrictPtrTraits {
 
 #endif
 
-
-// __device__ code can't do constexpr variables
-#define GPE_BVH_BUFFER_SIZE 256u
-
-template<int N_DIMS, typename scalar_t>
-struct Gaussian {
-    scalar_t weight;
-    glm::vec<N_DIMS, scalar_t> position;
-    glm::mat<N_DIMS, N_DIMS, scalar_t> covariance;
-};
 template<int N_DIMS, typename scalar_t>
 std::ostream& operator <<(std::ostream& stream, const Gaussian<N_DIMS, scalar_t>& g) {
     stream << "Gauss[" << g.weight << "; " << g.position[0];

@@ -17,7 +17,10 @@
 #include "lbvh/morton_code.h"
 
 #include "common.h"
+#include "math/symeig_detail.h"
 #include "math/symeig_cuda.h"
+#include "math/scalar.h"
+#include "math/matrix.h"
 
 #ifndef __CUDACC__
 int atomicCAS(int* address, int compare, int val);
@@ -36,8 +39,15 @@ struct RestrictPtrTraits {
 }
 #endif
 
-#define gpuErrchk(ans)
-//#define gpuErrchk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
+template<int N_DIMS, typename scalar_t>
+struct Gaussian {
+    scalar_t weight;
+    glm::vec<N_DIMS, scalar_t> position;
+    glm::mat<N_DIMS, N_DIMS, scalar_t> covariance;
+};
+
+//#define gpuErrchk(ans)
+#define gpuErrchk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
 inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=true)
 {
    if (code != cudaSuccess)
@@ -192,44 +202,44 @@ inline unsigned int find_split(UInt const* node_code, const unsigned int num_lea
     return split;
 }
 
-torch::Tensor compute_aabbs(const at::Tensor& mixture) {
-    namespace F = torch::nn::functional;
-    constexpr float threshold = 0.0001f;
+//torch::Tensor compute_aabbs(const at::Tensor& mixture) {
+//    namespace F = torch::nn::functional;
+//    constexpr float threshold = 0.0001f;
 
-    auto n = gpe::get_ns(mixture);
+//    auto n = gpe::get_ns(mixture);
 
-    torch::Tensor factors = -2 * torch::log(threshold / torch::abs(gpe::weights(mixture)));
-    factors = factors.where(factors > 0, torch::zeros({1, 1, 1}, factors.device()));
-    factors = torch::sqrt(factors);
+//    torch::Tensor factors = -2 * torch::log(threshold / torch::abs(gpe::weights(mixture)));
+//    factors = factors.where(factors > 0, torch::zeros({1, 1, 1}, factors.device()));
+//    factors = torch::sqrt(factors);
 
-    torch::Tensor covs = gpe::covariances(mixture).inverse();
-    torch::Tensor eigenvalues;
-    torch::Tensor eigenvectors;
+//    torch::Tensor covs = gpe::covariances(mixture).inverse();
+//    torch::Tensor eigenvalues;
+//    torch::Tensor eigenvectors;
 
-    std::tie(eigenvalues, eigenvectors) = gpe::symeig_cuda_forward(covs);
-    /*
-     * eigenvectors is a tensor of [*, *, *, d, d], where d is the dimensionality (2 or 3)
-     * the eigenvectors are in the rows of that d * d matrix.
-     */
-    eigenvalues = torch::sqrt(eigenvalues);
-    eigenvectors = eigenvalues.unsqueeze(-1) * eigenvectors;
+//    std::tie(eigenvalues, eigenvectors) = gpe::symeig_cuda_forward(covs);
+//    /*
+//     * eigenvectors is a tensor of [*, *, *, d, d], where d is the dimensionality (2 or 3)
+//     * the eigenvectors are in the rows of that d * d matrix.
+//     */
+//    eigenvalues = torch::sqrt(eigenvalues);
+//    eigenvectors = eigenvalues.unsqueeze(-1) * eigenvectors;
 
-    auto ellipsoidM = factors.unsqueeze(-1).unsqueeze(-1) * eigenvectors;
+//    auto ellipsoidM = factors.unsqueeze(-1).unsqueeze(-1) * eigenvectors;
 
-    // https://stackoverflow.com/a/24112864/4032670
-    // https://members.loria.fr/SHornus/ellipsoid-bbox.html
-    // we take the norm over the eigenvectors, that is analogous to simon fraiss' code in gmvis/core/Gaussian.cpp
-    auto delta = torch::norm(ellipsoidM, 2, {-2});
-    auto centroid = gpe::positions(mixture);
-    auto upper = centroid + delta;
-    auto lower = centroid - delta;
+//    // https://stackoverflow.com/a/24112864/4032670
+//    // https://members.loria.fr/SHornus/ellipsoid-bbox.html
+//    // we take the norm over the eigenvectors, that is analogous to simon fraiss' code in gmvis/core/Gaussian.cpp
+//    auto delta = torch::norm(ellipsoidM, 2, {-2});
+//    auto centroid = gpe::positions(mixture);
+//    auto upper = centroid + delta;
+//    auto lower = centroid - delta;
 
-    // bring that thing into a format that can be read by our lbvh builder
-    // https://pytorch.org/docs/master/nn.functional.html#torch.nn.functional.pad
-    upper = F::pad(upper, F::PadFuncOptions({0, 4-n.dims}));
-    lower = F::pad(lower, F::PadFuncOptions({0, 4-n.dims}));
-    return torch::cat({upper, lower}, -1).contiguous();
-}
+//    // bring that thing into a format that can be read by our lbvh builder
+//    // https://pytorch.org/docs/master/nn.functional.html#torch.nn.functional.pad
+//    upper = F::pad(upper, F::PadFuncOptions({0, 4-n.dims}));
+//    lower = F::pad(lower, F::PadFuncOptions({0, 4-n.dims}));
+//    return torch::cat({upper, lower}, -1).contiguous();
+//}
 
 torch::Tensor compute_aabb_whole(const torch::Tensor& aabbs) {
     using namespace torch::indexing;
@@ -254,6 +264,53 @@ struct morton_torch_tensor_type<int64_t> {
 } // detail
 
 namespace kernels {
+template<typename scalar_t, int DIMS>
+__global__ void compute_aabbs(torch::PackedTensorAccessor32<scalar_t, 2, torch::RestrictPtrTraits> aabbs,
+                       const torch::PackedTensorAccessor32<scalar_t, 2, torch::RestrictPtrTraits> gaussians,
+                       const unsigned n_gaussians, const float threshold) {
+    using Vec = glm::vec<DIMS, scalar_t>;
+    using Mat = glm::mat<DIMS, DIMS, scalar_t>;
+
+    const auto gaussian_id = blockIdx.x * blockDim.x + threadIdx.x;
+    if (gaussian_id >= n_gaussians)
+        return;
+
+    const Gaussian<DIMS, scalar_t>& gaussian = reinterpret_cast<const Gaussian<DIMS, scalar_t>&>(gaussians[gaussian_id][0]);
+
+    scalar_t factor = -2 * gpe::log(threshold / gpe::abs(gaussian.weight));
+    if (factor < 0)
+        factor = 0;
+    // TODO: when it works, we can probably remove one of the sqrt and sqrt after they are mul together
+    factor = gpe::sqrt(factor);
+
+    Vec eigenvalues;
+    Mat eigenvectors;
+    thrust::tie(eigenvalues, eigenvectors) = gpe::detail::compute_symeig(gaussian.covariance);
+
+//    printf("g%d: eigenvalues=%f/%f\n", gaussian_id, eigenvalues[0], eigenvalues[1]);
+//    printf("g%d: eigenvectors=\n%f/%f\n%f/%f\n", gaussian_id, eigenvectors[0][0], eigenvectors[0][1], eigenvectors[1][0], eigenvectors[1][1]);
+
+    eigenvalues = glm::sqrt(eigenvalues);
+    // todo 3d
+    eigenvectors = Mat(eigenvectors[0] * eigenvalues[0], eigenvectors[1] * eigenvalues[1]);
+
+    auto ellipsoidM = factor * eigenvectors;
+//    printf("g%d: ellipsoidM=\n%f/%f\n%f/%f\n", gaussian_id, ellipsoidM[0][0], ellipsoidM[0][1], ellipsoidM[1][0], ellipsoidM[1][1]);
+
+    // https://stackoverflow.com/a/24112864/4032670
+    // https://members.loria.fr/SHornus/ellipsoid-bbox.html
+    // we take the norm over the eigenvectors, that is analogous to simon fraiss' code in gmvis/core/Gaussian.cpp
+
+    ellipsoidM = glm::transpose(ellipsoidM);
+    auto delta = Vec(glm::length(ellipsoidM[0]), glm::length(ellipsoidM[1]));
+
+    auto upper = gaussian.position + delta;
+    auto lower = gaussian.position - delta;
+
+    Aabb<scalar_t>& aabb = reinterpret_cast<Aabb<scalar_t>&>(aabbs[gaussian_id][0]);
+    aabb.upper = make_vector_of(upper);
+    aabb.lower = make_vector_of(lower);
+}
 
 template<typename scalar_t, typename morton_torch_t>
 __global__ void compute_morton_codes(const torch::PackedTensorAccessor32<scalar_t, 3, torch::RestrictPtrTraits> aabb_a,
@@ -405,8 +462,8 @@ class bvh
 
   public:
 
-    bvh(const torch::Tensor& mixture)
-        : m_mixture(mixture), m_n(gpe::get_ns(mixture))
+    bvh(const torch::Tensor& inversed_mixture)
+        : m_mixture(inversed_mixture), m_n(gpe::get_ns(inversed_mixture))
     {
         this->construct();
     }
@@ -449,16 +506,21 @@ class bvh
             std::cout.flags(f);
         };
 
-        cudaDeviceSynchronize();
-        auto timepoint = std::chrono::steady_clock::now();
-        auto object_aabbs = detail::compute_aabbs(m_mixture);
-        cudaDeviceSynchronize();
-        std::cout << "compute_aabbs: " << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now()-timepoint).count() << "ms\n";
+        auto timepoint = std::chrono::high_resolution_clock::now();
+        auto watch_stop = [&timepoint](const std::string& name = "") {
+            cudaDeviceSynchronize();
+            if (name.length() > 0)
+                std::cout << name << ": " << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now()-timepoint).count() << "ms\n";
+            timepoint = std::chrono::high_resolution_clock::now();
+        };
+        watch_stop();
+//        auto object_aabbs = detail::compute_aabbs(m_mixture);
+        auto object_aabbs = this->compute_aabbs();
+        watch_stop("compute_aabbs");
+
 //        std::cout << "object_aabbs:" << object_aabbs << std::endl;
-        timepoint = std::chrono::steady_clock::now();
         const auto aabb_whole = detail::compute_aabb_whole(object_aabbs);
-        cudaDeviceSynchronize();
-        std::cout << "compute_aabb_whole: " << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now()-timepoint).count() << "ms\n";
+        watch_stop("compute_aabb_whole");
 //        std::cout << "aabb_whole:" << aabb_whole << std::endl;
 
         auto device = m_mixture.device();
@@ -467,10 +529,8 @@ class bvh
         // calculate morton code of each AABB
         // we produce unique morton codes by extending the actual morton code with the index.
         // TODO: easy, either some scaling and translation using torch + thrust transform, or custom kernel.
-        timepoint = std::chrono::steady_clock::now();
         torch::Tensor morton_codes = compute_morton_codes(object_aabbs, aabb_whole);
-        cudaDeviceSynchronize();
-        std::cout << "compute_morton_codes: " << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now()-timepoint).count() << "ms\n";
+        watch_stop("compute_morton_codes");
 //        print_morton_codes(morton_codes);
 
 
@@ -479,48 +539,63 @@ class bvh
         // TODO: http://www.orangeowlsolutions.com/archives/1297 (2 sorts), or, we can prepend the gm index to the morton code?
         //       or, this would be the fastest (probably): https://nvlabs.github.io/cub/structcub_1_1_device_segmented_radix_sort.html (implemented; test whether prepending would be faster)
 
-        timepoint = std::chrono::steady_clock::now();
         std::tie(morton_codes, object_aabbs) = sort_morton_codes(morton_codes, object_aabbs);
-        cudaDeviceSynchronize();
-        std::cout << "sort_morton_codes: " << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now()-timepoint).count() << "ms\n";
+        watch_stop("sort_morton_codes");
 //        print_morton_codes(morton_codes);
 
 //        std::cout << "sorted object_aabbs:" << object_aabbs << std::endl;
 
         // assemble aabb array
-        timepoint = std::chrono::steady_clock::now();
         const auto internal_aabbs = torch::zeros({m_n.batch, m_n.layers, m_n_internal_nodes, 8}, torch::TensorOptions(device).dtype(object_aabbs.dtype()));
 //        std::cout << "internal: " << internal_aabbs.sizes() << "  object: " << object_aabbs.sizes() << std::endl;
         m_aabbs = torch::cat({internal_aabbs, object_aabbs}, 2).contiguous();
 //        std::cout << "m_aabbs:" << m_aabbs << std::endl;
-        cudaDeviceSynchronize();
-        std::cout << "assemble aabb array: " << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now()-timepoint).count() << "ms\n";
+        watch_stop("assemble aabb array");
 
         // construct nodes and create leaf nodes
-        timepoint = std::chrono::steady_clock::now();
         m_nodes = torch::ones({m_n.batch, m_n.layers, m_n_nodes, 4}, torch::TensorOptions(device).dtype(torch::ScalarType::Short)) * -1;
 //        print_nodes();
         this->create_leaf_nodes(morton_codes);
-        cudaDeviceSynchronize();
-        std::cout << "construct nodes and create_leaf_nodes: " << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now()-timepoint).count() << "ms\n";
+        watch_stop("construct nodes and create_leaf_nodes");
 //        print_nodes();
 
         // create internal nodes
-        timepoint = std::chrono::steady_clock::now();
         this->create_internal_nodes(morton_codes);
-        cudaDeviceSynchronize();
-        std::cout << "create_internal_nodes: " << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now()-timepoint).count() << "ms\n";
+        watch_stop("create_internal_nodes");
 //        print_nodes();
 
         // create AABB for each node by bottom-up strategy
-        timepoint = std::chrono::steady_clock::now();
         this->create_aabbs_for_internal_nodes();
-        cudaDeviceSynchronize();
-        std::cout << "create_internal_nodes: " << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now()-timepoint).count() << "ms\n";
+        watch_stop("create_internal_nodes");
 //        std::cout << "m_aabbs:" << m_aabbs << std::endl;
     }
 
 protected:
+    torch::Tensor compute_aabbs() {
+        constexpr float threshold = 0.0001f;
+
+        auto aabbs = torch::zeros({m_n.batch, m_n.layers, m_n.components, 8}, torch::TensorOptions(m_mixture.device()).dtype(torch::ScalarType::Float));
+        auto aabbs_view = aabbs.view({-1, 8});
+        auto aabbs_a = aabbs_view.packed_accessor32<float, 2, torch::RestrictPtrTraits>();
+
+        // this inverse takes long (about 30 out of 160ms)
+        // option A: we probably can make it faster with a dedicated 2x2 and 3x3 implementation
+        // option B: we don't need to make 2 inversions. this is evaluate inversed, we often have the non-inversed already at hand.
+        // option C: ignore;
+        torch::Tensor covs = gpe::covariances(m_mixture).inverse().transpose(-1, -2);
+        torch::Tensor gaussians = gpe::pack_mixture(gpe::weights(m_mixture), gpe::positions(m_mixture), covs).contiguous().view({-1, m_mixture.size(-1)});
+        auto gaussians_a = gaussians.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>();
+
+        auto n_gaussians = gaussians.size(0);
+
+        dim3 dimBlock = dim3(1024, 1, 1);
+        dim3 dimGrid = dim3((n_gaussians + dimBlock.x - 1) / dimBlock.x, 1, 1);
+        kernels::compute_aabbs<scalar_t, 2><<<dimGrid, dimBlock>>>(aabbs_a, gaussians_a, n_gaussians, threshold);
+        gpuErrchk(cudaPeekAtLastError());
+        gpuErrchk(cudaDeviceSynchronize());
+        return aabbs;
+    }
+
     torch::Tensor compute_morton_codes(const torch::Tensor& aabbs, const torch::Tensor& aabb_whole) const {
         const auto aabbs_view = aabbs.view({-1, m_n.components, 8});
         const auto aabb_whole_view = aabb_whole.view({-1, 8});
