@@ -157,7 +157,7 @@ inline MixtureAndXesNs check_input_and_get_ns(torch::Tensor mixture, torch::Tens
     uint n_components = gpe::n_components(mixture);
     uint n_dims = gpe::n_dimensions(mixture);
 
-    TORCH_CHECK(xes.is_contiguous(), "mixture must be contiguous")
+    TORCH_CHECK(xes.is_contiguous(), "xes must be contiguous")
     TORCH_CHECK(xes.dim() == 4, "xes must have 4 dimensions");
     TORCH_CHECK(xes.dtype() == mixture.dtype(), "mixture and xes must have the same dtype");
     TORCH_CHECK(xes.device() == mixture.device(), "mixture and xes must have the same device");

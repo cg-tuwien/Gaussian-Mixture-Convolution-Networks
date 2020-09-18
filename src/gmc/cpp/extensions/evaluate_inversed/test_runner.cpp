@@ -9,6 +9,8 @@
 #include <torch/torch.h>
 #include <torch/script.h>
 
+#include <cuda_runtime.h>
+
 #include "common.h"
 #include "math/symeig.h"
 
@@ -43,25 +45,27 @@ void show(torch::Tensor mixture, const uint resolution, const uint n_batch_limit
     auto xes = torch::cat({xv.reshape({-1, 1}), yv.reshape({-1, 1})}, 1).view({1, 1, -1, 2});
 //    std::cout << "xes.sizes() = " << xes.sizes() << std::endl;
 
+    cudaDeviceSynchronize();
     auto start = std::chrono::steady_clock::now();
     auto rendering = eval_fun(mixture, xes).cpu().view({n_batch, n_layers, resolution, resolution});
+    cudaDeviceSynchronize();
     auto end = std::chrono::steady_clock::now();
     std::cout << "elapsed time: " << std::chrono::duration_cast<std::chrono::milliseconds>(end-start).count() << "ms\n";
-//    std::cout << "rendering.sizes() = " << rendering.sizes()
-//              << ", min=" << rendering.min().item<float>()
-//              << ", max=" << rendering.max().item<float>() << std::endl;
-//    rendering -= rendering.min();
-//    rendering /= rendering.max();
-//    rendering *= 255;
-//    rendering = rendering.to(torch::ScalarType::Char);
-//    rendering = rendering.transpose(2, 3).transpose(1, 2).contiguous();
-//    QImage qRendering((uchar*) rendering.data_ptr(), int(resolution * n_layers), int(resolution * n_batch), QImage::Format_Grayscale8);
-//    QLabel* myLabel = new QLabel();
-//    myLabel->setPixmap(QPixmap::fromImage(qRendering));
+    std::cout << "rendering.sizes() = " << rendering.sizes()
+              << ", min=" << rendering.min().item<float>()
+              << ", max=" << rendering.max().item<float>() << std::endl;
+    rendering -= rendering.min();
+    rendering /= rendering.max();
+    rendering *= 255;
+    rendering = rendering.to(torch::ScalarType::Char);
+    rendering = rendering.transpose(2, 3).transpose(1, 2).contiguous();
+    QImage qRendering((uchar*) rendering.data_ptr(), int(resolution * n_layers), int(resolution * n_batch), QImage::Format_Grayscale8);
+    QLabel* myLabel = new QLabel();
+    myLabel->setPixmap(QPixmap::fromImage(qRendering));
 
-//    QScrollArea* scrollarea = new QScrollArea();
-//    scrollarea->setWidget(myLabel);
-//    scrollarea->show();
+    QScrollArea* scrollarea = new QScrollArea();
+    scrollarea->setWidget(myLabel);
+    scrollarea->show();
 }
 
 int main(int argc, char *argv[]) {
@@ -78,9 +82,20 @@ int main(int argc, char *argv[]) {
 //                                          {0.02f, 5.f, 5.f, 1.01f, 0.5f, 0.5f, 4.0f}}).view({1, 1, 2, 7});
             mixture = mixture.cuda();
             std::cout << "layer " << i << ": " << mixture.sizes() << " device: " << mixture.device() << std::endl;
-            show(mixture, 128, LIMIT_N_BATCH);
+//            show(mixture, 128, LIMIT_N_BATCH);
 
+            const auto weights = gpe::weights(mixture);
+            const auto positions = gpe::positions(mixture);
+            const auto invCovs = gpe::covariances(mixture).inverse().transpose(-1, -2);
+            mixture = gpe::pack_mixture(weights, positions, invCovs.contiguous());
+            cudaDeviceSynchronize();
 
+            auto start = std::chrono::steady_clock::now();
+            const auto eval_fun = mixture.is_cuda() ? &cuda_bvh_forward : &cpu_parallel_forward;
+            auto rendering = eval_fun(mixture, positions.contiguous()).cpu();
+            cudaDeviceSynchronize();
+            auto end = std::chrono::steady_clock::now();
+            std::cout << "elapsed time: " << std::chrono::duration_cast<std::chrono::milliseconds>(end-start).count() << "ms\n";
         }
     }
 
