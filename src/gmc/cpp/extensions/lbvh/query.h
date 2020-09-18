@@ -97,7 +97,7 @@ unsigned int query_device_with_fun(
         if(predicate(bvh.aabbs[L_idx]))
         {
             const auto obj_idx = bvh.nodes[L_idx].object_idx;
-            if(obj_idx != 0xFFFFFFFF)
+            if(obj_idx != node_type::index_type(0xFFFFFFFF))
             {
                 fun(obj_idx);
             }
@@ -110,7 +110,7 @@ unsigned int query_device_with_fun(
         if(predicate(bvh.aabbs[R_idx]))
         {
             const auto obj_idx = bvh.nodes[R_idx].object_idx;
-            if(obj_idx != 0xFFFFFFFF)
+            if(obj_idx != node_type::index_type(0xFFFFFFFF))
             {
                 fun(obj_idx);
             }

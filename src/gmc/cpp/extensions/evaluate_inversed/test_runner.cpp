@@ -19,7 +19,7 @@ torch::Tensor cuda_parallel_forward(const torch::Tensor& mixture, const torch::T
 
 torch::Tensor cuda_bvh_forward(const torch::Tensor& mixture, const torch::Tensor& xes);
 
-constexpr uint N_BATCHES = 1;
+constexpr uint N_BATCHES = 4;
 constexpr uint N_LAYERS = 3;
 constexpr uint LIMIT_N_BATCH = 100;
 

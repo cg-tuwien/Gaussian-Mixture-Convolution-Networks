@@ -66,7 +66,7 @@ std::ostream& operator <<(std::ostream& stream, const Gaussian<N_DIMS, scalar_t>
 
 template <typename scalar_t, int DIMS>
 __global__ void evaluate_inversed_bvh(const torch::PackedTensorAccessor32<scalar_t, 4, torch::RestrictPtrTraits> mixture,
-                                      const torch::PackedTensorAccessor32<int32_t, 4, torch::RestrictPtrTraits> nodes,
+                                      const torch::PackedTensorAccessor32<int16_t, 4, torch::RestrictPtrTraits> nodes,
                                       const torch::PackedTensorAccessor32<scalar_t, 4, torch::RestrictPtrTraits> aabbs,
                                       const torch::PackedTensorAccessor32<scalar_t, 4, torch::RestrictPtrTraits> xes,
                                       torch::PackedTensorAccessor32<scalar_t, 3, torch::RestrictPtrTraits> sums,
@@ -100,7 +100,7 @@ __global__ void evaluate_inversed_bvh(const torch::PackedTensorAccessor32<scalar
         const auto& g = bvh.objects[index];
         sum += gpe::evaluate_gaussian(x_pos, g.weight, g.position, g.covariance);
     };
-    const auto num_found = lbvh::query_device_with_fun(bvh, lbvh::inside_aabb(point), evaluate);
+    lbvh::query_device_with_fun(bvh, lbvh::inside_aabb(point), evaluate);
 }
 
 torch::Tensor cuda_bvh_forward_impl(const at::Tensor& mixture, const at::Tensor& xes) {
@@ -123,7 +123,7 @@ torch::Tensor cuda_bvh_forward_impl(const at::Tensor& mixture, const at::Tensor&
 
     auto bvh = LBVH(mixture);
     auto mixture_a = mixture.packed_accessor32<float, 4, torch::RestrictPtrTraits>();
-    auto nodes_a = bvh.m_nodes.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>();
+    auto nodes_a = bvh.m_nodes.packed_accessor32<int16_t, 4, torch::RestrictPtrTraits>();
     auto aabbs_a = bvh.m_aabbs.packed_accessor32<float, 4, torch::RestrictPtrTraits>();
 
     // mixture(batch, layer, component, data)

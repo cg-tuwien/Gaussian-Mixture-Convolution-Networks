@@ -68,10 +68,11 @@ namespace detail
 {
 struct Node
 {
-    std::uint32_t parent_idx; // parent node
-    std::uint32_t left_idx;   // index of left  child node
-    std::uint32_t right_idx;  // index of right child node
-    std::uint32_t object_idx; // == 0xFFFFFFFF if internal node.
+    using index_type = uint16_t;
+    index_type parent_idx; // parent node
+    index_type left_idx;   // index of left  child node
+    index_type right_idx;  // index of right child node
+    index_type object_idx; // == 0xFFFFFFFF if internal node.
 };
 
 // a set of pointers to use it on device.
@@ -303,7 +304,7 @@ __global__ void compute_morton_codes(const torch::PackedTensorAccessor32<scalar_
 
 template<typename scalar_t, typename morton_torch_t>
 __global__ void createLeafNodes(const torch::PackedTensorAccessor32<morton_torch_t, 2, torch::RestrictPtrTraits> morton_codes_a,
-                                torch::PackedTensorAccessor32<int32_t, 3, torch::RestrictPtrTraits> nodes_a,
+                                torch::PackedTensorAccessor32<int16_t, 3, torch::RestrictPtrTraits> nodes_a,
                                 const unsigned n_mixtures, const unsigned n_components) {
     using morton_cuda_t = std::make_unsigned_t<morton_torch_t>;
 
@@ -316,12 +317,12 @@ __global__ void createLeafNodes(const torch::PackedTensorAccessor32<morton_torch
 
     const auto& morton_code = reinterpret_cast<const morton_cuda_t&>(morton_codes_a[mixture_id][component_id]);
     auto& node = reinterpret_cast<detail::Node&>(nodes_a[mixture_id][component_id][0]);
-    node.object_idx = uint32_t(morton_code & 0xffffffff);
+    node.object_idx = morton_code; // imo the cast will cut away the morton code. no need for "& 0xfffffff" // uint32_t(morton_code & 0xffffffff);
 }
 
 template <typename scalar_t, typename morton_torch_t>
 __global__ void create_internal_nodes(const torch::PackedTensorAccessor32<morton_torch_t, 2, torch::RestrictPtrTraits> morton_codes_a,
-                                      torch::PackedTensorAccessor32<int32_t, 3, torch::RestrictPtrTraits> nodes_a,
+                                      torch::PackedTensorAccessor32<int16_t, 3, torch::RestrictPtrTraits> nodes_a,
                                       const unsigned n_mixtures, const unsigned n_internal_nodes, const unsigned n_leafs) {
     using morton_cuda_t = std::make_unsigned_t<morton_torch_t>;
 
@@ -355,7 +356,7 @@ __global__ void create_internal_nodes(const torch::PackedTensorAccessor32<morton
 
 template <typename scalar_t>
 __global__ void create_aabbs_for_internal_nodes(torch::PackedTensorAccessor32<int, 2, torch::RestrictPtrTraits> flags,
-                                                const torch::PackedTensorAccessor32<int32_t, 3, torch::RestrictPtrTraits> nodes,
+                                                const torch::PackedTensorAccessor32<int16_t, 3, torch::RestrictPtrTraits> nodes,
                                                 torch::PackedTensorAccessor32<scalar_t, 3, torch::RestrictPtrTraits> aabbs,
                                                 const unsigned n_mixtures, const unsigned n_internal_nodes, const unsigned n_nodes)
 {
@@ -368,7 +369,7 @@ __global__ void create_aabbs_for_internal_nodes(torch::PackedTensorAccessor32<in
 
     const auto* node = &reinterpret_cast<const detail::Node&>(nodes[mixture_id][node_id][0]);
 //    printf("m%d# start node %d: parent %d, left %d, right %d, obj %d\n", mixture_id, node_id, node->parent_idx, node->left_idx, node->right_idx, node->object_idx);
-    while(node->parent_idx != 0xFFFFFFFF) // means idx == 0
+    while(node->parent_idx != detail::Node::index_type(0xFFFFFFFF)) // means idx == 0
     {
         auto* flag = &reinterpret_cast<int&>(flags[mixture_id][node->parent_idx]);
         const int old = atomicCAS(flag, 0, 1);
@@ -440,7 +441,7 @@ class bvh
                 for (int j = 0; j < this->m_n_nodes; ++j) {
                     for (int k = 0; k < 4; ++k) {
                         const auto index = i * this->m_n_nodes * 4 + j * 4 + k;
-                        std::cout << ncpu.data_ptr<int>()[index] << ", ";
+                        std::cout << ncpu.data_ptr<int16_t>()[index] << ", ";
                     }
                     std::cout << " || ";
                 }
@@ -495,7 +496,7 @@ class bvh
 //        std::cout << "m_aabbs:" << m_aabbs << std::endl;
 
         // construct nodes and create leaf nodes
-        m_nodes = torch::ones({m_n.batch, m_n.layers, m_n_nodes, 4}, torch::TensorOptions(device).dtype(torch::ScalarType::Int)) * -1;
+        m_nodes = torch::ones({m_n.batch, m_n.layers, m_n_nodes, 4}, torch::TensorOptions(device).dtype(torch::ScalarType::Short)) * -1;
 //        print_nodes();
         this->create_leaf_nodes(morton_codes);
 //        print_nodes();
@@ -592,10 +593,10 @@ protected:
         auto n_mixtures = m_n.batch * m_n.layers;
         // no support for negative slicing indexes at the time of writing v
         auto nodes_view = m_nodes.index({Ellipsis, Slice(m_nodes.size(-2) - m_n.components, None), Slice()})
-                                  .view({n_mixtures, m_n.components, sizeof(detail::Node)/sizeof (int32_t)});
-        const auto morton_codes_view = morton_codes.view({n_mixtures, m_n.components});
+                                  .view({n_mixtures, m_n_leaf_nodes, 4});
+        const auto morton_codes_view = morton_codes.view({n_mixtures, m_n_leaf_nodes});
         const auto morton_codes_a = morton_codes_view.packed_accessor32<morton_torch_t, 2, torch::RestrictPtrTraits>();
-        auto nodes_a = nodes_view.packed_accessor32<int32_t, 3, torch::RestrictPtrTraits>();
+        auto nodes_a = nodes_view.packed_accessor32<int16_t, 3, torch::RestrictPtrTraits>();
 
 
         dim3 dimBlock = dim3(1, 128, 1);
@@ -613,8 +614,8 @@ protected:
         using namespace torch::indexing;
         auto n_mixtures = m_n.batch * m_n.layers;
         // no support for negative slicing indexes at the time of writing v
-        auto nodes_view = m_nodes.view({n_mixtures, -1, sizeof(detail::Node)/sizeof (int32_t)});
-        auto nodes_a = nodes_view.packed_accessor32<int32_t, 3, torch::RestrictPtrTraits>();
+        auto nodes_view = m_nodes.view({n_mixtures, m_n_nodes, 4});
+        auto nodes_a = nodes_view.packed_accessor32<int16_t, 3, torch::RestrictPtrTraits>();
         const auto morton_codes_view = morton_codes.view({n_mixtures, m_n_leaf_nodes});
         const auto morton_codes_a = morton_codes_view.packed_accessor32<morton_torch_t, 2, torch::RestrictPtrTraits>();
 
@@ -633,8 +634,8 @@ protected:
         auto flag_container = torch::zeros({n_mixtures, m_n_internal_nodes}, torch::TensorOptions(m_mixture.device()).dtype(torch::ScalarType::Int));
         const auto flags_a = flag_container.packed_accessor32<int, 2, torch::RestrictPtrTraits>();
 
-        auto nodes_view = m_nodes.view({n_mixtures, m_n_nodes, sizeof(detail::Node)/sizeof (int32_t)});
-        auto nodes_a = nodes_view.packed_accessor32<int32_t, 3, torch::RestrictPtrTraits>();
+        auto nodes_view = m_nodes.view({n_mixtures, m_n_nodes, 4});
+        auto nodes_a = nodes_view.packed_accessor32<int16_t, 3, torch::RestrictPtrTraits>();
         const auto aabbs_view = m_aabbs.view({-1, m_n_nodes, 8});
         const auto aabb_a = aabbs_view.packed_accessor32<float, 3, torch::RestrictPtrTraits>();
 
