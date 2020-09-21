@@ -115,7 +115,7 @@ __global__ void kernel_bvh_backward(const torch::PackedTensorAccessor32<scalar_t
 
     auto current_grad_mixture = grad_mixture[batch_index][layer_index];
     auto current_grad_xes = grad_xes[batch_xes_index][layer_xes_index][xes_index];
-    const auto current_grad_output = grad_output[batch_xes_index][layer_xes_index][xes_index];
+    const auto current_grad_output = grad_output[batch_index][layer_index][xes_index];
 
     auto evaluate_backward = [&] (unsigned index) {
         const G& g = bvh.objects[index];
