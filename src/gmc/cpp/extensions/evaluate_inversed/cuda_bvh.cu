@@ -63,6 +63,7 @@ __global__ void evaluate_inversed_bvh(const torch::PackedTensorAccessor32<scalar
                                       const gpe::MixtureAndXesNs n)
 {
     using G = Gaussian<DIMS, scalar_t>;
+    using Lbvh = lbvh::detail::basic_device_bvh<scalar_t, G, true>;
     const auto batch_index = blockIdx.x * blockDim.x + threadIdx.x;
     const auto layer_index = blockIdx.y * blockDim.y + threadIdx.y;
     const auto xes_index = blockIdx.z * blockDim.z + threadIdx.z;
@@ -76,12 +77,12 @@ __global__ void evaluate_inversed_bvh(const torch::PackedTensorAccessor32<scalar
 //    printf("do batch_index=%d, layer_index=%d, batch_xes_index=%d, layer_xes_index=%d, xes_index=%d\n", batch_index, layer_index, batch_xes_index, layer_xes_index, xes_index);
 
 
-    unsigned int num_nodes = n.components * 2 + 1;  // (# of internal node) + (# of leaves), 2N+1
-    unsigned int num_objects = n.components;        // (# of leaves), the same as the number of objects
+    const unsigned int num_nodes = n.components * 2 + 1;  // (# of internal node) + (# of leaves), 2N+1
+    const unsigned int num_objects = n.components;        // (# of leaves), the same as the number of objects
     const auto* bvh_nodes = &reinterpret_cast<const lbvh::detail::Node&>(nodes[batch_index][layer_index][0][0]);
     const auto* bvh_aabbs = &reinterpret_cast<const lbvh::Aabb<scalar_t>&>(aabbs[batch_index][layer_index][0][0]);
     const auto* bvh_gaussians = &reinterpret_cast<const G&>(mixture[batch_index][layer_index][0][0]);
-    lbvh::detail::basic_device_bvh<scalar_t, G, true> bvh {num_nodes, num_objects, bvh_nodes, bvh_aabbs, bvh_gaussians};
+    Lbvh bvh {num_nodes, num_objects, bvh_nodes, bvh_aabbs, bvh_gaussians};
 
     const auto& x_pos = gpe::vec<2>(xes[batch_xes_index][layer_xes_index][xes_index][0]);
     auto point = float4{x_pos.x, x_pos.y, 0, 0};
@@ -119,7 +120,8 @@ torch::Tensor cuda_bvh_forward_impl(const at::Tensor& mixture, const at::Tensor&
     // xes(batch, layer, n, data)
 
     auto xes_copy = xes;
-    if (n.xes == n.components && n.batch == n.batch_xes && n.layers == n.layers_xes) {
+    const auto use_indirect_xes = n.xes == n.components && n.batch == n.batch_xes && n.layers == n.layers_xes;
+    if (use_indirect_xes) {
         auto indices = bvh.m_nodes.index({Slice(), Slice(), Slice(bvh.m_n_internal_nodes, None), 3}).to(torch::ScalarType::Long);
         indices = indices.view({n.batch, n.layers, n.components, 1}).expand_as(xes);
 //        std::cout << "indices.sizes() = " << indices.sizes() << std::endl;
@@ -140,6 +142,13 @@ torch::Tensor cuda_bvh_forward_impl(const at::Tensor& mixture, const at::Tensor&
     auto start = std::chrono::system_clock::now();
     evaluate_inversed_bvh<float, 2><<<dimGrid, dimBlock>>>(mixture_a, nodes_a, aabbs_a, xes_a, sum_a, n);
     cudaDeviceSynchronize();
+    if (use_indirect_xes) {
+        auto indices = bvh.m_nodes.index({Slice(), Slice(), Slice(bvh.m_n_internal_nodes, None), 3}).to(torch::ScalarType::Long);
+        std::cout << "indices.sizes() = " << indices.sizes() << std::endl;
+        std::cout << "sum.sizes() = " << sum.sizes() << std::endl;
+        sum = torch::gather(sum, 2, indices);
+        std::cout << "sum.sizes() = " << sum.sizes() << std::endl;
+    }
     auto end = std::chrono::high_resolution_clock::now();
     std::cout << "evaluate_inversed_bvh elapsed time: " << std::chrono::duration_cast<std::chrono::milliseconds>(end-start).count() << "ms\n";
 
