@@ -10,12 +10,12 @@ print(source_dir)
 
 extra_include_paths = [source_dir + "/../../glm/", source_dir + "/../../cub/", source_dir + "/.."]
 
-cuda_extra_cuda_cflags = ["-O3", "--use_fast_math", "--std=c++14", "--expt-extended-lambda"]
+cuda_extra_cuda_cflags = ["-O3", "--use_fast_math", "--std=c++14", "--expt-extended-lambda", "-DNDEBUG"]
 if platform.system() == "Windows":
-    cuda_extra_cflags = ["/O2", "/fp:fast", "/std:c++14"]
+    cuda_extra_cflags = ["/O2", "/fp:fast", "/std:c++14", "/DGPE_NO_CUDA_ERROR_CHECKING"]
     cpp_extra_cflags = ["/openmp", "/O2", "/fp:fast", "/std:c++14"]
 else:
-    cuda_extra_cflags = ["-O4", "-ffast-math", "-march=native", "--std=c++14"];
+    cuda_extra_cflags = ["-O4", "-ffast-math", "-march=native", "--std=c++14", "-DGPE_NO_CUDA_ERROR_CHECKING"];
     cpp_extra_cflags = ["-fopenmp", "-O4", "-ffast-math", "-march=native", "--std=c++14"]
 
 cuda = load('evaluate_inversed_cuda_parallel', [source_dir + '/cuda_parallel.cpp', source_dir + '/cuda_parallel.cu'],

@@ -26,10 +26,6 @@ set (MY_ANACONDA_PATH "/home/madam/bin/anaconda3")
 
 list(APPEND CMAKE_PREFIX_PATH "${MY_ANACONDA_PATH}/lib/python3.7/site-packages/torch/")
 
-
-
-
-
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
@@ -64,6 +60,7 @@ include_directories(SYSTEM ${MY_INCLUDE_PATHS} SYSTEM ${TORCH_INCLUDE_DIRS})
 
 set(HEADERS
     common.h
+    cuda_qt_creator_definitinos.h
 )
 
 set(LBVH_HEADERS
@@ -88,7 +85,6 @@ set(MATH_SOURCES
     math/symeig_cuda.cu)
 
 set(EVALUATE_SOURCES
-    evaluate_inversed/cpu_bvh.cpp
     evaluate_inversed/cuda_bvh.cpp
     evaluate_inversed/cuda_bvh.cu
     evaluate_inversed/cpu_parallel.cpp

@@ -8,20 +8,7 @@
 #include <algorithm>
 
 #include "common.h"
-
-#ifndef __CUDACC__
-constexpr dim3 blockIdx;
-constexpr dim3 blockDim;
-constexpr dim3 threadIdx;
-using std::min;
-using std::max;
-
-namespace torch {
-template <typename T>
-struct RestrictPtrTraits {
-  typedef T* __restrict__ PtrType;
-};
-#endif
+#include "cuda_qt_creator_definitinos.h"
 
 template <typename scalar_t, int DIMS>
 __global__ void kernel_forward(const torch::PackedTensorAccessor32<scalar_t, 4, torch::RestrictPtrTraits> mixture_a,
@@ -131,7 +118,7 @@ std::tuple<torch::Tensor> cuda_parallel_forward_impl(const torch::Tensor& mixtur
 //    std::cout << "forward: dimBlock=" << dimBlock.x << "/" << dimBlock.y << "/" << dimBlock.z << ", dimGrid=" << dimGrid.x << "/" << dimGrid.y << "/" << dimGrid.z << std::endl;
 
 
-    AT_DISPATCH_FLOATING_TYPES(mixture.scalar_type(), "eval_inversed_omp", ([&] {
+    AT_DISPATCH_FLOATING_TYPES(mixture.scalar_type(), "cuda_parallel_forward_impl", ([&] {
         auto mixture_a = mixture.packed_accessor32<scalar_t, 4, torch::RestrictPtrTraits>();
         auto xes_a = xes.packed_accessor32<scalar_t, 4, torch::RestrictPtrTraits>();
         auto sum_a = sum.packed_accessor32<scalar_t, 3, torch::RestrictPtrTraits>();
@@ -168,7 +155,7 @@ std::tuple<torch::Tensor, torch::Tensor> cuda_parallel_backward_impl(const torch
                               (n.components + dimBlock.z - 1) / dimBlock.z);
 //    std::cout << "forward: dimBlock=" << dimBlock.x << "/" << dimBlock.y << "/" << dimBlock.z << ", dimGrid=" << dimGrid.x << "/" << dimGrid.y << "/" << dimGrid.z << std::endl;
 
-    AT_DISPATCH_FLOATING_TYPES(mixture.scalar_type(), "eval_inversed_omp_backward", ([&] {
+    AT_DISPATCH_FLOATING_TYPES(mixture.scalar_type(), "cuda_parallel_backward_impl", ([&] {
         auto mixture_a = mixture.packed_accessor32<scalar_t, 4, torch::RestrictPtrTraits>();
         auto xes_a = xes.packed_accessor32<scalar_t, 4, torch::RestrictPtrTraits>();
         auto grad_mixture_a = grad_mixture.packed_accessor32<scalar_t, 4, torch::RestrictPtrTraits>();

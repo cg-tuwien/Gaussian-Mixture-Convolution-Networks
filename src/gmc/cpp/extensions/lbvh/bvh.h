@@ -8,36 +8,19 @@
 
 #include <cuda_runtime.h>
 
-#include <cub/device/device_segmented_radix_sort.cuh>
-
 #include <torch/script.h>
 #include <torch/nn/functional.h>
 
-#include "lbvh/aabb.h"
-#include "lbvh/morton_code.h"
+#include <cub/device/device_segmented_radix_sort.cuh>
 
 #include "common.h"
+#include "cuda_qt_creator_definitinos.h"
 #include "math/symeig_detail.h"
 #include "math/symeig_cuda.h"
 #include "math/scalar.h"
 #include "math/matrix.h"
-
-#ifndef __CUDACC__
-int atomicCAS(int* address, int compare, int val);
-
-constexpr dim3 blockIdx;
-constexpr dim3 blockDim;
-constexpr dim3 threadIdx;
-using std::min;
-using std::max;
-
-namespace torch {
-template <typename T>
-struct RestrictPtrTraits {
-  typedef T* __restrict__ PtrType;
-};
-}
-#endif
+#include "lbvh/aabb.h"
+#include "lbvh/morton_code.h"
 
 template<int N_DIMS, typename scalar_t>
 struct Gaussian {
@@ -46,7 +29,9 @@ struct Gaussian {
     glm::mat<N_DIMS, N_DIMS, scalar_t> covariance;
 };
 
-//#define gpuErrchk(ans)
+#ifdef GPE_NO_CUDA_ERROR_CHECKING
+#define gpuErrchk(ans)
+#else
 #define gpuErrchk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
 inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=true)
 {
@@ -56,6 +41,7 @@ inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=t
       if (abort) exit(code);
    }
 }
+#endif
 
 namespace lbvh
 {
@@ -377,7 +363,7 @@ __global__ void create_internal_nodes(const torch::PackedTensorAccessor32<morton
 
     const morton_cuda_t& morton_code = reinterpret_cast<const morton_cuda_t&>(morton_codes_a[mixture_id][0]);
     auto& node = reinterpret_cast<detail::Node&>(nodes_a[mixture_id][node_id][0]);
-    node.object_idx = 0xFFFFFFFF; //  internal nodes
+    node.object_idx = lbvh::detail::Node::index_type(0xFFFFFFFF); //  internal nodes
 
     const uint2 ij  = detail::determine_range(&morton_code, n_leafs, node_id);
     const auto gamma = detail::find_split(&morton_code, n_leafs, ij.x, ij.y);
@@ -392,7 +378,8 @@ __global__ void create_internal_nodes(const torch::PackedTensorAccessor32<morton
     {
         node.right_idx += n_leafs - 1;
     }
-    assert(node.left_idx >= 0);
+    assert(node.left_idx != lbvh::detail::Node::index_type(0xFFFFFFFF));
+    assert(node.right_idx != lbvh::detail::Node::index_type(0xFFFFFFFF));
     assert(node.right_idx >= 0);
     reinterpret_cast<detail::Node&>(nodes_a[mixture_id][int(node.left_idx)][0]).parent_idx = node_id;
     reinterpret_cast<detail::Node&>(nodes_a[mixture_id][int(node.right_idx)][0]).parent_idx = node_id;
@@ -410,9 +397,7 @@ __global__ void create_aabbs_for_internal_nodes(torch::PackedTensorAccessor32<in
     if (mixture_id >= n_mixtures || node_id >= n_nodes)
         return;
 
-
-    const auto* node = &reinterpret_cast<const detail::Node&>(nodes[mixture_id][node_id][0]);
-//    printf("m%d# start node %d: parent %d, left %d, right %d, obj %d\n", mixture_id, node_id, node->parent_idx, node->left_idx, node->right_idx, node->object_idx);
+    const auto* node = &reinterpret_cast<const detail::Node&>(nodes[int(mixture_id)][int(node_id)][0]);
     while(node->parent_idx != detail::Node::index_type(0xFFFFFFFF)) // means idx == 0
     {
         auto* flag = &reinterpret_cast<int&>(flags[mixture_id][node->parent_idx]);
@@ -428,14 +413,11 @@ __global__ void create_aabbs_for_internal_nodes(torch::PackedTensorAccessor32<in
         // thread is the 2nd thread. merge AABB of both childlen.
 
         auto& current_aabb = reinterpret_cast<Aabb<scalar_t>&>(aabbs[mixture_id][node->parent_idx][0]);
-        const auto node_id = node->parent_idx;
         node = &reinterpret_cast<const detail::Node&>(nodes[mixture_id][node->parent_idx][0]);
         const auto& left_aabb = reinterpret_cast<Aabb<scalar_t>&>(aabbs[mixture_id][node->left_idx][0]);
         const auto& right_aabb = reinterpret_cast<Aabb<scalar_t>&>(aabbs[mixture_id][node->right_idx][0]);
 
         current_aabb = merge(left_aabb, right_aabb);
-
-//        printf("m%d# node %d: parent %d, left %d, right %d, obj %d\n", mixture_id, node_id, node->parent_idx, node->left_idx, node->right_idx, node->object_idx);
     }
 }
 

@@ -14,27 +14,13 @@
 #include <glm/glm.hpp>
 
 #include "common.h"
+#include "cuda_qt_creator_definitinos.h"
 #include "lbvh/aabb.h"
 #include "lbvh/bvh.h"
 #include "lbvh/query.h"
 #include "lbvh/predicator.h"
 #include "math/symeig_cuda.h"
 
-//#ifndef __CUDACC__
-//constexpr dim3 blockIdx;
-//constexpr dim3 blockDim;
-//constexpr dim3 threadIdx;
-//using std::min;
-//using std::max;
-
-//namespace torch {
-//template <typename T>
-//struct RestrictPtrTraits {
-//  typedef T* __restrict__ PtrType;
-//};
-//}
-
-//#endif
 
 template<int N_DIMS, typename scalar_t>
 std::ostream& operator <<(std::ostream& stream, const Gaussian<N_DIMS, scalar_t>& g) {
@@ -84,8 +70,8 @@ __global__ void evaluate_bvh_forward(const torch::PackedTensorAccessor32<scalar_
     const auto* bvh_gaussians = &reinterpret_cast<const G&>(mixture[batch_index][layer_index][0][0]);
     Lbvh bvh {num_nodes, num_objects, bvh_nodes, bvh_aabbs, bvh_gaussians};
 
-    const auto& x_pos = gpe::vec<2>(xes[batch_xes_index][layer_xes_index][xes_index][0]);
-    auto point = float4{x_pos.x, x_pos.y, 0, 0};
+    const auto& x_pos = gpe::vec<DIMS>(xes[batch_xes_index][layer_xes_index][xes_index][0]);
+    auto point = lbvh::make_vector_of(x_pos);
     auto& sum = sums[batch_index][layer_index][xes_index];
     auto evaluate = [bvh, &sum, &x_pos] (unsigned index) {
         const auto& g = bvh.objects[index];
@@ -114,11 +100,8 @@ __global__ void kernel_bvh_backward(const torch::PackedTensorAccessor32<scalar_t
     const auto batch_xes_index = min(batch_index, n.batch_xes - 1);
     const auto layer_xes_index = min(layer_index, n.layers_xes - 1);
 
-//    printf("batch_index=%d, layer_index=%d, batch_xes_index=%d, layer_xes_index=%d, xes_index=%d\n", batch_index, layer_index, batch_xes_index, layer_xes_index, xes_index);
     if (batch_index >= n.batch || layer_index >= n.layers || xes_index >= n.xes)
         return;
-//    printf("do batch_index=%d, layer_index=%d, batch_xes_index=%d, layer_xes_index=%d, xes_index=%d\n", batch_index, layer_index, batch_xes_index, layer_xes_index, xes_index);
-
 
     const unsigned int num_nodes = n.components * 2 + 1;  // (# of internal node) + (# of leaves), 2N+1
     const unsigned int num_objects = n.components;        // (# of leaves), the same as the number of objects
@@ -127,7 +110,6 @@ __global__ void kernel_bvh_backward(const torch::PackedTensorAccessor32<scalar_t
     const auto* bvh_gaussians = &reinterpret_cast<const G&>(mixture[batch_index][layer_index][0][0]);
     Lbvh bvh {num_nodes, num_objects, bvh_nodes, bvh_aabbs, bvh_gaussians};
 
-    ////////////////////
     const auto& x_pos = gpe::vec<DIMS>(xes[batch_xes_index][layer_xes_index][xes_index][0]);
     auto point = lbvh::make_vector_of<scalar_t>(x_pos);
 
@@ -173,11 +155,7 @@ torch::Tensor inverse_permutation(const torch::Tensor& p) {
     assert(shape.size() > 0);
     std::for_each(shape.begin(), shape.end() - 1, [](auto& i) { i = 1; });
     l = l.view(shape).expand_as(p);
-//    std::cout << "p=" << p << std::endl;
-//    std::cout << "l=" << l << std::endl;
-    auto r = torch::scatter(torch::empty_like(p), -1, p, l);
-//    std::cout << "r=" << r << std::endl;
-    return r;
+    return torch::scatter(torch::empty_like(p), -1, p, l);
 }
 
 std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> cuda_bvh_forward_impl(const at::Tensor& mixture, const at::Tensor& xes) {
@@ -185,22 +163,15 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> cuda_bvh_forward_impl(co
     using LBVH = lbvh::bvh<float, Gaussian<2, float>>;
 
     auto n = gpe::check_input_and_get_ns(mixture, xes);
-
-    torch::Tensor sum = torch::zeros({n.batch, n.layers, n.xes}, torch::dtype(mixture.dtype()).device(mixture.device()));
-    auto sum_a = sum.packed_accessor32<float, 3, torch::RestrictPtrTraits>();
-
     TORCH_CHECK(mixture.device().is_cuda(), "mixture must be a CUDA tensor");
     TORCH_CHECK(n.batch * n.layers < 65535, "n_batch x n_layers must be smaller than 65535 for CUDA");
     TORCH_CHECK(n.xes < 65535, "number of xes must be smaller than 65535 for CUDA");
     TORCH_CHECK(n.components > 1, "number of components must be greater 1 for this implementation");
-
     TORCH_CHECK(n.dims == 2, "atm only 2d gaussians");
     TORCH_CHECK(mixture.dtype() == caffe2::TypeMeta::Make<float>(), "atm only float");
 
     auto bvh = LBVH(mixture);
-    auto mixture_a = mixture.packed_accessor32<float, 4, torch::RestrictPtrTraits>();
-    auto nodes_a = bvh.m_nodes.packed_accessor32<lbvh::detail::Node::index_type_torch, 4, torch::RestrictPtrTraits>();
-    auto aabbs_a = bvh.m_aabbs.packed_accessor32<float, 4, torch::RestrictPtrTraits>();
+    torch::Tensor sum = torch::zeros({n.batch, n.layers, n.xes}, torch::dtype(mixture.dtype()).device(mixture.device()));
 
     // mixture(batch, layer, component, data)
     // xes(batch, layer, n, data)
@@ -212,7 +183,6 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> cuda_bvh_forward_impl(co
         indices = indices.view({n.batch, n.layers, n.components, 1}).expand_as(xes);
         xes_copy = torch::gather(xes, 2, indices);
     }
-    const auto xes_a = xes_copy.packed_accessor32<float, 4, torch::RestrictPtrTraits>();
 
     dim3 dimBlock = dim3(1, 1, LBVH_N_QUERY_THREADS);
     dim3 dimGrid = dim3((n.batch + dimBlock.x - 1) / dimBlock.x,
@@ -220,16 +190,26 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> cuda_bvh_forward_impl(co
                         (n.xes + dimBlock.z - 1) / dimBlock.z);
 //    printf("dimBlock=(%d, %d, %d)\n", dimBlock.x, dimBlock.y, dimBlock.z);
 //    printf("dimGrid=(%d, %d, %d)\n", dimGrid.x, dimGrid.y, dimGrid.z);
-    auto start = std::chrono::system_clock::now();
-    evaluate_bvh_forward<float, 2><<<dimGrid, dimBlock>>>(mixture_a, nodes_a, aabbs_a, xes_a, sum_a, n);
-    cudaDeviceSynchronize();
+
+    AT_DISPATCH_FLOATING_TYPES(mixture.scalar_type(), "cuda_bvh_backward_impl", ([&] {
+        auto sum_a = sum.packed_accessor32<scalar_t, 3, torch::RestrictPtrTraits>();
+        auto mixture_a = mixture.packed_accessor32<scalar_t, 4, torch::RestrictPtrTraits>();
+        auto nodes_a = bvh.m_nodes.packed_accessor32<lbvh::detail::Node::index_type_torch, 4, torch::RestrictPtrTraits>();
+        auto aabbs_a = bvh.m_aabbs.packed_accessor32<scalar_t, 4, torch::RestrictPtrTraits>();
+        const auto xes_a = xes_copy.packed_accessor32<scalar_t, 4, torch::RestrictPtrTraits>();
+
+        if (n.dims == 2)
+            evaluate_bvh_forward<scalar_t, 2><<<dimGrid, dimBlock>>>(mixture_a, nodes_a, aabbs_a, xes_a, sum_a, n);
+        else
+            evaluate_bvh_forward<scalar_t, 3><<<dimGrid, dimBlock>>>(mixture_a, nodes_a, aabbs_a, xes_a, sum_a, n);
+    }));
+
+
     if (use_indirect_xes) {
         auto indices = bvh.m_nodes.index({Slice(), Slice(), Slice(bvh.m_n_internal_nodes, None), 3}).to(torch::ScalarType::Long);
         indices = inverse_permutation(indices);
         sum = torch::gather(sum, 2, indices);
     }
-    auto end = std::chrono::high_resolution_clock::now();
-//    std::cout << "evaluate_inversed_bvh elapsed time: " << std::chrono::duration_cast<std::chrono::milliseconds>(end-start).count() << "ms\n";
 
     gpuErrchk(cudaPeekAtLastError());
     gpuErrchk(cudaDeviceSynchronize());
@@ -273,7 +253,7 @@ std::tuple<torch::Tensor, torch::Tensor> cuda_bvh_backward_impl(const torch::Ten
     }
 
 
-    AT_DISPATCH_FLOATING_TYPES(mixture.scalar_type(), "eval_inversed_omp_backward", ([&] {
+    AT_DISPATCH_FLOATING_TYPES(mixture.scalar_type(), "cuda_bvh_backward_impl", ([&] {
         auto mixture_a = mixture.packed_accessor32<scalar_t, 4, torch::RestrictPtrTraits>();
         auto nodes_a = bvh.m_nodes.packed_accessor32<lbvh::detail::Node::index_type_torch, 4, torch::RestrictPtrTraits>();
         auto aabbs_a = bvh.m_aabbs.packed_accessor32<scalar_t, 4, torch::RestrictPtrTraits>();

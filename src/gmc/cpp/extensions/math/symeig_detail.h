@@ -54,6 +54,16 @@ __forceinline__ __host__ __device__ thrust::tuple<glm::vec<2, scalar_t>, glm::ma
     return thrust::make_tuple(eigenvalues, mat(vec(e1[1], -e1[0]), e1));
 }
 
+template <typename scalar_t>
+__forceinline__ __host__ __device__ thrust::tuple<glm::vec<3, scalar_t>, glm::mat<3, 3, scalar_t>> compute_symeig(const glm::mat<3, 3, scalar_t>& matrix) {
+    using vec = glm::vec<3, scalar_t>;
+    using mat = glm::mat<3, 3, scalar_t>;
+    // we follow pytorch notation, eigenvectors are in the rows
+    // [1] https://en.wikipedia.org/wiki/Eigenvalue_algorithm#3%C3%973_matrices
+
+    assert(false); // unimplemented
+}
+
 
 }
 

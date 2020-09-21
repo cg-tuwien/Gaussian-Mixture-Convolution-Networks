@@ -76,9 +76,9 @@ unsigned int query_device(
 
 template<typename Real, typename Objects, bool IsConst, typename Predicate, typename Function>
 __device__
-unsigned int query_device_with_fun(
-        const detail::basic_device_bvh<Real, Objects, IsConst>& bvh,
-        const Predicate& predicate, Function fun) noexcept
+void query_device_with_fun(const detail::basic_device_bvh<Real, Objects, IsConst>& bvh,
+                           const Predicate& predicate,
+                           Function fun) noexcept
 {
     using bvh_type   = detail::basic_device_bvh<Real, Objects, IsConst>;
     using index_type = uint16_t;
