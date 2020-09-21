@@ -229,7 +229,7 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> cuda_bvh_forward_impl(co
         sum = torch::gather(sum, 2, indices);
     }
     auto end = std::chrono::high_resolution_clock::now();
-    std::cout << "evaluate_inversed_bvh elapsed time: " << std::chrono::duration_cast<std::chrono::milliseconds>(end-start).count() << "ms\n";
+//    std::cout << "evaluate_inversed_bvh elapsed time: " << std::chrono::duration_cast<std::chrono::milliseconds>(end-start).count() << "ms\n";
 
     gpuErrchk(cudaPeekAtLastError());
     gpuErrchk(cudaDeviceSynchronize());
@@ -258,10 +258,10 @@ std::tuple<torch::Tensor, torch::Tensor> cuda_bvh_backward_impl(const torch::Ten
     torch::Tensor grad_mixture = torch::zeros_like(mixture);
     torch::Tensor grad_xes = torch::zeros_like(xes);
 
-    dim3 dimBlock = dim3(128);
-    const dim3 dimGrid = dim3(n.batch * n.layers,
-                              n.xes,
-                              (n.components + dimBlock.z - 1) / dimBlock.z);
+    dim3 dimBlock = dim3(1, 1, LBVH_N_QUERY_THREADS);
+    dim3 dimGrid = dim3((n.batch + dimBlock.x - 1) / dimBlock.x,
+                        (n.layers + dimBlock.y - 1) / dimBlock.y,
+                        (n.xes + dimBlock.z - 1) / dimBlock.z);
 
     auto xes_copy = xes;
     auto grad_output_copy = grad_output;

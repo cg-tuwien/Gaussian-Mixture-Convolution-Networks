@@ -8,11 +8,11 @@ import gmc.mixture as gm
 enable_python = True
 enable_output = True
 
-n_batch = 100
-n_layers = 10
+n_batch = 10
+n_layers = 2
 n_dims = 2
-# mixture = gm.generate_random_mixtures(n_batch, n_layers, 125, n_dims)
-mixture = gm.load(f"fitting_input/fitting_input_batch{0}_netlayer{1}")[0]
+mixture = gm.generate_random_mixtures(n_batch, n_layers, 5, n_dims)
+# mixture = gm.load(f"fitting_input/fitting_input_batch{0}_netlayer{1}")[0]
 mixture = gm.pack_mixture(gm.weights(mixture), gm.positions(mixture), gm.covariances(mixture).inverse().transpose(-2, -1))
 xes = gm.positions(mixture)
 # xes = torch.rand([100, 10, 125, n_dims])
@@ -66,8 +66,6 @@ if enable_python:
     print(f"python cuda: {python_cuda_end_time - python_cuda_start_time}")
 print(f"cpp cpu: {cpp_cpu_end_time - cpp_cpu_start_time}")
 print(f"cpp cuda: {cpp_cuda_end_time - cpp_cuda_start_time}")
-
-exit(0)
 
 print(f"====== requires_grad = True ======")
 mixture.requires_grad = True;

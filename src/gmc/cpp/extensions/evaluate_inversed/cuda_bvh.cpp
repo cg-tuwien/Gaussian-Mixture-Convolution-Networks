@@ -32,6 +32,6 @@ std::tuple<torch::Tensor, torch::Tensor> cuda_bvh_backward(const torch::Tensor& 
 #ifndef GMC_CMAKE_TEST_BUILD
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("forward", &cuda_bvh_forward, "cuda_bvh_forward (CUDA)");
-  m.def("backward", &cuda_bvh_forward, "cuda_bvh_backward (CUDA)");
+  m.def("backward", &cuda_bvh_backward, "cuda_bvh_backward (CUDA)");
 }
 #endif
