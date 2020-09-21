@@ -16,14 +16,20 @@
 torch::Tensor cpu_parallel_forward(const torch::Tensor& mixture, const torch::Tensor& xes);
 torch::Tensor cuda_parallel_forward(const torch::Tensor& mixture, const torch::Tensor& xes);
 
-torch::Tensor cuda_bvh_forward(const torch::Tensor& mixture, const torch::Tensor& xes);
+std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> cuda_bvh_forward(const torch::Tensor& mixture, const torch::Tensor& xes);
+
+torch::Tensor cuda_bvh_forward_wrapper(const torch::Tensor& mixture, const torch::Tensor& xes) {
+    torch::Tensor sum, nodes, aabbs;
+    std::tie(sum, nodes, aabbs) = cuda_bvh_forward(mixture, xes);
+    return sum;
+}
 
 constexpr uint N_BATCHES = 1;
 constexpr uint N_LAYERS = 3;
 constexpr uint LIMIT_N_BATCH = 100;
 
 void show(torch::Tensor mixture, const uint resolution, const uint n_batch_limit) {
-    const auto eval_fun = mixture.is_cuda() ? &cuda_bvh_forward : &cpu_parallel_forward;
+    const auto eval_fun = mixture.is_cuda() ? &cuda_bvh_forward_wrapper : &cpu_parallel_forward;
     using namespace torch::indexing;
     const auto n_batch = std::min(gpe::n_batch(mixture), n_batch_limit);
     mixture = mixture.index({Slice(None, n_batch)});
@@ -42,7 +48,7 @@ void show(torch::Tensor mixture, const uint resolution, const uint n_batch_limit
     auto xv = mesh[0];
     auto yv = mesh[1];
     auto xes = torch::cat({xv.reshape({-1, 1}), yv.reshape({-1, 1})}, 1).view({1, 1, -1, 2});
-//    std::cout << "xes.sizes() = " << xes.sizes() << std::endl;
+    std::cout << "xes.sizes() = " << xes.sizes() << std::endl;
 
     cudaDeviceSynchronize();
     auto start = std::chrono::steady_clock::now();
@@ -81,7 +87,7 @@ int main(int argc, char *argv[]) {
 //                                          {0.02f, 5.f, 5.f, 1.01f, 0.5f, 0.5f, 4.0f}}).view({1, 1, 2, 7});
             mixture = mixture.cuda();
             std::cout << "layer " << i << ": " << mixture.sizes() << " device: " << mixture.device() << std::endl;
-//            show(mixture, 128, LIMIT_N_BATCH);
+            show(mixture, 128, LIMIT_N_BATCH);
 
             const auto weights = gpe::weights(mixture);
             const auto positions = gpe::positions(mixture);
@@ -90,7 +96,7 @@ int main(int argc, char *argv[]) {
             cudaDeviceSynchronize();
 
             auto start = std::chrono::high_resolution_clock::now();
-            const auto eval_fun = mixture.is_cuda() ? &cuda_bvh_forward : &cpu_parallel_forward;
+            const auto eval_fun = mixture.is_cuda() ? &cuda_bvh_forward_wrapper : &cpu_parallel_forward;
             auto rendering = eval_fun(mixture, positions.contiguous()).cpu();
             cudaDeviceSynchronize();
             auto end = std::chrono::high_resolution_clock::now();
@@ -101,6 +107,6 @@ int main(int argc, char *argv[]) {
 
 //    torch::load(d, "/home/madam/Documents/work/tuw/gmc_net/data/fitting_input/fitting_input_batch0_netlayer0.tensor");
     std::cout << "DONE" << std::endl;
-//    return a.exec();
+    return a.exec();
     return 0;
 }

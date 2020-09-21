@@ -59,7 +59,7 @@ __global__ void kernel_backward(const torch::PackedTensorAccessor32<scalar_t, 4,
                       const torch::PackedTensorAccessor32<scalar_t, 4, torch::RestrictPtrTraits> xes_a,
                       torch::PackedTensorAccessor32<scalar_t, 4, torch::RestrictPtrTraits> grad_mixture_a,
                       torch::PackedTensorAccessor32<scalar_t, 4, torch::RestrictPtrTraits> grad_xes_a,
-                      torch::PackedTensorAccessor32<scalar_t, 3, torch::RestrictPtrTraits> grad_output_a,
+                      const torch::PackedTensorAccessor32<scalar_t, 3, torch::RestrictPtrTraits> grad_output_a,
                       const gpe::MixtureAndXesNs n, bool requires_grad_mixture, bool requires_grad_xes) {
     const auto batch_index = blockIdx.x / n.layers;
     const auto layer_index = blockIdx.x - batch_index * n.layers;
@@ -113,7 +113,7 @@ __global__ void kernel_backward(const torch::PackedTensorAccessor32<scalar_t, 4,
 
 }
 
-torch::Tensor cuda_parallel_forward_impl(const torch::Tensor& mixture, const torch::Tensor& xes) {
+std::tuple<torch::Tensor> cuda_parallel_forward_impl(const torch::Tensor& mixture, const torch::Tensor& xes) {
     using namespace torch::indexing;
     auto n = gpe::check_input_and_get_ns(mixture, xes);
 
@@ -146,7 +146,7 @@ torch::Tensor cuda_parallel_forward_impl(const torch::Tensor& mixture, const tor
     return sum;
 }
 
-std::vector<torch::Tensor> cuda_parallel_backward_impl(const torch::Tensor& grad_output, const torch::Tensor& mixture, const torch::Tensor& xes, bool requires_grad_mixture, bool requires_grad_xes) {
+std::tuple<torch::Tensor, torch::Tensor> cuda_parallel_backward_impl(const torch::Tensor& grad_output, const torch::Tensor& mixture, const torch::Tensor& xes, bool requires_grad_mixture, bool requires_grad_xes) {
     gpe::check_mixture(mixture);
     auto n = gpe::check_input_and_get_ns(mixture, xes);
 
@@ -181,5 +181,5 @@ std::vector<torch::Tensor> cuda_parallel_backward_impl(const torch::Tensor& grad
             kernel_backward<scalar_t, 3><<<dimGrid, dimBlock>>>(mixture_a, xes_a, grad_mixture_a, grad_xes_a, grad_output_a, n, requires_grad_mixture, requires_grad_xes);
     }));
 
-    return {grad_mixture, grad_xes};
+    return std::make_tuple(grad_mixture, grad_xes);
 }

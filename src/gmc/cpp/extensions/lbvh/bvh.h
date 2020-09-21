@@ -64,6 +64,7 @@ namespace detail
 struct Node
 {
     using index_type = uint16_t;
+    using index_type_torch = int16_t;   // std::make_unsigned_t<index_type> doesn't work with cuda
     index_type parent_idx; // parent node
     index_type left_idx;   // index of left  child node
     index_type right_idx;  // index of right child node
@@ -466,16 +467,23 @@ class bvh
     bvh(const torch::Tensor& inversed_mixture)
         : m_mixture(inversed_mixture), m_n(gpe::get_ns(inversed_mixture))
     {
+        m_n_leaf_nodes = m_n.components;
+        m_n_internal_nodes = m_n_leaf_nodes - 1;
+        m_n_nodes = m_n_leaf_nodes * 2 - 1;
         this->construct();
+    }
+
+    bvh(const torch::Tensor& inversed_mixture, const torch::Tensor& nodes, const torch::Tensor& aabbs)
+        : m_mixture(inversed_mixture), m_nodes(nodes), m_aabbs(aabbs), m_n(gpe::get_ns(inversed_mixture))
+    {
+        m_n_leaf_nodes = m_n.components;
+        m_n_internal_nodes = m_n_leaf_nodes - 1;
+        m_n_nodes = m_n_leaf_nodes * 2 - 1;
     }
 
     void construct()
     {
         using namespace torch::indexing;
-
-        m_n_leaf_nodes = m_n.components;
-        m_n_internal_nodes = m_n_leaf_nodes - 1;
-        m_n_nodes = m_n_leaf_nodes * 2 - 1;
 
         auto print_nodes = [this]() {
             std::cout << "nodes: " << m_nodes.sizes() << " " << (m_nodes.is_cuda() ? "(cuda)" : "(cpu)") << std::endl;
@@ -729,13 +737,13 @@ protected:
     }
 
 public:
-    gpe::MixtureNs m_n;
     unsigned m_n_internal_nodes;
     unsigned m_n_leaf_nodes;
     unsigned m_n_nodes;
     const torch::Tensor m_mixture;
-    torch::Tensor m_aabbs;
     torch::Tensor m_nodes;
+    torch::Tensor m_aabbs;
+    gpe::MixtureNs m_n;
 };
 
 
