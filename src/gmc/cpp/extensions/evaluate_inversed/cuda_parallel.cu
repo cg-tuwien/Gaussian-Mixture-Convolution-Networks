@@ -100,7 +100,7 @@ __global__ void kernel_backward(const torch::PackedTensorAccessor32<scalar_t, 4,
 
 }
 
-std::tuple<torch::Tensor> cuda_parallel_forward_impl(const torch::Tensor& mixture, const torch::Tensor& xes) {
+at::Tensor cuda_parallel_forward_impl(const torch::Tensor& mixture, const torch::Tensor& xes) {
     using namespace torch::indexing;
     auto n = gpe::check_input_and_get_ns(mixture, xes);
 
