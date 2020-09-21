@@ -285,7 +285,8 @@ __global__ void compute_aabbs(torch::PackedTensorAccessor32<scalar_t, 2, torch::
 
     Vec eigenvalues;
     Mat eigenvectors;
-    thrust::tie(eigenvalues, eigenvectors) = gpe::detail::compute_symeig(gaussian.covariance);
+    // torch inverse is slow, do it with glm
+    thrust::tie(eigenvalues, eigenvectors) = gpe::detail::compute_symeig(glm::inverse(gaussian.covariance));
 
 //    printf("g%d: eigenvalues=%f/%f\n", gaussian_id, eigenvalues[0], eigenvalues[1]);
 //    printf("g%d: eigenvectors=\n%f/%f\n%f/%f\n", gaussian_id, eigenvectors[0][0], eigenvectors[0][1], eigenvectors[1][0], eigenvectors[1][1]);
@@ -578,14 +579,8 @@ protected:
         auto aabbs_view = aabbs.view({-1, 8});
         auto aabbs_a = aabbs_view.packed_accessor32<float, 2, torch::RestrictPtrTraits>();
 
-        // this inverse takes long (about 30 out of 160ms)
-        // option A: we probably can make it faster with a dedicated 2x2 and 3x3 implementation
-        // option B: we don't need to make 2 inversions. this is evaluate inversed, we often have the non-inversed already at hand.
-        // option C: ignore;
-        torch::Tensor covs = gpe::covariances(m_mixture).inverse().transpose(-1, -2);
-        torch::Tensor gaussians = gpe::pack_mixture(gpe::weights(m_mixture), gpe::positions(m_mixture), covs).contiguous().view({-1, m_mixture.size(-1)});
+        torch::Tensor gaussians = m_mixture.contiguous().view({-1, m_mixture.size(-1)});
         auto gaussians_a = gaussians.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>();
-
         auto n_gaussians = gaussians.size(0);
 
         dim3 dimBlock = dim3(1024, 1, 1);
