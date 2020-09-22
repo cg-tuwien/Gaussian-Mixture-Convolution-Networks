@@ -25,7 +25,7 @@ torch::Tensor cuda_bvh_forward_wrapper(const torch::Tensor& mixture, const torch
 }
 
 constexpr uint N_BATCHES = 1;
-constexpr uint N_LAYERS = 3;
+constexpr uint N_CONVOLUTION_LAYERS = 3;
 constexpr uint LIMIT_N_BATCH = 100;
 
 void show(torch::Tensor mixture, const uint resolution, const uint n_batch_limit) {
@@ -81,13 +81,13 @@ int main(int argc, char *argv[]) {
         torch::jit::script::Module container = torch::jit::load("/home/madam/Documents/work/tuw/gmc_net/data/fitting_input/fitting_input_batch" + std::to_string(i) + ".pt");
         auto list = container.attributes();
 
-        for (uint i = 0; i < N_LAYERS; i++) {
+        for (uint i = 0; i < N_CONVOLUTION_LAYERS; i++) {
             auto mixture = container.attr(std::to_string(i)).toTensor();//.index({Slice(0, 2), Slice(0, 1), Slice(0, 5), Slice()});
 //            auto mixture = torch::tensor({{0.02f, 0.f, 0.f, 1.01f, 1.f, 1.f, 1.0f},
 //                                          {0.02f, 5.f, 5.f, 1.01f, 0.5f, 0.5f, 4.0f}}).view({1, 1, 2, 7});
             mixture = mixture.cuda();
             std::cout << "layer " << i << ": " << mixture.sizes() << " device: " << mixture.device() << std::endl;
-            show(mixture, 128, LIMIT_N_BATCH);
+//            show(mixture, 128, LIMIT_N_BATCH);
 
             const auto weights = gpe::weights(mixture);
             const auto positions = gpe::positions(mixture);
@@ -107,6 +107,6 @@ int main(int argc, char *argv[]) {
 
 //    torch::load(d, "/home/madam/Documents/work/tuw/gmc_net/data/fitting_input/fitting_input_batch0_netlayer0.tensor");
     std::cout << "DONE" << std::endl;
-    return a.exec();
+//    return a.exec();
     return 0;
 }

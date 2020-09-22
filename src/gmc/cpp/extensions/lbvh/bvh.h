@@ -189,45 +189,6 @@ inline unsigned int find_split(UInt const* node_code, const unsigned int num_lea
     return split;
 }
 
-//torch::Tensor compute_aabbs(const at::Tensor& mixture) {
-//    namespace F = torch::nn::functional;
-//    constexpr float threshold = 0.0001f;
-
-//    auto n = gpe::get_ns(mixture);
-
-//    torch::Tensor factors = -2 * torch::log(threshold / torch::abs(gpe::weights(mixture)));
-//    factors = factors.where(factors > 0, torch::zeros({1, 1, 1}, factors.device()));
-//    factors = torch::sqrt(factors);
-
-//    torch::Tensor covs = gpe::covariances(mixture).inverse();
-//    torch::Tensor eigenvalues;
-//    torch::Tensor eigenvectors;
-
-//    std::tie(eigenvalues, eigenvectors) = gpe::symeig_cuda_forward(covs);
-//    /*
-//     * eigenvectors is a tensor of [*, *, *, d, d], where d is the dimensionality (2 or 3)
-//     * the eigenvectors are in the rows of that d * d matrix.
-//     */
-//    eigenvalues = torch::sqrt(eigenvalues);
-//    eigenvectors = eigenvalues.unsqueeze(-1) * eigenvectors;
-
-//    auto ellipsoidM = factors.unsqueeze(-1).unsqueeze(-1) * eigenvectors;
-
-//    // https://stackoverflow.com/a/24112864/4032670
-//    // https://members.loria.fr/SHornus/ellipsoid-bbox.html
-//    // we take the norm over the eigenvectors, that is analogous to simon fraiss' code in gmvis/core/Gaussian.cpp
-//    auto delta = torch::norm(ellipsoidM, 2, {-2});
-//    auto centroid = gpe::positions(mixture);
-//    auto upper = centroid + delta;
-//    auto lower = centroid - delta;
-
-//    // bring that thing into a format that can be read by our lbvh builder
-//    // https://pytorch.org/docs/master/nn.functional.html#torch.nn.functional.pad
-//    upper = F::pad(upper, F::PadFuncOptions({0, 4-n.dims}));
-//    lower = F::pad(lower, F::PadFuncOptions({0, 4-n.dims}));
-//    return torch::cat({upper, lower}, -1).contiguous();
-//}
-
 torch::Tensor compute_aabb_whole(const torch::Tensor& aabbs) {
     using namespace torch::indexing;
     const auto upper = std::get<0>(aabbs.index({Ellipsis, Slice(None, 4)}).max(-2));
@@ -265,8 +226,11 @@ __global__ void compute_aabbs(torch::PackedTensorAccessor32<scalar_t, 2, torch::
     const Gaussian<DIMS, scalar_t>& gaussian = reinterpret_cast<const Gaussian<DIMS, scalar_t>&>(gaussians[gaussian_id][0]);
 
     scalar_t factor = -2 * gpe::log(threshold / gpe::abs(gaussian.weight));
-    if (factor < 0)
-        factor = 0;
+    // the backward pass doesn't use the weight to compute the gradient for the weight. therefore we need to have a lower
+    // bound for the ellipsoid, which is at 1% of a gaussian with weight 1 => log (0.01 / 1)
+    factor = gpe::max(factor, scalar_t(-2 * -4.605170185988091));   // -2 * log(0.01), would use constexpr, but unsure about cuda
+//    factor = gpe::max(factor, scalar_t(-2 * -6.907755278982137));   // -2 * log(0.001), would use constexpr, but unsure about cuda
+
     // TODO: when it works, we can probably remove one of the sqrt and sqrt after they are mul together
     factor = gpe::sqrt(factor);
 
