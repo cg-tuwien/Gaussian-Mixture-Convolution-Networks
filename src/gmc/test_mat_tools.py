@@ -1,5 +1,5 @@
 import unittest
-import timeit
+import time
 import torch
 import numpy as np
 import numpy.linalg as npla
@@ -39,6 +39,48 @@ class MatToolsTest(unittest.TestCase):
                         for m in range(13):
                             self.assertEqual(indices[i, j, k, l].item(), found_index[m].item())
 
+    def test_my_matrix_inverse(self):
+        def t(n_dims):
+            m: Tensor = torch.rand(23, n_dims, n_dims)
+            m = m @ m.transpose(-1, -2) + torch.eye(n_dims).view(1, n_dims, n_dims) * 0.01
+            m = m.cuda()
+            m.requires_grad = True
+            torch_inverse = m.inverse()
+            torch_inverse.sum().backward()
+            torch_grad = m.grad.clone()
+            m.grad = None
+            my_inverse = mat_tools.inverse(m)
+            my_inverse.sum().backward()
+            my_grad = m.grad.clone()
+            self.assertTrue(((torch_inverse - my_inverse) ** 2).mean().item() < 0.00001)
+            self.assertTrue(((torch_grad - my_grad) ** 2).mean().item() < 0.0001)
+        t(2)
+        t(3)
+
+    def test_my_matrix_inverse_performance(self):
+        def t(n_dims):
+            m: Tensor = torch.rand(100*10*1000, n_dims, n_dims)
+            m = m @ m.transpose(-1, -2) + torch.eye(n_dims).view(1, n_dims, n_dims) * 0.01
+            m = m.cuda()
+            m.requires_grad = True
+            torch.cuda.synchronize()
+            t0 = time.perf_counter()
+
+            torch_inverse = m.inverse()
+            torch_inverse.sum().backward()
+
+            torch.cuda.synchronize()
+            t1 = time.perf_counter()
+            print(f"torch_inverse + torch_inverse.backward for {m.shape[0]} elements in {n_dims}d: {t1-t0}")
+            m.grad = None
+            my_inverse = mat_tools.inverse(m)
+            my_inverse.sum().backward()
+
+            torch.cuda.synchronize()
+            t2 = time.perf_counter()
+            print(f"my_inverse + my_inverse.backward for {m.shape[0]} elements in {n_dims}d: {t2-t1}")
+        t(2)
+        t(3)
 
 
 if __name__ == '__main__':

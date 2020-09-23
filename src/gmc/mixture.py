@@ -10,7 +10,7 @@ import numpy as np
 
 from . import mat_tools
 from . import config
-from .cpp.extensions.evaluate_inversed import evaluate_inversed as gm_evaluate_inversed
+from .cpp.extensions.evaluate_inversed import evaluate_inversed as cppExtensionsEvaluateInversed
 
 
 def n_dimensions(mixture: Tensor) -> int:
@@ -111,7 +111,7 @@ def normal_amplitudes(_covariances: Tensor) -> Tensor:
 
 
 def evaluate_inversed(mixture: Tensor, xes: Tensor) -> Tensor:
-    return gm_evaluate_inversed.apply(mixture, xes)
+    return cppExtensionsEvaluateInversed.apply(mixture, xes)
 
 
 def old_evaluate_inversed(mixture: Tensor, xes: Tensor) -> Tensor:

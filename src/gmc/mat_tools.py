@@ -3,6 +3,8 @@ import typing
 
 from torch import Tensor
 
+from .cpp.extensions.math import matrix_inverse as cppExtensionsMathMatrixInverse
+
 
 # from https://discuss.pytorch.org/t/batched-index-select/9115/10
 # I added an unit test, but it's easy to make an error in such code, so.. :)
@@ -26,6 +28,11 @@ def my_index_select(tensor: Tensor, index: Tensor) -> Tensor:
         index = index.unsqueeze(ii)
     index = index.expand(expanse)
     return torch.gather(tensor, dim, index)
+
+
+def inverse(tensor: Tensor) -> Tensor:
+    """faster version of inverse (compared to pytorch) for 2x2 and 3x3 matrices"""
+    return cppExtensionsMathMatrixInverse.apply(tensor)
 
 
 def flatten_index(tensor: Tensor, shape: torch.Size) -> Tensor:
