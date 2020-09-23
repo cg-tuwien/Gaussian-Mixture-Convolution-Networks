@@ -1,7 +1,9 @@
 import typing
+import time
 
 import torch
 from torch import Tensor
+from torch.utils.tensorboard import SummaryWriter as TensorboardWriter
 
 import gmc.mixture as gm
 import gmc.mat_tools as mat_tools
@@ -17,16 +19,36 @@ class Config:
         self.representative_select_mode = representative_select_mode
 
 
-def fixed_point_and_mhem(mixture: Tensor, constant: Tensor, n_components: int, config: Config = Config()) -> typing.Tuple[Tensor, Tensor, typing.List[Tensor]]:
+def fixed_point_and_mhem(mixture: Tensor, constant: Tensor, n_components: int, config: Config = Config(), tensorboard: TensorboardWriter = None) -> typing.Tuple[Tensor, Tensor, typing.List[Tensor]]:
     if n_components < 0:
         initial_fitting = initial_approx_to_relu(mixture, constant)
         fitting, ret_const = fixed_point_iteration_to_relu(mixture, constant, initial_fitting)
         return fitting, ret_const, [initial_fitting]
 
+    if tensorboard is not None:
+        torch.cuda.synchronize()
+        t0 = time.perf_counter()
     initial_fitting = initial_approx_to_relu(mixture, constant)
+    if tensorboard is not None:
+        torch.cuda.synchronize()
+        t1 = time.perf_counter()
+        tensorboard.add_scalar(f"50. fitting {mixture.shape} -> {n_components} initial_approx_to_relu time =", t1 - t0, 0)
     fp_fitting, ret_const = fixed_point_iteration_to_relu(mixture, constant, initial_fitting)
+    if tensorboard is not None:
+        torch.cuda.synchronize()
+        t2 = time.perf_counter()
+        tensorboard.add_scalar(f"50. fitting {mixture.shape} -> {n_components} fixed_point_iteration_to_relu time =", t2 - t1, 0)
     reduced_fitting = representative_select_for_relu(fp_fitting.detach(), n_components, config)
+    if tensorboard is not None:
+        torch.cuda.synchronize()
+        t3 = time.perf_counter()
+        tensorboard.add_scalar(f"50. fitting {mixture.shape} -> {n_components} representative_select_for_relu time =", t3 - t2, 0)
     fitting = mhem_fit_a_to_b(reduced_fitting, fp_fitting, config)
+    if tensorboard is not None:
+        torch.cuda.synchronize()
+        t4 = time.perf_counter()
+        tensorboard.add_scalar(f"50. fitting {mixture.shape} -> {n_components} mhem_fit_a_to_b time=", t4 - t3, 0)
+
     return fitting, ret_const, [initial_fitting, fp_fitting, reduced_fitting]
 
 

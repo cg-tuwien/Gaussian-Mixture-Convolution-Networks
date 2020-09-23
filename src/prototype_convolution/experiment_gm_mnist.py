@@ -77,7 +77,11 @@ def train(args, model: experiment_gm_mnist_model.Net, device: torch.device, trai
 
         batch_start_time = time.perf_counter()
         tx = time.perf_counter()
-        output = model(data)
+
+        temp_tb = None
+        if step % args.log_interval == 0:
+            temp_tb = tensor_board_writer
+        output = model(data, temp_tb)
         loss = F.nll_loss(output, target)
         ty = time.perf_counter()
         # regularisation_loss = model.regularisation_loss() * len(data)
