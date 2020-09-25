@@ -60,6 +60,7 @@ include_directories(SYSTEM ${MY_INCLUDE_PATHS} SYSTEM ${TORCH_INCLUDE_DIRS})
 
 set(HEADERS
     common.h
+    parallel_start.h
     cuda_qt_creator_definitinos.h
 )
 
@@ -70,8 +71,6 @@ set(LBVH_HEADERS
     lbvh/predicator.h
     lbvh/query.h
     lbvh/utility.h)
-
-
 
 set(MATH_SOURCES
     math/symeig.h
@@ -93,8 +92,21 @@ set(EVALUATE_SOURCES
     evaluate_inversed/test_runner.cpp
 )
 
+set(BVH_MHEM_FIT_SOURCES
+    bvh_mhem_fit/implementation.h
+    bvh_mhem_fit/implementation.cu
+    bvh_mhem_fit/implementation.cpp
+    bvh_mhem_fit/bindings.cpp
+    bvh_mhem_fit/bindings.h
+    bvh_mhem_fit/test_runner.cpp
+)
+
 add_executable(evaluate_inversed_tester ${HEADERS} ${MATH_SOURCES} ${LBVH_HEADERS} ${EVALUATE_SOURCES})
 target_link_libraries(evaluate_inversed_tester PUBLIC OpenMP::OpenMP_CXX torch Qt5::Widgets)
+
+
+add_executable(bvh_mhem_fit_tester ${HEADERS} ${MATH_SOURCES} ${LBVH_HEADERS} ${BVH_MHEM_FIT_SOURCES})
+target_link_libraries(bvh_mhem_fit_tester PUBLIC OpenMP::OpenMP_CXX torch Qt5::Widgets)
 
 #set(EM_FITTING_SOURCES
 #    em_fitting/em_fitting_common.h

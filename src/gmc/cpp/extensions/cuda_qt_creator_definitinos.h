@@ -8,9 +8,11 @@
 
 int atomicCAS(int* address, int compare, int val);
 
-constexpr dim3 blockIdx;
+constexpr dim3 gridDim;
 constexpr dim3 blockDim;
+constexpr dim3 blockIdx;
 constexpr dim3 threadIdx;
+
 using std::min;
 using std::max;
 
@@ -19,6 +21,7 @@ template <typename T>
 struct RestrictPtrTraits {
   typedef T* __restrict__ PtrType;
 };
+
 }
 #endif
 

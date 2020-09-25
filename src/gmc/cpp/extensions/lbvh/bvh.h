@@ -228,7 +228,9 @@ __global__ void compute_aabbs(torch::PackedTensorAccessor32<scalar_t, 2, torch::
     scalar_t factor = -2 * gpe::log(threshold / gpe::abs(gaussian.weight));
     // the backward pass doesn't use the weight to compute the gradient for the weight. therefore we need to have a lower
     // bound for the ellipsoid, which is at 1% of a gaussian with weight 1 => log (0.01 / 1)
-    factor = gpe::max(factor, scalar_t(-2 * -4.605170185988091));   // -2 * log(0.01), would use constexpr, but unsure about cuda
+
+    factor = gpe::max(factor, scalar_t(-2 * -2.995732273553991));   // -2 * log(0.05), would use constexpr, but unsure about cuda
+//    factor = gpe::max(factor, scalar_t(-2 * -4.605170185988091));   // -2 * log(0.01), would use constexpr, but unsure about cuda
 //    factor = gpe::max(factor, scalar_t(-2 * -6.907755278982137));   // -2 * log(0.001), would use constexpr, but unsure about cuda
 
     // TODO: when it works, we can probably remove one of the sqrt and sqrt after they are mul together
@@ -527,7 +529,7 @@ class bvh
 
 protected:
     torch::Tensor compute_aabbs() {
-        constexpr float threshold = 0.0001f;
+        constexpr float threshold = 0.001f;
 
         auto aabbs = torch::zeros({m_n.batch, m_n.layers, m_n.components, 8}, torch::TensorOptions(m_mixture.device()).dtype(torch::ScalarType::Float));
         auto aabbs_view = aabbs.view({-1, 8});
