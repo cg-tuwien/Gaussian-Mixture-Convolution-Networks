@@ -149,7 +149,7 @@ def calc_likelihoods(target: Tensor, fitting: Tensor) -> Tensor:
 
     # preiner equation 9
     gaussian_values = gm.evaluate_componentwise(gm.pack_mixture(fitting_normal_amplitudes, fitting_positions, fitting_covariances), target_positions)
-    exp_values = torch.exp(-0.5 * mat_tools.batched_trace(fitting_covariances.inverse().view(n_batch, n_layers, 1, n_fitting_components, n_dims, n_dims) @
+    exp_values = torch.exp(-0.5 * mat_tools.batched_trace(mat_tools.inverse(fitting_covariances).view(n_batch, n_layers, 1, n_fitting_components, n_dims, n_dims) @
                                                           target_covariances.view(n_batch, n_layers, n_target_components, 1, n_dims, n_dims)))
 
     almost_likelihoods = gaussian_values * exp_values
@@ -166,7 +166,7 @@ def calc_KL_divergence(target: Tensor, fitting: Tensor) -> Tensor:
 
     fitting_positions = gm.positions(fitting).unsqueeze(2)
     fitting_covariances = gm.covariances(fitting).unsqueeze(2)
-    fitting_covariances_inversed = fitting_covariances.inverse().transpose(-2, -1)
+    fitting_covariances_inversed = mat_tools.inverse(fitting_covariances)
 
     p_diff = target_positions - fitting_positions
     mahalanobis_distance = torch.sqrt(p_diff.unsqueeze(-2) @ fitting_covariances_inversed @ p_diff.unsqueeze(-1)).squeeze(dim=-1).squeeze(dim=-1)
