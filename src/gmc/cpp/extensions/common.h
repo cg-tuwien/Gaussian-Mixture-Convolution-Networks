@@ -20,6 +20,9 @@
 #define __forceinline__ inline
 #endif
 
+// avoid unused warning
+#define GPE_UNUSED(x) (void)x;
+
 using uint = unsigned int;
 
 namespace gpe {

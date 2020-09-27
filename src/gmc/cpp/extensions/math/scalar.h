@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <cmath>
+#include <algorithm>
 
 //#include <cuda.h>
 //#include <cuda_runtime.h>
@@ -58,7 +59,12 @@ fastexp (float p)
 
 }
 
-
+__forceinline__ __device__ float max(float a, float b) {
+    return ::fmaxf(a, b);
+}
+__forceinline__ __device__ float max(double a, double b) {
+    return ::fmax(a, b);
+}
 __forceinline__ __device__ float exp(float x) {
     return ::expf(x);
 }
@@ -85,6 +91,11 @@ __forceinline__ __device__ float abs(float x) {
 }
 __forceinline__ __device__ double abs(double x) {
     return ::fabs(x);
+}
+
+template <typename scalar_t>
+inline scalar_t max(scalar_t a, scalar_t b) {
+    return std::max(a, b);
 }
 
 template <typename scalar_t>
