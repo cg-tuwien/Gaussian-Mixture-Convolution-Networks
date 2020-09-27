@@ -7,10 +7,12 @@
 #ifndef __CUDACC__
 
 int atomicCAS(int* address, int compare, int val);
+void __syncthreads();
 
 constexpr dim3 blockIdx;
 constexpr dim3 blockDim;
 constexpr dim3 threadIdx;
+constexpr dim3 gridDim;
 using std::min;
 using std::max;
 

@@ -5,11 +5,13 @@ from torch import Tensor
 
 import gmc.mixture as gm
 import gmc.mat_tools as mat_tools
+import gmc.cpp.extensions.furthest_point_sampling as furthest_point_sampling
 
 
 class Config:
     REPRESENTATIVE_SELECT_MODE_TOP_INTEGRALS: int = 0
     REPRESENTATIVE_SELECT_MODE_RANDOM_TOP: int = 1
+    REPRESENTATIVE_SELECT_MODE_FPS_TOP: int = 1
 
     def __init__(self, n_iterations: int = 1, KL_divergence_threshold: float = 1.5, representative_select_mode: int = REPRESENTATIVE_SELECT_MODE_TOP_INTEGRALS):
         self.n_iterations = n_iterations
@@ -171,6 +173,13 @@ def representative_select_for_relu(mixture: Tensor, n_components: int, config: C
         _, sorted_indices = torch.sort(component_integrals, descending=True)
         selection_mixture = mat_tools.my_index_select(mixture, sorted_indices[:, :, :min(max(n_components*2, n_original_components // 4), n_original_components)])
         selection_mixture = mat_tools.my_index_select(selection_mixture, torch.randperm(selection_mixture.shape[-2], device=device)[:n_components].view(1, 1, n_components))
+    elif config.representative_select_mode == config.REPRESENTATIVE_SELECT_MODE_FPS_TOP:
+        # random sampling
+        _, sorted_indices = torch.sort(component_integrals, descending=True)
+        selection_mixture = mat_tools.my_index_select(mixture, sorted_indices[:, :, :min(max(n_components*2, n_original_components // 4), n_original_components)])
+        centroids = gm.positions(selection_mixture).detach()
+        indices = furthest_point_sampling(centroids, n_components)
+        selection_mixture = mat_tools.my_index_select(selection_mixture, indices)
     else:
         assert False
 

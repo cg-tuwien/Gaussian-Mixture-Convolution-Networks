@@ -67,6 +67,7 @@ for batch_idx in range(0, 1):  # max 10
             measurements = dict()
             measurements_n = dict()
             config = fitting.Config(KL_divergence_threshold=kl_thresh)
+            config.representative_select_mode = fitting.Config.REPRESENTATIVE_SELECT_MODE_FPS_TOP
             for layer_id in range(3):
                 # for bias in [-1, -0.5, -0.1, -0.005, 0, 0.005, 0.1, 0.5, 1]:
                 for bias in [-0.5, 0.0, 0.5]:
