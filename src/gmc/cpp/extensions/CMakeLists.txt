@@ -18,6 +18,12 @@ string(APPEND CMAKE_CUDA_FLAGS " -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_C
 string(APPEND CMAKE_CUDA_FLAGS_RELEASE " --use_fast_math --generate-line-info")
 string(APPEND CMAKE_CUDA_FLAGS_DEBUG " -g -G")
 
+# ASan:
+#string(APPEND CMAKE_CUDA_FLAGS_DEBUG " -Xcompiler -fsanitize=address -Xcompiler -fno-omit-frame-pointer")
+#string(APPEND CMAKE_CXX_FLAGS_DEBUG " -fno-omit-frame-pointer -fsanitize=address")
+#string(APPEND CMAKE_LINKER_FLAGS_DEBUG " -fno-omit-frame-pointer -fsanitize=address")
+
+
 # set(CMAKE_CXX_FLAGS -D_GLIBCXX_USE_CXX11_ABI=0 -O3 --use_fast_math)
 
 add_compile_definitions(GMC_CMAKE_TEST_BUILD)
@@ -84,6 +90,10 @@ set(MATH_SOURCES
     math/symeig_cuda.cu)
 
 set(EVALUATE_SOURCES
+    evaluate_inversed/parallel_implementation.h
+    evaluate_inversed/parallel_implementation.cu
+    evaluate_inversed/parallel_binding.h
+    evaluate_inversed/parallel_binding.cpp
     evaluate_inversed/cuda_bvh.cpp
     evaluate_inversed/cuda_bvh.cu
     evaluate_inversed/cpu_parallel.cpp

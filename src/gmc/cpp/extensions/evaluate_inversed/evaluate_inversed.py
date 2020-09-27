@@ -8,17 +8,22 @@ print(source_dir)
 
 extra_include_paths = [source_dir + "/../../glm/", source_dir + "/../../cub/", source_dir + "/.."]
 
-cuda = load('evaluate_inversed_cuda_parallel', [source_dir + '/cuda_parallel.cpp', source_dir + '/cuda_parallel.cu'],
-                                extra_include_paths=extra_include_paths,
-                                verbose=True, extra_cflags=cuda_extra_cflags, extra_cuda_cflags=cuda_extra_cuda_cflags, extra_ldflags=["-lpthread"])
+# cuda = load('evaluate_inversed_cuda_parallel', [source_dir + '/cuda_parallel.cpp', source_dir + '/cuda_parallel.cu'],
+#                                 extra_include_paths=extra_include_paths,
+#                                 verbose=True, extra_cflags=cuda_extra_cflags, extra_cuda_cflags=cuda_extra_cuda_cflags, extra_ldflags=["-lpthread"])
 
 cuda_bvh = load('evaluate_inversed_cuda_bvh', [source_dir + '/cuda_bvh.cpp', source_dir + '/cuda_bvh.cu',
                                                source_dir + '/../math/symeig_cuda.cpp', source_dir + '/../math/symeig_cuda.cu'],
                                 extra_include_paths=extra_include_paths,
                                 verbose=True, extra_cflags=cuda_extra_cflags, extra_cuda_cflags=cuda_extra_cuda_cflags, extra_ldflags=["-lpthread"])
-cpu = load('evaluate_inversed_cpu_parallel', [source_dir + '/cpu_parallel.cpp'],
-                                extra_include_paths=extra_include_paths,
-                                verbose=True, extra_cflags=cpp_extra_cflags, extra_ldflags=["-lpthread"])
+
+parallel = load('evaluate_inversed_parallel',
+                [source_dir + '/parallel_binding.cpp', source_dir + '/parallel_implementation.cu'],
+                extra_include_paths=extra_include_paths, verbose=True, extra_cflags=cuda_extra_cflags, extra_cuda_cflags=cuda_extra_cuda_cflags, extra_ldflags=["-lpthread"])
+
+# cpu = load('evaluate_inversed_cpu_parallel', [source_dir + '/cpu_parallel.cpp'],
+#                                 extra_include_paths=extra_include_paths,
+#                                 verbose=True, extra_cflags=cpp_extra_cflags, extra_ldflags=["-lpthread"])
 
 class EvaluateInversed(torch.autograd.Function):
     @staticmethod
@@ -35,7 +40,7 @@ class EvaluateInversed(torch.autograd.Function):
             # output = cuda.forward(mixture, xes)
             # ctx.save_for_backward(mixture, xes)
         else:
-            output = cpu.forward(mixture, xes)
+            output = parallel.forward(mixture, xes)
             ctx.save_for_backward(mixture, xes)
 
         return output
@@ -52,7 +57,7 @@ class EvaluateInversed(torch.autograd.Function):
             # grad_mixture, grad_xes = cuda.backward(grad_output, mixture, xes, ctx.needs_input_grad[0], ctx.needs_input_grad[1])
         else:
             mixture, xes = ctx.saved_tensors
-            grad_mixture, grad_xes = cpu.backward(grad_output, mixture, xes, ctx.needs_input_grad[0], ctx.needs_input_grad[1])
+            grad_mixture, grad_xes = parallel.backward(grad_output, mixture, xes, ctx.needs_input_grad[0], ctx.needs_input_grad[1])
         return grad_mixture, grad_xes
 
 
