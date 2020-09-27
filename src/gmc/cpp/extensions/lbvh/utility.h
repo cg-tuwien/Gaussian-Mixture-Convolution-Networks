@@ -1,5 +1,6 @@
 #ifndef LBVH_UTILITY_H
 #define LBVH_UTILITY_H
+#include <numeric>
 #include <vector_types.h>
 #include <math_constants.h>
 
@@ -25,16 +26,22 @@ typename vector_of<scalar_t>::type make_vector_of(const glm::vec<3, scalar_t>& g
 template<typename T>
 using vector_of_t = typename vector_of<T>::type;
 
+#ifdef __CUDACC__
 template<typename T>
 __device__
 inline T infinity() noexcept;
-
 template<>
 __device__
 inline float  infinity<float >() noexcept {return CUDART_INF_F;}
 template<>
 __device__
 inline double infinity<double>() noexcept {return CUDART_INF;}
+#else
+template<typename T>
+inline T infinity() noexcept {
+    return std::numeric_limits<T>::infinity();
+}
+#endif
 
 } // lbvh
 #endif// LBVH_UTILITY_H

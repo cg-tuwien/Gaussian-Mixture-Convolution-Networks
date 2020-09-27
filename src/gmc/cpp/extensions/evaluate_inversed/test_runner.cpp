@@ -85,9 +85,9 @@ int main(int argc, char *argv[]) {
             auto mixture = container.attr(std::to_string(i)).toTensor();//.index({Slice(0, 2), Slice(0, 1), Slice(0, 5), Slice()});
 //            auto mixture = torch::tensor({{0.02f, 0.f, 0.f, 1.01f, 1.f, 1.f, 1.0f},
 //                                          {0.02f, 5.f, 5.f, 1.01f, 0.5f, 0.5f, 4.0f}}).view({1, 1, 2, 7});
-            mixture = mixture.cuda();
+//            mixture = mixture.cuda();
             std::cout << "layer " << i << ": " << mixture.sizes() << " device: " << mixture.device() << std::endl;
-//            show(mixture, 128, LIMIT_N_BATCH);
+            show(mixture, 128, LIMIT_N_BATCH);
 
             const auto weights = gpe::weights(mixture);
             const auto positions = gpe::positions(mixture);
@@ -107,6 +107,6 @@ int main(int argc, char *argv[]) {
 
 //    torch::load(d, "/home/madam/Documents/work/tuw/gmc_net/data/fitting_input/fitting_input_batch0_netlayer0.tensor");
     std::cout << "DONE" << std::endl;
-//    return a.exec();
+    return a.exec();
     return 0;
 }

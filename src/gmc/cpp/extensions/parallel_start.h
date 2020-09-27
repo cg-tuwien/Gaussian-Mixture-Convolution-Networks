@@ -6,31 +6,22 @@
 #include <torch/all.h>
 #include <cuda_runtime.h>
 
+#ifndef __CUDA_ARCH__
+    #if defined(_OPENMP) and _OPENMP>=201107
+    template <class T>
+    inline T atomicAdd(T *ptr, T val) {
+        T t;
+    #pragma omp atomic capture
+        { t = *ptr; *ptr += val; }
+        return t;
+    }
+    #else
+    #error "Requires gcc or OpenMP>=3.1"
+    #endif
+#endif
+
 namespace gpe {
 
-#ifdef __GNUC__
-template <class T>
-__host__ inline T atomicAdd(T *ptr, T val) {
-    return __sync_fetch_and_add(ptr, val);
-}
-#elif defined(_OPENMP) and _OPENMP>=201107
-template <class T>
-__host__ inline T atomicAdd(T *ptr, T val) {
-    T t;
-    #pragma omp atomic capture
-    { t = *ptr; *ptr += val; }
-    return t;
-}
-#else
-    #error "Requires gcc or OpenMP>=3.1"
-#endif
-
-#ifdef __CUDACC__
-template <class T>
-__device__ __forceinline__ T atomicAdd(T* address, T val) {
-    return atomicAdd(address, val);
-}
-#endif
 
 namespace detail {
 
@@ -60,11 +51,6 @@ template <typename Fun>
 __global__ void gpe_generic_cuda_kernel(Fun function) {
     function(gridDim, blockDim, blockIdx, threadIdx);
 }
-
-template <typename Fun>
-void gpe_start_cuda_parallel(const dim3& gridDim, Fconst dim3& blockDim, const Fun& function) {
-    gpe_generic_cuda_kernel<<<gridDim, blockDim>>>(function);
-}
 #endif
 
 } // namespace detail
@@ -77,12 +63,15 @@ ComputeDevice device(const torch::Tensor& t) {
     return t.is_cuda() ? ComputeDevice::CUDA : ComputeDevice::CPU;
 }
 
+template <typename Function>
+__global__ void kernel(Function f) { printf("value = %d", f()); }
+
 template <typename Fun>
 void start_parallel(ComputeDevice device, const dim3& gridDim, const dim3& blockDim, const Fun& function) {
     switch (device) {
 #ifdef __CUDACC__
         case ComputeDevice::CUDA:
-            detail::gpe_start_cuda_parallel(gridDim, blockDim, function);
+            detail::gpe_generic_cuda_kernel<<<gridDim, blockDim>>>(function);
         break;
 #endif
         case ComputeDevice::CPU:
@@ -91,6 +80,8 @@ void start_parallel(ComputeDevice device, const dim3& gridDim, const dim3& block
         break;
     }
 }
+
+
 
 
 } // namespace gpe

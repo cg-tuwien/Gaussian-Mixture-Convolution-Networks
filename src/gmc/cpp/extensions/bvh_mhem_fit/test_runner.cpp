@@ -12,11 +12,7 @@
 #include <cuda_runtime.h>
 
 #include "common.h"
-
-torch::Tensor cpu_parallel_forward(const torch::Tensor& mixture, const torch::Tensor& xes);
-torch::Tensor cuda_parallel_forward(const torch::Tensor& mixture, const torch::Tensor& xes);
-
-std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> cuda_bvh_forward(const torch::Tensor& mixture, const torch::Tensor& xes);
+#include "bvh_mhem_fit/bindings.h"
 
 torch::Tensor cuda_bvh_forward_wrapper(const torch::Tensor& mixture, const torch::Tensor& xes) {
     torch::Tensor sum, nodes, aabbs;
@@ -29,7 +25,7 @@ constexpr uint N_CONVOLUTION_LAYERS = 3;
 constexpr uint LIMIT_N_BATCH = 100;
 
 void show(torch::Tensor mixture, const uint resolution, const uint n_batch_limit) {
-    const auto eval_fun = mixture.is_cuda() ? &cuda_bvh_forward_wrapper : &cpu_parallel_forward;
+    const auto eval_fun = cuda_bvh_forward_wrapper;
     using namespace torch::indexing;
     const auto n_batch = std::min(gpe::n_batch(mixture), n_batch_limit);
     mixture = mixture.index({Slice(None, n_batch)});
@@ -87,7 +83,7 @@ int main(int argc, char *argv[]) {
 //                                          {0.02f, 5.f, 5.f, 1.01f, 0.5f, 0.5f, 4.0f}}).view({1, 1, 2, 7});
             mixture = mixture.cuda();
             std::cout << "layer " << i << ": " << mixture.sizes() << " device: " << mixture.device() << std::endl;
-//            show(mixture, 128, LIMIT_N_BATCH);
+            show(mixture, 128, LIMIT_N_BATCH);
 
             const auto weights = gpe::weights(mixture);
             const auto positions = gpe::positions(mixture);
@@ -96,7 +92,7 @@ int main(int argc, char *argv[]) {
             cudaDeviceSynchronize();
 
             auto start = std::chrono::high_resolution_clock::now();
-            const auto eval_fun = mixture.is_cuda() ? &cuda_bvh_forward_wrapper : &cpu_parallel_forward;
+            const auto eval_fun = cuda_bvh_forward_wrapper;
             auto rendering = eval_fun(mixture, positions.contiguous()).cpu();
             cudaDeviceSynchronize();
             auto end = std::chrono::high_resolution_clock::now();
@@ -107,6 +103,6 @@ int main(int argc, char *argv[]) {
 
 //    torch::load(d, "/home/madam/Documents/work/tuw/gmc_net/data/fitting_input/fitting_input_batch0_netlayer0.tensor");
     std::cout << "DONE" << std::endl;
-//    return a.exec();
+    return a.exec();
     return 0;
 }
