@@ -1,20 +1,12 @@
 from torch.utils.cpp_extension import load
 import os
 import torch.autograd
-import platform
+from gmc.cpp.extensions.compile_flags import *
 
 source_dir = os.path.dirname(__file__)
 print(source_dir)
 
 extra_include_paths = [source_dir + "/../../glm/", source_dir + "/.."]
-
-cuda_extra_cuda_cflags = ["-O3",  "--use_fast_math", "--std=c++14", "--expt-extended-lambda", "--default-stream per-thread"]
-if platform.system() == "Windows":
-    cuda_extra_cflags = ["/O2", "/fp:fast", "/std:c++14"]
-    cpp_extra_cflags = ["/openmp", "/O2", "/fp:fast", "/std:c++14"]
-else:
-    cuda_extra_cflags = ["-O4", "-ffast-math", "-march=native", "--std=c++14"];
-    cpp_extra_cflags = ["-fopenmp", "-O4", "-ffast-math", "-march=native", "--std=c++14"]
 
 cuda = load('matrix_inverse_cuda', [source_dir + '/matrix_inverse_cuda.cpp', source_dir + '/matrix_inverse_cuda.cu'],
             extra_include_paths=extra_include_paths,
