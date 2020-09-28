@@ -19,17 +19,17 @@ template <typename scalar_t, int DIMS>
 __host__ __device__
 void forward(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
              const dim3& gpe_blockIdx, const dim3& gpe_threadIdx,
-             const torch::PackedTensorAccessor32<scalar_t, 4> mixture_a,
-             const torch::PackedTensorAccessor32<scalar_t, 4> xes_a,
+             const torch::PackedTensorAccessor32<scalar_t, 4>& mixture_a,
+             const torch::PackedTensorAccessor32<scalar_t, 4>& xes_a,
              torch::PackedTensorAccessor32<scalar_t, 3> sum_a,
-             const gpe::MixtureAndXesNs n) {
+             const gpe::MixtureAndXesNs& n) {
     GPE_UNUSED(gpe_gridDim)
     const auto batch_index = gpe_blockIdx.x / n.layers;
     const auto layer_index = gpe_blockIdx.x - batch_index * n.layers;
     const auto batch_xes_index = min(batch_index, n.batch_xes - 1);
     const auto layer_xes_index = min(layer_index, n.layers_xes - 1);
     const auto xes_index = gpe_blockIdx.y;
-    const auto component_index = gpe_blockIdx.z * gpe_blockDim.x + gpe_threadIdx.x;
+    const auto component_index = gpe_blockIdx.z * gpe_blockDim.z + gpe_threadIdx.z;
 
     if (component_index >= uint(n.components))
         return;
@@ -37,8 +37,11 @@ void forward(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
     //           blockIdx.x, blockIdx.y, blockIdx.z, threadIdx.x,
     //           batch_index, layer_index, component_index, xes_index);
 
-    const auto& xp = xes_a[batch_xes_index][layer_xes_index][xes_index][0];
-    const auto& x_pos = gpe::vec<DIMS>(xp);
+    const auto xa = xes_a[batch_xes_index];
+    const auto xb = xa[layer_xes_index];
+    const auto xc = xb[xes_index];
+    const auto& xd = xc[0];
+    const auto& x_pos = gpe::vec<DIMS>(xd);
 
     const auto& c_weight = gpe::weight(mixture_a[batch_index][layer_index][component_index]);
     const auto& c_pos = gpe::position<DIMS>(mixture_a[batch_index][layer_index][component_index]);
@@ -46,7 +49,7 @@ void forward(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
     const auto w = gpe::evaluate_gaussian(x_pos, c_weight, c_pos, c_cov);
 
     //    sum_a[batch_layer_index][xes_index] += w; // test performance impact of atomicAdd; but this will give a wrong result.
-//    atomicAdd(&sum_a[batch_index][layer_index][xes_index], w);
+    gpe::atomicAdd(&sum_a[batch_index][layer_index][xes_index], w);
 }
 
 
@@ -66,7 +69,7 @@ void backward(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
     const auto batch_xes_index = min(batch_index, n.batch_xes - 1);
     const auto layer_xes_index = min(layer_index, n.layers_xes - 1);
     const auto xes_index = gpe_blockIdx.y;
-    const auto component_index = gpe_blockIdx.z * gpe_blockDim.x + gpe_threadIdx.x;
+    const auto component_index = gpe_blockIdx.z * gpe_blockDim.z + gpe_threadIdx.z;
 
     if (component_index >= uint(n.components))
         return;
@@ -74,8 +77,9 @@ void backward(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
     //           blockIdx.x, blockIdx.y, blockIdx.z, threadIdx.x,
     //           batch_index, layer_index, component_index, xes_index);
 
-
-    const auto& x_pos = gpe::vec<DIMS>(xes_a[batch_xes_index][layer_xes_index][xes_index][0]);
+    auto a = xes_a[batch_xes_index][layer_xes_index][xes_index];
+    const scalar_t& memory_location = a[0];
+    const auto& x_pos = gpe::vec<DIMS>(memory_location);
 
     //    glm::vec<DIMS, scalar_t>& grad_xes = gpe::vec<DIMS>(grad_xes_a[batch_layer_index][xes_index][0]);
 
@@ -96,18 +100,18 @@ void backward(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
     if (requires_grad_xes) {
         const auto grad_xes_addition = - grad_output_a[batch_index][layer_index][xes_index] * local_grad_c_pos;
         for (uint i = 0; i < DIMS; ++i) {
-            atomicAdd(&grad_xes_a[batch_xes_index][layer_xes_index][xes_index][i], grad_xes_addition[i]);
+            gpe::atomicAdd(&grad_xes_a[batch_xes_index][layer_xes_index][xes_index][i], grad_xes_addition[i]);
         }
     }
     if (requires_grad_mixture) {
         const auto grad_c_weight_addition = exp * grad_output_a[batch_index][layer_index][xes_index];
         const auto grad_c_pos_addition = local_grad_c_pos * grad_output_a[batch_index][layer_index][xes_index];
         const auto grad_c_cov_addition = - c_weight * scalar_t(0.5) * exp * grad_output_a[batch_index][layer_index][xes_index] * glm::outerProduct(t, t);
-        atomicAdd(&grad_mixture_a[batch_index][layer_index][component_index][0], grad_c_weight_addition);
+        gpe::atomicAdd(&grad_mixture_a[batch_index][layer_index][component_index][0], grad_c_weight_addition);
         for (uint i = 0; i < DIMS; ++i) {
-            atomicAdd(&grad_mixture_a[batch_index][layer_index][component_index][1 + i], grad_c_pos_addition[i]);
+            gpe::atomicAdd(&grad_mixture_a[batch_index][layer_index][component_index][1 + i], grad_c_pos_addition[i]);
             for (uint j = 0; j < DIMS; ++j)
-                atomicAdd(&grad_mixture_a[batch_index][layer_index][component_index][1 + DIMS + i*DIMS + j], grad_c_cov_addition[i][j]);
+                gpe::atomicAdd(&grad_mixture_a[batch_index][layer_index][component_index][1 + DIMS + i*DIMS + j], grad_c_cov_addition[i][j]);
         }
     }
 }
@@ -120,18 +124,18 @@ at::Tensor parallel_forward_impl(const torch::Tensor& mixture, const torch::Tens
 
     torch::Tensor sum = torch::zeros({n.batch, n.layers, n.xes}, torch::dtype(mixture.dtype()).device(mixture.device()));
 
+    TORCH_CHECK(mixture.device() == xes.device(), "mixture and xes must be on the same device");
     TORCH_CHECK(n.batch * n.layers < 65535, "n_batch x n_layers must be smaller than 65535 for CUDA");
     TORCH_CHECK(n.xes < 65535, "number of xes must be smaller than 65535 for CUDA");
 
 
-    dim3 dimBlock = dim3(128);
+    dim3 dimBlock = dim3(1, 1, 128);
     const dim3 dimGrid = dim3(n.batch * n.layers,
                               n.xes,
                               (n.components + dimBlock.z - 1) / dimBlock.z);
     //    std::cout << "forward: dimBlock=" << dimBlock.x << "/" << dimBlock.y << "/" << dimBlock.z << ", dimGrid=" << dimGrid.x << "/" << dimGrid.y << "/" << dimGrid.z << std::endl;
 
 
-    std::cout << "11" << std::endl;
     AT_DISPATCH_FLOATING_TYPES(mixture.scalar_type(), "cuda_parallel_forward_impl", ([&] {
                                    auto mixture_a = mixture.packed_accessor32<scalar_t, 4>();
                                    auto xes_a = xes.packed_accessor32<scalar_t, 4>();
@@ -142,9 +146,7 @@ at::Tensor parallel_forward_impl(const torch::Tensor& mixture, const torch::Tens
                                            (const dim3& gpe_gridDim, const dim3& gpe_blockDim, const dim3& gpe_blockIdx, const dim3& gpe_threadIdx) {
                                                forward<scalar_t, 2>(gpe_gridDim, gpe_blockDim, gpe_blockIdx, gpe_threadIdx, mixture_a, xes_a, sum_a, n);
                                            };
-                                       std::cout << "12" << std::endl;
                                        gpe::start_parallel(gpe::device(mixture), dimGrid, dimBlock, fun);
-                                       std::cout << "13" << std::endl;
                                    }
                                    else {
                                        auto fun = [mixture_a, xes_a, sum_a, n] __host__ __device__

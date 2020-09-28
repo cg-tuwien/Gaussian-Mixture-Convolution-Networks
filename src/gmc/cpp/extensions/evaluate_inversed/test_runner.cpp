@@ -15,7 +15,7 @@
 
 #include "parallel_binding.h"
 
-//torch::Tensor cpu_parallel_forward(const torch::Tensor& mixture, const torch::Tensor& xes);
+torch::Tensor cpu_parallel_forward(const torch::Tensor& mixture, const torch::Tensor& xes);
 //torch::Tensor cuda_parallel_forward(const torch::Tensor& mixture, const torch::Tensor& xes);
 
 std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> cuda_bvh_forward(const torch::Tensor& mixture, const torch::Tensor& xes);
@@ -27,7 +27,7 @@ torch::Tensor cuda_bvh_forward_wrapper(const torch::Tensor& mixture, const torch
 }
 
 constexpr uint N_BATCHES = 1;
-constexpr uint N_CONVOLUTION_LAYERS = 3;
+constexpr uint N_CONVOLUTION_LAYERS = 1;
 constexpr uint LIMIT_N_BATCH = 100;
 
 void show(torch::Tensor mixture, const uint resolution, const uint n_batch_limit) {
@@ -90,7 +90,7 @@ int main(int argc, char *argv[]) {
 //                                          {0.02f, 5.f, 5.f, 1.01f, 0.5f, 0.5f, 4.0f}}).view({1, 1, 2, 7});
 //            mixture = mixture.cuda();
             std::cout << "layer " << i << ": " << mixture.sizes() << " device: " << mixture.device() << std::endl;
-//            show(mixture, 128, LIMIT_N_BATCH);
+            show(mixture, 128, LIMIT_N_BATCH);
 
             const auto weights = gpe::weights(mixture);
             const auto positions = gpe::positions(mixture);
@@ -100,18 +100,14 @@ int main(int argc, char *argv[]) {
 
             auto start = std::chrono::high_resolution_clock::now();
             const auto eval_fun = mixture.is_cuda() ? &cuda_bvh_forward_wrapper : &parallel_forward;
-            std::cout << "1" << std::endl;
             auto rendering = eval_fun(mixture, positions.contiguous()).cpu();
-            std::cout << "2" << std::endl;
 //            cudaDeviceSynchronize();
             auto end = std::chrono::high_resolution_clock::now();
             std::cout << "elapsed time: " << std::chrono::duration_cast<std::chrono::milliseconds>(end-start).count() << "ms\n";
         }
     }
 
-
-//    torch::load(d, "/home/madam/Documents/work/tuw/gmc_net/data/fitting_input/fitting_input_batch0_netlayer0.tensor");
     std::cout << "DONE" << std::endl;
-//    return a.exec();
+    return a.exec();
     return 0;
 }

@@ -59,6 +59,7 @@ fastexp (float p)
 
 }
 
+#ifdef __CUDA_ARCH__
 __forceinline__ __device__ float max(float a, float b) {
     return ::fmaxf(a, b);
 }
@@ -92,6 +93,7 @@ __forceinline__ __device__ float abs(float x) {
 __forceinline__ __device__ double abs(double x) {
     return ::fabs(x);
 }
+#endif
 
 template <typename scalar_t>
 inline scalar_t max(scalar_t a, scalar_t b) {
