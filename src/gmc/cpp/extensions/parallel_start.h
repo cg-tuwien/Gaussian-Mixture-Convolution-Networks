@@ -14,6 +14,8 @@ namespace gpe {
 
 template <class T>
 __host__ __device__ __forceinline__ T atomicAdd(T *ptr, T val) {
+//    *ptr += val;
+//    return *ptr;
 #ifdef __CUDA_ARCH__
     return ::atomicAdd(ptr, val);
 #elif defined(_OPENMP) and _OPENMP>=201107
@@ -26,6 +28,10 @@ __host__ __device__ __forceinline__ T atomicAdd(T *ptr, T val) {
 #endif
 }
 
+template <typename T>
+struct RestrictPtrTraits {
+    typedef T* __restrict__ PtrType;
+};
 
 namespace detail {
 

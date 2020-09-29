@@ -73,7 +73,7 @@ __forceinline__ __device__ float min(double a, double b) {
     return ::fmin(a, b);
 }
 template <typename T>
-__forceinline__ __device__ float min(T a, T b) {
+__forceinline__ __device__ T min(T a, T b) {
     return ::min(a, b);
 }
 __forceinline__ __device__ float exp(float x) {
