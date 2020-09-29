@@ -29,17 +29,18 @@ struct Gaussian {
     glm::mat<N_DIMS, N_DIMS, scalar_t> covariance;
 };
 
-#ifdef GPE_NO_CUDA_ERROR_CHECKING
-#define gpuErrchk(ans)
+
+#if defined(GPE_NO_CUDA_ERROR_CHECKING) or defined(NDEBUG)
+#define GPE_CUDA_ASSERT(ans)
 #else
-#define gpuErrchk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
+#define GPE_CUDA_ASSERT(ans) { gpuAssert((ans), __FILE__, __LINE__); }
 inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=true)
 {
-   if (code != cudaSuccess)
-   {
-      fprintf(stderr,"GPUassert: %s %s %d\n", cudaGetErrorString(code), file, line);
-      if (abort) exit(code);
-   }
+    if (code != cudaSuccess)
+    {
+        fprintf(stderr,"GPUassert: %s %s %d\n", cudaGetErrorString(code), file, line);
+        if (abort) exit(code);
+    }
 }
 #endif
 
@@ -542,8 +543,8 @@ protected:
         dim3 dimBlock = dim3(1024, 1, 1);
         dim3 dimGrid = dim3((n_gaussians + dimBlock.x - 1) / dimBlock.x, 1, 1);
         kernels::compute_aabbs<scalar_t, 2><<<dimGrid, dimBlock>>>(aabbs_a, gaussians_a, n_gaussians, threshold);
-        gpuErrchk(cudaPeekAtLastError());
-        gpuErrchk(cudaDeviceSynchronize());
+        GPE_CUDA_ASSERT(cudaPeekAtLastError());
+        GPE_CUDA_ASSERT(cudaDeviceSynchronize());
         return aabbs;
     }
 
@@ -564,8 +565,8 @@ protected:
                                   (m_n_leaf_nodes + dimBlock.y - 1) / dimBlock.y);
         kernels::compute_morton_codes<scalar_t, morton_torch_t><<<dimGrid, dimBlock>>>(aabb_a, aabb_whole_a, morton_codes_a, n_mixtures, m_n_leaf_nodes);
 
-        gpuErrchk(cudaPeekAtLastError());
-        gpuErrchk(cudaDeviceSynchronize());
+        GPE_CUDA_ASSERT(cudaPeekAtLastError());
+        GPE_CUDA_ASSERT(cudaDeviceSynchronize());
         return morton_codes.view({m_n.batch, m_n.layers, m_n.components});
     }
 
@@ -596,14 +597,14 @@ protected:
                     num_items, num_segments,
                     d_offsets, d_offsets + 1);
 
-        gpuErrchk(cudaPeekAtLastError());
-        gpuErrchk(cudaDeviceSynchronize());
+        GPE_CUDA_ASSERT(cudaPeekAtLastError());
+        GPE_CUDA_ASSERT(cudaDeviceSynchronize());
 
         // Allocate temporary storage
         cudaMalloc(&d_temp_storage, temp_storage_bytes);
 
-        gpuErrchk(cudaPeekAtLastError());
-        gpuErrchk(cudaDeviceSynchronize());
+        GPE_CUDA_ASSERT(cudaPeekAtLastError());
+        GPE_CUDA_ASSERT(cudaDeviceSynchronize());
         // Run sorting operation
         cub::DeviceSegmentedRadixSort::SortPairs(
 //        cub::DeviceSegmentedRadixSort::SortKeys(
@@ -616,8 +617,8 @@ protected:
         // d_keys_out            <-- [6, 8, 5, 7, 0, 3, 8, 9]
         // d_values_out          <-- [1, 0, 3, 2, 5, 4, 7, 6]
 
-        gpuErrchk(cudaPeekAtLastError());
-        gpuErrchk(cudaDeviceSynchronize());
+        GPE_CUDA_ASSERT(cudaPeekAtLastError());
+        GPE_CUDA_ASSERT(cudaDeviceSynchronize());
 
         cudaFree(d_temp_storage);
 
@@ -640,8 +641,8 @@ protected:
                                   (m_n.components + dimBlock.y - 1) / dimBlock.y);
         kernels::createLeafNodes<scalar_t, morton_torch_t><<<dimGrid, dimBlock>>>(morton_codes_a, nodes_a, n_mixtures, m_n.components);
 
-        gpuErrchk(cudaPeekAtLastError());
-        gpuErrchk(cudaDeviceSynchronize());
+        GPE_CUDA_ASSERT(cudaPeekAtLastError());
+        GPE_CUDA_ASSERT(cudaDeviceSynchronize());
         return morton_codes;
     }
 
@@ -661,8 +662,8 @@ protected:
         kernels::create_internal_nodes<scalar_t, morton_torch_t><<<dimGrid, dimBlock>>>(morton_codes_a, nodes_a,
                                                                                         n_mixtures, m_n_internal_nodes, m_n_leaf_nodes);
 
-        gpuErrchk(cudaPeekAtLastError());
-        gpuErrchk(cudaDeviceSynchronize());
+        GPE_CUDA_ASSERT(cudaPeekAtLastError());
+        GPE_CUDA_ASSERT(cudaDeviceSynchronize());
     }
 
     void create_aabbs_for_internal_nodes() {
@@ -680,8 +681,8 @@ protected:
                             (m_n_leaf_nodes + dimBlock.y - 1) / dimBlock.y);
         kernels::create_aabbs_for_internal_nodes<scalar_t><<<dimGrid, dimBlock>>>(flags_a, nodes_a, aabb_a,
                                                                                   n_mixtures, m_n_internal_nodes, m_n_nodes);
-        gpuErrchk(cudaPeekAtLastError());
-        gpuErrchk(cudaDeviceSynchronize());
+        GPE_CUDA_ASSERT(cudaPeekAtLastError());
+        GPE_CUDA_ASSERT(cudaDeviceSynchronize());
     }
 
 public:

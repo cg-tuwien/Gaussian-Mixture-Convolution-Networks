@@ -29,27 +29,18 @@ __host__ __device__ __forceinline__ T atomicAdd(T *ptr, T val) {
 
 namespace detail {
 
-inline dim3 to3dIdx(const dim3& dimension, unsigned idx ) {
-    unsigned x = idx / (dimension.z * dimension.y);
-    idx -= x * dimension.z * dimension.y;
-    unsigned y = idx / dimension.z;
-    unsigned z = idx - y * dimension.z;
-//    unsigned x = idx % dimension.x;
-    return { x, y, z };
-}
-
 //void gpe_start_cpu_parallel(const dim3& gridDim, const dim3& blockDim, const std::function<void(const dim3&, const dim3&, const dim3&, const dim3&)>& function);
 template <typename Fun>
 inline void gpe_start_cpu_parallel(const dim3& gridDim, const dim3& blockDim, Fun function) {
     #pragma omp parallel for num_threads(omp_get_num_procs()) collapse(3)
-    for (unsigned blockIdxX = 0; blockIdxX < gridDim.x; ++blockIdxX) {
+    for (unsigned blockIdxZ = 0; blockIdxZ < gridDim.z; ++blockIdxZ) {
         for (unsigned blockIdxY = 0; blockIdxY < gridDim.y; ++blockIdxY) {
-            for (unsigned blockIdxZ = 0; blockIdxZ < gridDim.z; ++blockIdxZ) {
+            for (unsigned blockIdxX = 0; blockIdxX < gridDim.x; ++blockIdxX) {
                 const auto blockIdx = dim3{blockIdxX, blockIdxY, blockIdxZ};
                 dim3 threadIdx = {0, 0, 0};
-                for (threadIdx.x = 0; threadIdx.x < blockDim.x; ++threadIdx.x) {
+                for (threadIdx.z = 0; threadIdx.z < blockDim.z; ++threadIdx.z) {
                     for (threadIdx.y = 0; threadIdx.y < blockDim.y; ++threadIdx.y) {
-                        for (threadIdx.z = 0; threadIdx.z < blockDim.z; ++threadIdx.z) {
+                        for (threadIdx.x = 0; threadIdx.x < blockDim.x; ++threadIdx.x) {
                             function(gridDim, blockDim, blockIdx, threadIdx);
                         }
                     }
@@ -65,8 +56,16 @@ template <typename Fun>
 __global__ void gpe_generic_cuda_kernel(Fun function) {
     function(gridDim, blockDim, blockIdx, threadIdx);
 }
-#endif
 
+inline void gpu_assert(cudaError_t code)
+{
+    if (code != cudaSuccess)
+    {
+        fprintf(stderr,"GPUassert in start_parallel: %s\n", cudaGetErrorString(code));
+        exit(code);
+    }
+}
+#endif
 } // namespace detail
 
 enum class ComputeDevice {
@@ -79,12 +78,18 @@ inline ComputeDevice device(const torch::Tensor& t) {
     return t.is_cuda() ? ComputeDevice::CUDA : ComputeDevice::CPU;
 }
 
+
+
 template <typename Fun>
 void start_parallel(ComputeDevice device, const dim3& gridDim, const dim3& blockDim, const Fun& function) {
     switch (device) {
 #ifdef __CUDACC__
         case ComputeDevice::CUDA:
             detail::gpe_generic_cuda_kernel<<<gridDim, blockDim>>>(function);
+            #if not defined(GPE_NO_CUDA_ERROR_CHECKING) and not defined(NDEBUG)
+            detail::gpu_assert(cudaPeekAtLastError());
+            detail::gpu_assert(cudaDeviceSynchronize());
+            #endif
         break;
 #endif
         case ComputeDevice::CPU:

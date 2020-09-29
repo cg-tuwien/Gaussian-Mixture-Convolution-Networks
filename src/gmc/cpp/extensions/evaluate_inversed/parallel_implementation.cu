@@ -24,12 +24,12 @@ void forward(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
              torch::PackedTensorAccessor32<scalar_t, 3> sum_a,
              const gpe::MixtureAndXesNs n) {
     GPE_UNUSED(gpe_gridDim)
-    const auto batch_index = gpe_blockIdx.x / n.layers;
-    const auto layer_index = gpe_blockIdx.x - batch_index * n.layers;
+    const auto batch_index = gpe_blockIdx.z / n.layers;
+    const auto layer_index = gpe_blockIdx.z - batch_index * n.layers;
     const auto batch_xes_index = min(batch_index, n.batch_xes - 1);
     const auto layer_xes_index = min(layer_index, n.layers_xes - 1);
     const auto xes_index = gpe_blockIdx.y;
-    const auto component_index = gpe_blockIdx.z * gpe_blockDim.z + gpe_threadIdx.z;
+    const auto component_index = gpe_blockIdx.x * gpe_blockDim.x + gpe_threadIdx.x;
 
     if (component_index >= uint(n.components))
         return;
@@ -126,10 +126,10 @@ at::Tensor parallel_forward_impl(const torch::Tensor& mixture, const torch::Tens
     TORCH_CHECK(n.xes < 65535, "number of xes must be smaller than 65535 for CUDA");
 
 
-    dim3 dimBlock = dim3(1, 1, 128);
-    const dim3 dimGrid = dim3(n.batch * n.layers,
+    dim3 dimBlock = dim3(128, 1, 1);
+    const dim3 dimGrid = dim3((n.components + dimBlock.x - 1) / dimBlock.x,
                               n.xes,
-                              (n.components + dimBlock.z - 1) / dimBlock.z);
+                              n.batch * n.layers);
     //    std::cout << "forward: dimBlock=" << dimBlock.x << "/" << dimBlock.y << "/" << dimBlock.z << ", dimGrid=" << dimGrid.x << "/" << dimGrid.y << "/" << dimGrid.z << std::endl;
 
 

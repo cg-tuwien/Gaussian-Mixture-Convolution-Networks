@@ -217,8 +217,8 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> cuda_bvh_forward_impl(co
         sum = torch::gather(sum, 2, indices);
     }
 
-    gpuErrchk(cudaPeekAtLastError());
-    gpuErrchk(cudaDeviceSynchronize());
+    GPE_CUDA_ASSERT(cudaPeekAtLastError());
+    GPE_CUDA_ASSERT(cudaDeviceSynchronize());
 
     return std::make_tuple(sum, bvh.m_nodes, bvh.m_aabbs);
 }

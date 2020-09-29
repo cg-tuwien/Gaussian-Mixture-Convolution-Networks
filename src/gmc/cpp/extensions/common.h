@@ -5,20 +5,13 @@
 #include <torch/script.h>
 #include <vector>
 
+#include <cuda_runtime.h>
+
 #define GLM_FORCE_INLINE
 #include <glm/glm.hpp>
 
 #include "math/scalar.h"
 #include "math/matrix.h"
-
-#ifndef __CUDACC__
-#define __device__
-#define __host__
-#endif
-
-#ifndef __forceinline__
-#define __forceinline__ inline
-#endif
 
 // avoid unused warning
 #define GPE_UNUSED(x) (void)x;
