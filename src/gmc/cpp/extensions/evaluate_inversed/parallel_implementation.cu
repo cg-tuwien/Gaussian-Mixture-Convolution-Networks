@@ -19,10 +19,10 @@ template <typename scalar_t, int DIMS>
 __host__ __device__
 void forward(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
              const dim3& gpe_blockIdx, const dim3& gpe_threadIdx,
-             const torch::PackedTensorAccessor32<scalar_t, 4>& mixture_a,
-             const torch::PackedTensorAccessor32<scalar_t, 4>& xes_a,
+             const torch::PackedTensorAccessor32<scalar_t, 4> mixture_a,
+             const torch::PackedTensorAccessor32<scalar_t, 4> xes_a,
              torch::PackedTensorAccessor32<scalar_t, 3> sum_a,
-             const gpe::MixtureAndXesNs& n) {
+             const gpe::MixtureAndXesNs n) {
     GPE_UNUSED(gpe_gridDim)
     const auto batch_index = gpe_blockIdx.x / n.layers;
     const auto layer_index = gpe_blockIdx.x - batch_index * n.layers;
@@ -33,9 +33,6 @@ void forward(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
 
     if (component_index >= uint(n.components))
         return;
-    //    printf("block %d/%d/%d, thread %d: batch_index=%d, layer_index=%d, component_index=%d, xes_index=%d \n",
-    //           blockIdx.x, blockIdx.y, blockIdx.z, threadIdx.x,
-    //           batch_index, layer_index, component_index, xes_index);
 
     const auto xa = xes_a[batch_xes_index];
     const auto xb = xa[layer_xes_index];
@@ -48,7 +45,7 @@ void forward(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
     const auto& c_cov = gpe::covariance<DIMS>(mixture_a[batch_index][layer_index][component_index]);
     const auto w = gpe::evaluate_gaussian(x_pos, c_weight, c_pos, c_cov);
 
-    //    sum_a[batch_layer_index][xes_index] += w; // test performance impact of atomicAdd; but this will give a wrong result.
+//    sum_a[batch_index][layer_index][xes_index] += w; // test performance impact of atomicAdd; but this will give a wrong result.
     gpe::atomicAdd(&sum_a[batch_index][layer_index][xes_index], w);
 }
 

@@ -8,19 +8,7 @@
 #include <torch/all.h>
 #include <cuda_runtime.h>
 
-//#ifndef __CUDA_ARCH__
-//    #if defined(_OPENMP) and _OPENMP>=201107
-//    template <class T>
-//    __host__ inline T atomicAdd(T *ptr, T val) {
-//        T t;
-//    #pragma omp atomic capture
-//        { t = *ptr; *ptr += val; }
-//        return t;
-//    }
-//    #else
-//    #error "Requires gcc or OpenMP>=3.1"
-//    #endif
-//#endif
+#include "cuda_qt_creator_definitinos.h"
 
 namespace gpe {
 
@@ -41,7 +29,7 @@ __host__ __device__ __forceinline__ T atomicAdd(T *ptr, T val) {
 
 namespace detail {
 
-dim3 to3dIdx(const dim3& dimension, unsigned idx ) {
+inline dim3 to3dIdx(const dim3& dimension, unsigned idx ) {
     unsigned x = idx / (dimension.z * dimension.y);
     idx -= x * dimension.z * dimension.y;
     unsigned y = idx / dimension.z;
@@ -50,33 +38,21 @@ dim3 to3dIdx(const dim3& dimension, unsigned idx ) {
     return { x, y, z };
 }
 
+//void gpe_start_cpu_parallel(const dim3& gridDim, const dim3& blockDim, const std::function<void(const dim3&, const dim3&, const dim3&, const dim3&)>& function);
 template <typename Fun>
-void gpe_start_cpu_parallel(const dim3& gridDim, const dim3& blockDim, const Fun& function) {
-    #pragma omp parallel for num_threads(omp_get_num_procs())
-    for (unsigned grid_i = 0; grid_i < gridDim.x * gridDim.y * gridDim.z; ++grid_i) {
-        const dim3 blockIdx = to3dIdx(gridDim, grid_i);
-        assert(blockIdx.x >= 0 && blockIdx.x < gridDim.x);
-        assert(blockIdx.y >= 0 && blockIdx.y < gridDim.y);
-        assert(blockIdx.z >= 0 && blockIdx.z < gridDim.z);
-        const auto num_block_threads = blockDim.x * blockDim.y * blockDim.z;
-        // at least simulate a warp // can't go much higher because win supports only 64
-//        const auto num_real_threads = std::min(std::max(omp_get_num_procs(), 32), int(num_block_threads));
-//        std::cout << "gpe_start_cpu_parallel/num_real_threads: " << num_real_threads << std::endl;
-//        #pragma omp parallel for num_threads(num_real_threads)
-//        #pragma omp parallel for num_threads(omp_get_num_procs())
-//        for (unsigned block_i = 0; block_i < num_block_threads; ++block_i) {
-//            const dim3 threadIdx = to3dIdx(blockDim, block_i);
-//            assert(threadIdx.x >= 0 && threadIdx.x < blockDim.x);
-//            assert(threadIdx.y >= 0 && threadIdx.y < blockDim.y);
-//            assert(threadIdx.z >= 0 && threadIdx.z < blockDim.z);
-//            function(gridDim, blockDim, blockIdx, threadIdx);
-//        }
-
-        dim3 threadIdx = {0, 0, 0};
-        for (; threadIdx.z < blockDim.z; ++threadIdx.z) {
-            for (threadIdx.y = 0; threadIdx.y < blockDim.y; ++threadIdx.y) {
+inline void gpe_start_cpu_parallel(const dim3& gridDim, const dim3& blockDim, Fun function) {
+    #pragma omp parallel for num_threads(omp_get_num_procs()) collapse(3)
+    for (unsigned blockIdxX = 0; blockIdxX < gridDim.x; ++blockIdxX) {
+        for (unsigned blockIdxY = 0; blockIdxY < gridDim.y; ++blockIdxY) {
+            for (unsigned blockIdxZ = 0; blockIdxZ < gridDim.z; ++blockIdxZ) {
+                const auto blockIdx = dim3{blockIdxX, blockIdxY, blockIdxZ};
+                dim3 threadIdx = {0, 0, 0};
                 for (threadIdx.x = 0; threadIdx.x < blockDim.x; ++threadIdx.x) {
-                    function(gridDim, blockDim, blockIdx, threadIdx);
+                    for (threadIdx.y = 0; threadIdx.y < blockDim.y; ++threadIdx.y) {
+                        for (threadIdx.z = 0; threadIdx.z < blockDim.z; ++threadIdx.z) {
+                            function(gridDim, blockDim, blockIdx, threadIdx);
+                        }
+                    }
                 }
             }
         }
@@ -99,7 +75,7 @@ enum class ComputeDevice {
 
 
 
-ComputeDevice device(const torch::Tensor& t) {
+inline ComputeDevice device(const torch::Tensor& t) {
     return t.is_cuda() ? ComputeDevice::CUDA : ComputeDevice::CPU;
 }
 

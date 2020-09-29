@@ -13,7 +13,6 @@ set(CMAKE_CUDA_ARCHITECTURES 60)
 # set(CMAKE_CUDA_FLAGS
 #     "-D_GLIBCXX_USE_CXX11_ABI=0 -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --expt-relaxed-constexpr --compiler-options '-fPIC' -O3 --use_fast_math -std=c++14"
 #     )
-# string(APPEND CMAKE_CXX_FLAGS " -D_GLIBCXX_USE_CXX11_ABI=0")
 string(APPEND CMAKE_CUDA_FLAGS " -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --expt-extended-lambda --expt-relaxed-constexpr")
 string(APPEND CMAKE_CUDA_FLAGS " -Xcompiler -fPIC,-fopenmp")
 string(APPEND CMAKE_CUDA_FLAGS_RELEASE " --use_fast_math --generate-line-info")
@@ -25,8 +24,9 @@ string(APPEND CMAKE_CUDA_FLAGS_DEBUG " -g -G")
 #string(APPEND CMAKE_CXX_FLAGS_DEBUG " -fno-omit-frame-pointer -fsanitize=address")
 #string(APPEND CMAKE_LINKER_FLAGS_DEBUG " -fno-omit-frame-pointer -fsanitize=address")
 
-
-# set(CMAKE_CXX_FLAGS -D_GLIBCXX_USE_CXX11_ABI=0 -O3 --use_fast_math)
+#target_compile_options(kre -Wall -Wextra -Wpedantic -Werror)
+string(APPEND CMAKE_CXX_FLAGS_RELEASE " -ffast-math -O4 -march=native")
+string(APPEND CMAKE_EXE_LINKER_FLAGS " -fuse-ld=lld")
 
 add_compile_definitions(GMC_CMAKE_TEST_BUILD)
 
@@ -93,7 +93,7 @@ set(MATH_SOURCES
 
 set(EVALUATE_SOURCES
     evaluate_inversed/parallel_implementation.h
-    evaluate_inversed/parallel_implementation.cpp
+    evaluate_inversed/parallel_implementation.cu
     evaluate_inversed/parallel_binding.h
     evaluate_inversed/parallel_binding.cpp
     evaluate_inversed/cuda_bvh.cpp
