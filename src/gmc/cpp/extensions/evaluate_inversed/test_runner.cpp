@@ -12,6 +12,7 @@
 #include <cuda_runtime.h>
 
 #include "common.h"
+#include "mixture.h"
 
 #include "parallel_binding.h"
 

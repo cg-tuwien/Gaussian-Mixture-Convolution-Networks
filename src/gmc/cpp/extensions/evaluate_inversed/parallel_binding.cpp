@@ -1,13 +1,9 @@
 #include "parallel_binding.h"
 
-#include <vector>
-#include <algorithm>
 #include <cassert>
 
-#include <torch/extension.h>
 #include <c10/cuda/CUDAGuard.h>
 
-#include "common.h"
 #include "parallel_implementation.h"
 
 // We can't use a single implementatino file because the cuda compiler doesn't like pybind11 (i guess)

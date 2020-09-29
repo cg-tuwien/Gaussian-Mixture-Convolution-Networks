@@ -14,6 +14,7 @@
 #include <cub/device/device_segmented_radix_sort.cuh>
 
 #include "common.h"
+#include "mixture.h"
 #include "cuda_qt_creator_definitinos.h"
 #include "math/symeig_detail.h"
 #include "math/symeig_cuda.h"

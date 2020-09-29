@@ -12,6 +12,7 @@
 #include <cuda_runtime.h>
 
 #include "common.h"
+#include "mixture.h"
 #include "bvh_mhem_fit/bindings.h"
 
 torch::Tensor cuda_bvh_forward_wrapper(const torch::Tensor& mixture, const torch::Tensor& xes) {

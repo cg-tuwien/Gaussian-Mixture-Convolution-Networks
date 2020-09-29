@@ -66,6 +66,16 @@ __forceinline__ __device__ float max(float a, float b) {
 __forceinline__ __device__ float max(double a, double b) {
     return ::fmax(a, b);
 }
+__forceinline__ __device__ float min(float a, float b) {
+    return ::fminf(a, b);
+}
+__forceinline__ __device__ float min(double a, double b) {
+    return ::fmin(a, b);
+}
+template <typename T>
+__forceinline__ __device__ float min(T a, T b) {
+    return ::min(a, b);
+}
 __forceinline__ __device__ float exp(float x) {
     return ::expf(x);
 }
@@ -93,12 +103,18 @@ __forceinline__ __device__ float abs(float x) {
 __forceinline__ __device__ double abs(double x) {
     return ::fabs(x);
 }
-#endif
+#else
 
 template <typename scalar_t>
 inline scalar_t max(scalar_t a, scalar_t b) {
     return std::max(a, b);
 }
+
+template <typename scalar_t>
+inline scalar_t min(scalar_t a, scalar_t b) {
+    return std::min(a, b);
+}
+
 
 template <typename scalar_t>
 inline scalar_t exp(scalar_t x) {
@@ -119,6 +135,8 @@ template <typename scalar_t>
 inline scalar_t abs(scalar_t x) {
     return std::abs(x);
 }
+
+#endif
 
 }
 

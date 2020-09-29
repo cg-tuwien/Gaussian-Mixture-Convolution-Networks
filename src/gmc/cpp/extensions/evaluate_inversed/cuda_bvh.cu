@@ -14,6 +14,7 @@
 #include <glm/glm.hpp>
 
 #include "common.h"
+#include "mixture.h"
 #include "cuda_qt_creator_definitinos.h"
 #include "lbvh/aabb.h"
 #include "lbvh/bvh.h"

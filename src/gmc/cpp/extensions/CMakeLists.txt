@@ -68,6 +68,7 @@ include_directories(SYSTEM ${MY_INCLUDE_PATHS} SYSTEM ${TORCH_INCLUDE_DIRS})
 
 set(HEADERS
     common.h
+    mixture.h
     parallel_start.h
     cuda_qt_creator_definitinos.h
 )
@@ -98,9 +99,6 @@ set(EVALUATE_SOURCES
     evaluate_inversed/parallel_binding.cpp
     evaluate_inversed/cuda_bvh.cpp
     evaluate_inversed/cuda_bvh.cu
-    evaluate_inversed/cpu_parallel.cpp
-    evaluate_inversed/cuda_parallel.cpp
-    evaluate_inversed/cuda_parallel.cu
     evaluate_inversed/test_runner.cpp
 )
 

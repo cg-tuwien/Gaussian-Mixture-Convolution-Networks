@@ -9,8 +9,10 @@
 #include <vector>
 #include <algorithm>
 
-#include "parallel_start.h"
 #include "common.h"
+#include "parallel_start.h"
+#include "mixture.h"
+#include "math/scalar.h"
 #include "cuda_qt_creator_definitinos.h"
 
 namespace {
@@ -24,29 +26,29 @@ void forward(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
              torch::PackedTensorAccessor32<scalar_t, 3> sum_a,
              const gpe::MixtureAndXesNs n) {
     GPE_UNUSED(gpe_gridDim)
-    const auto batch_index = gpe_blockIdx.z / n.layers;
-    const auto layer_index = gpe_blockIdx.z - batch_index * n.layers;
-    const auto batch_xes_index = min(batch_index, n.batch_xes - 1);
-    const auto layer_xes_index = min(layer_index, n.layers_xes - 1);
-    const auto xes_index = gpe_blockIdx.y;
-    const auto component_index = gpe_blockIdx.x * gpe_blockDim.x + gpe_threadIdx.x;
+    const auto batch_index = gpe_blockIdx.z;
+    const auto layer_index = gpe_blockIdx.y;
+    const auto batch_xes_index = gpe::min(batch_index, n.batch_xes - 1);
+    const auto layer_xes_index = gpe::min(layer_index, n.layers_xes - 1);
+    const auto xes_index = gpe_blockIdx.x * gpe_blockDim.x + gpe_threadIdx.x;
 
-    if (component_index >= uint(n.components))
+    if (xes_index >= uint(n.xes))
         return;
 
-    const auto xa = xes_a[batch_xes_index];
-    const auto xb = xa[layer_xes_index];
-    const auto xc = xb[xes_index];
-    const auto& xd = xc[0];
-    const auto& x_pos = gpe::vec<DIMS>(xd);
+    for (int component_index = 0; component_index < n.components; ++component_index) {
+        const auto xa = xes_a[batch_xes_index];
+        const auto xb = xa[layer_xes_index];
+        const auto xc = xb[xes_index];
+        const auto& xd = xc[0];
+        const auto& x_pos = gpe::vec<DIMS>(xd);
 
-    const auto& c_weight = gpe::weight(mixture_a[batch_index][layer_index][component_index]);
-    const auto& c_pos = gpe::position<DIMS>(mixture_a[batch_index][layer_index][component_index]);
-    const auto& c_cov = gpe::covariance<DIMS>(mixture_a[batch_index][layer_index][component_index]);
-    const auto w = gpe::evaluate_gaussian(x_pos, c_weight, c_pos, c_cov);
+        const auto& c_weight = gpe::weight(mixture_a[batch_index][layer_index][component_index]);
+        const auto& c_pos = gpe::position<DIMS>(mixture_a[batch_index][layer_index][component_index]);
+        const auto& c_cov = gpe::covariance<DIMS>(mixture_a[batch_index][layer_index][component_index]);
+        const auto w = gpe::evaluate_gaussian(x_pos, c_weight, c_pos, c_cov);
 
-//    sum_a[batch_index][layer_index][xes_index] += w; // test performance impact of atomicAdd; but this will give a wrong result.
-    gpe::atomicAdd(&sum_a[batch_index][layer_index][xes_index], w);
+        sum_a[batch_index][layer_index][xes_index] += w;
+    }
 }
 
 
@@ -127,9 +129,9 @@ at::Tensor parallel_forward_impl(const torch::Tensor& mixture, const torch::Tens
 
 
     dim3 dimBlock = dim3(128, 1, 1);
-    const dim3 dimGrid = dim3((n.components + dimBlock.x - 1) / dimBlock.x,
-                              n.xes,
-                              n.batch * n.layers);
+    const dim3 dimGrid = dim3((n.xes + dimBlock.x - 1) / dimBlock.x,
+                              n.layers,
+                              n.batch);
     //    std::cout << "forward: dimBlock=" << dimBlock.x << "/" << dimBlock.y << "/" << dimBlock.z << ", dimGrid=" << dimGrid.x << "/" << dimGrid.y << "/" << dimGrid.z << std::endl;
 
 

@@ -15,6 +15,7 @@
 #include <glm/glm.hpp>
 
 #include "common.h"
+#include "mixture.h"
 #include "cuda_qt_creator_definitinos.h"
 #include "lbvh/aabb.h"
 #include "lbvh/bvh.h"
@@ -50,7 +51,7 @@ std::ostream& operator <<(std::ostream& stream, const Gaussian<N_DIMS, scalar_t>
 
 template <typename scalar_t, int DIMS, template <typename U> class PtrTraits = torch::RestrictPtrTraits>
 __host__ __device__
-    void evaluate_bvh_forward(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
+void evaluate_bvh_forward(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
                          const dim3& gpe_blockIdx, const dim3& gpe_threadIdx,
                          const torch::PackedTensorAccessor32<scalar_t, 4, PtrTraits> mixture,
                          const torch::PackedTensorAccessor32<lbvh::detail::Node::index_type_torch, 4, PtrTraits> nodes,
@@ -145,20 +146,20 @@ void kernel_bvh_backward(const dim3& gpe_blockIdx, const dim3& gpe_blockDim,
         if (requires_grad_xes) {
             const auto grad_xes_addition = - current_grad_output * local_grad_c_pos;
             for (int i = 0; i < DIMS; ++i) {
-                atomicAdd(&current_grad_xes[i], grad_xes_addition[i]);
+                gpe::atomicAdd(&current_grad_xes[i], grad_xes_addition[i]);
             }
         }
-        //        if (requires_grad_mixture) {
-        //            const auto grad_c_weight_addition = exp * current_grad_output;
-        //            const auto grad_c_pos_addition = local_grad_c_pos * current_grad_output;
-        //            const auto grad_c_cov_addition = - g.weight * scalar_t(0.5) * exp * current_grad_output * glm::outerProduct(t, t);
-        //            gpe::atomicAdd(&current_grad_mixture[index][0], grad_c_weight_addition);
-        //            for (int i = 0; i < DIMS; ++i) {
-        //                gpe::atomicAdd(&current_grad_mixture[index][1 + i], grad_c_pos_addition[i]);
-        //                for (int j = 0; j < DIMS; ++j)
-        //                    gpe::atomicAdd(&current_grad_mixture[index][1 + DIMS + i*DIMS + j], grad_c_cov_addition[i][j]);
-        //            }
-        //        }
+        if (requires_grad_mixture) {
+            const auto grad_c_weight_addition = exp * current_grad_output;
+            const auto grad_c_pos_addition = local_grad_c_pos * current_grad_output;
+            const auto grad_c_cov_addition = - g.weight * scalar_t(0.5) * exp * current_grad_output * glm::outerProduct(t, t);
+            gpe::atomicAdd(&current_grad_mixture[index][0], grad_c_weight_addition);
+            for (int i = 0; i < DIMS; ++i) {
+                gpe::atomicAdd(&current_grad_mixture[index][1 + i], grad_c_pos_addition[i]);
+                for (int j = 0; j < DIMS; ++j)
+                    gpe::atomicAdd(&current_grad_mixture[index][1 + DIMS + i*DIMS + j], grad_c_cov_addition[i][j]);
+            }
+        }
 
     };
     lbvh::query_device_with_fun(bvh, lbvh::inside_aabb(point), evaluate_backward);
