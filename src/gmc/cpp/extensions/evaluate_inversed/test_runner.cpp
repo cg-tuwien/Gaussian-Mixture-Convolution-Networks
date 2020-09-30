@@ -16,9 +16,6 @@
 
 #include "parallel_binding.h"
 
-torch::Tensor cpu_parallel_forward(const torch::Tensor& mixture, const torch::Tensor& xes);
-torch::Tensor cuda_parallel_forward(const torch::Tensor& mixture, const torch::Tensor& xes);
-
 std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> cuda_bvh_forward(const torch::Tensor& mixture, const torch::Tensor& xes);
 
 torch::Tensor cuda_bvh_forward_wrapper(const torch::Tensor& mixture, const torch::Tensor& xes) {
@@ -29,9 +26,8 @@ torch::Tensor cuda_bvh_forward_wrapper(const torch::Tensor& mixture, const torch
 
 auto eval_function(const torch::Tensor& tensor) {
     GPE_UNUSED(tensor)
-    return &parallel_forward;
-//    return tensor.is_cuda() ? &cuda_bvh_forward_wrapper : &cpu_parallel_forward;
-//    return tensor.is_cuda() ? &cuda_parallel_forward : &cpu_parallel_forward;
+//    return &parallel_forward;
+    return tensor.is_cuda() ? &cuda_bvh_forward_wrapper : &parallel_forward;
 }
 
 constexpr uint N_BATCHES = 1;
