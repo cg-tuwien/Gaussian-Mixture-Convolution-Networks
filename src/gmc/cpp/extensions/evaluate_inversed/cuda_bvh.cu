@@ -22,6 +22,7 @@
 #include "lbvh/predicator.h"
 #include "math/symeig_cuda.h"
 
+#include "parallel_start.h"
 
 template<int N_DIMS, typename scalar_t>
 std::ostream& operator <<(std::ostream& stream, const Gaussian<N_DIMS, scalar_t>& g) {
@@ -51,9 +52,9 @@ __global__ void evaluate_bvh_forward(const torch::PackedTensorAccessor32<scalar_
 {
     using G = Gaussian<DIMS, scalar_t>;
     using Lbvh = lbvh::detail::basic_device_bvh<scalar_t, G, true>;
-    const auto batch_index = blockIdx.x * blockDim.x + threadIdx.x;
+    const auto xes_index = blockIdx.x * blockDim.x + threadIdx.x;
     const auto layer_index = blockIdx.y * blockDim.y + threadIdx.y;
-    const auto xes_index = blockIdx.z * blockDim.z + threadIdx.z;
+    const auto batch_index = blockIdx.z * blockDim.z + threadIdx.z;
 
     const auto batch_xes_index = min(batch_index, n.batch_xes - 1);
     const auto layer_xes_index = min(layer_index, n.layers_xes - 1);
@@ -74,7 +75,7 @@ __global__ void evaluate_bvh_forward(const torch::PackedTensorAccessor32<scalar_
     const auto& x_pos = gpe::vec<DIMS>(xes[batch_xes_index][layer_xes_index][xes_index][0]);
     auto point = lbvh::make_vector_of(x_pos);
     auto& sum = sums[batch_index][layer_index][xes_index];
-    auto evaluate = [bvh, &sum, &x_pos] (unsigned index) {
+    auto evaluate = [&bvh, &sum, &x_pos] (unsigned index) {
         const auto& g = bvh.objects[index];
         sum += gpe::evaluate_gaussian(x_pos, g.weight, g.position, g.covariance);
     };
@@ -94,9 +95,9 @@ __global__ void kernel_bvh_backward(const torch::PackedTensorAccessor32<scalar_t
 {
     using G = Gaussian<DIMS, scalar_t>;
     using Lbvh = lbvh::detail::basic_device_bvh<scalar_t, G, true>;
-    const auto batch_index = blockIdx.x * blockDim.x + threadIdx.x;
+    const auto xes_index = blockIdx.x * blockDim.x + threadIdx.x;
     const auto layer_index = blockIdx.y * blockDim.y + threadIdx.y;
-    const auto xes_index = blockIdx.z * blockDim.z + threadIdx.z;
+    const auto batch_index = blockIdx.z * blockDim.z + threadIdx.z;
 
     const auto batch_xes_index = min(batch_index, n.batch_xes - 1);
     const auto layer_xes_index = min(layer_index, n.layers_xes - 1);
@@ -166,7 +167,6 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> cuda_bvh_forward_impl(co
     auto n = gpe::check_input_and_get_ns(mixture, xes);
     TORCH_CHECK(mixture.device().is_cuda(), "mixture must be a CUDA tensor");
     TORCH_CHECK(n.batch * n.layers < 65535, "n_batch x n_layers must be smaller than 65535 for CUDA");
-    TORCH_CHECK(n.xes < 65535, "number of xes must be smaller than 65535 for CUDA");
     TORCH_CHECK(n.components > 1, "number of components must be greater 1 for this implementation");
     TORCH_CHECK(n.dims == 2, "atm only 2d gaussians");
     TORCH_CHECK(mixture.dtype() == caffe2::TypeMeta::Make<float>(), "atm only float");
@@ -185,10 +185,10 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> cuda_bvh_forward_impl(co
         xes_copy = torch::gather(xes, 2, indices);
     }
 
-    dim3 dimBlock = dim3(1, 1, LBVH_N_QUERY_THREADS);
-    dim3 dimGrid = dim3((n.batch + dimBlock.x - 1) / dimBlock.x,
+    dim3 dimBlock = dim3(LBVH_N_QUERY_THREADS, 1, 1);
+    dim3 dimGrid = dim3((n.xes + dimBlock.x - 1) / dimBlock.x,
                         (n.layers + dimBlock.y - 1) / dimBlock.y,
-                        (n.xes + dimBlock.z - 1) / dimBlock.z);
+                        (n.batch + dimBlock.z - 1) / dimBlock.z);
 //    printf("dimBlock=(%d, %d, %d)\n", dimBlock.x, dimBlock.y, dimBlock.z);
 //    printf("dimGrid=(%d, %d, %d)\n", dimGrid.x, dimGrid.y, dimGrid.z);
 
@@ -245,10 +245,10 @@ std::tuple<torch::Tensor, torch::Tensor> cuda_bvh_backward_impl(const torch::Ten
     torch::Tensor grad_mixture = torch::zeros_like(mixture);
     torch::Tensor grad_xes = torch::zeros_like(xes);
 
-    dim3 dimBlock = dim3(1, 1, LBVH_N_QUERY_THREADS);
-    dim3 dimGrid = dim3((n.batch + dimBlock.x - 1) / dimBlock.x,
+    dim3 dimBlock = dim3(LBVH_N_QUERY_THREADS, 1, 1);
+    dim3 dimGrid = dim3((n.xes + dimBlock.x - 1) / dimBlock.x,
                         (n.layers + dimBlock.y - 1) / dimBlock.y,
-                        (n.xes + dimBlock.z - 1) / dimBlock.z);
+                        (n.batch + dimBlock.z - 1) / dimBlock.z);
 
     auto xes_copy = xes;
     auto grad_output_copy = grad_output;

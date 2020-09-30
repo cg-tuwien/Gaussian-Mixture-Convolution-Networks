@@ -86,7 +86,7 @@ void query_device_with_fun(const detail::basic_device_bvh<Real, Objects, IsConst
     using node_type  = typename bvh_type::node_type;
 
     __shared__ index_type stack[LBVH_N_QUERY_THREADS][LBVH_QUERY_STACK_SIZE]; // is it okay?
-    index_type* stack_ptr = stack[threadIdx.z];
+    index_type* stack_ptr = stack[threadIdx.x];
     *stack_ptr++ = 0; // root node is always 0
 
     do
@@ -120,7 +120,7 @@ void query_device_with_fun(const detail::basic_device_bvh<Real, Objects, IsConst
             }
         }
     }
-    while (stack[threadIdx.z] < stack_ptr);
+    while (stack[threadIdx.x] < stack_ptr);
 }
 
 // query object index that is the nearst to the query point.
