@@ -90,7 +90,7 @@ int main(int argc, char *argv[]) {
         auto list = container.attributes();
 
         for (uint i = 0; i < N_CONVOLUTION_LAYERS; i++) {
-            auto mixture = container.attr(std::to_string(i)).toTensor();//.index({Slice(0, 2), Slice(0, 1), Slice(0, 5), Slice()});
+            auto mixture = container.attr(std::to_string(i)).toTensor();//.index({Slice(0, 1), Slice(0, 1), Slice(0, 5), Slice()});
 //            auto mixture = torch::tensor({{0.02f, 0.f, 0.f, 1.01f, 1.f, 1.f, 1.0f},
 //                                          {0.02f, 5.f, 5.f, 1.01f, 0.5f, 0.5f, 4.0f}}).view({1, 1, 2, 7});
             if (USE_CUDA)

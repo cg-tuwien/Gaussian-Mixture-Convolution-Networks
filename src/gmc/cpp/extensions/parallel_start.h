@@ -10,6 +10,11 @@
 
 #include "cuda_qt_creator_definitinos.h"
 
+//#ifndef __CUDA_ARCH__
+
+//void __syncthreads();
+//#endif
+
 namespace gpe {
 
 template <class T>
@@ -75,33 +80,33 @@ inline void gpu_assert(cudaError_t code)
 } // namespace detail
 
 enum class ComputeDevice {
-    CPU, CUDA
+    CPU, CUDA, Both
 };
-
-
 
 inline ComputeDevice device(const torch::Tensor& t) {
     return t.is_cuda() ? ComputeDevice::CUDA : ComputeDevice::CPU;
 }
 
-
-
-template <typename Fun>
+template <ComputeDevice allowed_devices, typename Fun>
 void start_parallel(ComputeDevice device, const dim3& gridDim, const dim3& blockDim, const Fun& function) {
-    switch (device) {
+    if (device == ComputeDevice::CUDA && (allowed_devices == ComputeDevice::CUDA || allowed_devices == ComputeDevice::Both)) {
 #ifdef __CUDACC__
-        case ComputeDevice::CUDA:
-            detail::gpe_generic_cuda_kernel<<<gridDim, blockDim>>>(function);
-            #if not defined(GPE_NO_CUDA_ERROR_CHECKING) and not defined(NDEBUG)
-            detail::gpu_assert(cudaPeekAtLastError());
-            detail::gpu_assert(cudaDeviceSynchronize());
-            #endif
-        break;
+        detail::gpe_generic_cuda_kernel<<<gridDim, blockDim>>>(function);
+        #if not defined(GPE_NO_CUDA_ERROR_CHECKING) and not defined(NDEBUG)
+        detail::gpu_assert(cudaPeekAtLastError());
+        detail::gpu_assert(cudaDeviceSynchronize());
+        #endif
+#else
+        std::cerr << "gpe::start_parallel with a device CUDA but no CUDA support!" << std::endl;
+        exit(1);
 #endif
-        case ComputeDevice::CPU:
-        default:
-            detail::gpe_start_cpu_parallel(gridDim, blockDim, function);
-        break;
+    }
+    if (device == ComputeDevice::CPU && (allowed_devices == ComputeDevice::CPU || allowed_devices == ComputeDevice::Both)) {
+        detail::gpe_start_cpu_parallel(gridDim, blockDim, function);
+    }
+    else {
+        std::cerr << "gpe::start_parallel with a device CPU but no CPU kernel!" << std::endl;
+        exit(1);
     }
 }
 

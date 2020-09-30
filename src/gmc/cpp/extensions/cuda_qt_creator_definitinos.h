@@ -6,8 +6,6 @@
 
 #ifndef __CUDACC__
 
-void __syncthreads();
-
 constexpr dim3 gridDim;
 constexpr dim3 blockDim;
 constexpr dim3 blockIdx;

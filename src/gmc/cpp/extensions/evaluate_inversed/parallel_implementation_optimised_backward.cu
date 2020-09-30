@@ -18,42 +18,7 @@
 namespace {
 
 template <typename scalar_t, int DIMS>
-__host__ __device__
-void forward(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
-             const dim3& gpe_blockIdx, const dim3& gpe_threadIdx,
-             const torch::PackedTensorAccessor32<scalar_t, 4, gpe::RestrictPtrTraits> mixture_a,
-             const torch::PackedTensorAccessor32<scalar_t, 4, gpe::RestrictPtrTraits> xes_a,
-             torch::PackedTensorAccessor32<scalar_t, 3, gpe::RestrictPtrTraits> sum_a,
-             const gpe::MixtureAndXesNs n) {
-    GPE_UNUSED(gpe_gridDim)
-    const auto batch_index = gpe_blockIdx.z;
-    const auto layer_index = gpe_blockIdx.y;
-    const auto batch_xes_index = gpe::min(batch_index, n.batch_xes - 1);
-    const auto layer_xes_index = gpe::min(layer_index, n.layers_xes - 1);
-    const auto xes_index = gpe_blockIdx.x * gpe_blockDim.x + gpe_threadIdx.x;
-
-    if (xes_index >= uint(n.xes))
-        return;
-
-    for (int component_index = 0; component_index < n.components; ++component_index) {
-        const auto xa = xes_a[batch_xes_index];
-        const auto xb = xa[layer_xes_index];
-        const auto xc = xb[xes_index];
-        const auto& xd = xc[0];
-        const auto& x_pos = gpe::vec<DIMS>(xd);
-
-        const auto& c_weight = gpe::weight(mixture_a[batch_index][layer_index][component_index]);
-        const auto& c_pos = gpe::position<DIMS>(mixture_a[batch_index][layer_index][component_index]);
-        const auto& c_cov = gpe::covariance<DIMS>(mixture_a[batch_index][layer_index][component_index]);
-        const auto w = gpe::evaluate_gaussian(x_pos, c_weight, c_pos, c_cov);
-
-        sum_a[batch_index][layer_index][xes_index] += w;
-    }
-}
-
-
-template <typename scalar_t, int DIMS>
-__host__ __device__
+__device__
 void backward(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
               const dim3& gpe_blockIdx, const dim3& gpe_threadIdx,
               const torch::PackedTensorAccessor32<scalar_t, 4, gpe::RestrictPtrTraits> mixture_a,
@@ -118,50 +83,7 @@ void backward(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
 
 }
 
-at::Tensor parallel_forward_impl(const torch::Tensor& mixture, const torch::Tensor& xes) {
-    using namespace torch::indexing;
-    auto n = gpe::check_input_and_get_ns(mixture, xes);
-
-    torch::Tensor sum = torch::zeros({n.batch, n.layers, n.xes}, torch::dtype(mixture.dtype()).device(mixture.device()));
-
-    TORCH_CHECK(mixture.device() == xes.device(), "mixture and xes must be on the same device");
-    TORCH_CHECK(n.batch * n.layers < 65535, "n_batch x n_layers must be smaller than 65535 for CUDA");
-    TORCH_CHECK(n.xes < 65535, "number of xes must be smaller than 65535 for CUDA");
-
-
-    dim3 dimBlock = dim3(128, 1, 1);
-    const dim3 dimGrid = dim3((n.xes + dimBlock.x - 1) / dimBlock.x,
-                              n.layers,
-                              n.batch);
-    //    std::cout << "forward: dimBlock=" << dimBlock.x << "/" << dimBlock.y << "/" << dimBlock.z << ", dimGrid=" << dimGrid.x << "/" << dimGrid.y << "/" << dimGrid.z << std::endl;
-
-
-    AT_DISPATCH_FLOATING_TYPES(mixture.scalar_type(), "cuda_parallel_forward_impl", ([&] {
-                                   auto mixture_a = mixture.packed_accessor32<scalar_t, 4, gpe::RestrictPtrTraits>();
-                                   auto xes_a = xes.packed_accessor32<scalar_t, 4, gpe::RestrictPtrTraits>();
-                                   auto sum_a = sum.packed_accessor32<scalar_t, 3, gpe::RestrictPtrTraits>();
-
-                                   if (n.dims == 2) {
-                                       auto fun = [mixture_a, xes_a, sum_a, n] __host__ __device__
-                                           (const dim3& gpe_gridDim, const dim3& gpe_blockDim, const dim3& gpe_blockIdx, const dim3& gpe_threadIdx) {
-                                               forward<scalar_t, 2>(gpe_gridDim, gpe_blockDim, gpe_blockIdx, gpe_threadIdx, mixture_a, xes_a, sum_a, n);
-                                           };
-                                       gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(mixture), dimGrid, dimBlock, fun);
-                                   }
-                                   else {
-                                       auto fun = [mixture_a, xes_a, sum_a, n] __host__ __device__
-                                           (const dim3& gpe_gridDim, const dim3& gpe_blockDim, const dim3& gpe_blockIdx, const dim3& gpe_threadIdx) {
-                                               forward<scalar_t, 3>(gpe_gridDim, gpe_blockDim, gpe_blockIdx, gpe_threadIdx, mixture_a, xes_a, sum_a, n);
-                                           };
-                                       gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(mixture), dimGrid, dimBlock, fun);
-                                   }
-
-                                   cudaDeviceSynchronize();
-                               }));
-    return sum;
-}
-
-std::tuple<torch::Tensor, torch::Tensor> parallel_backward_impl(const torch::Tensor& grad_output, const torch::Tensor& mixture, const torch::Tensor& xes, bool requires_grad_mixture, bool requires_grad_xes) {
+std::tuple<torch::Tensor, torch::Tensor> parallel_backward_optimised_impl(const torch::Tensor& grad_output, const torch::Tensor& mixture, const torch::Tensor& xes, bool requires_grad_mixture, bool requires_grad_xes) {
     gpe::check_mixture(mixture);
     auto n = gpe::check_input_and_get_ns(mixture, xes);
 
@@ -189,24 +111,24 @@ std::tuple<torch::Tensor, torch::Tensor> parallel_backward_impl(const torch::Ten
                                    auto grad_output_a = grad_output.packed_accessor32<scalar_t, 3, gpe::RestrictPtrTraits>();
 
                                    if (n.dims == 2) {
-                                       auto fun = [=] __host__ __device__
+                                       auto fun = [=] __device__
                                            (const dim3& gpe_gridDim, const dim3& gpe_blockDim, const dim3& gpe_blockIdx, const dim3& gpe_threadIdx) {
                                                backward<scalar_t, 2>(gpe_gridDim, gpe_blockDim, gpe_blockIdx, gpe_threadIdx,
                                                                      mixture_a, xes_a,
                                                                      grad_mixture_a, grad_xes_a, grad_output_a,
                                                                      n, requires_grad_mixture, requires_grad_xes);
                                            };
-                                       gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(mixture), dimGrid, dimBlock, fun);
+                                       gpe::start_parallel<gpe::ComputeDevice::CUDA>(gpe::device(mixture), dimGrid, dimBlock, fun);
                                    }
                                    else {
-                                       auto fun = [=] __host__ __device__
+                                       auto fun = [=] __device__
                                            (const dim3& gpe_gridDim, const dim3& gpe_blockDim, const dim3& gpe_blockIdx, const dim3& gpe_threadIdx) {
                                                backward<scalar_t, 3>(gpe_gridDim, gpe_blockDim, gpe_blockIdx, gpe_threadIdx,
                                                                      mixture_a, xes_a,
                                                                      grad_mixture_a, grad_xes_a, grad_output_a,
                                                                      n, requires_grad_mixture, requires_grad_xes);
                                            };
-                                       gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(mixture), dimGrid, dimBlock, fun);
+                                       gpe::start_parallel<gpe::ComputeDevice::CUDA>(gpe::device(mixture), dimGrid, dimBlock, fun);
                                    }
 
                                }));

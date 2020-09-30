@@ -49,7 +49,7 @@ std::ostream& operator <<(std::ostream& stream, const Gaussian<N_DIMS, scalar_t>
     return stream;
 }
 
-template <typename scalar_t, int DIMS, template <typename U> class PtrTraits = torch::RestrictPtrTraits>
+template <typename scalar_t, int DIMS, template <typename U> class PtrTraits = gpe::RestrictPtrTraits>
 __host__ __device__
 void evaluate_bvh_forward(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
                          const dim3& gpe_blockIdx, const dim3& gpe_threadIdx,
@@ -93,7 +93,7 @@ void evaluate_bvh_forward(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
     lbvh::query_device_with_fun(bvh, lbvh::inside_aabb(point), evaluate);
 }
 
-template <typename scalar_t, int DIMS, template <typename U> class PtrTraits = torch::RestrictPtrTraits>
+template <typename scalar_t, int DIMS, template <typename U> class PtrTraits = gpe::RestrictPtrTraits>
 __host__ __device__
 void kernel_bvh_backward(const dim3& gpe_blockIdx, const dim3& gpe_blockDim,
                         const dim3& gpe_threadIdx, const dim3& gpe_threadDim,
@@ -215,25 +215,25 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> cuda_bvh_forward_impl(co
 
 
     AT_DISPATCH_FLOATING_TYPES(mixture.scalar_type(), "cuda_bvh_backward_impl", ([&] {
-                                   auto sum_a = sum.packed_accessor32<scalar_t, 3, torch::RestrictPtrTraits>();
-                                   auto mixture_a = mixture.packed_accessor32<scalar_t, 4, torch::RestrictPtrTraits>();
-                                   auto nodes_a = bvh.m_nodes.packed_accessor32<lbvh::detail::Node::index_type_torch, 4, torch::RestrictPtrTraits>();
-                                   auto aabbs_a = bvh.m_aabbs.packed_accessor32<scalar_t, 4, torch::RestrictPtrTraits>();
-                                   const auto xes_a = xes_copy.packed_accessor32<scalar_t, 4, torch::RestrictPtrTraits>();
+                                   auto sum_a = sum.packed_accessor32<scalar_t, 3, gpe::RestrictPtrTraits>();
+                                   auto mixture_a = mixture.packed_accessor32<scalar_t, 4, gpe::RestrictPtrTraits>();
+                                   auto nodes_a = bvh.m_nodes.packed_accessor32<lbvh::detail::Node::index_type_torch, 4, gpe::RestrictPtrTraits>();
+                                   auto aabbs_a = bvh.m_aabbs.packed_accessor32<scalar_t, 4, gpe::RestrictPtrTraits>();
+                                   const auto xes_a = xes_copy.packed_accessor32<scalar_t, 4, gpe::RestrictPtrTraits>();
 
                                    if (n.dims == 2) {
                                        auto fun = [mixture_a, nodes_a, aabbs_a, xes_a, sum_a, n] __host__ __device__
                                            (const dim3& gpe_gridDim, const dim3& gpe_blockDim, const dim3& gpe_blockIdx, const dim3& gpe_threadIdx) {
                                                evaluate_bvh_forward<scalar_t, 2>(gpe_gridDim, gpe_blockDim, gpe_blockIdx, gpe_threadIdx, mixture_a, nodes_a, aabbs_a, xes_a, sum_a, n);
                                            };
-                                       gpe::start_parallel(gpe::device(mixture), dimGrid, dimBlock, fun);
+                                       gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(mixture), dimGrid, dimBlock, fun);
                                    }
                                    else {
                                        auto fun = [mixture_a, nodes_a, aabbs_a, xes_a, sum_a, n] __host__ __device__
                                            (const dim3& gpe_gridDim, const dim3& gpe_blockDim, const dim3& gpe_blockIdx, const dim3& gpe_threadIdx) {
                                                evaluate_bvh_forward<scalar_t, 3>(gpe_gridDim, gpe_blockDim, gpe_blockIdx, gpe_threadIdx, mixture_a, nodes_a, aabbs_a, xes_a, sum_a, n);
                                            };
-                                       gpe::start_parallel(gpe::device(mixture), dimGrid, dimBlock, fun);
+                                       gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(mixture), dimGrid, dimBlock, fun);
                                    }
                                }));
 
@@ -290,13 +290,13 @@ std::tuple<torch::Tensor, torch::Tensor> cuda_bvh_backward_impl(const torch::Ten
 
 
     AT_DISPATCH_FLOATING_TYPES(mixture.scalar_type(), "cuda_bvh_backward_impl", ([&] {
-                                   auto mixture_a = mixture.packed_accessor32<scalar_t, 4, torch::RestrictPtrTraits>();
-                                   auto nodes_a = bvh.m_nodes.packed_accessor32<lbvh::detail::Node::index_type_torch, 4, torch::RestrictPtrTraits>();
-                                   auto aabbs_a = bvh.m_aabbs.packed_accessor32<scalar_t, 4, torch::RestrictPtrTraits>();
-                                   auto xes_a = xes_copy.packed_accessor32<scalar_t, 4, torch::RestrictPtrTraits>();
-                                   auto grad_mixture_a = grad_mixture.packed_accessor32<scalar_t, 4, torch::RestrictPtrTraits>();
-                                   auto grad_xes_a = grad_xes.packed_accessor32<scalar_t, 4, torch::RestrictPtrTraits>();
-                                   auto grad_output_a = grad_output_copy.packed_accessor32<scalar_t, 3, torch::RestrictPtrTraits>();
+                                   auto mixture_a = mixture.packed_accessor32<scalar_t, 4, gpe::RestrictPtrTraits>();
+                                   auto nodes_a = bvh.m_nodes.packed_accessor32<lbvh::detail::Node::index_type_torch, 4, gpe::RestrictPtrTraits>();
+                                   auto aabbs_a = bvh.m_aabbs.packed_accessor32<scalar_t, 4, gpe::RestrictPtrTraits>();
+                                   auto xes_a = xes_copy.packed_accessor32<scalar_t, 4, gpe::RestrictPtrTraits>();
+                                   auto grad_mixture_a = grad_mixture.packed_accessor32<scalar_t, 4, gpe::RestrictPtrTraits>();
+                                   auto grad_xes_a = grad_xes.packed_accessor32<scalar_t, 4, gpe::RestrictPtrTraits>();
+                                   auto grad_output_a = grad_output_copy.packed_accessor32<scalar_t, 3, gpe::RestrictPtrTraits>();
 
                                    if (n.dims == 2) {
                                        auto fun = [=] __host__ __device__
@@ -306,7 +306,7 @@ std::tuple<torch::Tensor, torch::Tensor> cuda_bvh_backward_impl(const torch::Ten
                                                                                 grad_mixture_a, grad_xes_a, grad_output_a,
                                                                                 n, requires_grad_mixture, requires_grad_xes);
                                            };
-                                       gpe::start_parallel(gpe::device(mixture), dimGrid, dimBlock, fun);
+                                       gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(mixture), dimGrid, dimBlock, fun);
                                    }
                                    else {
                                        auto fun = [=] __host__ __device__
@@ -316,7 +316,7 @@ std::tuple<torch::Tensor, torch::Tensor> cuda_bvh_backward_impl(const torch::Ten
                                                                                 grad_mixture_a, grad_xes_a, grad_output_a,
                                                                                 n, requires_grad_mixture, requires_grad_xes);
                                            };
-                                       gpe::start_parallel(gpe::device(mixture), dimGrid, dimBlock, fun);
+                                       gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(mixture), dimGrid, dimBlock, fun);
                                    }
                                }));
 

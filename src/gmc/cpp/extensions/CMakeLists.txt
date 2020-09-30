@@ -95,6 +95,8 @@ set(MATH_SOURCES
 set(EVALUATE_SOURCES
     evaluate_inversed/parallel_implementation.h
     evaluate_inversed/parallel_implementation.cu
+    evaluate_inversed/parallel_implementation_optimised_forward.cu
+    evaluate_inversed/parallel_implementation_optimised_backward.cu
     evaluate_inversed/parallel_binding.h
     evaluate_inversed/parallel_binding.cpp
     evaluate_inversed/cuda_bvh.cpp
