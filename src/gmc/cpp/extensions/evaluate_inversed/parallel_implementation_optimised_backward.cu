@@ -11,6 +11,7 @@
 
 #include "common.h"
 #include "parallel_start.h"
+#include "hacked_accessor.h"
 #include "mixture.h"
 #include "math/scalar.h"
 #include "cuda_qt_creator_definitinos.h"
@@ -21,11 +22,11 @@ template <typename scalar_t, int DIMS>
 __device__
 void backward(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
               const dim3& gpe_blockIdx, const dim3& gpe_threadIdx,
-              const torch::PackedTensorAccessor32<scalar_t, 4, gpe::RestrictPtrTraits> mixture_a,
-              const torch::PackedTensorAccessor32<scalar_t, 4, gpe::RestrictPtrTraits> xes_a,
-              torch::PackedTensorAccessor32<scalar_t, 4, gpe::RestrictPtrTraits> grad_mixture_a,
-              torch::PackedTensorAccessor32<scalar_t, 4, gpe::RestrictPtrTraits> grad_xes_a,
-              const torch::PackedTensorAccessor32<scalar_t, 3, gpe::RestrictPtrTraits> grad_output_a,
+              const gpe::PackedTensorAccessor32<scalar_t, 4> mixture_a,
+              const gpe::PackedTensorAccessor32<scalar_t, 4> xes_a,
+              gpe::PackedTensorAccessor32<scalar_t, 4> grad_mixture_a,
+              gpe::PackedTensorAccessor32<scalar_t, 4> grad_xes_a,
+              const gpe::PackedTensorAccessor32<scalar_t, 3> grad_output_a,
               const gpe::MixtureAndXesNs n, bool requires_grad_mixture, bool requires_grad_xes) {
     GPE_UNUSED(gpe_gridDim)
     const auto batch_index = gpe_blockIdx.z;
@@ -104,11 +105,11 @@ std::tuple<torch::Tensor, torch::Tensor> parallel_backward_optimised_impl(const 
     //    std::cout << "forward: dimBlock=" << dimBlock.x << "/" << dimBlock.y << "/" << dimBlock.z << ", dimGrid=" << dimGrid.x << "/" << dimGrid.y << "/" << dimGrid.z << std::endl;
 
     AT_DISPATCH_FLOATING_TYPES(mixture.scalar_type(), "cuda_parallel_backward_impl", ([&] {
-                                   auto mixture_a = mixture.packed_accessor32<scalar_t, 4, gpe::RestrictPtrTraits>();
-                                   auto xes_a = xes.packed_accessor32<scalar_t, 4, gpe::RestrictPtrTraits>();
-                                   auto grad_mixture_a = grad_mixture.packed_accessor32<scalar_t, 4, gpe::RestrictPtrTraits>();
-                                   auto grad_xes_a = grad_xes.packed_accessor32<scalar_t, 4, gpe::RestrictPtrTraits>();
-                                   auto grad_output_a = grad_output.packed_accessor32<scalar_t, 3, gpe::RestrictPtrTraits>();
+                                   const auto mixture_a = gpe::accessor<scalar_t, 4>(mixture);
+                                   const auto xes_a = gpe::accessor<scalar_t, 4>(xes);
+                                   auto grad_mixture_a = gpe::accessor<scalar_t, 4>(grad_mixture);
+                                   auto grad_xes_a = gpe::accessor<scalar_t, 4>(grad_xes);
+                                   const auto grad_output_a = gpe::accessor<scalar_t, 3>(grad_output);
 
                                    if (n.dims == 2) {
                                        auto fun = [=] __device__

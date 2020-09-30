@@ -33,11 +33,6 @@ __host__ __device__ __forceinline__ T atomicAdd(T *ptr, T val) {
 #endif
 }
 
-template <typename T>
-struct RestrictPtrTraits {
-    typedef T* __restrict__ PtrType;
-};
-
 namespace detail {
 
 //void gpe_start_cpu_parallel(const dim3& gridDim, const dim3& blockDim, const std::function<void(const dim3&, const dim3&, const dim3&, const dim3&)>& function);

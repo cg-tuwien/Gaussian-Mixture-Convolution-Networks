@@ -12,6 +12,7 @@
 #include "common.h"
 #include "parallel_start.h"
 #include "mixture.h"
+#include "hacked_accessor.h"
 #include "math/scalar.h"
 #include "cuda_qt_creator_definitinos.h"
 
@@ -21,9 +22,9 @@ template <typename scalar_t, int DIMS>
 __device__
 void forward(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
              const dim3& gpe_blockIdx, const dim3& gpe_threadIdx,
-             const torch::PackedTensorAccessor32<scalar_t, 4, gpe::RestrictPtrTraits> mixture_a,
-             const torch::PackedTensorAccessor32<scalar_t, 4, gpe::RestrictPtrTraits> xes_a,
-             torch::PackedTensorAccessor32<scalar_t, 3, gpe::RestrictPtrTraits> sum_a,
+             const gpe::PackedTensorAccessor32<scalar_t, 4, gpe::RestrictPtrTraits> mixture_a,
+             const gpe::PackedTensorAccessor32<scalar_t, 4, gpe::RestrictPtrTraits> xes_a,
+             gpe::PackedTensorAccessor32<scalar_t, 3, gpe::RestrictPtrTraits> sum_a,
              const gpe::MixtureAndXesNs n) {
     GPE_UNUSED(gpe_gridDim)
     const auto batch_index = gpe_blockIdx.z;
@@ -70,11 +71,12 @@ at::Tensor parallel_forward_optimised_impl(const torch::Tensor& mixture, const t
                               n.batch);
     //    std::cout << "forward: dimBlock=" << dimBlock.x << "/" << dimBlock.y << "/" << dimBlock.z << ", dimGrid=" << dimGrid.x << "/" << dimGrid.y << "/" << dimGrid.z << std::endl;
 
+    auto s = mixture.sizes();
 
     AT_DISPATCH_FLOATING_TYPES(mixture.scalar_type(), "cuda_parallel_forward_impl", ([&] {
-                                   auto mixture_a = mixture.packed_accessor32<scalar_t, 4, gpe::RestrictPtrTraits>();
-                                   auto xes_a = xes.packed_accessor32<scalar_t, 4, gpe::RestrictPtrTraits>();
-                                   auto sum_a = sum.packed_accessor32<scalar_t, 3, gpe::RestrictPtrTraits>();
+                                   auto mixture_a = gpe::accessor<scalar_t, 4>(mixture);
+                                   auto xes_a = gpe::accessor<scalar_t, 4>(xes);
+                                   auto sum_a = gpe::accessor<scalar_t, 3>(sum);
 
                                    if (n.dims == 2) {
                                        auto fun = [mixture_a, xes_a, sum_a, n] __device__

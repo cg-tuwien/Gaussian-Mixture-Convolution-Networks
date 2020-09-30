@@ -16,6 +16,7 @@
 
 #include "common.h"
 #include "mixture.h"
+#include "hacked_accessor.h"
 #include "cuda_qt_creator_definitinos.h"
 #include "lbvh/aabb.h"
 #include "lbvh/bvh.h"

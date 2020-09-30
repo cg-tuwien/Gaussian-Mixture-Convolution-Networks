@@ -70,6 +70,7 @@ set(HEADERS
     common.h
     mixture.h
     parallel_start.h
+    hacked_accessor.h
     cuda_qt_creator_definitinos.h
 )
 
