@@ -4,6 +4,7 @@
 #include <cmath>
 #include <ostream>
 
+#include <cuda_runtime.h>
 #include <thrust/swap.h>
 
 #include "utility.h"
@@ -18,11 +19,11 @@ struct Aabb
     typename vector_of<T>::type lower;
 };
 
-std::ostream& operator <<(std::ostream& stream, const float4& v) {
+inline std::ostream& operator <<(std::ostream& stream, const float4& v) {
     stream << v.x << "/" << v.y << "/" << v.z << "/" << v.w;
     return stream;
 }
-std::ostream& operator <<(std::ostream& stream, const double4& v) {
+inline std::ostream& operator <<(std::ostream& stream, const double4& v) {
     stream << v.x << "/" << v.y << "/" << v.z << "/" << v.w;
     return stream;
 }

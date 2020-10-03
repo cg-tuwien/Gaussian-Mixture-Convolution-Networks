@@ -11,8 +11,7 @@ constexpr dim3 blockDim;
 constexpr dim3 blockIdx;
 constexpr dim3 threadIdx;
 
-using std::min;
-using std::max;
+int atomicCAS(int* address, int compare, int val);
 
 #endif
 

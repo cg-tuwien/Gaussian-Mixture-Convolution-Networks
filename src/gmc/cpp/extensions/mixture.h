@@ -1,7 +1,9 @@
 #ifndef MIXTURE_H
 #define MIXTURE_H
-#include <torch/script.h>
 #include <vector>
+#include <iostream>
+
+#include <torch/script.h>
 
 #define GLM_FORCE_INLINE
 #include <glm/glm.hpp>
@@ -88,21 +90,55 @@ inline torch::Tensor pack_mixture(const torch::Tensor weights, const torch::Tens
     return torch::cat({weights.view({n_batch, n_layers, n_components, 1}), positions, covariances.view({n_batch, n_layers, n_components, n_dims * n_dims})}, 3);
 }
 
-template <typename Gaussian>
-__forceinline__ __host__ __device__ auto weight(Gaussian&& gaussian) -> decltype (gaussian[0]) {
+
+template<int N_DIMS, typename scalar_t>
+struct Gaussian {
+    scalar_t weight;
+    glm::vec<N_DIMS, scalar_t> position;
+    glm::mat<N_DIMS, N_DIMS, scalar_t> covariance;
+};
+static_assert (sizeof (Gaussian<2, float>) == 7*4, "Something wrong with Gaussian");
+static_assert (sizeof (Gaussian<3, float>) == 13*4, "Something wrong with Gaussian");
+static_assert (sizeof (Gaussian<2, double>) == 7*8, "Something wrong with Gaussian");
+static_assert (sizeof (Gaussian<3, double>) == 13*8, "Something wrong with Gaussian");
+
+template<int N_DIMS, typename scalar_t>
+std::ostream& operator <<(std::ostream& stream, const Gaussian<N_DIMS, scalar_t>& g) {
+    stream << "Gauss[" << g.weight << "; " << g.position[0];
+    for (int i = 1; i < N_DIMS; i++)
+        stream << "/" << g.position[i];
+    stream << "; ";
+
+    for (int i = 0; i < N_DIMS; i++) {
+        for (int j = 0; j < N_DIMS; j++) {
+            if (i != 0 || j != 0)
+                stream << "/";
+            stream << g.covariance[i][j];
+        }
+    }
+    stream << "]";
+    return stream;
+}
+
+template <typename TensorAccessor>
+__forceinline__ __host__ __device__ auto weight(TensorAccessor&& gaussian) -> decltype (gaussian[0]) {
     return gaussian[0];
 }
 
-template <int DIMS, typename Gaussian>
-__forceinline__ __host__ __device__ auto position(Gaussian&& gaussian) -> decltype (vec<DIMS>(gaussian[1])) {
+template <int DIMS, typename TensorAccessor>
+__forceinline__ __host__ __device__ auto position(TensorAccessor&& gaussian) -> decltype (vec<DIMS>(gaussian[1])) {
     return vec<DIMS>(gaussian[1]);
 }
 
-template <int DIMS, typename Gaussian>
-__forceinline__ __host__ __device__ auto covariance(Gaussian&& gaussian) -> decltype (mat<DIMS>(gaussian[1 + DIMS])) {
+template <int DIMS, typename TensorAccessor>
+__forceinline__ __host__ __device__ auto covariance(TensorAccessor&& gaussian) -> decltype (mat<DIMS>(gaussian[1 + DIMS])) {
     return mat<DIMS>(gaussian[1 + DIMS]);
 }
 
+template <int DIMS, typename TensorAccessor>
+__forceinline__ __host__ __device__ auto gaussian(TensorAccessor&& gaussian) -> Gaussian<DIMS, decltype (gaussian[0])> {
+    return reinterpret_cast<Gaussian<DIMS, decltype (gaussian[0])>&>(gaussian[0]);
+}
 
 template <typename scalar_t, int DIMS>
 __forceinline__ __host__ __device__ scalar_t evaluate_gaussian(const glm::vec<DIMS, scalar_t>& evalpos,

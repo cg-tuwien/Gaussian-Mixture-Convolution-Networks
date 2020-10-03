@@ -32,24 +32,6 @@ namespace bvh_mhem_fit {
 
 namespace  {
 
-template<int N_DIMS, typename scalar_t>
-std::ostream& operator <<(std::ostream& stream, const Gaussian<N_DIMS, scalar_t>& g) {
-    stream << "Gauss[" << g.weight << "; " << g.position[0];
-    for (int i = 1; i < N_DIMS; i++)
-        stream << "/" << g.position[i];
-    stream << "; ";
-
-    for (int i = 0; i < N_DIMS; i++) {
-        for (int j = 0; j < N_DIMS; j++) {
-            if (i != 0 || j != 0)
-                stream << "/";
-            stream << g.covariance[i][j];
-        }
-    }
-    stream << "]";
-    return stream;
-}
-
 template <typename scalar_t, int DIMS, template <typename U> class PtrTraits = gpe::RestrictPtrTraits>
 __host__ __device__
 void evaluate_bvh_forward(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
@@ -62,7 +44,7 @@ void evaluate_bvh_forward(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
                          const gpe::MixtureAndXesNs n)
 {
     GPE_UNUSED(gpe_gridDim)
-    using G = Gaussian<DIMS, scalar_t>;
+    using G = gpe::Gaussian<DIMS, scalar_t>;
     using Lbvh = lbvh::detail::basic_device_bvh<scalar_t, G, true>;
     const int batch_index = int(gpe_blockIdx.x * gpe_blockDim.x + gpe_threadIdx.x);
     const int layer_index = int(gpe_blockIdx.y * gpe_blockDim.y + gpe_threadIdx.y);
@@ -108,7 +90,7 @@ void kernel_bvh_backward(const dim3& gpe_blockIdx, const dim3& gpe_blockDim,
                         const gpe::MixtureAndXesNs n, bool requires_grad_mixture, bool requires_grad_xes)
 {
     GPE_UNUSED(gpe_threadDim)
-    using G = Gaussian<DIMS, scalar_t>;
+    using G = gpe::Gaussian<DIMS, scalar_t>;
     using Lbvh = lbvh::detail::basic_device_bvh<scalar_t, G, true>;
     const int batch_index = int(gpe_blockIdx.x * gpe_blockDim.x + gpe_threadIdx.x);
     const int layer_index = int(gpe_blockIdx.y * gpe_blockDim.y + gpe_threadIdx.y);
@@ -180,7 +162,7 @@ torch::Tensor inverse_permutation(const torch::Tensor& p) {
 
 std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> cuda_bvh_forward_impl(const at::Tensor& mixture, const at::Tensor& xes) {
     using namespace torch::indexing;
-    using LBVH = lbvh::bvh<float, Gaussian<2, float>>;
+    using LBVH = lbvh::Bvh<float, gpe::Gaussian<2, float>>;
 
     auto n = gpe::check_input_and_get_ns(mixture, xes);
     TORCH_CHECK(mixture.device().is_cuda(), "mixture must be a CUDA tensor")
@@ -259,7 +241,7 @@ std::tuple<torch::Tensor, torch::Tensor> cuda_bvh_backward_impl(const torch::Ten
                                                                 const torch::Tensor& xes,
                                                                 bool requires_grad_mixture, bool requires_grad_xes) {
     using namespace torch::indexing;
-    using LBVH = lbvh::bvh<float, Gaussian<2, float>>;
+    using LBVH = lbvh::Bvh<float, gpe::Gaussian<2, float>>;
     gpe::check_mixture(mixture);
     auto n = gpe::check_input_and_get_ns(mixture, xes);
 

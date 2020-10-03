@@ -77,6 +77,7 @@ set(HEADERS
 set(LBVH_HEADERS
     lbvh/aabb.h
     lbvh/bvh.h
+    lbvh/bvh.cu
     lbvh/morton_code.h
     lbvh/predicator.h
     lbvh/query.h

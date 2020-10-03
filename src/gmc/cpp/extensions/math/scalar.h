@@ -66,6 +66,10 @@ __forceinline__ __device__ float max(float a, float b) {
 __forceinline__ __device__ float max(double a, double b) {
     return ::fmax(a, b);
 }
+template <typename T>
+__forceinline__ __device__ T max(T a, T b) {
+    return ::max(a, b);
+}
 __forceinline__ __device__ float min(float a, float b) {
     return ::fminf(a, b);
 }

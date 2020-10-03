@@ -14,14 +14,14 @@ namespace lbvh
 // requirements:
 // - OutputIterator should be writable and its object_type should be uint32_t
 //
-template<typename Real, typename Objects, bool IsConst, typename OutputIterator, typename Predicate>
+template<typename scalar_t, typename Objects, bool IsConst, typename OutputIterator, typename Predicate>
 __device__
 unsigned int query_device(
-        const detail::basic_device_bvh<Real, Objects, IsConst>& bvh,
+        const detail::basic_device_bvh<scalar_t, Objects, IsConst>& bvh,
         const Predicate& predicate, OutputIterator outiter,
         const unsigned int max_buffer_size = 0xFFFFFFFF) noexcept
 {
-    using bvh_type   = detail::basic_device_bvh<Real, Objects, IsConst>;
+    using bvh_type   = detail::basic_device_bvh<scalar_t, Objects, IsConst>;
     using index_type = typename bvh_type::index_type;
     using aabb_type  = typename bvh_type::aabb_type;
     using node_type  = typename bvh_type::node_type;
@@ -74,13 +74,13 @@ unsigned int query_device(
     return num_found;
 }
 
-template<typename Real, typename Objects, bool IsConst, typename Predicate, typename Function>
+template<typename scalar_t, typename Objects, bool IsConst, typename Predicate, typename Function>
 __device__
-void query_device_with_fun(const detail::basic_device_bvh<Real, Objects, IsConst>& bvh,
+void query_device_with_fun(const detail::basic_device_bvh<scalar_t, Objects, IsConst>& bvh,
                            const Predicate& predicate,
                            Function fun) noexcept
 {
-    using bvh_type   = detail::basic_device_bvh<Real, Objects, IsConst>;
+    using bvh_type   = detail::basic_device_bvh<scalar_t, Objects, IsConst>;
     using index_type = uint16_t;
     using aabb_type  = typename bvh_type::aabb_type;
     using node_type  = typename bvh_type::node_type;
@@ -128,14 +128,14 @@ void query_device_with_fun(const detail::basic_device_bvh<Real, Objects, IsConst
 // requirements:
 // - DistanceCalculator must be able to calc distance between a point to an object.
 //
-//template<typename Real, typename Objects, bool IsConst,
+//template<typename scalar_t, typename Objects, bool IsConst,
 //         typename DistanceCalculator>
 //__device__
-//thrust::pair<unsigned int, Real> query_device(
-//        const detail::basic_device_bvh<Real, Objects, IsConst>& bvh,
-//        const query_nearest<Real>& q, DistanceCalculator calc_dist) noexcept
+//thrust::pair<unsigned int, scalar_t> query_device(
+//        const detail::basic_device_bvh<scalar_t, Objects, IsConst>& bvh,
+//        const query_nearest<scalar_t>& q, DistanceCalculator calc_dist) noexcept
 //{
-//    using bvh_type   = detail::basic_device_bvh<Real, Objects, IsConst>;
+//    using bvh_type   = detail::basic_device_bvh<scalar_t, Objects, IsConst>;
 //    using real_type  = typename bvh_type::real_type;
 //    using index_type = typename bvh_type::index_type;
 //    using aabb_type  = typename bvh_type::aabb_type;
@@ -211,14 +211,14 @@ void query_device_with_fun(const detail::basic_device_bvh<Real, Objects, IsConst
 //    return thrust::make_pair(nearest, dist_to_nearest_object);
 //}
 
-//template<typename Real, typename Objects, typename AABBGetter,
+//template<typename scalar_t, typename Objects, typename AABBGetter,
 //         typename MortonCodeCalculator, typename OutputIterator>
 //unsigned int query_host(
-//    const bvh<Real, Objects, AABBGetter, MortonCodeCalculator>& tree,
-//    const query_overlap<Real> q, OutputIterator outiter,
+//    const bvh<scalar_t, Objects, AABBGetter, MortonCodeCalculator>& tree,
+//    const query_overlap<scalar_t> q, OutputIterator outiter,
 //    const unsigned int max_buffer_size = 0xFFFFFFFF)
 //{
-//    using bvh_type   = ::lbvh::bvh<Real, Objects, AABBGetter, MortonCodeCalculator>;
+//    using bvh_type   = ::lbvh::bvh<scalar_t, Objects, AABBGetter, MortonCodeCalculator>;
 //    using index_type = typename bvh_type::index_type;
 //    using aabb_type  = typename bvh_type::aabb_type;
 //    using node_type  = typename bvh_type::node_type;
@@ -276,13 +276,13 @@ void query_device_with_fun(const detail::basic_device_bvh<Real, Objects, IsConst
 //    return num_found;
 //}
 
-//template<typename Real, typename Objects, typename AABBGetter,
+//template<typename scalar_t, typename Objects, typename AABBGetter,
 //         typename MortonCodeCalculator, typename DistanceCalculator>
-//std::pair<unsigned int, Real> query_host(
-//        const bvh<Real, Objects, AABBGetter, MortonCodeCalculator>& tree,
-//        const query_nearest<Real>& q, DistanceCalculator calc_dist) noexcept
+//std::pair<unsigned int, scalar_t> query_host(
+//        const bvh<scalar_t, Objects, AABBGetter, MortonCodeCalculator>& tree,
+//        const query_nearest<scalar_t>& q, DistanceCalculator calc_dist) noexcept
 //{
-//    using bvh_type   = ::lbvh::bvh<Real, Objects, AABBGetter, MortonCodeCalculator>;
+//    using bvh_type   = ::lbvh::bvh<scalar_t, Objects, AABBGetter, MortonCodeCalculator>;
 //    using real_type  = typename bvh_type::real_type;
 //    using index_type = typename bvh_type::index_type;
 //    using aabb_type  = typename bvh_type::aabb_type;

@@ -20,27 +20,8 @@
 #include "lbvh/bvh.h"
 #include "lbvh/query.h"
 #include "lbvh/predicator.h"
-#include "math/symeig_cuda.h"
 
 #include "parallel_start.h"
-
-template<int N_DIMS, typename scalar_t>
-std::ostream& operator <<(std::ostream& stream, const Gaussian<N_DIMS, scalar_t>& g) {
-    stream << "Gauss[" << g.weight << "; " << g.position[0];
-    for (int i = 1; i < N_DIMS; i++)
-        stream << "/" << g.position[i];
-    stream << "; ";
-
-    for (int i = 0; i < N_DIMS; i++) {
-        for (int j = 0; j < N_DIMS; j++) {
-            if (i != 0 || j != 0)
-                stream << "/";
-            stream << g.covariance[i][j];
-        }
-    }
-    stream << "]";
-    return stream;
-}
 
 template <typename scalar_t, int DIMS>
 __global__ void evaluate_bvh_forward(const torch::PackedTensorAccessor32<scalar_t, 4, torch::RestrictPtrTraits> mixture,
@@ -50,7 +31,7 @@ __global__ void evaluate_bvh_forward(const torch::PackedTensorAccessor32<scalar_
                                      torch::PackedTensorAccessor32<scalar_t, 3, torch::RestrictPtrTraits> sums,
                                      const gpe::MixtureAndXesNs n)
 {
-    using G = Gaussian<DIMS, scalar_t>;
+    using G = gpe::Gaussian<DIMS, scalar_t>;
     using Lbvh = lbvh::detail::basic_device_bvh<scalar_t, G, true>;
     const auto xes_index = blockIdx.x * blockDim.x + threadIdx.x;
     const auto layer_index = blockIdx.y * blockDim.y + threadIdx.y;
@@ -93,7 +74,7 @@ __global__ void kernel_bvh_backward(const torch::PackedTensorAccessor32<scalar_t
                                     const torch::PackedTensorAccessor32<scalar_t, 3, torch::RestrictPtrTraits> grad_output,
                                     const gpe::MixtureAndXesNs n, bool requires_grad_mixture, bool requires_grad_xes)
 {
-    using G = Gaussian<DIMS, scalar_t>;
+    using G = gpe::Gaussian<DIMS, scalar_t>;
     using Lbvh = lbvh::detail::basic_device_bvh<scalar_t, G, true>;
     const auto xes_index = blockIdx.x * blockDim.x + threadIdx.x;
     const auto layer_index = blockIdx.y * blockDim.y + threadIdx.y;
@@ -162,7 +143,7 @@ torch::Tensor inverse_permutation(const torch::Tensor& p) {
 
 std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> cuda_bvh_forward_impl(const at::Tensor& mixture, const at::Tensor& xes) {
     using namespace torch::indexing;
-    using LBVH = lbvh::bvh<float, Gaussian<2, float>>;
+    using LBVH = lbvh::Bvh<float, gpe::Gaussian<2, float>>;
 
     auto n = gpe::check_input_and_get_ns(mixture, xes);
     TORCH_CHECK(mixture.device().is_cuda(), "mixture must be a CUDA tensor");
@@ -229,7 +210,7 @@ std::tuple<torch::Tensor, torch::Tensor> cuda_bvh_backward_impl(const torch::Ten
                                                   const torch::Tensor& xes,
                                                   bool requires_grad_mixture, bool requires_grad_xes) {
     using namespace torch::indexing;
-    using LBVH = lbvh::bvh<float, Gaussian<2, float>>;
+    using LBVH = lbvh::Bvh<float, gpe::Gaussian<2, float>>;
     gpe::check_mixture(mixture);
     auto n = gpe::check_input_and_get_ns(mixture, xes);
 

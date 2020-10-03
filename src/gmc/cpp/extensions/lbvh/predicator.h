@@ -6,11 +6,11 @@
 namespace lbvh
 {
 
-template<typename Real>
+template<typename scalar_t>
 struct query_inside
 {
     __device__ __host__
-    query_inside(const typename vector_of<Real>::type& point): point(point) {}
+    query_inside(const typename vector_of<scalar_t>::type& point): point(point) {}
 
     query_inside()  = default;
     ~query_inside() = default;
@@ -20,19 +20,19 @@ struct query_inside
     query_inside& operator=(query_inside&&)      = default;
 
     __device__ __host__
-    inline bool operator()(const Aabb<Real>& box) const noexcept
+    inline bool operator()(const Aabb<scalar_t>& box) const noexcept
     {
         return inside(point, box);
     }
 
-    typename vector_of<Real>::type point;
+    typename vector_of<scalar_t>::type point;
 };
 
-//template<typename Real>
+//template<typename scalar_t>
 //__device__ __host__
-//query_inside<Real> inside_aabb(const typename vector_of<Real>::type& point) noexcept
+//query_inside<scalar_t> inside_aabb(const typename vector_of<scalar_t>::type& point) noexcept
 //{
-//    return query_inside<Real>(point);
+//    return query_inside<scalar_t>(point);
 //}
 
 __device__ __host__
@@ -47,11 +47,11 @@ query_inside<double> inside_aabb(const double4& point) noexcept
     return query_inside<double>(point);
 }
 
-template<typename Real>
+template<typename scalar_t>
 struct query_overlap
 {
     __device__ __host__
-    query_overlap(const Aabb<Real>& tgt): target(tgt) {}
+    query_overlap(const Aabb<scalar_t>& tgt): target(tgt) {}
 
     query_overlap()  = default;
     ~query_overlap() = default;
@@ -61,26 +61,26 @@ struct query_overlap
     query_overlap& operator=(query_overlap&&)      = default;
 
     __device__ __host__
-    inline bool operator()(const Aabb<Real>& box) noexcept
+    inline bool operator()(const Aabb<scalar_t>& box) noexcept
     {
         return intersects(box, target);
     }
 
-    Aabb<Real> target;
+    Aabb<scalar_t> target;
 };
 
-template<typename Real>
+template<typename scalar_t>
 __device__ __host__
-query_overlap<Real> overlaps(const Aabb<Real>& region) noexcept
+query_overlap<scalar_t> overlaps(const Aabb<scalar_t>& region) noexcept
 {
-    return query_overlap<Real>(region);
+    return query_overlap<scalar_t>(region);
 }
 
-template<typename Real>
+template<typename scalar_t>
 struct query_nearest
 {
     // float4/double4
-    using vector_type = typename vector_of<Real>::type;
+    using vector_type = typename vector_of<scalar_t>::type;
 
     __device__ __host__
     query_nearest(const vector_type& tgt): target(tgt) {}
