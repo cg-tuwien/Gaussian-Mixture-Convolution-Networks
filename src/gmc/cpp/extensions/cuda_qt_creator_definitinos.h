@@ -2,7 +2,6 @@
 #define CUDA_QT_CREATOR_DEFINITINOS_H
 
 #include <cuda_runtime.h>
-#include <algorithm>
 
 #ifndef __CUDACC__
 

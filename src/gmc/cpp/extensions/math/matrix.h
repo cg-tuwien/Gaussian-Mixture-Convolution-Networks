@@ -1,7 +1,7 @@
 #ifndef MATH_MATRIX_H
 #define MATH_MATRIX_H
 
-#include <glm/glm.hpp>
+#include <glm/geometric.hpp>
 
 #ifndef __CUDACC__
 #define __device__

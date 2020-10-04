@@ -3,10 +3,10 @@
 #include <vector>
 #include <iostream>
 
-#include <torch/script.h>
+#include <torch/types.h>
 
 #define GLM_FORCE_INLINE
-#include <glm/glm.hpp>
+#include <glm/matrix.hpp>
 
 #include "math/scalar.h"
 #include "math/matrix.h"

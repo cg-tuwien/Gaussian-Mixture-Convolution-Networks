@@ -5,15 +5,10 @@
 #include <iostream>
 #include <omp.h>
 
-#include <torch/all.h>
 #include <cuda_runtime.h>
 
 #include "cuda_qt_creator_definitinos.h"
 
-//#ifndef __CUDA_ARCH__
-
-//void __syncthreads();
-//#endif
 
 namespace gpe {
 
