@@ -157,7 +157,6 @@ at::Tensor parallel_forward_impl(const torch::Tensor& mixture, const torch::Tens
                                        gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(mixture), dimGrid, dimBlock, fun);
                                    }
 
-                                   cudaDeviceSynchronize();
                                }));
     return sum;
 }

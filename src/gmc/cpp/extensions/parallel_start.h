@@ -87,15 +87,15 @@ void start_parallel(ComputeDevice device, const dim3& gridDim, const dim3& block
         detail::gpu_assert(cudaDeviceSynchronize());
         #endif
 #else
-        std::cerr << "gpe::start_parallel with a device CUDA but no CUDA support!" << std::endl;
+        std::cerr << "gpe::start_parallel with device CUDA but no CUDA support!" << std::endl;
         exit(1);
 #endif
     }
-    if (device == ComputeDevice::CPU && (allowed_devices == ComputeDevice::CPU || allowed_devices == ComputeDevice::Both)) {
+    else if (device == ComputeDevice::CPU && (allowed_devices == ComputeDevice::CPU || allowed_devices == ComputeDevice::Both)) {
         detail::gpe_start_cpu_parallel(gridDim, blockDim, function);
     }
     else {
-        std::cerr << "gpe::start_parallel with a device CPU but no CPU kernel!" << std::endl;
+        std::cerr << "gpe::start_parallel with device CPU but no CPU kernel!" << std::endl;
         exit(1);
     }
 }
