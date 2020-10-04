@@ -1,60 +1,51 @@
+#include "bvh_mhem_fit/implementation.h"
 #include "cuda.h"
 #include <algorithm>
 #include <chrono>
 #include <vector>
 #include <stdio.h>
 
-#include <cuda.h>
 #include <cuda_runtime.h>
-
-#include <thrust/host_vector.h>
-#include <thrust/device_vector.h>
-
-#include <torch/script.h>
-
-#include <glm/glm.hpp>
+#include <torch/types.h>
+#include <glm/matrix.hpp>
 
 #include "common.h"
-#include "mixture.h"
-#include "hacked_accessor.h"
 #include "cuda_qt_creator_definitinos.h"
+#include "hacked_accessor.h"
+#include "mixture.h"
+#include "parallel_start.h"
 #include "lbvh/aabb.h"
 #include "lbvh/bvh.h"
 #include "lbvh/query.h"
 #include "lbvh/predicator.h"
 #include "math/symeig_cuda.h"
 
-
-#include "bvh_mhem_fit/implementation.h"
-#include "parallel_start.h"
-
 namespace bvh_mhem_fit {
 
 namespace  {
 
-template <typename scalar_t, int DIMS, template <typename U> class PtrTraits = gpe::RestrictPtrTraits>
-__host__ __device__
-void evaluate_bvh_forward(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
-                         const dim3& gpe_blockIdx, const dim3& gpe_threadIdx,
-                         const torch::PackedTensorAccessor32<scalar_t, 4, PtrTraits> mixture,
-                         const torch::PackedTensorAccessor32<lbvh::detail::Node::index_type_torch, 4, PtrTraits> nodes,
-                         const torch::PackedTensorAccessor32<scalar_t, 4, PtrTraits> aabbs,
-                         const torch::PackedTensorAccessor32<scalar_t, 4, PtrTraits> xes,
-                         torch::PackedTensorAccessor32<scalar_t, 3, PtrTraits> sums,
-                         const gpe::MixtureAndXesNs n)
+template <typename scalar_t, int DIMS>
+__host__ __device__ void evaluate_bvh_forward(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
+                                     const dim3& gpe_blockIdx, const dim3& gpe_threadIdx,
+                                     const gpe::PackedTensorAccessor32<scalar_t, 4> mixture,
+                                     const gpe::PackedTensorAccessor32<lbvh::detail::Node::index_type_torch, 4> nodes,
+                                     const gpe::PackedTensorAccessor32<scalar_t, 4> aabbs,
+                                     const gpe::PackedTensorAccessor32<scalar_t, 4> xes,
+                                     gpe::PackedTensorAccessor32<scalar_t, 3> sums,
+                                     const gpe::MixtureAndXesNs n)
 {
     GPE_UNUSED(gpe_gridDim)
     using G = gpe::Gaussian<DIMS, scalar_t>;
     using Lbvh = lbvh::detail::basic_device_bvh<scalar_t, G, true>;
-    const int batch_index = int(gpe_blockIdx.x * gpe_blockDim.x + gpe_threadIdx.x);
-    const int layer_index = int(gpe_blockIdx.y * gpe_blockDim.y + gpe_threadIdx.y);
-    const int xes_index = int(gpe_blockIdx.z * gpe_blockDim.z + gpe_threadIdx.z);
+    const auto xes_index = gpe_blockIdx.x * gpe_blockDim.x + gpe_threadIdx.x;
+    const auto layer_index = gpe_blockIdx.y * gpe_blockDim.y + gpe_threadIdx.y;
+    const auto batch_index = gpe_blockIdx.z * gpe_blockDim.z + gpe_threadIdx.z;
 
-    const auto batch_xes_index = min(batch_index, int(n.batch_xes - 1));
-    const auto layer_xes_index = min(layer_index, int(n.layers_xes - 1));
+    const auto batch_xes_index = gpe::min(batch_index, n.batch_xes - 1);
+    const auto layer_xes_index = gpe::min(layer_index, n.layers_xes - 1);
 
     //    printf("batch_index=%d, layer_index=%d, batch_xes_index=%d, layer_xes_index=%d, xes_index=%d\n", batch_index, layer_index, batch_xes_index, layer_xes_index, xes_index);
-    if (batch_index >= int(n.batch) || layer_index >= int(n.layers) || xes_index >= int(n.xes))
+    if (batch_index >= n.batch || layer_index >= n.layers || xes_index >= n.xes)
         return;
     //    printf("do batch_index=%d, layer_index=%d, batch_xes_index=%d, layer_xes_index=%d, xes_index=%d\n", batch_index, layer_index, batch_xes_index, layer_xes_index, xes_index);
 
@@ -69,39 +60,38 @@ void evaluate_bvh_forward(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
     const auto& x_pos = gpe::vec<DIMS>(xes[batch_xes_index][layer_xes_index][xes_index][0]);
     auto point = lbvh::make_vector_of(x_pos);
     auto& sum = sums[batch_index][layer_index][xes_index];
-    auto evaluate = [bvh, &sum, &x_pos] (unsigned index) {
+    auto evaluate = [&bvh, &sum, &x_pos] (unsigned index) {
         const auto& g = bvh.objects[index];
         sum += gpe::evaluate_gaussian(x_pos, g.weight, g.position, g.covariance);
     };
     lbvh::query_device_with_fun(bvh, lbvh::inside_aabb(point), evaluate);
 }
 
-template <typename scalar_t, int DIMS, template <typename U> class PtrTraits = gpe::RestrictPtrTraits>
-__host__ __device__
-void kernel_bvh_backward(const dim3& gpe_blockIdx, const dim3& gpe_blockDim,
-                        const dim3& gpe_threadIdx, const dim3& gpe_threadDim,
-                        const torch::PackedTensorAccessor32<scalar_t, 4, PtrTraits> mixture,
-                        const torch::PackedTensorAccessor32<lbvh::detail::Node::index_type_torch, 4, PtrTraits> nodes,
-                        const torch::PackedTensorAccessor32<scalar_t, 4, PtrTraits> aabbs,
-                        const torch::PackedTensorAccessor32<scalar_t, 4, PtrTraits> xes,
-                        torch::PackedTensorAccessor32<scalar_t, 4, PtrTraits> grad_mixture,
-                        torch::PackedTensorAccessor32<scalar_t, 4, PtrTraits> grad_xes,
-                        const torch::PackedTensorAccessor32<scalar_t, 3, PtrTraits> grad_output,
-                        const gpe::MixtureAndXesNs n, bool requires_grad_mixture, bool requires_grad_xes)
+
+template <typename scalar_t, int DIMS>
+__host__ __device__ void kernel_bvh_backward(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
+                                    const dim3& gpe_blockIdx, const dim3& gpe_threadIdx,
+                                    const gpe::PackedTensorAccessor32<scalar_t, 4> mixture,
+                                    const gpe::PackedTensorAccessor32<lbvh::detail::Node::index_type_torch, 4> nodes,
+                                    const gpe::PackedTensorAccessor32<scalar_t, 4> aabbs,
+                                    const gpe::PackedTensorAccessor32<scalar_t, 4> xes,
+                                    gpe::PackedTensorAccessor32<scalar_t, 4> grad_mixture,
+                                    gpe::PackedTensorAccessor32<scalar_t, 4> grad_xes,
+                                    const gpe::PackedTensorAccessor32<scalar_t, 3> grad_output,
+                                    const gpe::MixtureAndXesNs n, bool requires_grad_mixture, bool requires_grad_xes)
 {
-    GPE_UNUSED(gpe_threadDim)
+    GPE_UNUSED(gpe_gridDim)
     using G = gpe::Gaussian<DIMS, scalar_t>;
     using Lbvh = lbvh::detail::basic_device_bvh<scalar_t, G, true>;
-    const int batch_index = int(gpe_blockIdx.x * gpe_blockDim.x + gpe_threadIdx.x);
-    const int layer_index = int(gpe_blockIdx.y * gpe_blockDim.y + gpe_threadIdx.y);
-    const int xes_index = int(gpe_blockIdx.z * gpe_blockDim.z + gpe_threadIdx.z);
+    const auto xes_index = gpe_blockIdx.x * gpe_blockDim.x + gpe_threadIdx.x;
+    const auto layer_index = gpe_blockIdx.y * gpe_blockDim.y + gpe_threadIdx.y;
+    const auto batch_index = gpe_blockIdx.z * gpe_blockDim.z + gpe_threadIdx.z;
 
-    const auto batch_xes_index = min(batch_index, int(n.batch_xes - 1));
-    const auto layer_xes_index = min(layer_index, int(n.layers_xes - 1));
+    const auto batch_xes_index = gpe::min(batch_index, n.batch_xes - 1);
+    const auto layer_xes_index = gpe::min(layer_index, n.layers_xes - 1);
 
-    if (batch_index >= int(n.batch) || layer_index >= int(n.layers) || xes_index >= int(n.xes))
+    if (batch_index >= n.batch || layer_index >= n.layers || xes_index >= n.xes)
         return;
-    printf("do batch_index=%d, layer_index=%d, batch_xes_index=%d, layer_xes_index=%d, xes_index=%d\n", batch_index, layer_index, batch_xes_index, layer_xes_index, xes_index);
 
     const unsigned int num_nodes = n.components * 2 + 1;  // (# of internal node) + (# of leaves), 2N+1
     const unsigned int num_objects = n.components;        // (# of leaves), the same as the number of objects
@@ -117,7 +107,7 @@ void kernel_bvh_backward(const dim3& gpe_blockIdx, const dim3& gpe_blockDim,
     auto current_grad_xes = grad_xes[batch_xes_index][layer_xes_index][xes_index];
     const auto current_grad_output = grad_output[batch_index][layer_index][xes_index];
 
-    auto evaluate_backward = [&] (int index) {
+    auto evaluate_backward = [&] (unsigned index) {
         const G& g = bvh.objects[index];
 
         const auto t = x_pos - g.position;
@@ -128,7 +118,7 @@ void kernel_bvh_backward(const dim3& gpe_blockIdx, const dim3& gpe_blockDim,
 
         if (requires_grad_xes) {
             const auto grad_xes_addition = - current_grad_output * local_grad_c_pos;
-            for (int i = 0; i < DIMS; ++i) {
+            for (uint i = 0; i < DIMS; ++i) {
                 gpe::atomicAdd(&current_grad_xes[i], grad_xes_addition[i]);
             }
         }
@@ -137,9 +127,9 @@ void kernel_bvh_backward(const dim3& gpe_blockIdx, const dim3& gpe_blockDim,
             const auto grad_c_pos_addition = local_grad_c_pos * current_grad_output;
             const auto grad_c_cov_addition = - g.weight * scalar_t(0.5) * exp * current_grad_output * glm::outerProduct(t, t);
             gpe::atomicAdd(&current_grad_mixture[index][0], grad_c_weight_addition);
-            for (int i = 0; i < DIMS; ++i) {
+            for (uint i = 0; i < DIMS; ++i) {
                 gpe::atomicAdd(&current_grad_mixture[index][1 + i], grad_c_pos_addition[i]);
-                for (int j = 0; j < DIMS; ++j)
+                for (uint j = 0; j < DIMS; ++j)
                     gpe::atomicAdd(&current_grad_mixture[index][1 + DIMS + i*DIMS + j], grad_c_cov_addition[i][j]);
             }
         }
@@ -198,11 +188,11 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> cuda_bvh_forward_impl(co
 
 
     AT_DISPATCH_FLOATING_TYPES(mixture.scalar_type(), "cuda_bvh_backward_impl", ([&] {
-                                   auto sum_a = sum.packed_accessor32<scalar_t, 3, gpe::RestrictPtrTraits>();
-                                   auto mixture_a = mixture.packed_accessor32<scalar_t, 4, gpe::RestrictPtrTraits>();
-                                   auto nodes_a = bvh.m_nodes.packed_accessor32<lbvh::detail::Node::index_type_torch, 4, gpe::RestrictPtrTraits>();
-                                   auto aabbs_a = bvh.m_aabbs.packed_accessor32<scalar_t, 4, gpe::RestrictPtrTraits>();
-                                   const auto xes_a = xes_copy.packed_accessor32<scalar_t, 4, gpe::RestrictPtrTraits>();
+                                   auto sum_a = gpe::accessor<scalar_t, 3>(sum);
+                                   auto mixture_a = gpe::accessor<scalar_t, 4>(mixture);
+                                   auto nodes_a = gpe::accessor<lbvh::detail::Node::index_type_torch, 4>(bvh.m_nodes);
+                                   auto aabbs_a = gpe::accessor<scalar_t, 4>(bvh.m_aabbs);
+                                   const auto xes_a = gpe::accessor<scalar_t, 4>(xes_copy);
 
                                    if (n.dims == 2) {
                                        auto fun = [mixture_a, nodes_a, aabbs_a, xes_a, sum_a, n] __host__ __device__
@@ -273,13 +263,13 @@ std::tuple<torch::Tensor, torch::Tensor> cuda_bvh_backward_impl(const torch::Ten
 
 
     AT_DISPATCH_FLOATING_TYPES(mixture.scalar_type(), "cuda_bvh_backward_impl", ([&] {
-                                   auto mixture_a = mixture.packed_accessor32<scalar_t, 4, gpe::RestrictPtrTraits>();
-                                   auto nodes_a = bvh.m_nodes.packed_accessor32<lbvh::detail::Node::index_type_torch, 4, gpe::RestrictPtrTraits>();
-                                   auto aabbs_a = bvh.m_aabbs.packed_accessor32<scalar_t, 4, gpe::RestrictPtrTraits>();
-                                   auto xes_a = xes_copy.packed_accessor32<scalar_t, 4, gpe::RestrictPtrTraits>();
-                                   auto grad_mixture_a = grad_mixture.packed_accessor32<scalar_t, 4, gpe::RestrictPtrTraits>();
-                                   auto grad_xes_a = grad_xes.packed_accessor32<scalar_t, 4, gpe::RestrictPtrTraits>();
-                                   auto grad_output_a = grad_output_copy.packed_accessor32<scalar_t, 3, gpe::RestrictPtrTraits>();
+                                   auto mixture_a = gpe::accessor<scalar_t, 4>(mixture);
+                                   auto nodes_a = gpe::accessor<lbvh::detail::Node::index_type_torch, 4>(bvh.m_nodes);
+                                   auto aabbs_a = gpe::accessor<scalar_t, 4>(bvh.m_aabbs);
+                                   auto xes_a = gpe::accessor<scalar_t, 4>(xes_copy);
+                                   auto grad_mixture_a = gpe::accessor<scalar_t, 4>(grad_mixture);
+                                   auto grad_xes_a = gpe::accessor<scalar_t, 4>(grad_xes);
+                                   auto grad_output_a = gpe::accessor<scalar_t, 3>(grad_output_copy);
 
                                    if (n.dims == 2) {
                                        auto fun = [=] __host__ __device__
