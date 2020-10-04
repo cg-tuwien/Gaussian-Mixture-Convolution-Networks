@@ -7,6 +7,7 @@ from torch import Tensor
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.utils.data
+from torch.utils.tensorboard import SummaryWriter as TensorboardWriter
 
 import prototype_convolution.config
 import gmc.mixture as gm
@@ -90,7 +91,7 @@ class Net(nn.Module):
         return self.gmc1.regularisation_loss() + self.gmc2.regularisation_loss() + self.gmc3.regularisation_loss()
 
     # noinspection PyCallingNonCallable
-    def forward(self, in_x: Tensor) -> Tensor:
+    def forward(self, in_x: Tensor, tensorboard: TensorboardWriter = None) -> Tensor:
         # Andrew Ng says that most of the time batch norm (BN) is applied before activation.
         # That would allow to merge the beta and bias learnable parameters
         # https://www.youtube.com/watch?v=tNIpEZLv_eg
@@ -112,7 +113,7 @@ class Net(nn.Module):
             x_const = torch.zeros(1, 1, device=in_x.device)
 
         self.reset_timer()
-        x, x_const = self.relus[0](x, x_const)
+        x, x_const = self.relus[0](x, x_const, tensorboard)
         self.time_lap("relu0")
         # x = self.maxPool1(x)
 
@@ -131,7 +132,7 @@ class Net(nn.Module):
             x_const = torch.zeros(1, 1, device=in_x.device)
 
         self.reset_timer()
-        x, x_const = self.relus[1](x, x_const)
+        x, x_const = self.relus[1](x, x_const, tensorboard)
         self.time_lap("relu1")
         # x = self.maxPool2(x)
 
@@ -150,7 +151,7 @@ class Net(nn.Module):
             x_const = torch.zeros(1, 1, device=in_x.device)
 
         self.reset_timer()
-        x, x_const = self.relus[2](x, x_const)
+        x, x_const = self.relus[2](x, x_const, tensorboard)
         self.time_lap("relu2")
         # x = self.maxPool3(x)
 

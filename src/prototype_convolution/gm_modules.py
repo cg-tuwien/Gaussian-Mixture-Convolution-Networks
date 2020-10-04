@@ -4,6 +4,7 @@ import time
 
 import torch
 from torch import Tensor
+from torch.utils.tensorboard import SummaryWriter as TensorboardWriter
 
 import gmc.mixture as gm
 import gmc.image_tools as madam_imagetools
@@ -166,8 +167,8 @@ class ReLUFitting(torch.nn.modules.Module):
         self.last_in = None
         self.last_out = None
 
-    def forward(self, x_m: Tensor, x_constant: Tensor) -> typing.Tuple[Tensor, Tensor]:
-        y_m, y_constant, _ = self.config.fitting_method(x_m, x_constant, self.n_output_gaussians, self.config.fitting_config)
+    def forward(self, x_m: Tensor, x_constant: Tensor, tensorboard: TensorboardWriter = None) -> typing.Tuple[Tensor, Tensor]:
+        y_m, y_constant, _ = self.config.fitting_method(x_m, x_constant, self.n_output_gaussians, self.config.fitting_config, tensorboard)
 
         self.last_in = (x_m.detach(), x_constant.detach())
         self.last_out = (y_m.detach(), y_constant.detach())

@@ -5,14 +5,14 @@ import torch.autograd
 # import update_syspath
 import gmc.mixture as gm
 
-enable_python = True
+enable_python = False
 enable_output = True
 
-n_batch = 100
-n_layers = 10
+n_batch = 10
+n_layers = 2
 n_dims = 2
-# mixture = gm.generate_random_mixtures(n_batch, n_layers, 125, n_dims)
-mixture = gm.load(f"fitting_input/fitting_input_batch{0}_netlayer{0}")[0]
+# mixture = gm.generate_random_mixtures(n_batch, n_layers, 5, n_dims)
+mixture = gm.load(f"fitting_input/fitting_input_batch{0}_netlayer{1}")[0]
 mixture = gm.pack_mixture(gm.weights(mixture), gm.positions(mixture), gm.covariances(mixture).inverse().transpose(-2, -1))
 xes = gm.positions(mixture)
 # xes = torch.rand([100, 10, 125, n_dims])
@@ -66,8 +66,6 @@ if enable_python:
     print(f"python cuda: {python_cuda_end_time - python_cuda_start_time}")
 print(f"cpp cpu: {cpp_cpu_end_time - cpp_cpu_start_time}")
 print(f"cpp cuda: {cpp_cuda_end_time - cpp_cuda_start_time}")
-
-exit(0)
 
 print(f"====== requires_grad = True ======")
 mixture.requires_grad = True;
@@ -149,6 +147,9 @@ if enable_python:
     print(f"RMSE mixture grad python_cpu vs cpp_cpu:     {((python_cpu_mixture_grad - cpp_cpu_mixture_grad)**2).mean().sqrt().item()}")
     print(f"RMSE mixture grad python_cpu vs cpp_cuda:    {((python_cpu_mixture_grad - cpp_cuda_mixture_grad.cpu())**2).mean().sqrt().item()}")
 print(f"RMSE mixture grad cpp_cpu vs cpp_cuda:       {((cpp_cpu_mixture_grad - cpp_cuda_mixture_grad.cpu())**2).mean().sqrt().item()}")
+print(f"RMSE mixture grad cpp_cpu vs cpp_cuda (wei): {(gm.weights(cpp_cpu_mixture_grad - cpp_cuda_mixture_grad.cpu())**2).mean().sqrt().item()}")
+print(f"RMSE mixture grad cpp_cpu vs cpp_cuda (pos): {(gm.positions(cpp_cpu_mixture_grad - cpp_cuda_mixture_grad.cpu())**2).mean().sqrt().item()}")
+print(f"RMSE mixture grad cpp_cpu vs cpp_cuda (cov): {(gm.covariances(cpp_cpu_mixture_grad - cpp_cuda_mixture_grad.cpu())**2).mean().sqrt().item()}")
 
 if enable_python:
     print(f"RMSE xes grad python_cpu vs python_cuda:     {((python_cpu_xes_grad - python_cuda_xes_grad.cpu())**2).mean().sqrt().item()}")

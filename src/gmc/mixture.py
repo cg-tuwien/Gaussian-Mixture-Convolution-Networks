@@ -10,7 +10,7 @@ import numpy as np
 
 from . import mat_tools
 from . import config
-from .cpp.extensions.evaluate_inversed import evaluate_inversed as gm_evaluate_inversed
+from .cpp.extensions.evaluate_inversed import evaluate_inversed as cppExtensionsEvaluateInversed
 
 
 def n_dimensions(mixture: Tensor) -> int:
@@ -111,7 +111,7 @@ def normal_amplitudes(_covariances: Tensor) -> Tensor:
 
 
 def evaluate_inversed(mixture: Tensor, xes: Tensor) -> Tensor:
-    return gm_evaluate_inversed.apply(mixture, xes)
+    return cppExtensionsEvaluateInversed.apply(mixture, xes)
 
 
 def old_evaluate_inversed(mixture: Tensor, xes: Tensor) -> Tensor:
@@ -157,7 +157,7 @@ def old_evaluate_inversed(mixture: Tensor, xes: Tensor) -> Tensor:
 
 def evaluate(mixture: Tensor, xes: Tensor) -> Tensor:
     # torch inverse returns a transposed matrix (v 1.3.1). our matrix is symmetric however, and we want to take a view, so the transpose avoids a copy.
-    return evaluate_inversed(pack_mixture(weights(mixture), positions(mixture), covariances(mixture).inverse().transpose(-2, -1)), xes)
+    return evaluate_inversed(pack_mixture(weights(mixture), positions(mixture), mat_tools.inverse(covariances(mixture))), xes)
 
 
 def evaluate_componentwise_inversed(gaussians: Tensor, xes: Tensor):
@@ -192,7 +192,7 @@ def evaluate_componentwise_inversed(gaussians: Tensor, xes: Tensor):
 
 def evaluate_componentwise(mixture: Tensor, xes: Tensor) -> Tensor:
     # torch inverse returns a transposed matrix (v 1.3.1). our matrix is symmetric however, and we want to take a view, so the transpose avoids a copy.
-    return evaluate_componentwise_inversed(pack_mixture(weights(mixture), positions(mixture), covariances(mixture).inverse().transpose(-2, -1)), xes)
+    return evaluate_componentwise_inversed(pack_mixture(weights(mixture), positions(mixture), mat_tools.inverse(covariances(mixture))), xes)
 
 
 # # todo: untested

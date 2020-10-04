@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.18)
 
 project(gm_pytorch_extensions LANGUAGES CUDA CXX)
 
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 if(NOT DEFINED CMAKE_CUDA_STANDARD)
@@ -13,22 +13,26 @@ set(CMAKE_CUDA_ARCHITECTURES 60)
 # set(CMAKE_CUDA_FLAGS
 #     "-D_GLIBCXX_USE_CXX11_ABI=0 -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --expt-relaxed-constexpr --compiler-options '-fPIC' -O3 --use_fast_math -std=c++14"
 #     )
-# string(APPEND CMAKE_CXX_FLAGS " -D_GLIBCXX_USE_CXX11_ABI=0")
-string(APPEND CMAKE_CUDA_FLAGS " -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --expt-extended-lambda --expt-relaxed-constexpr --compiler-options '-fPIC'")
-string(APPEND CMAKE_CUDA_FLAGS_RELEASE " --use_fast_math")
+string(APPEND CMAKE_CUDA_FLAGS " -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --expt-extended-lambda --expt-relaxed-constexpr")
+string(APPEND CMAKE_CUDA_FLAGS " -Xcompiler -fPIC,-fopenmp")
+string(APPEND CMAKE_CUDA_FLAGS_RELEASE " --use_fast_math --generate-line-info")
+string(APPEND CMAKE_CUDA_FLAGS_RELEASE " -Xcompiler '-ffast-math,-O4,-march=native'")
 string(APPEND CMAKE_CUDA_FLAGS_DEBUG " -g -G")
 
-# set(CMAKE_CXX_FLAGS -D_GLIBCXX_USE_CXX11_ABI=0 -O3 --use_fast_math)
+# ASan:
+#string(APPEND CMAKE_CUDA_FLAGS_DEBUG " -Xcompiler -fsanitize=address -Xcompiler -fno-omit-frame-pointer")
+#string(APPEND CMAKE_CXX_FLAGS_DEBUG " -fno-omit-frame-pointer -fsanitize=address")
+#string(APPEND CMAKE_LINKER_FLAGS_DEBUG " -fno-omit-frame-pointer -fsanitize=address")
+
+#target_compile_options(kre -Wall -Wextra -Wpedantic -Werror)
+string(APPEND CMAKE_CXX_FLAGS_RELEASE " -ffast-math -O4 -march=native")
+string(APPEND CMAKE_EXE_LINKER_FLAGS " -fuse-ld=lld")
 
 add_compile_definitions(GMC_CMAKE_TEST_BUILD)
 
 set (MY_ANACONDA_PATH "/home/madam/bin/anaconda3")
 
 list(APPEND CMAKE_PREFIX_PATH "${MY_ANACONDA_PATH}/lib/python3.7/site-packages/torch/")
-
-
-
-
 
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
@@ -55,6 +59,7 @@ endif()
 set(MY_INCLUDE_PATHS
     ${MY_ANACONDA_PATH}/include/python3.7m/
     ../glm
+    ../cub
     .
 )
 
@@ -63,17 +68,20 @@ include_directories(SYSTEM ${MY_INCLUDE_PATHS} SYSTEM ${TORCH_INCLUDE_DIRS})
 
 set(HEADERS
     common.h
+    mixture.h
+    parallel_start.h
+    hacked_accessor.h
+    cuda_qt_creator_definitinos.h
 )
 
 set(LBVH_HEADERS
     lbvh/aabb.h
     lbvh/bvh.h
+    lbvh/bvh.cu
     lbvh/morton_code.h
     lbvh/predicator.h
     lbvh/query.h
     lbvh/utility.h)
-
-
 
 set(MATH_SOURCES
     math/symeig.h
@@ -87,17 +95,31 @@ set(MATH_SOURCES
     math/symeig_cuda.cu)
 
 set(EVALUATE_SOURCES
-    evaluate_inversed/cpu_bvh.cpp
+    evaluate_inversed/parallel_implementation.h
+    evaluate_inversed/parallel_implementation.cu
+    evaluate_inversed/parallel_implementation_optimised_forward.cu
+    evaluate_inversed/parallel_implementation_optimised_backward.cu
+    evaluate_inversed/parallel_binding.h
+    evaluate_inversed/parallel_binding.cpp
     evaluate_inversed/cuda_bvh.cpp
     evaluate_inversed/cuda_bvh.cu
-    evaluate_inversed/cpu_parallel.cpp
-    evaluate_inversed/cuda_parallel.cpp
-    evaluate_inversed/cuda_parallel.cu
     evaluate_inversed/test_runner.cpp
+)
+
+set(BVH_MHEM_FIT_SOURCES
+    bvh_mhem_fit/implementation.h
+    bvh_mhem_fit/implementation.cu
+    bvh_mhem_fit/bindings.cpp
+    bvh_mhem_fit/bindings.h
+    bvh_mhem_fit/test_runner.cpp
 )
 
 add_executable(evaluate_inversed_tester ${HEADERS} ${MATH_SOURCES} ${LBVH_HEADERS} ${EVALUATE_SOURCES})
 target_link_libraries(evaluate_inversed_tester PUBLIC OpenMP::OpenMP_CXX torch Qt5::Widgets)
+
+
+add_executable(bvh_mhem_fit_tester ${HEADERS} ${MATH_SOURCES} ${LBVH_HEADERS} ${BVH_MHEM_FIT_SOURCES})
+target_link_libraries(bvh_mhem_fit_tester PUBLIC OpenMP::OpenMP_CXX torch Qt5::Widgets)
 
 #set(EM_FITTING_SOURCES
 #    em_fitting/em_fitting_common.h
@@ -109,5 +131,3 @@ target_link_libraries(evaluate_inversed_tester PUBLIC OpenMP::OpenMP_CXX torch Q
 #add_executable(em_fitting ${HEADERS} ${EM_FITTING_SOURCES})
 #target_link_libraries(em_fitting PUBLIC OpenMP::OpenMP_CXX ${PYTORCH_LIBS})
 
-###### add to python pytorch cuda flags:
-# --expt-extended-lambda

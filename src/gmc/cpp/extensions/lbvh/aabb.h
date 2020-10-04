@@ -4,6 +4,7 @@
 #include <cmath>
 #include <ostream>
 
+#include <cuda_runtime.h>
 #include <thrust/swap.h>
 
 #include "utility.h"
@@ -12,30 +13,30 @@ namespace lbvh
 {
 
 template<typename T>
-struct aabb
+struct Aabb
 {
     typename vector_of<T>::type upper;
     typename vector_of<T>::type lower;
 };
 
-std::ostream& operator <<(std::ostream& stream, const float4& v) {
+inline std::ostream& operator <<(std::ostream& stream, const float4& v) {
     stream << v.x << "/" << v.y << "/" << v.z << "/" << v.w;
     return stream;
 }
-std::ostream& operator <<(std::ostream& stream, const double4& v) {
+inline std::ostream& operator <<(std::ostream& stream, const double4& v) {
     stream << v.x << "/" << v.y << "/" << v.z << "/" << v.w;
     return stream;
 }
 
 template<typename scalar_t>
-std::ostream& operator <<(std::ostream& stream, const aabb<scalar_t>& b) {
+std::ostream& operator <<(std::ostream& stream, const Aabb<scalar_t>& b) {
     stream << "AABB[" << b.lower << "; " << b.upper << "]";
     return stream;
 }
 
 template<typename T>
 __device__ __host__
-inline bool inside(const typename vector_of<T>::type& point, const aabb<T>& box) noexcept
+inline bool inside(const typename vector_of<T>::type& point, const Aabb<T>& box) noexcept
 {
     if (point.x < box.lower.x || point.x > box.upper.x) return false;
     if (point.y < box.lower.y || point.y > box.upper.y) return false;
@@ -45,7 +46,7 @@ inline bool inside(const typename vector_of<T>::type& point, const aabb<T>& box)
 
 template<typename T>
 __device__ __host__
-inline bool intersects(const aabb<T>& lhs, const aabb<T>& rhs) noexcept
+inline bool intersects(const Aabb<T>& lhs, const Aabb<T>& rhs) noexcept
 {
     if(lhs.upper.x < rhs.lower.x || rhs.upper.x < lhs.lower.x) {return false;}
     if(lhs.upper.y < rhs.lower.y || rhs.upper.y < lhs.lower.y) {return false;}
@@ -54,9 +55,9 @@ inline bool intersects(const aabb<T>& lhs, const aabb<T>& rhs) noexcept
 }
 
 __device__ __host__
-inline aabb<double> merge(const aabb<double>& lhs, const aabb<double>& rhs) noexcept
+inline Aabb<double> merge(const Aabb<double>& lhs, const Aabb<double>& rhs) noexcept
 {
-    aabb<double> merged;
+    Aabb<double> merged;
     merged.upper.x = ::fmax(lhs.upper.x, rhs.upper.x);
     merged.upper.y = ::fmax(lhs.upper.y, rhs.upper.y);
     merged.upper.z = ::fmax(lhs.upper.z, rhs.upper.z);
@@ -67,9 +68,9 @@ inline aabb<double> merge(const aabb<double>& lhs, const aabb<double>& rhs) noex
 }
 
 __device__ __host__
-inline aabb<float> merge(const aabb<float>& lhs, const aabb<float>& rhs) noexcept
+inline Aabb<float> merge(const Aabb<float>& lhs, const Aabb<float>& rhs) noexcept
 {
-    aabb<float> merged;
+    Aabb<float> merged;
     merged.upper.x = ::fmaxf(lhs.upper.x, rhs.upper.x);
     merged.upper.y = ::fmaxf(lhs.upper.y, rhs.upper.y);
     merged.upper.z = ::fmaxf(lhs.upper.z, rhs.upper.z);
@@ -84,7 +85,7 @@ inline aabb<float> merge(const aabb<float>& lhs, const aabb<float>& rhs) noexcep
 // - Nick Roussopoulos, Stephen Kelley FredericVincent
 
 __device__ __host__
-inline float mindist(const aabb<float>& lhs, const float4& rhs) noexcept
+inline float mindist(const Aabb<float>& lhs, const float4& rhs) noexcept
 {
     const float dx = ::fminf(lhs.upper.x, ::fmaxf(lhs.lower.x, rhs.x)) - rhs.x;
     const float dy = ::fminf(lhs.upper.y, ::fmaxf(lhs.lower.y, rhs.y)) - rhs.y;
@@ -93,7 +94,7 @@ inline float mindist(const aabb<float>& lhs, const float4& rhs) noexcept
 }
 
 __device__ __host__
-inline double mindist(const aabb<double>& lhs, const double4& rhs) noexcept
+inline double mindist(const Aabb<double>& lhs, const double4& rhs) noexcept
 {
     const double dx = ::fmin(lhs.upper.x, ::fmax(lhs.lower.x, rhs.x)) - rhs.x;
     const double dy = ::fmin(lhs.upper.y, ::fmax(lhs.lower.y, rhs.y)) - rhs.y;
@@ -102,7 +103,7 @@ inline double mindist(const aabb<double>& lhs, const double4& rhs) noexcept
 }
 
 __device__ __host__
-inline float minmaxdist(const aabb<float>& lhs, const float4& rhs) noexcept
+inline float minmaxdist(const Aabb<float>& lhs, const float4& rhs) noexcept
 {
     float3 rm_sq = make_float3((lhs.lower.x - rhs.x) * (lhs.lower.x - rhs.x),
                                (lhs.lower.y - rhs.y) * (lhs.lower.y - rhs.y),
@@ -131,7 +132,7 @@ inline float minmaxdist(const aabb<float>& lhs, const float4& rhs) noexcept
 }
 
 __device__ __host__
-inline double minmaxdist(const aabb<double>& lhs, const double4& rhs) noexcept
+inline double minmaxdist(const Aabb<double>& lhs, const double4& rhs) noexcept
 {
     double3 rm_sq = make_double3((lhs.lower.x - rhs.x) * (lhs.lower.x - rhs.x),
                                  (lhs.lower.y - rhs.y) * (lhs.lower.y - rhs.y),
@@ -161,7 +162,7 @@ inline double minmaxdist(const aabb<double>& lhs, const double4& rhs) noexcept
 
 template<typename T>
 __device__ __host__
-inline typename vector_of<T>::type centroid(const aabb<T>& box) noexcept
+inline typename vector_of<T>::type centroid(const Aabb<T>& box) noexcept
 {
     typename vector_of<T>::type c;
     c.x = (box.upper.x + box.lower.x) * 0.5;

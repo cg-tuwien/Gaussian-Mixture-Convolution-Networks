@@ -10,23 +10,10 @@
 #include <algorithm>
 #include <thrust/tuple.h>
 
+#include "common.h"
+#include "cuda_qt_creator_definitinos.h"
 #include "math/matrix.h"
 #include "math/symeig_detail.h"
-#include "common.h"
-
-#ifndef __CUDACC__
-constexpr dim3 blockIdx;
-constexpr dim3 blockDim;
-constexpr dim3 threadIdx;
-using std::min;
-using std::max;
-
-namespace torch {
-template <typename T>
-struct RestrictPtrTraits {
-  typedef T* __restrict__ PtrType;
-};
-#endif
 
 template <typename scalar_t, int DIMS>
 __global__ void kernel_forward(const torch::PackedTensorAccessor32<scalar_t, 3, torch::RestrictPtrTraits> matrices_a,

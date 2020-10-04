@@ -1,7 +1,7 @@
 #ifndef MATH_MATRIX_H
 #define MATH_MATRIX_H
 
-#include <glm/glm.hpp>
+#include <glm/geometric.hpp>
 
 #ifndef __CUDACC__
 #define __device__
@@ -24,6 +24,11 @@ __forceinline__ __host__ __device__ scalar_t trace(const glm::mat<2, 2, scalar_t
 template <typename scalar_t>
 __forceinline__ __host__ __device__ scalar_t trace(const glm::mat<3, 3, scalar_t>& m) {
     return m[0][0] + m[1][1] + m[2][2];
+}
+
+template <int N_DIMS, typename scalar_t>
+__forceinline__ __host__ __device__ scalar_t squared_norm(const glm::vec<N_DIMS, scalar_t>& v) {
+    return glm::dot(v, v);
 }
 
 template <int DIMS, typename scalar_t>

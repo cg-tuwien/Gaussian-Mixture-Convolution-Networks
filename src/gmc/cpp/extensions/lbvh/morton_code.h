@@ -44,12 +44,12 @@ inline std::uint32_t morton_code(double4 xyz, double resolution = 1024.0) noexce
 }
 
 __device__
-inline int common_upper_bits(const unsigned int lhs, const unsigned int rhs) noexcept
+inline int common_upper_bits(const uint32_t lhs, const uint32_t rhs) noexcept
 {
     return ::__clz(lhs ^ rhs);
 }
 __device__
-inline int common_upper_bits(const unsigned long long int lhs, const unsigned long long int rhs) noexcept
+inline int common_upper_bits(const uint64_t lhs, const uint64_t rhs) noexcept
 {
     return ::__clzll(lhs ^ rhs);
 }
