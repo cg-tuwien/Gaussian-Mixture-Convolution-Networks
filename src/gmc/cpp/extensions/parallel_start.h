@@ -13,18 +13,16 @@
 namespace gpe {
 
 template <class T>
-__host__ __device__ __forceinline__ T atomicAdd(T *ptr, T val) {
+__host__ __device__ __forceinline__ void atomicAdd(T *ptr, T val) {
 //    *ptr += val;
 //    return *ptr;
 #ifdef __CUDA_ARCH__
-    return ::atomicAdd(ptr, val);
-#elif defined(_OPENMP) and _OPENMP>=201107
-    T t;
-    #pragma omp atomic capture
-    { t = *ptr; *ptr += val; }
-    return t;
+    ::atomicAdd(ptr, val);
+#elif defined(_OPENMP)
+    #pragma omp atomic
+    *ptr += val;
 #else
-    #error "Requires gcc or OpenMP>=3.1"
+    #error "Requires OpenMP"
 #endif
 }
 
