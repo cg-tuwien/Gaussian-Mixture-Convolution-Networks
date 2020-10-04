@@ -2,39 +2,10 @@
 #define LBVH_BVH_H
 
 #include <type_traits>
-#include <iostream>
-#include <ios>
-#include <chrono>
-
-#include <cuda_runtime.h>
-
-#include <torch/script.h>
-#include <torch/nn/functional.h>
-
-#include <cub/device/device_segmented_radix_sort.cuh>
 
 #include "common.h"
 #include "mixture.h"
-#include "cuda_qt_creator_definitinos.h"
-#include "math/symeig_detail.h"
-#include "math/symeig_cuda.h"
-#include "math/scalar.h"
-#include "math/matrix.h"
 #include "lbvh/aabb.h"
-
-#if defined(GPE_NO_CUDA_ERROR_CHECKING) or defined(NDEBUG)
-#define GPE_CUDA_ASSERT(ans)
-#else
-#define GPE_CUDA_ASSERT(ans) { gpuAssert((ans), __FILE__, __LINE__); }
-inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=true)
-{
-    if (code != cudaSuccess)
-    {
-        fprintf(stderr,"GPUassert: %s %s %d\n", cudaGetErrorString(code), file, line);
-        if (abort) exit(code);
-    }
-}
-#endif
 
 namespace lbvh
 {
@@ -85,13 +56,6 @@ struct basic_device_bvh<scalar_t, Object, true>
     aabb_type   const* aabbs;
     object_type const* objects;
 };
-
-inline torch::Tensor compute_aabb_whole(const torch::Tensor& aabbs) {
-    using namespace torch::indexing;
-    const auto upper = std::get<0>(aabbs.index({Ellipsis, Slice(None, 4)}).max(-2));
-    const auto lower = std::get<0>(aabbs.index({Ellipsis, Slice(4, None)}).min(-2));
-    return torch::cat({upper, lower}, -1).contiguous();
-}
 
 template<typename T>
 struct TorchTypeMapper;

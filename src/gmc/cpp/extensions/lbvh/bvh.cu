@@ -1,12 +1,37 @@
 #include "lbvh/bvh.h"
 
+#include <iostream>
+#include <chrono>
+
+#include <cuda_runtime.h>
+
+#include <torch/script.h>
+#include <torch/nn/functional.h>
+
+#include <cub/device/device_segmented_radix_sort.cuh>
+
+
 #include "lbvh/morton_code.h"
 
 #include "mixture.h"
 #include "cuda_qt_creator_definitinos.h"
 
+#include "math/symeig_detail.h"
+#include "math/symeig_cuda.h"
+#include "math/scalar.h"
+#include "math/matrix.h"
+
 namespace lbvh
 {
+namespace {
+inline torch::Tensor compute_aabb_whole(const torch::Tensor& aabbs) {
+    using namespace torch::indexing;
+    const auto upper = std::get<0>(aabbs.index({Ellipsis, Slice(None, 4)}).max(-2));
+    const auto lower = std::get<0>(aabbs.index({Ellipsis, Slice(4, None)}).min(-2));
+    return torch::cat({upper, lower}, -1).contiguous();
+}
+}
+
 namespace kernels
 {
 
@@ -334,7 +359,7 @@ void Bvh<scalar_t, Object>::construct()
     watch_stop("compute_aabbs");
 
     //        std::cout << "object_aabbs:" << object_aabbs << std::endl;
-    const auto aabb_whole = detail::compute_aabb_whole(object_aabbs);
+    const auto aabb_whole = compute_aabb_whole(object_aabbs);
     watch_stop("compute_aabb_whole");
     //        std::cout << "aabb_whole:" << aabb_whole << std::endl;
 
