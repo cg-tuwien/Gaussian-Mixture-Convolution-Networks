@@ -25,7 +25,7 @@ constexpr uint N_BATCHES = 1;
 constexpr uint N_CONVOLUTION_LAYERS = 3;
 constexpr uint LIMIT_N_BATCH = 100;
 
-void show(torch::Tensor mixture, const uint resolution, const uint n_batch_limit) {
+void show(torch::Tensor mixture, const int resolution, const int n_batch_limit) {
     const auto eval_fun = cuda_bvh_forward_wrapper;
     using namespace torch::indexing;
     const auto n_batch = std::min(gpe::n_batch(mixture), n_batch_limit);
@@ -61,7 +61,7 @@ void show(torch::Tensor mixture, const uint resolution, const uint n_batch_limit
     rendering *= 255;
     rendering = rendering.to(torch::ScalarType::Char);
     rendering = rendering.transpose(2, 3).transpose(1, 2).contiguous();
-    QImage qRendering((uchar*) rendering.data_ptr(), int(resolution * n_layers), int(resolution * n_batch), QImage::Format_Grayscale8);
+    QImage qRendering(reinterpret_cast<uchar*>(rendering.data_ptr()), resolution * n_layers, resolution * n_batch, QImage::Format_Grayscale8);
     QLabel* myLabel = new QLabel();
     myLabel->setPixmap(QPixmap::fromImage(qRendering));
 

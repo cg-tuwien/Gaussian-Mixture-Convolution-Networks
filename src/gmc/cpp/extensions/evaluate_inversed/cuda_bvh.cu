@@ -30,9 +30,9 @@ __global__ void evaluate_bvh_forward(const gpe::PackedTensorAccessor32<scalar_t,
 {
     using G = gpe::Gaussian<DIMS, scalar_t>;
     using Lbvh = lbvh::detail::basic_device_bvh<scalar_t, G, true>;
-    const auto xes_index = blockIdx.x * blockDim.x + threadIdx.x;
-    const auto layer_index = blockIdx.y * blockDim.y + threadIdx.y;
-    const auto batch_index = blockIdx.z * blockDim.z + threadIdx.z;
+    const auto xes_index = int(blockIdx.x * blockDim.x + threadIdx.x);
+    const auto layer_index = int(blockIdx.y * blockDim.y + threadIdx.y);
+    const auto batch_index = int(blockIdx.z * blockDim.z + threadIdx.z);
 
     const auto batch_xes_index = gpe::min(batch_index, n.batch_xes - 1);
     const auto layer_xes_index = gpe::min(layer_index, n.layers_xes - 1);
@@ -43,8 +43,8 @@ __global__ void evaluate_bvh_forward(const gpe::PackedTensorAccessor32<scalar_t,
 //    printf("do batch_index=%d, layer_index=%d, batch_xes_index=%d, layer_xes_index=%d, xes_index=%d\n", batch_index, layer_index, batch_xes_index, layer_xes_index, xes_index);
 
 
-    const unsigned int num_nodes = n.components * 2 + 1;  // (# of internal node) + (# of leaves), 2N+1
-    const unsigned int num_objects = n.components;        // (# of leaves), the same as the number of objects
+    const unsigned int num_nodes = uint(n.components) * 2 + 1;  // (# of internal node) + (# of leaves), 2N+1
+    const unsigned int num_objects = uint(n.components);        // (# of leaves), the same as the number of objects
     const auto* bvh_nodes = &reinterpret_cast<const lbvh::detail::Node&>(nodes[batch_index][layer_index][0][0]);
     const auto* bvh_aabbs = &reinterpret_cast<const lbvh::Aabb<scalar_t>&>(aabbs[batch_index][layer_index][0][0]);
     const auto* bvh_gaussians = &reinterpret_cast<const G&>(mixture[batch_index][layer_index][0][0]);
@@ -73,9 +73,9 @@ __global__ void kernel_bvh_backward(const gpe::PackedTensorAccessor32<scalar_t, 
 {
     using G = gpe::Gaussian<DIMS, scalar_t>;
     using Lbvh = lbvh::detail::basic_device_bvh<scalar_t, G, true>;
-    const auto xes_index = blockIdx.x * blockDim.x + threadIdx.x;
-    const auto layer_index = blockIdx.y * blockDim.y + threadIdx.y;
-    const auto batch_index = blockIdx.z * blockDim.z + threadIdx.z;
+    const auto xes_index = int(blockIdx.x * blockDim.x + threadIdx.x);
+    const auto layer_index = int(blockIdx.y * blockDim.y + threadIdx.y);
+    const auto batch_index = int(blockIdx.z * blockDim.z + threadIdx.z);
 
     const auto batch_xes_index = gpe::min(batch_index, n.batch_xes - 1);
     const auto layer_xes_index = gpe::min(layer_index, n.layers_xes - 1);
@@ -83,8 +83,8 @@ __global__ void kernel_bvh_backward(const gpe::PackedTensorAccessor32<scalar_t, 
     if (batch_index >= n.batch || layer_index >= n.layers || xes_index >= n.xes)
         return;
 
-    const unsigned int num_nodes = n.components * 2 + 1;  // (# of internal node) + (# of leaves), 2N+1
-    const unsigned int num_objects = n.components;        // (# of leaves), the same as the number of objects
+    const unsigned int num_nodes = uint(n.components) * 2 + 1;  // (# of internal node) + (# of leaves), 2N+1
+    const unsigned int num_objects = uint(n.components);        // (# of leaves), the same as the number of objects
     const auto* bvh_nodes = &reinterpret_cast<const lbvh::detail::Node&>(nodes[batch_index][layer_index][0][0]);
     const auto* bvh_aabbs = &reinterpret_cast<const lbvh::Aabb<scalar_t>&>(aabbs[batch_index][layer_index][0][0]);
     const auto* bvh_gaussians = &reinterpret_cast<const G&>(mixture[batch_index][layer_index][0][0]);
@@ -164,9 +164,9 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> cuda_bvh_forward_impl(co
     }
 
     dim3 dimBlock = dim3(LBVH_N_QUERY_THREADS, 1, 1);
-    dim3 dimGrid = dim3((n.xes + dimBlock.x - 1) / dimBlock.x,
-                        (n.layers + dimBlock.y - 1) / dimBlock.y,
-                        (n.batch + dimBlock.z - 1) / dimBlock.z);
+    dim3 dimGrid = dim3((uint(n.xes) + dimBlock.x - 1) / dimBlock.x,
+                        (uint(n.layers) + dimBlock.y - 1) / dimBlock.y,
+                        (uint(n.batch) + dimBlock.z - 1) / dimBlock.z);
 //    printf("dimBlock=(%d, %d, %d)\n", dimBlock.x, dimBlock.y, dimBlock.z);
 //    printf("dimGrid=(%d, %d, %d)\n", dimGrid.x, dimGrid.y, dimGrid.z);
 
@@ -224,9 +224,9 @@ std::tuple<torch::Tensor, torch::Tensor> cuda_bvh_backward_impl(const torch::Ten
     torch::Tensor grad_xes = torch::zeros_like(xes);
 
     dim3 dimBlock = dim3(LBVH_N_QUERY_THREADS, 1, 1);
-    dim3 dimGrid = dim3((n.xes + dimBlock.x - 1) / dimBlock.x,
-                        (n.layers + dimBlock.y - 1) / dimBlock.y,
-                        (n.batch + dimBlock.z - 1) / dimBlock.z);
+    dim3 dimGrid = dim3((uint(n.xes) + dimBlock.x - 1) / dimBlock.x,
+                        (uint(n.layers) + dimBlock.y - 1) / dimBlock.y,
+                        (uint(n.batch) + dimBlock.z - 1) / dimBlock.z);
 
     auto xes_copy = xes;
     auto grad_output_copy = grad_output;

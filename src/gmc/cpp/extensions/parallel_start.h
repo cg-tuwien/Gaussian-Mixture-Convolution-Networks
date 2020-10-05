@@ -6,6 +6,7 @@
 #include <omp.h>
 
 #include <cuda_runtime.h>
+#include <torch/types.h>
 
 #include "cuda_qt_creator_definitinos.h"
 
