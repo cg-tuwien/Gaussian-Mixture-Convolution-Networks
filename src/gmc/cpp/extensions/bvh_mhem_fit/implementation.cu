@@ -178,18 +178,22 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> cuda_bvh_forward_impl(co
     dim3 dimGrid = dim3((uint(n.xes) + dimBlock.x - 1) / dimBlock.x,
                         (uint(n.layers) + dimBlock.y - 1) / dimBlock.y,
                         (uint(n.batch) + dimBlock.z - 1) / dimBlock.z);
-    //    printf("dimBlock=(%d, %d, %d)\n", dimBlock.x, dimBlock.y, dimBlock.z);
-    //    printf("dimGrid=(%d, %d, %d)\n", dimGrid.x, dimGrid.y, dimGrid.z);
 
-
-    //    auto start = std::chrono::high_resolution_clock::now();
-
+    auto sum_c = sum.cpu();
+    auto mixture_c = mixture.cpu();
+    auto bvh_nodes_c = bvh.m_nodes.cpu();
+    auto bvh_aabbs_c = bvh.m_aabbs.cpu();
+    xes_copy = xes_copy.cpu();
 
     AT_DISPATCH_FLOATING_TYPES(mixture.scalar_type(), "cuda_bvh_backward_impl", ([&] {
-                                   auto sum_a = gpe::accessor<scalar_t, 3>(sum);
-                                   auto mixture_a = gpe::accessor<scalar_t, 4>(mixture);
-                                   auto nodes_a = gpe::accessor<lbvh::detail::Node::index_type_torch, 4>(bvh.m_nodes);
-                                   auto aabbs_a = gpe::accessor<scalar_t, 4>(bvh.m_aabbs);
+//                                   auto sum_a = gpe::accessor<scalar_t, 3>(sum);
+//                                   auto mixture_a = gpe::accessor<scalar_t, 4>(mixture);
+//                                   auto nodes_a = gpe::accessor<lbvh::detail::Node::index_type_torch, 4>(bvh.m_nodes);
+//                                   auto aabbs_a = gpe::accessor<scalar_t, 4>(bvh.m_aabbs);
+                                   auto sum_a = gpe::accessor<scalar_t, 3>(sum_c);
+                                   auto mixture_a = gpe::accessor<scalar_t, 4>(mixture_c);
+                                   auto nodes_a = gpe::accessor<lbvh::detail::Node::index_type_torch, 4>(bvh_nodes_c);
+                                   auto aabbs_a = gpe::accessor<scalar_t, 4>(bvh_aabbs_c);
                                    const auto xes_a = gpe::accessor<scalar_t, 4>(xes_copy);
 
                                    if (n.dims == 2) {
@@ -197,21 +201,20 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> cuda_bvh_forward_impl(co
                                            (const dim3& gpe_gridDim, const dim3& gpe_blockDim, const dim3& gpe_blockIdx, const dim3& gpe_threadIdx) {
                                                evaluate_bvh_forward<scalar_t, 2>(gpe_gridDim, gpe_blockDim, gpe_blockIdx, gpe_threadIdx, mixture_a, nodes_a, aabbs_a, xes_a, sum_a, n);
                                            };
-                                       gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(mixture), dimGrid, dimBlock, fun);
+//                                       gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(mixture), dimGrid, dimBlock, fun);
+                                       gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(mixture_c), dimGrid, dimBlock, fun);
                                    }
                                    else {
                                        auto fun = [mixture_a, nodes_a, aabbs_a, xes_a, sum_a, n] __host__ __device__
                                            (const dim3& gpe_gridDim, const dim3& gpe_blockDim, const dim3& gpe_blockIdx, const dim3& gpe_threadIdx) {
                                                evaluate_bvh_forward<scalar_t, 3>(gpe_gridDim, gpe_blockDim, gpe_blockIdx, gpe_threadIdx, mixture_a, nodes_a, aabbs_a, xes_a, sum_a, n);
                                            };
-                                       gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(mixture), dimGrid, dimBlock, fun);
+//                                       gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(mixture), dimGrid, dimBlock, fun);
+                                       gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(mixture_c), dimGrid, dimBlock, fun);
                                    }
                                }));
 
-    //    cudaDeviceSynchronize();
-    //    auto end = std::chrono::high_resolution_clock::now();
-    //    std::cout << "bvh eval elapsed time: " << std::chrono::duration_cast<std::chrono::milliseconds>(end-start).count() << "ms\n";
-
+    sum = sum_c.cuda();
     if (use_indirect_xes) {
         auto indices = bvh.m_nodes.index({Slice(), Slice(), Slice(bvh.m_n_internal_nodes, None), 3}).to(torch::ScalarType::Long);
         indices = inverse_permutation(indices);
