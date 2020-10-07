@@ -26,7 +26,10 @@ string(APPEND CMAKE_CUDA_FLAGS_DEBUG " -g -G")
 
 #target_compile_options(kre -Wall -Wextra -Wpedantic -Werror)
 string(APPEND CMAKE_CXX_FLAGS_RELEASE " -ffast-math -O4 -march=native")
-string(APPEND CMAKE_EXE_LINKER_FLAGS " -fuse-ld=lld")
+
+# this will enable the lld (llvm) linker. it's parallel and much faster, but not installed by default.
+# if it's not installed, you'll get errors, that openmp or other stuff is not installed (hard to track down)
+#string(APPEND CMAKE_EXE_LINKER_FLAGS " -fuse-ld=lld")
 
 add_compile_definitions(GMC_CMAKE_TEST_BUILD)
 
