@@ -40,7 +40,7 @@ auto eval_function_backward(const torch::Tensor& tensor) {
 constexpr uint N_BATCHES = 1;
 constexpr uint N_CONVOLUTION_LAYERS = 3;
 constexpr uint LIMIT_N_BATCH = 100;
-constexpr bool USE_CUDA = false;
+constexpr bool USE_CUDA = true;
 constexpr bool BACKWARD = true;
 constexpr bool RENDER = false;
 
@@ -108,10 +108,10 @@ int main(int argc, char *argv[]) {
                 show(mixture, 128, LIMIT_N_BATCH);
 
             const auto weights = gpe::weights(mixture);
-            torch::Tensor positions = gpe::positions(mixture).clone();
+            torch::Tensor positions = gpe::positions(mixture);
             const auto invCovs = gpe::covariances(mixture).inverse().transpose(-1, -2);
-            mixture = gpe::pack_mixture(weights, positions, invCovs.contiguous()).clone();
-//            cudaDeviceSynchronize();
+            mixture = gpe::pack_mixture(weights, positions, invCovs.contiguous()).clone().contiguous();
+            cudaDeviceSynchronize();
 
             auto start = std::chrono::high_resolution_clock::now();
             auto eval_values = eval_function(mixture)(mixture, positions.contiguous());
@@ -120,12 +120,13 @@ int main(int argc, char *argv[]) {
             std::cout << "elapsed time (forward): " << std::chrono::duration_cast<std::chrono::milliseconds>(end-start).count() << "ms\n";
 
             if (BACKWARD) {
-                auto grad_out = torch::ones_like(eval_values);
+                torch::Tensor positions_clone = gpe::positions(mixture).clone();
+                auto grad_out = torch::rand_like(eval_values);
 
+                cudaDeviceSynchronize();
                 auto start = std::chrono::high_resolution_clock::now();
-                // const torch::Tensor& grad_output, const torch::Tensor& mixture, const torch::Tensor& xes,
-//                bool requires_grad_mixture, bool requires_grad_xes
-                auto grads = eval_function_backward(mixture)(grad_out, mixture, positions.contiguous(), true, true);
+                auto grads = eval_function_backward(mixture)(grad_out, mixture, positions_clone, true, true);
+                cudaDeviceSynchronize();
                 auto end = std::chrono::high_resolution_clock::now();
                 std::cout << "elapsed time (backward): " << std::chrono::duration_cast<std::chrono::milliseconds>(end-start).count() << "ms\n";
 
