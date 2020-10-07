@@ -22,9 +22,9 @@ template <typename scalar_t, int DIMS>
 __device__
 void forward(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
              const dim3& gpe_blockIdx, const dim3& gpe_threadIdx,
-             const gpe::PackedTensorAccessor32<scalar_t, 4, gpe::RestrictPtrTraits> mixture_a,
-             const gpe::PackedTensorAccessor32<scalar_t, 4, gpe::RestrictPtrTraits> xes_a,
-             gpe::PackedTensorAccessor32<scalar_t, 3, gpe::RestrictPtrTraits> sum_a,
+             const gpe::PackedTensorAccessor32<scalar_t, 4> mixture_a,
+             const gpe::PackedTensorAccessor32<scalar_t, 4> xes_a,
+             gpe::PackedTensorAccessor32<scalar_t, 3> sum_a,
              const gpe::MixtureAndXesNs n) {
     GPE_UNUSED(gpe_gridDim)
     const auto batch_index = int(gpe_blockIdx.z);
@@ -74,9 +74,9 @@ at::Tensor parallel_forward_optimised_impl(const torch::Tensor& mixture, const t
     auto s = mixture.sizes();
 
     AT_DISPATCH_FLOATING_TYPES(mixture.scalar_type(), "cuda_parallel_forward_impl", ([&] {
-                                   auto mixture_a = gpe::accessor<scalar_t, 4>(mixture);
-                                   auto xes_a = gpe::accessor<scalar_t, 4>(xes);
                                    auto sum_a = gpe::accessor<scalar_t, 3>(sum);
+                                   auto mixture_a = gpe::accessor<scalar_t, 4>(mixture);
+                                   const auto xes_a = gpe::accessor<scalar_t, 4>(xes);
 
                                    if (n.dims == 2) {
                                        auto fun = [mixture_a, xes_a, sum_a, n] __device__
