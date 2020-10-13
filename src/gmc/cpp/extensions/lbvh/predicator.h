@@ -36,13 +36,13 @@ struct query_inside
 //}
 
 __device__ __host__
-query_inside<float> inside_aabb(const float4& point) noexcept
+inline query_inside<float> inside_aabb(const float4& point) noexcept
 {
     return query_inside<float>(point);
 }
 
 __device__ __host__
-query_inside<double> inside_aabb(const double4& point) noexcept
+inline query_inside<double> inside_aabb(const double4& point) noexcept
 {
     return query_inside<double>(point);
 }
