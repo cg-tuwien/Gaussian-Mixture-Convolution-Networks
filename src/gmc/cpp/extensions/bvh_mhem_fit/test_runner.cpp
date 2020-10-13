@@ -17,7 +17,7 @@
 
 torch::Tensor cuda_bvh_forward_wrapper(const torch::Tensor& mixture, const torch::Tensor& xes) {
     torch::Tensor sum, nodes, aabbs;
-    std::tie(sum, nodes, aabbs) = bvh_mhem_fit_forward(mixture, xes);
+//    std::tie(sum, nodes, aabbs) = bvh_mhem_fit_forward(mixture, xes);
     return sum;
 }
 

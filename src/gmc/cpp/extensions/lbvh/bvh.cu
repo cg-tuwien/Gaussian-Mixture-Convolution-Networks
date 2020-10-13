@@ -563,6 +563,8 @@ void Bvh<scalar_t, Object>::create_aabbs_for_internal_nodes() {
     const auto aabbs_view = m_aabbs.view({-1, m_n_nodes, 8});
     const auto aabb_a = aabbs_view.packed_accessor32<scalar_t, 3>();
 
+    // todo: x is fastest spinning. should optimise memory access patterns!
+    //       think/test about what's best for this tree walk; many threads idling due to atomic cas flag blah
     dim3 dimBlock = dim3(1, 128, 1);
     dim3 dimGrid = dim3((n_mixtures + dimBlock.x - 1) / dimBlock.x,
                         (m_n_leaf_nodes + dimBlock.y - 1) / dimBlock.y);

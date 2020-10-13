@@ -1,6 +1,7 @@
 #ifndef PARALLEL_START_H
 #define PARALLEL_START_H
 
+#include <atomic>
 #include <cassert>
 #include <iostream>
 #include <omp.h>
@@ -24,6 +25,21 @@ __host__ __device__ __forceinline__ void atomicAdd(T *ptr, T val) {
     *ptr += val;
 #else
     #error "Requires OpenMP"
+#endif
+}
+
+
+template <class T>
+__host__ __device__ __forceinline__ T atomicCAS(T *addr, T compare, T val) {
+
+#ifdef __CUDA_ARCH__
+    return ::atomicCAS(addr, compare, val);
+#else
+    // undefined, but works on gcc 10.2, 9.3, clang 10, 11, and msvc 19.27
+    // https://godbolt.org/z/fGK77j
+    auto d = reinterpret_cast<std::atomic_int32_t*>(addr);
+    d->compare_exchange_strong(compare, val);
+    return compare;
 #endif
 }
 
