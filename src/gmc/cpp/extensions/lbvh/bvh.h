@@ -61,6 +61,11 @@ template<typename T>
 struct TorchTypeMapper;
 
 template<>
+struct TorchTypeMapper<int16_t> {
+    static inline constexpr torch::ScalarType id() { return torch::ScalarType::Short; }
+};
+
+template<>
 struct TorchTypeMapper<int32_t> {
     static inline constexpr torch::ScalarType id() { return torch::ScalarType::Int; }
 };
