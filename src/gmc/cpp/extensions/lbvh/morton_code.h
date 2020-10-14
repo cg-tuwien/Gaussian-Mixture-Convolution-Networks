@@ -43,15 +43,55 @@ inline std::uint32_t morton_code(double4 xyz, double resolution = 1024.0) noexce
     return xx * 4 + yy * 2 + zz;
 }
 
-__device__
+__host__ __device__
 inline int common_upper_bits(const uint32_t lhs, const uint32_t rhs) noexcept
 {
+#ifdef __CUDA_ARCH__
     return ::__clz(lhs ^ rhs);
+#elif defined (_MSC_VER)
+    // untested:
+    // from https://stackoverflow.com/questions/355967/how-to-use-msvc-intrinsics-to-get-the-equivalent-of-this-gcc-code
+    unsigned long leading_zero = 0;
+    auto value = lhs ^ rhs;
+
+    if ( _BitScanReverse( &leading_zero, value ) )
+    {
+       return 31 - int(leading_zero);
+    }
+    else
+    {
+         // Same remarks as above
+         return 32;
+    }
+#else
+    auto value = lhs ^ rhs;
+    return value ? __builtin_clz(value) : 32;
+#endif
 }
-__device__
+__host__ __device__
 inline int common_upper_bits(const uint64_t lhs, const uint64_t rhs) noexcept
 {
+#ifdef __CUDA_ARCH__
     return ::__clzll(lhs ^ rhs);
+#elif defined (_MSC_VER)
+    // untested:
+    // from https://stackoverflow.com/questions/355967/how-to-use-msvc-intrinsics-to-get-the-equivalent-of-this-gcc-code
+    unsigned long leading_zero = 0;
+    auto value = lhs ^ rhs;
+
+    if ( _BitScanReverse64( &leading_zero, value ) )
+    {
+       return 31 - int(leading_zero);
+    }
+    else
+    {
+         // Same remarks as above
+         return 64;
+    }
+#else
+    auto value = lhs ^ rhs;
+    return value ? __builtin_clzll(value) : 64;
+#endif
 }
 
 } // lbvh

@@ -28,12 +28,12 @@ namespace  {
 
 template <typename scalar_t, int DIMS>
 __host__ __device__ void iterate_over_nodes(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
-                                                const dim3& gpe_blockIdx, const dim3& gpe_threadIdx,
-                                                const gpe::PackedTensorAccessor32<scalar_t, 3> mixture,
-                                                const gpe::PackedTensorAccessor32<lbvh::detail::Node::index_type_torch, 3> nodes,
-                                                const gpe::PackedTensorAccessor32<scalar_t, 3> aabbs,
-                                                torch::PackedTensorAccessor32<int, 2> flags,
-                                                const gpe::MixtureNs n, const unsigned n_mixtures, const unsigned n_internal_nodes, const unsigned n_nodes)
+                                            const dim3& gpe_blockIdx, const dim3& gpe_threadIdx,
+                                            const gpe::PackedTensorAccessor32<scalar_t, 3> mixture,
+                                            const gpe::PackedTensorAccessor32<lbvh::detail::Node::index_type_torch, 3> nodes,
+                                            const gpe::PackedTensorAccessor32<scalar_t, 3> aabbs,
+                                            torch::PackedTensorAccessor32<int, 2> flags,
+                                            const gpe::MixtureNs n, const unsigned n_mixtures, const unsigned n_internal_nodes, const unsigned n_nodes)
 {
     GPE_UNUSED(gpe_gridDim)
     using G = gpe::Gaussian<DIMS, scalar_t>;
@@ -71,7 +71,7 @@ __host__ __device__ void iterate_over_nodes(const dim3& gpe_gridDim, const dim3&
 
 std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> forward_impl(const at::Tensor& mixture, int n_components_target) {
     using namespace torch::indexing;
-    using LBVH = lbvh::Bvh<float, gpe::Gaussian<2, float>>;
+    using LBVH = lbvh::Bvh<2, float>;
 
     // todo: flatten mixture for kernel, i.g. nbatch/nlayers/ncomponents/7 => nmixture/ncomponents/7
 

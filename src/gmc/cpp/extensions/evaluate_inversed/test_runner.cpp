@@ -26,7 +26,8 @@ torch::Tensor cuda_bvh_forward_wrapper(const torch::Tensor& mixture, const torch
 
 auto eval_function(const torch::Tensor& tensor) {
     GPE_UNUSED(tensor)
-    return &parallel_forward;
+    return &cuda_bvh_forward_wrapper;
+//    return &parallel_forward;
 //    return tensor.is_cuda() ? &cuda_bvh_forward_wrapper : &parallel_forward;
 }
 
@@ -37,12 +38,12 @@ auto eval_function_backward(const torch::Tensor& tensor) {
 //    return tensor.is_cuda() ? &cuda_bvh_forward_wrapper : &parallel_forward;
 }
 
-constexpr uint N_BATCHES = 2;
+constexpr uint N_BATCHES = 1;
 constexpr uint N_CONVOLUTION_LAYERS = 3;
 constexpr uint LIMIT_N_BATCH = 100;
 constexpr bool USE_CUDA = true;
-constexpr bool BACKWARD = true;
-constexpr bool RENDER = false;
+constexpr bool BACKWARD = false;
+constexpr bool RENDER = true;
 
 void show(torch::Tensor mixture, const int resolution, const int n_batch_limit) {
     using namespace torch::indexing;

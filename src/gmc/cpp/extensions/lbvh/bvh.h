@@ -87,23 +87,20 @@ using  bvh_device = detail::basic_device_bvh<scalar_t, Object, false>;
 template<typename scalar_t, typename Object>
 using cbvh_device = detail::basic_device_bvh<scalar_t, Object, true>;
 
-template<typename scalar_t, typename Object>
+template<int N_DIMS, typename scalar_t>
 class Bvh
 {
 public:
     // rebuild bvh.cpp after changing these types!
     using real_type   = scalar_t;
     using index_type = std::uint32_t;
-    using object_type = Object;
+    using object_type = gpe::Gaussian<N_DIMS, scalar_t>;
     using aabb_type   = Aabb<real_type>;
     using node_type   = detail::Node;
-
     using morton_torch_t = int64_t;
     using morton_cuda_t = std::make_unsigned<morton_torch_t>::type;
 
-
-  public:
-
+public:
     Bvh(const torch::Tensor& inversed_mixture)
         : m_mixture(inversed_mixture), m_n(gpe::get_ns(inversed_mixture))
     {
@@ -121,19 +118,13 @@ public:
         m_n_nodes = m_n_leaf_nodes * 2 - 1;
     }
 
+//protected:    // cuda extended lambdas cannot be inside protected methods.
     void construct();
-
-protected:
     torch::Tensor compute_aabbs();
-
     torch::Tensor compute_morton_codes(const torch::Tensor& aabbs, const torch::Tensor& aabb_whole) const;
-
     std::tuple<torch::Tensor, torch::Tensor> sort_morton_codes(const torch::Tensor& morton_codes, const torch::Tensor& object_aabbs) const;
-
     torch::Tensor create_leaf_nodes(const torch::Tensor& morton_codes);
-
     void create_internal_nodes(const torch::Tensor& morton_codes);
-
     void create_aabbs_for_internal_nodes();
 
 public:

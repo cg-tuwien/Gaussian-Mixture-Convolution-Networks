@@ -103,7 +103,7 @@ std::tuple<torch::Tensor, torch::Tensor> backward_impl(const torch::Tensor& grad
                                                                 const torch::Tensor& xes,
                                                                 bool requires_grad_mixture, bool requires_grad_xes) {
     using namespace torch::indexing;
-    using LBVH = lbvh::Bvh<float, gpe::Gaussian<2, float>>;
+    using LBVH = lbvh::Bvh<2, float>;
     gpe::check_mixture(mixture);
     auto n = gpe::check_input_and_get_ns(mixture, xes);
 

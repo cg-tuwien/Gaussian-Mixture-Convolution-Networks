@@ -21,18 +21,22 @@
 #include "parallel_start.h"
 
 template <typename scalar_t, int DIMS>
-__global__ void evaluate_bvh_forward(const gpe::PackedTensorAccessor32<scalar_t, 4> mixture,
-                                     const gpe::PackedTensorAccessor32<lbvh::detail::Node::index_type_torch, 4> nodes,
-                                     const gpe::PackedTensorAccessor32<scalar_t, 4> aabbs,
-                                     const gpe::PackedTensorAccessor32<scalar_t, 4> xes,
-                                     gpe::PackedTensorAccessor32<scalar_t, 3> sums,
-                                     const gpe::MixtureAndXesNs n)
+__host__ __device__
+void evaluate_bvh_forward(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
+                          const dim3& gpe_blockIdx, const dim3& gpe_threadIdx,
+                          const gpe::PackedTensorAccessor32<scalar_t, 4> mixture,
+                          const gpe::PackedTensorAccessor32<lbvh::detail::Node::index_type_torch, 4> nodes,
+                          const gpe::PackedTensorAccessor32<scalar_t, 4> aabbs,
+                          const gpe::PackedTensorAccessor32<scalar_t, 4> xes,
+                          gpe::PackedTensorAccessor32<scalar_t, 3> sums,
+                          const gpe::MixtureAndXesNs n)
 {
+    GPE_UNUSED(gpe_gridDim)
     using G = gpe::Gaussian<DIMS, scalar_t>;
     using Lbvh = lbvh::detail::basic_device_bvh<scalar_t, G, true>;
-    const auto xes_index = int(blockIdx.x * blockDim.x + threadIdx.x);
-    const auto layer_index = int(blockIdx.y * blockDim.y + threadIdx.y);
-    const auto batch_index = int(blockIdx.z * blockDim.z + threadIdx.z);
+    const auto xes_index = int(gpe_blockIdx.x * gpe_blockDim.x + gpe_threadIdx.x);
+    const auto layer_index = int(gpe_blockIdx.y * gpe_blockDim.y + gpe_threadIdx.y);
+    const auto batch_index = int(gpe_blockIdx.z * gpe_blockDim.z + gpe_threadIdx.z);
 
     const auto batch_xes_index = gpe::min(batch_index, n.batch_xes - 1);
     const auto layer_xes_index = gpe::min(layer_index, n.layers_xes - 1);
@@ -140,10 +144,10 @@ torch::Tensor inverse_permutation(const torch::Tensor& p) {
 
 std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> cuda_bvh_forward_impl(const at::Tensor& mixture, const at::Tensor& xes) {
     using namespace torch::indexing;
-    using LBVH = lbvh::Bvh<float, gpe::Gaussian<2, float>>;
+    using LBVH = lbvh::Bvh<2, float>;
 
     auto n = gpe::check_input_and_get_ns(mixture, xes);
-    TORCH_CHECK(mixture.device().is_cuda(), "mixture must be a CUDA tensor");
+//    TORCH_CHECK(mixture.device().is_cuda(), "mixture must be a CUDA tensor");
     TORCH_CHECK(n.batch * n.layers < 65535, "n_batch x n_layers must be smaller than 65535 for CUDA");
     TORCH_CHECK(n.components > 1, "number of components must be greater 1 for this implementation");
     TORCH_CHECK(n.dims == 2, "atm only 2d gaussians");
@@ -180,10 +184,20 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> cuda_bvh_forward_impl(co
         auto aabbs_a = gpe::accessor<scalar_t, 4>(bvh.m_aabbs);
         const auto xes_a = gpe::accessor<scalar_t, 4>(xes_copy);
 
-        if (n.dims == 2)
-            evaluate_bvh_forward<scalar_t, 2><<<dimGrid, dimBlock>>>(mixture_a, nodes_a, aabbs_a, xes_a, sum_a, n);
-        else
-            evaluate_bvh_forward<scalar_t, 3><<<dimGrid, dimBlock>>>(mixture_a, nodes_a, aabbs_a, xes_a, sum_a, n);
+        if (n.dims == 2) {
+            auto fun = [mixture_a, nodes_a, aabbs_a, xes_a, sum_a, n] __host__ __device__
+                (const dim3& gpe_gridDim, const dim3& gpe_blockDim, const dim3& gpe_blockIdx, const dim3& gpe_threadIdx) {
+                    evaluate_bvh_forward<scalar_t, 2>(gpe_gridDim, gpe_blockDim, gpe_blockIdx, gpe_threadIdx, mixture_a, nodes_a, aabbs_a, xes_a, sum_a, n);
+                };
+            gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(mixture), dimGrid, dimBlock, fun);
+        }
+        else {
+            auto fun = [mixture_a, nodes_a, aabbs_a, xes_a, sum_a, n] __host__ __device__
+                (const dim3& gpe_gridDim, const dim3& gpe_blockDim, const dim3& gpe_blockIdx, const dim3& gpe_threadIdx) {
+                    evaluate_bvh_forward<scalar_t, 3>(gpe_gridDim, gpe_blockDim, gpe_blockIdx, gpe_threadIdx, mixture_a, nodes_a, aabbs_a, xes_a, sum_a, n);
+                };
+            gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(mixture), dimGrid, dimBlock, fun);
+        }
     }));
 
 //    cudaDeviceSynchronize();
@@ -207,7 +221,7 @@ std::tuple<torch::Tensor, torch::Tensor> cuda_bvh_backward_impl(const torch::Ten
                                                   const torch::Tensor& xes,
                                                   bool requires_grad_mixture, bool requires_grad_xes) {
     using namespace torch::indexing;
-    using LBVH = lbvh::Bvh<float, gpe::Gaussian<2, float>>;
+    using LBVH = lbvh::Bvh<2, float>;
     gpe::check_mixture(mixture);
     auto n = gpe::check_input_and_get_ns(mixture, xes);
 
