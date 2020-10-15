@@ -8,7 +8,11 @@
 #include "implementation.h"
 
 std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> bvh_mhem_fit_forward(const torch::Tensor& mixture, int n_components_target) {
-    const at::cuda::OptionalCUDAGuard device_guard(device_of(mixture));
+    at::cuda::OptionalCUDAGuard device_guard;
+    if (mixture.is_cuda()) {
+        assert (device_of(mixture).has_value());
+        device_guard.set_device(device_of(mixture).value());
+    }
     return bvh_mhem_fit::forward_impl(mixture, n_components_target);
 }
 
@@ -17,7 +21,11 @@ std::tuple<torch::Tensor, torch::Tensor> bvh_mhem_fit_backward(const torch::Tens
                                                            const torch::Tensor& mixture, const torch::Tensor& bvh_nodes, const torch::Tensor& aabbs,
                                                            const torch::Tensor& xes,
                                                            bool requires_grad_mixture, bool requires_grad_xes) {
-    const at::cuda::OptionalCUDAGuard device_guard(device_of(mixture));
+    at::cuda::OptionalCUDAGuard device_guard;
+    if (mixture.is_cuda()) {
+        assert (device_of(mixture).has_value());
+        device_guard.set_device(device_of(mixture).value());
+    }
     return bvh_mhem_fit::backward_impl(grad_output, mixture, bvh_nodes, aabbs, xes, requires_grad_mixture, requires_grad_xes);
 }
 

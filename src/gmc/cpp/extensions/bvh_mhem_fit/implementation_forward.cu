@@ -190,14 +190,22 @@ __host__ __device__ void collect_result(const dim3& gpe_gridDim, const dim3& gpe
 
     const auto* node = reinterpret_cast<const lbvh::detail::Node*>(&nodes[mixture_id][int(0)][0]);
 
-    //todo cathch: that'll fail if the tree is very unbalanced -> abort and pad gaussians with zeroes;
+    // go down the bvh tree and decide on going left or right depending on the current thread (target_component_id)
     for (int i = 0; i < n_levels_down; ++i) {
         auto decision_bit = 1 << (n_levels_down - i);
+        if (node->left_idx == node_index_t(-1)) // leaf
+            return;     // quick'n dirty handling of unbalanced trees.
         if (target_component_id & decision_bit)
             node = node = reinterpret_cast<const lbvh::detail::Node*>(&nodes[mixture_id][node->left_idx][0]);
         else
             node = node = reinterpret_cast<const lbvh::detail::Node*>(&nodes[mixture_id][node->right_idx][0]);
     }
+
+    // copy gaussians to their final location in out_mixture
+    // tmp_g_container contains the addresses of the gaussians; we misuse object_idx in internal nodes for addressing that list of addresses.
+    // first n_level_down bits of target_component_id were used for traversing the bvh, last reduction_n bits are used to select the current G
+    auto component_id = tmp_g_container_a[mixture_id][node->object_idx][target_component_id & (REDUCTION_N - 1)];
+    gpe::gaussian<N_DIMS>(out_mixture[mixture_id][target_component_id]) = gpe::gaussian<N_DIMS>(mixture[mixture_id][component_id]);;
 }
 
 
@@ -213,7 +221,6 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> forward_impl(at::Tensor 
     // todo: flatten mixture for kernel, i.g. nbatch/nlayers/ncomponents/7 => nmixture/ncomponents/7
 
     auto n = gpe::get_ns(mixture);
-    TORCH_CHECK(mixture.device().is_cuda(), "mixture must be a CUDA tensor")
     TORCH_CHECK(n.batch * n.layers < 65535, "n_batch x n_layers must be smaller than 65535 for CUDA")
     TORCH_CHECK(n.components > 1, "number of components must be greater 1 for this implementation")
     TORCH_CHECK(n.dims == 2, "atm only 2d gaussians")
@@ -255,6 +262,8 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> forward_impl(at::Tensor 
 
 
     auto out_mixture = torch::zeros({n_mixtures, n.components, mixture.size(-1)}, torch::TensorOptions(mixture.device()).dtype(mixture.dtype()));
+    // make it valid, in case something doesn't get filled (due to an inbalance of the tree)
+    gpe::covariances(out_mixture) = torch::eye(n.dims, torch::TensorOptions(mixture.device()).dtype(mixture.dtype()));
     GPE_DISPATCH_FLOATING_TYPES_AND_DIM(mixture.scalar_type(), n.dims, ([&] {
                                             dim3 dimBlock = dim3(32, 1, 1);
                                             dim3 dimGrid = dim3((uint(n_components_target) + dimBlock.x - 1) / dimBlock.x,

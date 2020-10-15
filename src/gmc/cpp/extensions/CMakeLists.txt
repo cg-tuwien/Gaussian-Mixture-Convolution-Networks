@@ -107,7 +107,6 @@ set(EVALUATE_SOURCES
     evaluate_inversed/parallel_binding.cpp
     evaluate_inversed/cuda_bvh.cpp
     evaluate_inversed/cuda_bvh.cu
-    evaluate_inversed/test_runner.cpp
 )
 
 set(BVH_MHEM_FIT_SOURCES
@@ -117,14 +116,12 @@ set(BVH_MHEM_FIT_SOURCES
     bvh_mhem_fit/implementation_common.cuh
     bvh_mhem_fit/bindings.cpp
     bvh_mhem_fit/bindings.h
-    bvh_mhem_fit/test_runner.cpp
 )
 
-add_executable(evaluate_inversed_tester ${HEADERS} ${MATH_SOURCES} ${LBVH_HEADERS} ${EVALUATE_SOURCES})
+add_executable(evaluate_inversed_tester ${HEADERS} ${MATH_SOURCES} ${LBVH_HEADERS} ${EVALUATE_SOURCES} evaluate_inversed/test_runner.cpp)
 target_link_libraries(evaluate_inversed_tester PUBLIC OpenMP::OpenMP_CXX torch Qt5::Widgets)
 
-
-add_executable(bvh_mhem_fit_tester ${HEADERS} ${MATH_SOURCES} ${LBVH_HEADERS} ${BVH_MHEM_FIT_SOURCES})
+add_executable(bvh_mhem_fit_tester ${HEADERS} ${MATH_SOURCES} ${LBVH_HEADERS} ${BVH_MHEM_FIT_SOURCES} ${EVALUATE_SOURCES} bvh_mhem_fit/bvh_fit_tester.cpp)
 target_link_libraries(bvh_mhem_fit_tester PUBLIC OpenMP::OpenMP_CXX torch Qt5::Widgets)
 
 #set(EM_FITTING_SOURCES

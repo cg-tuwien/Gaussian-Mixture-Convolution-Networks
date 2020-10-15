@@ -47,12 +47,12 @@ inline std::uint32_t morton_code(double4 xyz, double resolution = 1024.0) noexce
 }
 
 __host__ __device__ __forceinline__
-inline int common_upper_bits(const uint32_t lhs, const uint32_t rhs) noexcept
+int common_upper_bits(const uint32_t lhs, const uint32_t rhs) noexcept
 {
     return gpe::clz(lhs ^ rhs);
 }
-__host__ __device__
-inline int common_upper_bits(const uint64_t lhs, const uint64_t rhs) noexcept
+__host__ __device__ __forceinline__
+int common_upper_bits(const uint64_t lhs, const uint64_t rhs) noexcept
 {
     return gpe::clz(lhs ^ rhs);
 }

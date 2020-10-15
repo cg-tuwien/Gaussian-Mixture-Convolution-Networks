@@ -70,7 +70,7 @@ inline torch::Tensor covariances(torch::Tensor mixture) {
     new_shape.back() = n_dims;
     new_shape.push_back(n_dims);
 
-    return mixture.index({Slice(), Slice(), Slice(), Slice(n_dimensions(mixture) + 1, None)}).view(new_shape);
+    return mixture.index({Ellipsis, Slice(n_dimensions(mixture) + 1, None)}).view(new_shape);
 }
 
 inline torch::Tensor pack_mixture(const torch::Tensor weights, const torch::Tensor positions, const torch::Tensor covariances) {
@@ -139,6 +139,10 @@ __forceinline__ __host__ __device__ auto covariance(TensorAccessor&& gaussian) -
 template <int DIMS, typename TensorAccessor>
 __forceinline__ __host__ __device__ auto gaussian(TensorAccessor&& gaussian) -> Gaussian<DIMS, std::remove_reference_t<decltype (gaussian[0])>>& {
     return reinterpret_cast<Gaussian<DIMS, std::remove_reference_t<decltype (gaussian[0])>>&>(gaussian[0]);
+}
+template <int DIMS, typename TensorAccessor>
+__forceinline__ __host__ __device__ auto gaussian(const TensorAccessor&& gaussian) -> const Gaussian<DIMS, std::remove_cv_t<std::remove_reference_t<decltype (gaussian[0])>>>& {
+    return reinterpret_cast<const Gaussian<DIMS, std::remove_cv_t<std::remove_reference_t<decltype (gaussian[0])>>>&>(gaussian[0]);
 }
 
 template <typename scalar_t, int DIMS>
