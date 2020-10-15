@@ -75,6 +75,7 @@ set(HEADERS
     parallel_start.h
     hacked_accessor.h
     cuda_qt_creator_definitinos.h
+    cuda_operations.h
 )
 
 set(LBVH_HEADERS

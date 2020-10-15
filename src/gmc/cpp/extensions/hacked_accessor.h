@@ -295,6 +295,9 @@ C10_HOST const auto accessor(const torch::Tensor& tensor) {
     return PackedTensorAccessor32<scalar_t, N, gpe::RestrictPtrTraits>(*reinterpret_cast<PackedTensorAccessor32<scalar_t, N, gpe::RestrictPtrTraits>*>(&torch_accessor));
 }
 
+template<typename T, size_t N>
+using Accessor32 = TensorAccessor<T, N, RestrictPtrTraits, int32_t>;
+
 //template<typename scalar_t, size_t N>
 //auto accessor(torch::Tensor& tensor) {
 //    auto torch_accessor = tensor.packed_accessor32<scalar_t, N, gpe::RestrictPtrTraits>();

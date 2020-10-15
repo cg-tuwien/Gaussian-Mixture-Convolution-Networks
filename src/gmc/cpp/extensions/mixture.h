@@ -2,6 +2,7 @@
 #define MIXTURE_H
 #include <vector>
 #include <iostream>
+#include <type_traits>
 
 #include <torch/types.h>
 
@@ -136,8 +137,8 @@ __forceinline__ __host__ __device__ auto covariance(TensorAccessor&& gaussian) -
 }
 
 template <int DIMS, typename TensorAccessor>
-__forceinline__ __host__ __device__ auto gaussian(TensorAccessor&& gaussian) -> Gaussian<DIMS, decltype (gaussian[0])> {
-    return reinterpret_cast<Gaussian<DIMS, decltype (gaussian[0])>&>(gaussian[0]);
+__forceinline__ __host__ __device__ auto gaussian(TensorAccessor&& gaussian) -> Gaussian<DIMS, std::remove_reference_t<decltype (gaussian[0])>>& {
+    return reinterpret_cast<Gaussian<DIMS, std::remove_reference_t<decltype (gaussian[0])>>&>(gaussian[0]);
 }
 
 template <typename scalar_t, int DIMS>

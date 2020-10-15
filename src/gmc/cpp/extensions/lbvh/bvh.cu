@@ -126,16 +126,6 @@ __host__ __device__
     return split;
 }
 
-template <typename scalar_t>
-__global__ void create_aabbs_for_internal_nodes(torch::PackedTensorAccessor32<int, 2> flags,
-                                                const torch::PackedTensorAccessor32<int16_t, 3> nodes,
-                                                torch::PackedTensorAccessor32<scalar_t, 3> aabbs,
-                                                const unsigned n_mixtures, const unsigned n_internal_nodes, const unsigned n_nodes)
-{
-
-
-}
-
 } // namespace kernels
 
 template<int N_DIMS, typename scalar_t>
@@ -517,7 +507,8 @@ void Bvh<N_DIMS, scalar_t>::create_internal_nodes(const at::Tensor& morton_codes
 
                 const morton_cuda_t& morton_code = reinterpret_cast<const morton_cuda_t&>(morton_codes_a[mixture_id][0]);
                 auto& node = reinterpret_cast<detail::Node&>(nodes_a[mixture_id][node_id][0]);
-                node.object_idx = lbvh::detail::Node::index_type(0xFFFFFFFF); //  internal nodes
+//                node.object_idx = lbvh::detail::Node::index_type(0xFFFFFFFF); //  internal nodes // original
+                node.object_idx = lbvh::detail::Node::index_type(node_id);
 
                 const uint2 ij  = kernels::determine_range(&morton_code, n_leaf_nodes, node_id);
                 const auto gamma = kernels::find_split(&morton_code, n_leaf_nodes, ij.x, ij.y);
@@ -534,7 +525,6 @@ void Bvh<N_DIMS, scalar_t>::create_internal_nodes(const at::Tensor& morton_codes
                 }
                 assert(node.left_idx != lbvh::detail::Node::index_type(0xFFFFFFFF));
                 assert(node.right_idx != lbvh::detail::Node::index_type(0xFFFFFFFF));
-                assert(node.right_idx >= 0);
                 reinterpret_cast<detail::Node&>(nodes_a[mixture_id][int(node.left_idx)][0]).parent_idx = lbvh::detail::Node::index_type(node_id);
                 reinterpret_cast<detail::Node&>(nodes_a[mixture_id][int(node.right_idx)][0]).parent_idx = lbvh::detail::Node::index_type(node_id);
     };

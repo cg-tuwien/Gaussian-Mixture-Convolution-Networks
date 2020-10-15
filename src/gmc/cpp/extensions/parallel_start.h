@@ -4,6 +4,7 @@
 #include <atomic>
 #include <cassert>
 #include <iostream>
+#include <string>
 #include <omp.h>
 
 #include <cuda_runtime.h>
@@ -11,6 +12,37 @@
 
 #include "cuda_qt_creator_definitinos.h"
 
+
+// replacement for AT_DISPATCH_FLOATING_TYPES
+#define GPE_PRIVATE_CASE_TYPE_AND_DIM(enum_type, type, n_dims, ...) \
+  case enum_type: {                                                 \
+    using scalar_t = type;                                          \
+    if (n_dims == 2) {                                              \
+        constexpr int N_DIMS = 2;                                   \
+        return __VA_ARGS__();                                       \
+    }                                                               \
+    else if (n_dims == 3) {                                         \
+        constexpr int N_DIMS = 3;                                   \
+        return __VA_ARGS__();                                       \
+    }                                                               \
+    else {                                                          \
+        std::string dimstr = std::to_string(n_dims);                \
+        AT_ERROR(__FILE__, ":", __LINE__, " not implemented for 'n_dims == ", dimstr.c_str(), "'"); \
+    }                                                               \
+  }
+
+#define GPE_DISPATCH_FLOATING_TYPES_AND_DIM(TYPE, N_DIMS, ...)                          \
+  [&] {                                                                                 \
+    const auto& the_type = TYPE;                                                        \
+    const auto& the_n_dims = N_DIMS;                                                    \
+    at::ScalarType _st = ::detail::scalar_type(the_type);                               \
+    switch (_st) {                                                                      \
+      GPE_PRIVATE_CASE_TYPE_AND_DIM(at::ScalarType::Double, double, the_n_dims, __VA_ARGS__)    \
+      GPE_PRIVATE_CASE_TYPE_AND_DIM(at::ScalarType::Float, float, the_n_dims, __VA_ARGS__)      \
+      default:                                                                          \
+        AT_ERROR(__FILE__, ":", __LINE__, " not implemented for '", at::toString(_st), "'"); \
+    }                                                                                   \
+  }()
 
 namespace gpe {
 

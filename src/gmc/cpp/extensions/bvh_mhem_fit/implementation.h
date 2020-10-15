@@ -6,7 +6,7 @@
 
 namespace bvh_mhem_fit {
 
-std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> forward_impl(const at::Tensor& mixture, int n_components_target);
+std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> forward_impl(at::Tensor mixture, int n_components_target);
 
 std::tuple<torch::Tensor, torch::Tensor> backward_impl(const torch::Tensor& grad_output,
                                                        const torch::Tensor& mixture, const torch::Tensor& bvh_nodes, const torch::Tensor& aabbs,

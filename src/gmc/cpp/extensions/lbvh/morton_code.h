@@ -4,6 +4,9 @@
 #include <cuda_runtime.h>
 #include <cstdint>
 
+#include "math/scalar.h"
+#include "cuda_operations.h"
+
 namespace lbvh
 {
 
@@ -22,9 +25,9 @@ inline std::uint32_t expand_bits(std::uint32_t v) noexcept
 __device__ __host__
 inline std::uint32_t morton_code(float4 xyz, float resolution = 1024.0f) noexcept
 {
-    xyz.x = ::fminf(::fmaxf(xyz.x * resolution, 0.0f), resolution - 1.0f);
-    xyz.y = ::fminf(::fmaxf(xyz.y * resolution, 0.0f), resolution - 1.0f);
-    xyz.z = ::fminf(::fmaxf(xyz.z * resolution, 0.0f), resolution - 1.0f);
+    xyz.x = gpe::min(gpe::max(xyz.x * resolution, 0.0f), resolution - 1.0f);
+    xyz.y = gpe::min(gpe::max(xyz.y * resolution, 0.0f), resolution - 1.0f);
+    xyz.z = gpe::min(gpe::max(xyz.z * resolution, 0.0f), resolution - 1.0f);
     const std::uint32_t xx = expand_bits(static_cast<std::uint32_t>(xyz.x));
     const std::uint32_t yy = expand_bits(static_cast<std::uint32_t>(xyz.y));
     const std::uint32_t zz = expand_bits(static_cast<std::uint32_t>(xyz.z));
@@ -34,64 +37,24 @@ inline std::uint32_t morton_code(float4 xyz, float resolution = 1024.0f) noexcep
 __device__ __host__
 inline std::uint32_t morton_code(double4 xyz, double resolution = 1024.0) noexcept
 {
-    xyz.x = ::fmin(::fmax(xyz.x * resolution, 0.0), resolution - 1.0);
-    xyz.y = ::fmin(::fmax(xyz.y * resolution, 0.0), resolution - 1.0);
-    xyz.z = ::fmin(::fmax(xyz.z * resolution, 0.0), resolution - 1.0);
+    xyz.x = gpe::min(gpe::max(xyz.x * resolution, 0.0), resolution - 1.0);
+    xyz.y = gpe::min(gpe::max(xyz.y * resolution, 0.0), resolution - 1.0);
+    xyz.z = gpe::min(gpe::max(xyz.z * resolution, 0.0), resolution - 1.0);
     const std::uint32_t xx = expand_bits(static_cast<std::uint32_t>(xyz.x));
     const std::uint32_t yy = expand_bits(static_cast<std::uint32_t>(xyz.y));
     const std::uint32_t zz = expand_bits(static_cast<std::uint32_t>(xyz.z));
     return xx * 4 + yy * 2 + zz;
 }
 
-__host__ __device__
+__host__ __device__ __forceinline__
 inline int common_upper_bits(const uint32_t lhs, const uint32_t rhs) noexcept
 {
-#ifdef __CUDA_ARCH__
-    return ::__clz(lhs ^ rhs);
-#elif defined (_MSC_VER)
-    // untested:
-    // from https://stackoverflow.com/questions/355967/how-to-use-msvc-intrinsics-to-get-the-equivalent-of-this-gcc-code
-    unsigned long leading_zero = 0;
-    auto value = lhs ^ rhs;
-
-    if ( _BitScanReverse( &leading_zero, value ) )
-    {
-       return 31 - int(leading_zero);
-    }
-    else
-    {
-         // Same remarks as above
-         return 32;
-    }
-#else
-    auto value = lhs ^ rhs;
-    return value ? __builtin_clz(value) : 32;
-#endif
+    return gpe::clz(lhs ^ rhs);
 }
 __host__ __device__
 inline int common_upper_bits(const uint64_t lhs, const uint64_t rhs) noexcept
 {
-#ifdef __CUDA_ARCH__
-    return ::__clzll(lhs ^ rhs);
-#elif defined (_MSC_VER)
-    // untested:
-    // from https://stackoverflow.com/questions/355967/how-to-use-msvc-intrinsics-to-get-the-equivalent-of-this-gcc-code
-    unsigned long leading_zero = 0;
-    auto value = lhs ^ rhs;
-
-    if ( _BitScanReverse64( &leading_zero, value ) )
-    {
-       return 31 - int(leading_zero);
-    }
-    else
-    {
-         // Same remarks as above
-         return 64;
-    }
-#else
-    auto value = lhs ^ rhs;
-    return value ? __builtin_clzll(value) : 64;
-#endif
+    return gpe::clz(lhs ^ rhs);
 }
 
 } // lbvh

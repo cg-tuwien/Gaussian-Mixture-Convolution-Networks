@@ -5,20 +5,7 @@
 #include <cmath>
 #include <algorithm>
 
-//#include <cuda.h>
-//#include <cuda_runtime.h>
-
-
-#ifndef __CUDACC__
-#define __device__
-#define __host__
-#endif
-
-#ifndef __forceinline__
-#define __forceinline__ inline
-#endif
-
-using uint = unsigned int;
+#include <cuda_runtime.h>
 
 namespace gpe {
 
