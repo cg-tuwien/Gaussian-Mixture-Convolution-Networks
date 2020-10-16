@@ -37,7 +37,7 @@ __forceinline__ __host__ __device__ thrust::tuple<glm::vec<2, scalar_t>, glm::ma
     const auto d = matrix[1][1];
 //    std::cout << "a=" << a << " b=" << b << " d=" << d << std::endl;
     auto f1 = T / scalar_t(2.0);
-    auto f2 = gpe::sqrt(T*T / scalar_t(4.0) - D);
+    const scalar_t f2 = gpe::sqrt(gpe::abs(T*T / scalar_t(4.0) - D));
 //    std::cout << "f1=" << f1 << " f2=" << f2 << std::endl;
     auto eigenvalues = vec(f1 - f2, f1 + f2);
 //    std::cout << "eigenvalues=" << eigenvalues[0] << "/" << eigenvalues[1] << std::endl;
