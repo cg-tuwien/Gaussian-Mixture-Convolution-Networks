@@ -58,6 +58,45 @@ def execute_fitting(training_name: str, model_path: str, genpc_path: str, gengmm
     print("Done")
 
 
+def execute_fitting_on_single_pcbatch(training_name: str, pcbatch: torch.Tensor, gengmm_path: str,
+                                                      log_path: str, n_gaussians: int, generators: List[GMMGenerator],
+                                                      generator_identifiers: List[str], log_positions: int,
+                                                      log_loss_console: int,
+                                                      log_loss_tb: int, log_rendering_tb: int, log_gm: int,
+                                                      initialgmbatch: torch.Tensor = None):
+    names = ["" + str(i + 1) for i in range(pcbatch.shape[0])]
+
+    # scaler = None
+    scaler = Scaler()
+    scaler.set_pointcloud_batch(pcbatch.cuda())
+
+    scaled_pc = scaler.scale_down_pc(pcbatch.cuda())
+    # scaled_pc = pcbatch
+
+    for j in range(len(generators)):
+        gen_id = training_name + "/" + generator_identifiers[j]
+
+        # Create Logger
+        logger = GMLogger(names=names, log_prefix=gen_id, log_path=log_path,
+                          log_positions=log_positions, gm_n_components=n_gaussians,
+                          log_loss_console=log_loss_console, log_loss_tb=log_loss_tb,
+                          log_rendering_tb=log_rendering_tb, log_gm=log_gm, pointclouds=pcbatch, scaler=scaler)
+        generators[j].set_logging(logger)
+
+        # Generate GMM
+        gmbatch, gmmbatch = generators[j].generate(scaled_pc, initialgmbatch)
+
+        gmbatch = scaler.scale_up_gm(gmbatch)
+        gmmbatch = scaler.scale_up_gmm(gmmbatch)
+
+        # Save resulting GMs
+        data_loading.save_gms(gmbatch, gmmbatch,
+                              os.path.join(gengmm_path, gen_id), names)
+
+        # Terminate Logging
+        logger.finalize()
+
+
 def execute_evaluation(training_name: str, model_path: str, genpc_path: str, gengmm_path: str, n_points: int,
                        eval_points: int, generator_identifiers: List[str], error_functions: List[ErrorFunction],
                        error_function_identifiers: List[str]):
@@ -109,6 +148,8 @@ def quick_evaluation(pc_path: str, gm_path: str, is_model: bool, error_function:
 
     # Load gm
     gm = mixture.read_gm_from_ply(gm_path, is_model).cuda()
+    if is_model:
+        gm = mixture.convert_priors_to_amplitudes(gm)
     gm = scaler.scale_down_gm(gm)
 
     # Evaluate using each error function

@@ -3,7 +3,7 @@ from prototype_pcfitting import TerminationCriterion, MaxIterationTerminationCri
 from prototype_pcfitting.error_functions import LikelihoodLoss
 import torch
 import gmc.mixture as gm
-
+import numpy
 
 class EMGenerator(GMMGenerator):
     # GMM Generator using simple Expectation Maximization
@@ -29,20 +29,39 @@ class EMGenerator(GMMGenerator):
 
         batch_size = pcbatch.shape[0]
         point_count = pcbatch.shape[1]
+        n_sample_points = min(point_count, self._n_sample_points)
         pcbatch = pcbatch.to(self._device).double()  # dimension: (bs, np, 3)
         # pcbatch_4 = pcbatch.unsqueeze(1)  # dimension: (bs, 1, np, 3)
+
+        assert(point_count > self._n_gaussians)
 
         lossgen = LikelihoodLoss()
 
         # Initialize mixture (Important: Assumes intervall [0,1])
         if gmbatch is None:
-            gmbatch = gm.generate_random_mixtures(n_batch=batch_size, n_layers=1, n_components=self._n_gaussians,
-                                                  n_dims=3, pos_radius=0.5,
-                                                  cov_radius=0.01 / (self._n_gaussians ** (1 / 3)),
-                                                  weight_min=0, weight_max=1, device=self._device)
-            indizes = torch.randperm(point_count)[0:self._n_gaussians]
-            positions = pcbatch[:, indizes, :].view(batch_size, 1, self._n_gaussians, 3).float()
-            gmbatch = gm.pack_mixture(gm.weights(gmbatch), positions, gm.covariances(gmbatch)).double()
+            # Initialize according to "Finite Mixture Models", cahpter 2.12.2
+            meanpos = pcbatch.mean(dim=1)
+            diffs = (pcbatch - meanpos.repeat(1,point_count,1)).unsqueeze(3)
+            meancov = (diffs * diffs.transpose(-1, -2)).mean(dim=[1])
+            meanweight = 1.0 / self._n_gaussians
+
+            positions = torch.zeros(batch_size, 1, self._n_gaussians, 3)
+            for i in range(batch_size):
+                positions[i,0,:,:] = torch.tensor(numpy.random.multivariate_normal(meanpos[i,:].cpu(), meancov[i,:].cpu(), self._n_gaussians)).cuda()
+            # covariances = meancov.view(batch_size, 1, 1, 3, 3).repeat(1, 1, self._n_gaussians, 1, 1)
+            covariances = torch.eye(3,3).view(1,1,1,3,3).repeat(1,1,self._n_gaussians,1,1)
+            weights = torch.zeros(batch_size, 1, self._n_gaussians)
+            weights[:,:,:] = meanweight
+
+            gmbatch = gm.pack_mixture(weights.float().cuda(), positions.float().cuda(), covariances.float().cuda()).double()
+
+            # gmbatch = gm.generate_random_mixtures(n_batch=batch_size, n_layers=1, n_components=self._n_gaussians,
+            #                                       n_dims=3, pos_radius=0.5,
+            #                                       cov_radius=0.01 / (self._n_gaussians ** (1 / 3)),
+            #                                       weight_min=0, weight_max=1, device=self._device)
+            # indizes = torch.randperm(point_count)[0:self._n_gaussians]
+            # positions = pcbatch[:, indizes, :].view(batch_size, 1, self._n_gaussians, 3).float()
+            # gmbatch = gm.pack_mixture(gm.weights(gmbatch), positions, gm.covariances(gmbatch)).double()
 
         gm_data = self.TrainingData()
         gm_data.set_positions(gm.positions(gmbatch))
@@ -50,7 +69,7 @@ class EMGenerator(GMMGenerator):
         gm_data.set_amplitudes(gm.weights(gmbatch))
         # responsibilities = torch.zeros((batch_size, point_count, self._n_gaussians))
 
-        sample_points = data_loading.sample(pcbatch, self._n_sample_points)
+        sample_points = data_loading.sample(pcbatch, n_sample_points)
         losses = lossgen.calculate_score(sample_points, gm_data.get_positions(), gm_data.get_covariances(),
                                          gm_data.get_inversed_covariances(), gm_data.get_amplitudes())
         loss = losses.sum()
@@ -62,12 +81,13 @@ class EMGenerator(GMMGenerator):
         while self._termination_criterion.may_continue(iteration, loss.item()):
             iteration += 1
 
-            sample_points = data_loading.sample(pcbatch, self._n_sample_points)
+            # ToDo: Sampling is probably a bad idea
+            sample_points = data_loading.sample(pcbatch, n_sample_points)
             sample_points_d4 = sample_points.unsqueeze(1)
 
             # Expectation
             gaussvalues = gm.evaluate_componentwise(gm_data.pack_mixture(), sample_points_d4)
-            priors_rep = gm_data.get_priors().unsqueeze(2).repeat(1, 1, self._n_sample_points, 1)
+            priors_rep = gm_data.get_priors().unsqueeze(2).repeat(1, 1, n_sample_points, 1)
             likelihood = priors_rep * gaussvalues
             likelihood[likelihood < 1e-20] = 1e-20  # to avoid division by zero
             responsibilities = likelihood / (likelihood.sum(dim=3, keepdim=True))  # dimension: (bs, 1, np, ng)
@@ -82,7 +102,7 @@ class EMGenerator(GMMGenerator):
                          * pcbatch_rep  # dimension: (bs, 1, np, ng, 3)
             new_positions = multiplied.sum(dim=2, keepdim=True) / n_k.unsqueeze(2).unsqueeze(4)
             # dimension: (bs, 1, 1, ng, 3)
-            new_positions_rep = new_positions.repeat(1, 1, self._n_sample_points, 1, 1)
+            new_positions_rep = new_positions.repeat(1, 1, n_sample_points, 1, 1)
             new_positions = new_positions.squeeze(2)  # dimensions: (bs, 1, ng, 3)
             # Calculate new Covariances
             relpos = (pcbatch_rep - new_positions_rep).unsqueeze(5)
@@ -96,7 +116,7 @@ class EMGenerator(GMMGenerator):
             #     (torch.sign(dets[covdet_too_small_idx]) *
             #      (self._min_det / abs(dets[covdet_too_small_idx])) ** (1 / 3.)).view(-1, 1, 1)
             # Calculate new priors
-            new_priors = n_k / self._n_sample_points  # dimension: (b_s, 1, ng)
+            new_priors = n_k / n_sample_points  # dimension: (b_s, 1, ng)
             # Update GMData
             gm_data.set_positions(new_positions)
             gm_data.set_covariances(new_covariances)

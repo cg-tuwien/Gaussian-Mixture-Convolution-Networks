@@ -58,7 +58,7 @@ class GMLogger:
         #       the gms are logged. 0 means no gm logging.
         #   pointclouds: torch.Tensor
         #       If the tensorboard renderings should contain pointclouds, this variable should be set with the
-        #       corresponding point cloud batch. (in original scale)
+        #       corresponding point cloud batch. (in original scale!!!)
         #   scaler: Scaler
         #       Needs to be set for everything except loss logging. The scaler for upscaling the given GMMs.
 
@@ -129,7 +129,10 @@ class GMLogger:
         gm_upscaled = torch.zeros(0)
 
         if log_rendering or log_gm or self._log_positions > 0:
-            gm_upscaled = self._scaler.scale_up_gm(gmbatch)
+            if self._scaler is not None:
+                gm_upscaled = self._scaler.scale_up_gm(gmbatch)
+            else:
+                gm_upscaled = gmbatch
 
         if log_rendering:
             self._visualizer.set_gaussian_mixtures(gm_upscaled.detach().cpu(), isgmm=False)

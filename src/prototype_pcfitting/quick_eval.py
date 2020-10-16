@@ -12,9 +12,9 @@ gm_path = \
     "gmms/200830-03-corrected/GD/test/chair_0890.off.gma.ply"
 gm_is_model = False
 
-# pc_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_test/pointclouds/n20000/train/chair_0030.off"
-# gm_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/da-gm-1/da-gm-1/data/c_30HR.ply"
-# gm_is_model = True
+pc_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_test/realdummy1.off"
+gm_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_test/logs/Debug/EM/1/gmm-00000.gma.ply"
+gm_is_model = False
 
 # Error Function
 error_function: ErrorFunction = LikelihoodLoss()

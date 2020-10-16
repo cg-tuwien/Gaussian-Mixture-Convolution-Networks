@@ -1,2 +1,3 @@
 from .gradient_descent_generator import GradientDescentGenerator
 from .em_generator import EMGenerator
+from .em_generator_numlog import EMGeneratorNumLog
