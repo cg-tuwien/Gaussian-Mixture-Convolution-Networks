@@ -337,7 +337,6 @@ at::Tensor Bvh<N_DIMS, scalar_t>::compute_morton_codes(const at::Tensor& aabbs, 
     auto fun = [morton_codes_a, aabb_a, aabb_whole_a, n_mixtures, n_components] __host__ __device__
             (const dim3& gpe_gridDim, const dim3& gpe_blockDim, const dim3& gpe_blockIdx, const dim3& gpe_threadIdx) mutable {
                 GPE_UNUSED(gpe_gridDim)
-                using morton_cuda_t = std::make_unsigned_t<morton_torch_t>;
 
                 const auto mixture_id = int(gpe_blockIdx.x * gpe_blockDim.x + gpe_threadIdx.x);
                 const auto component_id = int(gpe_blockIdx.y * gpe_blockDim.y + gpe_threadIdx.y);

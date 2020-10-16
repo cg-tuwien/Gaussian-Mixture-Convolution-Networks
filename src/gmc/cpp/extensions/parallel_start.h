@@ -77,14 +77,13 @@ __host__ __device__ __forceinline__ T atomicCAS(T *addr, T compare, T val) {
 
 namespace detail {
 
-//void gpe_start_cpu_parallel(const dim3& gridDim, const dim3& blockDim, const std::function<void(const dim3&, const dim3&, const dim3&, const dim3&)>& function);
 template <typename Fun>
 inline void gpe_start_cpu_parallel(const dim3& gridDim, const dim3& blockDim, Fun function) {
     #pragma omp parallel for num_threads(omp_get_num_procs()) collapse(3)
-    for (int blockIdxZ = 0; blockIdxZ < gridDim.z; ++blockIdxZ) {
-        for (int blockIdxY = 0; blockIdxY < gridDim.y; ++blockIdxY) {
-            for (int blockIdxX = 0; blockIdxX < gridDim.x; ++blockIdxX) {
-                const auto blockIdx = dim3{unsigned(blockIdxX), unsigned(blockIdxY), unsigned(blockIdxZ)};
+    for (unsigned blockIdxZ = 0; blockIdxZ < gridDim.z; ++blockIdxZ) {
+        for (unsigned blockIdxY = 0; blockIdxY < gridDim.y; ++blockIdxY) {
+            for (unsigned blockIdxX = 0; blockIdxX < gridDim.x; ++blockIdxX) {
+                const auto blockIdx = dim3{blockIdxX, blockIdxY, blockIdxZ};
                 dim3 threadIdx = {0, 0, 0};
                 for (threadIdx.z = 0; threadIdx.z < blockDim.z; ++threadIdx.z) {
                     for (threadIdx.y = 0; threadIdx.y < blockDim.y; ++threadIdx.y) {
