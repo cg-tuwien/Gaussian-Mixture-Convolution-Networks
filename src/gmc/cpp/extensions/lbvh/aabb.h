@@ -18,6 +18,8 @@ struct Aabb
     typename vector_of<T>::type upper;
     typename vector_of<T>::type lower;
 };
+static_assert (sizeof(Aabb<float>) == 4 * 8, "Wrong AABB size");
+static_assert (sizeof(Aabb<double>) == 8 * 8, "Wrong AABB size");
 
 inline std::ostream& operator <<(std::ostream& stream, const float4& v) {
     stream << v.x << "/" << v.y << "/" << v.z << "/" << v.w;

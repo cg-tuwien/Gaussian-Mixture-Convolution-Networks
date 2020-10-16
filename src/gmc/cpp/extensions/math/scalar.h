@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <cmath>
+#include <cstdlib>
 #include <algorithm>
 
 #include <cuda_runtime.h>

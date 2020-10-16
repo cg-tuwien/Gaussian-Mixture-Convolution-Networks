@@ -133,35 +133,37 @@ void Bvh<N_DIMS, scalar_t>::construct()
 {
     using namespace torch::indexing;
 
-    auto print_nodes = [this]() {
-        std::cout << "nodes: " << m_nodes.sizes() << " " << (m_nodes.is_cuda() ? "(cuda)" : "(cpu)") << std::endl;
-        const torch::Tensor ncpu = m_nodes.cpu().contiguous();
-        for (int i = 0; i < m_n.batch * m_n.layers; ++i) {
-            for (int j = 0; j < this->m_n_nodes; ++j) {
-                for (int k = 0; k < 4; ++k) {
-                    const auto index = i * this->m_n_nodes * 4 + j * 4 + k;
-                    std::cout << ncpu.data_ptr<int16_t>()[index] << ", ";
-                }
-                std::cout << " || ";
-            }
-            std::cout << std::endl;
-        }
-    };
+//    auto print_nodes = [this]() {
+//        std::cout << "nodes: " << m_nodes.sizes() << " " << (m_nodes.is_cuda() ? "(cuda)" : "(cpu)") << std::endl;
+//        const torch::Tensor ncpu = m_nodes.cpu().contiguous();
+//        for (int i = 0; i < m_n.batch * m_n.layers; ++i) {
+//            for (int j = 0; j < this->m_n_nodes; ++j) {
+//                for (int k = 0; k < 4; ++k) {
+//                    const auto index = i * this->m_n_nodes * 4 + j * 4 + k;
+//                    std::cout << ncpu.data_ptr<int16_t>()[index] << ", ";
+//                }
+//                std::cout << " || ";
+//            }
+//            std::cout << std::endl;
+//        }
+//    };
 
-    auto print_morton_codes = [this](const torch::Tensor& morton_codes) {
-        std::ios_base::fmtflags f(std::cout.flags());
-        std::cout << "morton codes: " << morton_codes.sizes() << " " << (morton_codes.is_cuda() ? "(cuda)" : "(cpu)") << std::endl;
-        const torch::Tensor mccpu = morton_codes.cpu().contiguous();
-        for (int i = 0; i < m_n.batch * m_n.layers; ++i) {
-            std::cout << std::hex;
-            for (int j = 0; j < m_n.components; ++j) {
-                const auto index = i * m_n.components + j;
-                std::cout << "0x" << std::setw(16) << mccpu.data_ptr<morton_torch_t>()[index] << "; ";
-            }
-            std::cout << std::dec << std::endl;
-        }
-        std::cout.flags(f);
-    };
+//    auto print_morton_codes = [this](const torch::Tensor& morton_codes) {
+//        std::ios_base::fmtflags f(std::cout.flags());
+//        std::cout << "morton codes: " << morton_codes.sizes() << " " << (morton_codes.is_cuda() ? "(cuda)" : "(cpu)") << std::endl;
+//        const torch::Tensor mccpu = morton_codes.cpu().contiguous();
+//        for (int i = 0; i < m_n.batch * m_n.layers; ++i) {
+//            std::cout << std::hex;
+//            for (int j = 0; j < m_n.components; ++j) {
+//                const auto index = i * m_n.components + j;
+//                std::cout << "0x" << std::setw(16) << mccpu.data_ptr<morton_torch_t>()[index] << "; ";
+//            }
+//            std::cout << std::dec << std::endl;
+//        }
+//        std::cout.flags(f);
+//    };
+
+//    m_mixture = m_mixture.cuda();
 
     //        auto timepoint = std::chrono::high_resolution_clock::now();
     auto watch_stop = [/*&timepoint*/](const std::string& name = "") {
@@ -171,7 +173,6 @@ void Bvh<N_DIMS, scalar_t>::construct()
         //            timepoint = std::chrono::high_resolution_clock::now();
     };
     watch_stop();
-    //        auto object_aabbs = detail::compute_aabbs(m_mixture);
     auto object_aabbs = this->compute_aabbs();
     watch_stop("compute_aabbs");
 
@@ -183,19 +184,11 @@ void Bvh<N_DIMS, scalar_t>::construct()
     auto device = m_mixture.device();
 
     // --------------------------------------------------------------------
-    // calculate morton code of each AABB
     // we produce unique morton codes by extending the actual morton code with the index.
-    // TODO: easy, either some scaling and translation using torch + thrust transform, or custom kernel.
     torch::Tensor morton_codes = compute_morton_codes(object_aabbs, aabb_whole);
     watch_stop("compute_morton_codes");
-    //        print_morton_codes(morton_codes);
-
 
     // --------------------------------------------------------------------
-    // sort object-indices by morton code
-    // TODO: http://www.orangeowlsolutions.com/archives/1297 (2 sorts), or, we can prepend the gm index to the morton code?
-    //       or, this would be the fastest (probably): https://nvlabs.github.io/cub/structcub_1_1_device_segmented_radix_sort.html (implemented; test whether prepending would be faster)
-
     std::tie(morton_codes, object_aabbs) = sort_morton_codes(morton_codes, object_aabbs);
     watch_stop("sort_morton_codes");
     //        print_morton_codes(morton_codes);
@@ -228,26 +221,26 @@ void Bvh<N_DIMS, scalar_t>::construct()
 }
 
 
-template<typename scalar_t, glm::qualifier Q> __host__ __device__
-glm::mat<2, 2, scalar_t, Q> mul_eigenvecs_with_eigenvals(const glm::mat<2, 2, scalar_t, Q>& eigenvectors, const glm::vec<2, scalar_t, Q>& eigenvalues) {
-    return glm::mat<2, 2, scalar_t, Q>(eigenvectors[0] * eigenvalues[0], eigenvectors[1] * eigenvalues[1]);
+template<typename scalar_t> __host__ __device__
+glm::mat<2, 2, scalar_t> mul_eigenvecs_with_eigenvals(const glm::mat<2, 2, scalar_t>& eigenvectors, const glm::vec<2, scalar_t>& eigenvalues) {
+    return glm::mat<2, 2, scalar_t>(eigenvectors[0] * eigenvalues[0], eigenvectors[1] * eigenvalues[1]);
 }
-template<typename scalar_t, glm::qualifier Q> __host__ __device__
-glm::mat<3, 3, scalar_t, Q> mul_eigenvecs_with_eigenvals(const glm::mat<3, 3, scalar_t, Q>& eigenvectors, const glm::vec<3, scalar_t, Q>& eigenvalues) {
-    return glm::mat<3, 3, scalar_t, Q>(eigenvectors[0] * eigenvalues[0], eigenvectors[1] * eigenvalues[1], eigenvectors[2] * eigenvalues[2]);
+template<typename scalar_t> __host__ __device__
+glm::mat<3, 3, scalar_t> mul_eigenvecs_with_eigenvals(const glm::mat<3, 3, scalar_t>& eigenvectors, const glm::vec<3, scalar_t>& eigenvalues) {
+    return glm::mat<3, 3, scalar_t>(eigenvectors[0] * eigenvalues[0], eigenvectors[1] * eigenvalues[1], eigenvectors[2] * eigenvalues[2]);
 }
-template<typename scalar_t, glm::qualifier Q> __host__ __device__
-const glm::vec<2, scalar_t, Q> colwise_length(const glm::mat<2, 2, scalar_t, Q>& mat) {
-    return glm::vec<2, scalar_t, Q>(glm::length(mat[0]), glm::length(mat[1]));
+template<typename scalar_t> __host__ __device__
+const glm::vec<2, scalar_t> colwise_length(const glm::mat<2, 2, scalar_t>& mat) {
+    return glm::vec<2, scalar_t>(glm::length(mat[0]), glm::length(mat[1]));
 }
-template<typename scalar_t, glm::qualifier Q> __host__ __device__
-const glm::vec<3, scalar_t, Q> colwise_length(const glm::mat<3, 3, scalar_t, Q>& mat) {
-    return glm::vec<3, scalar_t, Q>(glm::length(mat[0]), glm::length(mat[1]), glm::length(mat[2]));
+template<typename scalar_t> __host__ __device__
+const glm::vec<3, scalar_t> colwise_length(const glm::mat<3, 3, scalar_t>& mat) {
+    return glm::vec<3, scalar_t>(glm::length(mat[0]), glm::length(mat[1]), glm::length(mat[2]));
 }
 
 template<int N_DIMS, typename scalar_t>
 at::Tensor Bvh<N_DIMS, scalar_t>::compute_aabbs() {
-    constexpr float threshold = 0.001f;
+    constexpr scalar_t threshold = scalar_t(0.001);
 
     auto aabbs = torch::zeros({m_n.batch, m_n.layers, m_n.components, 8}, torch::TensorOptions(m_mixture.device()).dtype(detail::TorchTypeMapper<scalar_t>::id()));
     auto aabbs_view = aabbs.view({-1, 8});
@@ -258,14 +251,14 @@ at::Tensor Bvh<N_DIMS, scalar_t>::compute_aabbs() {
     auto n_gaussians = gaussians.size(0);
 
     dim3 dimBlock = dim3(1024, 1, 1);
-    dim3 dimGrid = dim3((n_gaussians + dimBlock.x - 1) / dimBlock.x, 1, 1);
+    dim3 dimGrid = dim3(unsigned(n_gaussians + dimBlock.x - 1) / dimBlock.x, 1, 1);
     auto fun = [aabbs_a, gaussians_a, n_gaussians, threshold] __host__ __device__
             (const dim3& gpe_gridDim, const dim3& gpe_blockDim, const dim3& gpe_blockIdx, const dim3& gpe_threadIdx) mutable {
         GPE_UNUSED(gpe_gridDim)
                 using Vec = glm::vec<N_DIMS, scalar_t>;
                 using Mat = glm::mat<N_DIMS, N_DIMS, scalar_t>;
 
-                const auto gaussian_id = gpe_blockIdx.x * gpe_blockDim.x + gpe_threadIdx.x;
+                const auto gaussian_id = int(gpe_blockIdx.x * gpe_blockDim.x + gpe_threadIdx.x);
                 if (gaussian_id >= n_gaussians)
                     return;
 
@@ -311,7 +304,6 @@ at::Tensor Bvh<N_DIMS, scalar_t>::compute_aabbs() {
                 aabb.lower = make_vector_of(lower);
     };
     gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(m_mixture), dimGrid, dimBlock, fun);
-//    kernels::compute_aabbs<scalar_t, 2><<<dimGrid, dimBlock>>>(aabbs_a, gaussians_a, n_gaussians, threshold);
     GPE_CUDA_ASSERT(cudaPeekAtLastError());
     GPE_CUDA_ASSERT(cudaDeviceSynchronize());
     return aabbs;
