@@ -33,7 +33,6 @@ class EMGeneratorNumLog(GMMGenerator):
         point_count = pcbatch.shape[1]
         n_sample_points = min(point_count, self._n_sample_points)
         pcbatch = pcbatch.to(self._device).double()  # dimension: (bs, np, 3)
-        # pcbatch_4 = pcbatch.unsqueeze(1)  # dimension: (bs, 1, np, 3)
 
         assert(point_count > self._n_gaussians)
 
@@ -47,18 +46,17 @@ class EMGeneratorNumLog(GMMGenerator):
         gm_data.set_positions(gm.positions(gmbatch))
         gm_data.set_covariances(gm.covariances(gmbatch))
         gm_data.set_amplitudes(gm.weights(gmbatch))
-        # responsibilities = torch.zeros((batch_size, point_count, self._n_gaussians))
 
         sample_points = data_loading.sample(pcbatch, n_sample_points)
         losses = lossgen.calculate_score(sample_points, gm_data.get_positions(), gm_data.get_covariances(),
-                                         gm_data.get_inversed_covariances(), gm_data.get_amplitudes())
+                                          gm_data.get_inversed_covariances(), gm_data.get_amplitudes())
         loss = losses.sum()
         iteration = 0
 
         if self._logger:
             self._logger.log(iteration, losses, gm_data.pack_mixture())
 
-        self._eps = (torch.eye(3, 3, dtype=torch.double) * 1e-6).view(1,1,1,3,3).repeat(batch_size, 1, self._n_gaussians, 1, 1).cuda()
+        self._eps = (torch.eye(3, 3, dtype=torch.double) * 1e-6).view(1,1,1,3,3).expand(batch_size, 1, self._n_gaussians, 3, 3).cuda()
 
         while self._termination_criterion.may_continue(iteration, loss.item()):
             iteration += 1
@@ -67,19 +65,18 @@ class EMGeneratorNumLog(GMMGenerator):
                 sample_points = data_loading.sample(pcbatch, n_sample_points)
             else:
                 sample_points = pcbatch
-            points_rep = sample_points.unsqueeze(1).unsqueeze(3).repeat(1, 1, 1, self._n_gaussians, 1) # b, 1, np, ng, 3
+            points_rep = sample_points.unsqueeze(1).unsqueeze(3).expand(batch_size, 1, n_sample_points, self._n_gaussians, 3)
 
             # Expectation
-            responsibilities = self.expectation(points_rep, gm_data)
+            responsibilities, llh = self.expectation(points_rep, gm_data)
 
             # Maximization
             self.maximization(points_rep, responsibilities, gm_data)
 
+            # Calculate Loss on whole data set
             losses = lossgen.calculate_score(sample_points, gm_data.get_positions(), gm_data.get_covariances(),
                                              gm_data.get_inversed_covariances(), gm_data.get_amplitudes())
             loss = losses.sum()
-
-            # print("# of invalid Gaussians: ", torch.sum(gm_data.get_priors() == 0).item())
 
             if self._logger:
                 self._logger.log(iteration, losses, gm_data.pack_mixture())
@@ -87,28 +84,34 @@ class EMGeneratorNumLog(GMMGenerator):
         final_gm = gm_data.pack_mixture().float()
         final_gmm = gm.pack_mixture(gm_data.get_priors(), gm_data.get_positions(), gm_data.get_covariances())
 
+        print("EM: # of invalid Gaussians: ", torch.sum(gm_data.get_priors() == 0).item())
+
         return final_gm, final_gmm
 
-    def expectation(self, pcbatch_rep: torch.Tensor, gm_data) -> torch.Tensor:
+    def expectation(self, pcbatch_rep: torch.Tensor, gm_data) -> (torch.Tensor, torch.Tensor):
+        batch_size = pcbatch_rep.shape[0]
         n_sample_points = pcbatch_rep.shape[2]
-        oldpositions_rep = gm_data.get_positions().unsqueeze(2).repeat(1, 1, n_sample_points, 1,
-                                                                       1)  # b, 1, np, ng, 3, 1
-        oldicovs_rep = gm_data.get_inversed_covariances().unsqueeze(2).repeat(1, 1, n_sample_points, 1, 1, 1)
-        grelpos = (pcbatch_rep - oldpositions_rep).unsqueeze(5)
+        oldpositions_rep = gm_data.get_positions().unsqueeze(2).expand(batch_size, 1, n_sample_points, self._n_gaussians, 3)
+        oldicovs_rep = gm_data.get_inversed_covariances().unsqueeze(2).expand(batch_size, 1, n_sample_points, self._n_gaussians, 3, 3)
+        grelpos = (pcbatch_rep - oldpositions_rep).unsqueeze(5) # bs, 1, np, ng, 3, 1
         gaussvalues = -0.5 * torch.matmul(grelpos.transpose(-2, -1), torch.matmul(oldicovs_rep, grelpos)).squeeze(
-            5).squeeze(4)
-        priors_rep = torch.log(gm_data.get_amplitudes().unsqueeze(2).repeat(1, 1, n_sample_points, 1))
+            5).squeeze(4) #bs, 1, np, ng
+        priors_rep = torch.log(gm_data.get_amplitudes().unsqueeze(2).expand(batch_size, 1, n_sample_points, self._n_gaussians))
         likelihood_log = priors_rep + gaussvalues
-        return torch.exp(likelihood_log - torch.logsumexp(likelihood_log, dim=3, keepdim=True))
+        llh_sum = torch.logsumexp(likelihood_log, dim=3, keepdim=True) # bs, 1, np, ng
+        losses = llh_sum.mean(dim = 2).squeeze()
+        return torch.exp(likelihood_log - llh_sum), losses
 
     def maximization(self, pcbatch_rep: torch.Tensor, responsibilities: torch.Tensor, gm_data):
+        # resp dim: (bs, 1, np, ng)
+        batch_size = pcbatch_rep.shape[0]
         n_sample_points = pcbatch_rep.shape[2]
         n_k = responsibilities.sum(dim=2)  # dimension: (bs, 1, ng)
         # Calculate new Positions               # pcbatch_rep dimension: (bs, 1, np, ng, 3)
-        multiplied = responsibilities.unsqueeze(4).repeat(1, 1, 1, 1, 3) * pcbatch_rep  # dimension: (bs, 1, np, ng, 3)
+        multiplied = responsibilities.unsqueeze(4).expand_as(pcbatch_rep) * pcbatch_rep  # dimension: (bs, 1, np, ng, 3)
         new_positions = multiplied.sum(dim=2, keepdim=True) / n_k.unsqueeze(2).unsqueeze(
             4)  # dimension: (bs, 1, 1, ng, 3)
-        new_positions_rep = new_positions.repeat(1, 1, n_sample_points, 1, 1)
+        new_positions_rep = new_positions.expand(batch_size, 1, n_sample_points, self._n_gaussians, 3)
         new_positions = new_positions.squeeze(2)  # dimensions: (bs, 1, ng, 3)
         # Calculate new Covariances
         relpos = (pcbatch_rep - new_positions_rep).unsqueeze(5)
@@ -130,7 +133,7 @@ class EMGeneratorNumLog(GMMGenerator):
 
         # Initialize according to "Finite Mixture Models", cahpter 2.12.2
         meanpos = pcbatch.mean(dim=1,keepdim=True) # bs, 1, 3
-        diffs = (pcbatch - meanpos.repeat(1, point_count, 1)).unsqueeze(3) # bs, np, 3
+        diffs = (pcbatch - meanpos.expand(batch_size, point_count, 3)).unsqueeze(3) # bs, np, 3
         meanpos = meanpos.squeeze(1)
         meancov = (diffs * diffs.transpose(-1, -2)).mean(dim=[1])
         meanweight = 1.0 / self._n_gaussians
@@ -139,8 +142,7 @@ class EMGeneratorNumLog(GMMGenerator):
         for i in range(batch_size):
             positions[i, 0, :, :] = torch.tensor(
                 numpy.random.multivariate_normal(meanpos[i, :].cpu(), meancov[i, :, :].cpu(), self._n_gaussians)).cuda()
-        covariances = meancov.view(batch_size, 1, 1, 3, 3).repeat(1, 1, self._n_gaussians, 1, 1)
-        # covariances = torch.eye(3, 3).view(1, 1, 1, 3, 3).repeat(1, 1, self._n_gaussians, 1, 1)
+        covariances = meancov.view(batch_size, 1, 1, 3, 3).expand(batch_size, 1, self._n_gaussians, 3, 3)
         weights = torch.zeros(batch_size, 1, self._n_gaussians)
         weights[:, :, :] = meanweight
 
