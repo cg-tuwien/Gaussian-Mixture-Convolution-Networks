@@ -228,10 +228,12 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> forward_impl(at::Tensor 
 
     const auto n_mixtures = n.batch * n.layers;
     const auto bvh = LBVH(mixture);
-    mixture = mixture.view({n_mixtures, n.components, -1});
-    auto scratch_mixture = mixture.clone();
     const auto n_internal_nodes = bvh.m_n_internal_nodes;
     const auto n_nodes = bvh.m_n_nodes;
+    mixture = mixture.view({n_mixtures, n.components, -1});
+    auto flat_bvh_nodes = bvh.m_nodes.view({n_mixtures, n_nodes, -1});
+    auto flat_bvh_aabbs = bvh.m_aabbs.view({n_mixtures, n_nodes, -1});
+    auto scratch_mixture = mixture.clone();
     auto flag_container = torch::zeros({n_mixtures, n_internal_nodes}, torch::TensorOptions(mixture.device()).dtype(torch::ScalarType::Int));
     auto tmp_g_container = -1 * torch::ones({n_mixtures, n_nodes, N_GAUSSIANS_TARGET},
                                             torch::TensorOptions(mixture.device()).dtype(lbvh::detail::TorchTypeMapper<node_index_torch_t>::id()));
@@ -246,8 +248,8 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> forward_impl(at::Tensor 
                                                         (uint(1) + dimBlock.z - 1) / dimBlock.z);
 
                                    auto mixture_a = gpe::accessor<scalar_t, 3>(scratch_mixture);
-                                   auto nodes_a = gpe::accessor<lbvh::detail::Node::index_type_torch, 3>(bvh.m_nodes);
-                                   auto aabbs_a = gpe::accessor<scalar_t, 3>(bvh.m_aabbs);
+                                   auto nodes_a = gpe::accessor<lbvh::detail::Node::index_type_torch, 3>(flat_bvh_nodes);
+                                   auto aabbs_a = gpe::accessor<scalar_t, 3>(flat_bvh_aabbs);
 
                                    auto fun = [mixture_a, nodes_a, aabbs_a, flags_a, tmp_g_container_a, n, n_mixtures, n_internal_nodes, n_nodes, n_components_target] __host__ __device__
                                        (const dim3& gpe_gridDim, const dim3& gpe_blockDim, const dim3& gpe_blockIdx, const dim3& gpe_threadIdx) {
