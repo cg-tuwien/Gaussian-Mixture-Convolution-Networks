@@ -22,18 +22,18 @@ template <typename scalar_t, int DIMS>
 __host__ __device__
 void forward(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
              const dim3& gpe_blockIdx, const dim3& gpe_threadIdx,
-             const torch::PackedTensorAccessor32<scalar_t, 4, gpe::RestrictPtrTraits> mixture_a,
-             const torch::PackedTensorAccessor32<scalar_t, 4, gpe::RestrictPtrTraits> xes_a,
-             torch::PackedTensorAccessor32<scalar_t, 3, gpe::RestrictPtrTraits> sum_a,
+             const gpe::PackedTensorAccessor32<scalar_t, 4> mixture_a,
+             const gpe::PackedTensorAccessor32<scalar_t, 4> xes_a,
+             gpe::PackedTensorAccessor32<scalar_t, 3> sum_a,
              const gpe::MixtureAndXesNs n) {
     GPE_UNUSED(gpe_gridDim)
-    const auto batch_index = gpe_blockIdx.z;
-    const auto layer_index = gpe_blockIdx.y;
+    const auto batch_index = int(gpe_blockIdx.z);
+    const auto layer_index = int(gpe_blockIdx.y);
     const auto batch_xes_index = gpe::min(batch_index, n.batch_xes - 1);
     const auto layer_xes_index = gpe::min(layer_index, n.layers_xes - 1);
-    const auto xes_index = gpe_blockIdx.x * gpe_blockDim.x + gpe_threadIdx.x;
+    const auto xes_index = int(gpe_blockIdx.x * gpe_blockDim.x + gpe_threadIdx.x);
 
-    if (xes_index >= uint(n.xes))
+    if (xes_index >= n.xes)
         return;
 
     for (int component_index = 0; component_index < n.components; ++component_index) {
@@ -57,20 +57,20 @@ template <typename scalar_t, int DIMS>
 __host__ __device__
 void backward(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
               const dim3& gpe_blockIdx, const dim3& gpe_threadIdx,
-              const torch::PackedTensorAccessor32<scalar_t, 4, gpe::RestrictPtrTraits> mixture_a,
-              const torch::PackedTensorAccessor32<scalar_t, 4, gpe::RestrictPtrTraits> xes_a,
-              torch::PackedTensorAccessor32<scalar_t, 4, gpe::RestrictPtrTraits> grad_mixture_a,
-              torch::PackedTensorAccessor32<scalar_t, 4, gpe::RestrictPtrTraits> grad_xes_a,
-              const torch::PackedTensorAccessor32<scalar_t, 3, gpe::RestrictPtrTraits> grad_output_a,
+              const gpe::PackedTensorAccessor32<scalar_t, 4> mixture_a,
+              const gpe::PackedTensorAccessor32<scalar_t, 4> xes_a,
+              gpe::PackedTensorAccessor32<scalar_t, 4> grad_mixture_a,
+              gpe::PackedTensorAccessor32<scalar_t, 4> grad_xes_a,
+              const gpe::PackedTensorAccessor32<scalar_t, 3> grad_output_a,
               const gpe::MixtureAndXesNs n, bool requires_grad_mixture, bool requires_grad_xes) {
     GPE_UNUSED(gpe_gridDim)
-    const auto batch_index = gpe_blockIdx.z;
-    const auto layer_index = gpe_blockIdx.y;
+    const auto batch_index = int(gpe_blockIdx.z);
+    const auto layer_index = int(gpe_blockIdx.y);
     const auto batch_xes_index = gpe::min(batch_index, n.batch_xes - 1);
     const auto layer_xes_index = gpe::min(layer_index, n.layers_xes - 1);
-    const auto xes_index = gpe_blockIdx.x * gpe_blockDim.x + gpe_threadIdx.x;
+    const auto xes_index = int(gpe_blockIdx.x * gpe_blockDim.x + gpe_threadIdx.x);
 
-    if (xes_index >= uint(n.xes))
+    if (xes_index >= n.xes)
         return;
     //    printf("block %d/%d/%d, thread %d: batch_index=%d, layer_index=%d, component_index=%d, xes_index=%d \n",
     //           blockIdx.x, blockIdx.y, blockIdx.z, threadIdx.x,
@@ -99,7 +99,7 @@ void backward(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
 
         if (requires_grad_xes) {
             const auto grad_xes_addition = - grad_output_a[batch_index][layer_index][xes_index] * local_grad_c_pos;
-            for (uint i = 0; i < DIMS; ++i) {
+            for (int i = 0; i < DIMS; ++i) {
                 gpe::atomicAdd(&grad_xes_a[batch_xes_index][layer_xes_index][xes_index][i], grad_xes_addition[i]);
             }
         }
@@ -108,9 +108,9 @@ void backward(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
             const auto grad_c_pos_addition = local_grad_c_pos * grad_output_a[batch_index][layer_index][xes_index];
             const auto grad_c_cov_addition = - c_weight * scalar_t(0.5) * exp * grad_output_a[batch_index][layer_index][xes_index] * glm::outerProduct(t, t);
             gpe::atomicAdd(&grad_mixture_a[batch_index][layer_index][component_index][0], grad_c_weight_addition);
-            for (uint i = 0; i < DIMS; ++i) {
+            for (int i = 0; i < DIMS; ++i) {
                 gpe::atomicAdd(&grad_mixture_a[batch_index][layer_index][component_index][1 + i], grad_c_pos_addition[i]);
-                for (uint j = 0; j < DIMS; ++j)
+                for (int j = 0; j < DIMS; ++j)
                     gpe::atomicAdd(&grad_mixture_a[batch_index][layer_index][component_index][1 + DIMS + i*DIMS + j], grad_c_cov_addition[i][j]);
             }
         }
@@ -131,16 +131,16 @@ at::Tensor parallel_forward_impl(const torch::Tensor& mixture, const torch::Tens
 
 
     dim3 dimBlock = dim3(128, 1, 1);
-    const dim3 dimGrid = dim3((n.xes + dimBlock.x - 1) / dimBlock.x,
-                              n.layers,
-                              n.batch);
+    const dim3 dimGrid = dim3((uint(n.xes) + dimBlock.x - 1) / dimBlock.x,
+                              uint(n.layers),
+                              uint(n.batch));
     //    std::cout << "forward: dimBlock=" << dimBlock.x << "/" << dimBlock.y << "/" << dimBlock.z << ", dimGrid=" << dimGrid.x << "/" << dimGrid.y << "/" << dimGrid.z << std::endl;
 
 
     AT_DISPATCH_FLOATING_TYPES(mixture.scalar_type(), "cuda_parallel_forward_impl", ([&] {
-                                   auto mixture_a = mixture.packed_accessor32<scalar_t, 4, gpe::RestrictPtrTraits>();
-                                   auto xes_a = xes.packed_accessor32<scalar_t, 4, gpe::RestrictPtrTraits>();
-                                   auto sum_a = sum.packed_accessor32<scalar_t, 3, gpe::RestrictPtrTraits>();
+                                   auto sum_a = gpe::accessor<scalar_t, 3>(sum);
+                                   auto mixture_a = gpe::accessor<scalar_t, 4>(mixture);
+                                   const auto xes_a = gpe::accessor<scalar_t, 4>(xes);
 
                                    if (n.dims == 2) {
                                        auto fun = [mixture_a, xes_a, sum_a, n] __host__ __device__
@@ -176,17 +176,17 @@ std::tuple<torch::Tensor, torch::Tensor> parallel_backward_impl(const torch::Ten
     torch::Tensor grad_xes = torch::zeros({n.batch_xes, n.layers_xes, n.xes, n.dims}, torch::dtype(mixture.dtype()).device(mixture.device()));
 
     dim3 dimBlock = dim3(128, 1, 1);
-    const dim3 dimGrid = dim3((n.xes + dimBlock.x - 1) / dimBlock.x,
-                              n.layers,
-                              n.batch);
+    const dim3 dimGrid = dim3((uint(n.xes) + dimBlock.x - 1) / dimBlock.x,
+                              uint(n.layers),
+                              uint(n.batch));
     //    std::cout << "forward: dimBlock=" << dimBlock.x << "/" << dimBlock.y << "/" << dimBlock.z << ", dimGrid=" << dimGrid.x << "/" << dimGrid.y << "/" << dimGrid.z << std::endl;
 
     AT_DISPATCH_FLOATING_TYPES(mixture.scalar_type(), "cuda_parallel_backward_impl", ([&] {
-                                   auto mixture_a = mixture.packed_accessor32<scalar_t, 4, gpe::RestrictPtrTraits>();
-                                   auto xes_a = xes.packed_accessor32<scalar_t, 4, gpe::RestrictPtrTraits>();
-                                   auto grad_mixture_a = grad_mixture.packed_accessor32<scalar_t, 4, gpe::RestrictPtrTraits>();
-                                   auto grad_xes_a = grad_xes.packed_accessor32<scalar_t, 4, gpe::RestrictPtrTraits>();
-                                   auto grad_output_a = grad_output.packed_accessor32<scalar_t, 3, gpe::RestrictPtrTraits>();
+                                   auto mixture_a = gpe::accessor<scalar_t, 4>(mixture);
+                                   auto xes_a = gpe::accessor<scalar_t, 4>(xes);
+                                   auto grad_mixture_a = gpe::accessor<scalar_t, 4>(grad_mixture);
+                                   auto grad_xes_a = gpe::accessor<scalar_t, 4>(grad_xes);
+                                   auto grad_output_a = gpe::accessor<scalar_t, 3>(grad_output);
 
                                    if (n.dims == 2) {
                                        auto fun = [=] __host__ __device__

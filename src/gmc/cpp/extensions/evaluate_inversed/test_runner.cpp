@@ -26,17 +26,25 @@ torch::Tensor cuda_bvh_forward_wrapper(const torch::Tensor& mixture, const torch
 
 auto eval_function(const torch::Tensor& tensor) {
     GPE_UNUSED(tensor)
-//    return &parallel_forward;
-    return tensor.is_cuda() ? &cuda_bvh_forward_wrapper : &parallel_forward;
+    return &parallel_forward;
+//    return tensor.is_cuda() ? &cuda_bvh_forward_wrapper : &parallel_forward;
 }
 
-constexpr uint N_BATCHES = 1;
+
+auto eval_function_backward(const torch::Tensor& tensor) {
+    GPE_UNUSED(tensor)
+    return &parallel_backward;
+//    return tensor.is_cuda() ? &cuda_bvh_forward_wrapper : &parallel_forward;
+}
+
+constexpr uint N_BATCHES = 2;
 constexpr uint N_CONVOLUTION_LAYERS = 3;
 constexpr uint LIMIT_N_BATCH = 100;
 constexpr bool USE_CUDA = true;
-constexpr bool RENDER = true;
+constexpr bool BACKWARD = true;
+constexpr bool RENDER = false;
 
-void show(torch::Tensor mixture, const uint resolution, const uint n_batch_limit) {
+void show(torch::Tensor mixture, const int resolution, const int n_batch_limit) {
     using namespace torch::indexing;
     const auto n_batch = std::min(gpe::n_batch(mixture), n_batch_limit);
     mixture = mixture.index({Slice(None, n_batch)});
@@ -62,7 +70,7 @@ void show(torch::Tensor mixture, const uint resolution, const uint n_batch_limit
     auto rendering = eval_function(mixture)(mixture, xes).cpu().view({n_batch, n_layers, resolution, resolution});
     cudaDeviceSynchronize();
     auto end = std::chrono::steady_clock::now();
-    std::cout << "elapsed time: " << std::chrono::duration_cast<std::chrono::milliseconds>(end-start).count() << "ms\n";
+    std::cout << "elapsed time (rendering): " << std::chrono::duration_cast<std::chrono::milliseconds>(end-start).count() << "ms\n";
     std::cout << "rendering.sizes() = " << rendering.sizes()
               << ", min=" << rendering.min().item<float>()
               << ", max=" << rendering.max().item<float>() << std::endl;
@@ -71,7 +79,7 @@ void show(torch::Tensor mixture, const uint resolution, const uint n_batch_limit
     rendering *= 255;
     rendering = rendering.to(torch::ScalarType::Char);
     rendering = rendering.transpose(2, 3).transpose(1, 2).contiguous();
-    QImage qRendering((uchar*) rendering.data_ptr(), int(resolution * n_layers), int(resolution * n_batch), QImage::Format_Grayscale8);
+    QImage qRendering(reinterpret_cast<uchar*>(rendering.data_ptr()), resolution * n_layers, resolution * n_batch, QImage::Format_Grayscale8);
     QLabel* myLabel = new QLabel();
     myLabel->setPixmap(QPixmap::fromImage(qRendering));
 
@@ -90,7 +98,7 @@ int main(int argc, char *argv[]) {
         auto list = container.attributes();
 
         for (uint i = 0; i < N_CONVOLUTION_LAYERS; i++) {
-            auto mixture = container.attr(std::to_string(i)).toTensor();//.index({Slice(0, 1), Slice(0, 1), Slice(0, 5), Slice()});
+            torch::Tensor mixture = container.attr(std::to_string(i)).toTensor();//.index({Slice(0, 1), Slice(0, 1), Slice(0, 5), Slice()});
 //            auto mixture = torch::tensor({{0.02f, 0.f, 0.f, 1.01f, 1.f, 1.f, 1.0f},
 //                                          {0.02f, 5.f, 5.f, 1.01f, 0.5f, 0.5f, 4.0f}}).view({1, 1, 2, 7});
             if (USE_CUDA)
@@ -100,16 +108,29 @@ int main(int argc, char *argv[]) {
                 show(mixture, 128, LIMIT_N_BATCH);
 
             const auto weights = gpe::weights(mixture);
-            const auto positions = gpe::positions(mixture);
+            torch::Tensor positions = gpe::positions(mixture);
             const auto invCovs = gpe::covariances(mixture).inverse().transpose(-1, -2);
-            mixture = gpe::pack_mixture(weights, positions, invCovs.contiguous());
-//            cudaDeviceSynchronize();
+            mixture = gpe::pack_mixture(weights, positions, invCovs.contiguous()).clone().contiguous();
+            cudaDeviceSynchronize();
 
             auto start = std::chrono::high_resolution_clock::now();
-            auto rendering = eval_function(mixture)(mixture, positions.contiguous()).cpu();
+            auto eval_values = eval_function(mixture)(mixture, positions.contiguous());
             cudaDeviceSynchronize();
             auto end = std::chrono::high_resolution_clock::now();
-            std::cout << "elapsed time: " << std::chrono::duration_cast<std::chrono::milliseconds>(end-start).count() << "ms\n";
+            std::cout << "elapsed time (forward): " << std::chrono::duration_cast<std::chrono::milliseconds>(end-start).count() << "ms\n";
+
+            if (BACKWARD) {
+                torch::Tensor positions_clone = gpe::positions(mixture).clone();
+                auto grad_out = torch::rand_like(eval_values);
+
+                cudaDeviceSynchronize();
+                auto start = std::chrono::high_resolution_clock::now();
+                auto grads = eval_function_backward(mixture)(grad_out, mixture, positions_clone, true, true);
+                cudaDeviceSynchronize();
+                auto end = std::chrono::high_resolution_clock::now();
+                std::cout << "elapsed time (backward): " << std::chrono::duration_cast<std::chrono::milliseconds>(end-start).count() << "ms\n";
+
+            }
         }
     }
 

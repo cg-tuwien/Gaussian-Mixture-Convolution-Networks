@@ -18,7 +18,10 @@ extra_include_paths = [source_dir + "/../../glm/", source_dir + "/../../cub/", s
 #                                verbose=True, extra_cflags=cuda_extra_cflags, extra_cuda_cflags=cuda_extra_cuda_cflags, extra_ldflags=["-lpthread"])
 
 parallel = load('evaluate_inversed_parallel',
-                [source_dir + '/parallel_binding.cpp', source_dir + '/parallel_implementation.cu'],
+                [source_dir + '/parallel_binding.cpp',
+                 source_dir + '/parallel_implementation.cu',
+                 source_dir + '/parallel_implementation_optimised_forward.cu',
+                 source_dir + '/parallel_implementation_optimised_backward.cu'],
                 extra_include_paths=extra_include_paths, verbose=True, extra_cflags=cuda_extra_cflags, extra_cuda_cflags=cuda_extra_cuda_cflags, extra_ldflags=["-lpthread"])
 
 # cpu = load('evaluate_inversed_cpu_parallel', [source_dir + '/cpu_parallel.cpp'],

@@ -22,18 +22,18 @@ template <typename scalar_t, int DIMS>
 __device__
 void forward(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
              const dim3& gpe_blockIdx, const dim3& gpe_threadIdx,
-             const gpe::PackedTensorAccessor32<scalar_t, 4, gpe::RestrictPtrTraits> mixture_a,
-             const gpe::PackedTensorAccessor32<scalar_t, 4, gpe::RestrictPtrTraits> xes_a,
-             gpe::PackedTensorAccessor32<scalar_t, 3, gpe::RestrictPtrTraits> sum_a,
+             const gpe::PackedTensorAccessor32<scalar_t, 4> mixture_a,
+             const gpe::PackedTensorAccessor32<scalar_t, 4> xes_a,
+             gpe::PackedTensorAccessor32<scalar_t, 3> sum_a,
              const gpe::MixtureAndXesNs n) {
     GPE_UNUSED(gpe_gridDim)
-    const auto batch_index = gpe_blockIdx.z;
-    const auto layer_index = gpe_blockIdx.y;
+    const auto batch_index = int(gpe_blockIdx.z);
+    const auto layer_index = int(gpe_blockIdx.y);
     const auto batch_xes_index = gpe::min(batch_index, n.batch_xes - 1);
     const auto layer_xes_index = gpe::min(layer_index, n.layers_xes - 1);
-    const auto xes_index = gpe_blockIdx.x * gpe_blockDim.x + gpe_threadIdx.x;
+    const auto xes_index = int(gpe_blockIdx.x * gpe_blockDim.x + gpe_threadIdx.x);
 
-    if (xes_index >= uint(n.xes))
+    if (xes_index >= n.xes)
         return;
 
     for (int component_index = 0; component_index < n.components; ++component_index) {
@@ -66,17 +66,17 @@ at::Tensor parallel_forward_optimised_impl(const torch::Tensor& mixture, const t
 
 
     dim3 dimBlock = dim3(128, 1, 1);
-    const dim3 dimGrid = dim3((n.xes + dimBlock.x - 1) / dimBlock.x,
-                              n.layers,
-                              n.batch);
+    const dim3 dimGrid = dim3((uint(n.xes) + dimBlock.x - 1) / dimBlock.x,
+                              uint(n.layers),
+                              uint(n.batch));
     //    std::cout << "forward: dimBlock=" << dimBlock.x << "/" << dimBlock.y << "/" << dimBlock.z << ", dimGrid=" << dimGrid.x << "/" << dimGrid.y << "/" << dimGrid.z << std::endl;
 
     auto s = mixture.sizes();
 
     AT_DISPATCH_FLOATING_TYPES(mixture.scalar_type(), "cuda_parallel_forward_impl", ([&] {
-                                   auto mixture_a = gpe::accessor<scalar_t, 4>(mixture);
-                                   auto xes_a = gpe::accessor<scalar_t, 4>(xes);
                                    auto sum_a = gpe::accessor<scalar_t, 3>(sum);
+                                   auto mixture_a = gpe::accessor<scalar_t, 4>(mixture);
+                                   const auto xes_a = gpe::accessor<scalar_t, 4>(xes);
 
                                    if (n.dims == 2) {
                                        auto fun = [mixture_a, xes_a, sum_a, n] __device__

@@ -15,34 +15,34 @@ namespace gpe {
 
 
 struct MixtureAndXesNs {
-    uint batch = 0;
-    uint layers = 0;
-    uint components = 0;
-    uint dims = 0;
-    uint batch_xes = 0;
-    uint layers_xes = 0;
-    uint xes = 0;
+    int batch = 0;
+    int layers = 0;
+    int components = 0;
+    int dims = 0;
+    int batch_xes = 0;
+    int layers_xes = 0;
+    int xes = 0;
 };
 struct MixtureNs {
-    uint batch = 0;
-    uint layers = 0;
-    uint components = 0;
-    uint dims = 0;
+    int batch = 0;
+    int layers = 0;
+    int components = 0;
+    int dims = 0;
 };
 
-inline uint n_batch(torch::Tensor mixture) {
-    return uint(mixture.size(0));
+inline int n_batch(torch::Tensor mixture) {
+    return int(mixture.size(0));
 }
 
-inline uint n_layers(torch::Tensor mixture) {
-    return uint(mixture.size(1));
+inline int n_layers(torch::Tensor mixture) {
+    return int(mixture.size(1));
 }
 
-inline uint n_components(torch::Tensor mixture) {
-    return uint(mixture.size(2));
+inline int n_components(torch::Tensor mixture) {
+    return int(mixture.size(2));
 }
 
-inline uint n_dimensions(torch::Tensor mixture) {
+inline int n_dimensions(torch::Tensor mixture) {
     auto vector_length = mixture.size(3);
     if (vector_length == 7)
         return 2;
@@ -164,10 +164,10 @@ inline void check_mixture(torch::Tensor mixture) {
 inline MixtureNs get_ns(torch::Tensor mixture) {
     check_mixture(mixture);
 
-    uint n_batch = gpe::n_batch(mixture);
-    uint n_layers = gpe::n_layers(mixture);
-    uint n_components = gpe::n_components(mixture);
-    uint n_dims = gpe::n_dimensions(mixture);
+    auto n_batch = gpe::n_batch(mixture);
+    auto n_layers = gpe::n_layers(mixture);
+    auto n_components = gpe::n_components(mixture);
+    auto n_dims = gpe::n_dimensions(mixture);
 
     return {n_batch, n_layers, n_components, n_dims};
 }
@@ -175,18 +175,18 @@ inline MixtureNs get_ns(torch::Tensor mixture) {
 inline MixtureAndXesNs check_input_and_get_ns(torch::Tensor mixture, torch::Tensor xes) {
     check_mixture(mixture);
 
-    uint n_batch = gpe::n_batch(mixture);
-    uint n_layers = gpe::n_layers(mixture);
-    uint n_components = gpe::n_components(mixture);
-    uint n_dims = gpe::n_dimensions(mixture);
+    auto n_batch = gpe::n_batch(mixture);
+    auto n_layers = gpe::n_layers(mixture);
+    auto n_components = gpe::n_components(mixture);
+    auto n_dims = gpe::n_dimensions(mixture);
 
     TORCH_CHECK(xes.is_contiguous(), "xes must be contiguous")
     TORCH_CHECK(xes.dim() == 4, "xes must have 4 dimensions");
     TORCH_CHECK(xes.dtype() == mixture.dtype(), "mixture and xes must have the same dtype");
     TORCH_CHECK(xes.device() == mixture.device(), "mixture and xes must have the same device");
-    uint n_batch_xes = uint(xes.size(0));
-    uint n_layers_xes = uint(xes.size(1));
-    uint n_xes = uint(xes.size(2));
+    auto n_batch_xes = int(xes.size(0));
+    auto n_layers_xes = int(xes.size(1));
+    auto n_xes = int(xes.size(2));
 
     TORCH_CHECK(n_batch_xes == 1 || n_batch_xes == n_batch, "xes must have a batch dimension equal to one or the mixture");
     TORCH_CHECK(n_layers_xes == 1 || n_layers_xes == n_layers, "xes must have a layer dimension equal to one or the mixture");
