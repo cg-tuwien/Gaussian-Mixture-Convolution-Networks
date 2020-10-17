@@ -1,7 +1,7 @@
 # This is only for debugging purposes
 
 from prototype_pcfitting import programs, MaxIterationTerminationCriterion, data_loading
-from prototype_pcfitting.generators import EMGenerator, GradientDescentGenerator, EMGeneratorNumLog
+from prototype_pcfitting.generators import EMGenerator, GradientDescentGenerator
 
 
 # Define Paths (see readme.txt)
@@ -23,7 +23,7 @@ batch_size = 1
 generators = [
     # GradientDescentGenerator(n_gaussians=n_gaussians, n_sample_points=1000,
     #                                   termination_criterion=MaxIterationTerminationCriterion(1000)),
-              EMGeneratorNumLog(n_gaussians=n_gaussians, n_sample_points=20000,
+              EMGenerator(n_gaussians=n_gaussians, n_sample_points=20000,
                                        termination_criterion=MaxIterationTerminationCriterion(100))]
 generator_identifiers = ["EM"]
 
@@ -42,8 +42,8 @@ training_name = "Debug"
 pcbatch = data_loading.load_pc_from_off("D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_test/pointclouds/n20000/test/chair_0890.off")
 
 # gmbatch = data_loading.read_gm_from_ply("D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/EmMatlab/EmGm/output-n20000-g100-nofilter-highprec.gmm.ply", ismodel=True).double().cuda()
-gmbatch = data_loading.read_gm_from_ply("D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/EmMatlab/EmGm/output.gmm.ply", ismodel=True).double().cuda()
-# gmbatch = None
+# gmbatch = data_loading.read_gm_from_ply("D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/EmMatlab/EmGm/output.gmm.ply", ismodel=True).cuda()
+gmbatch = None
 
 programs.execute_fitting_on_single_pcbatch(training_name, pcbatch, gengmm_path, log_path, n_gaussians,
                                                            generators, generator_identifiers, log_positions,

@@ -47,7 +47,7 @@ class GradientDescentGenerator(GMMGenerator):
 
     def set_logging(self,
                     logger: GMLogger = None):
-        # Sets some logging options
+        # Sets logging options
         # Paramters:
         #   logger: GMLogger
         #       GMLogger object to call every iteration

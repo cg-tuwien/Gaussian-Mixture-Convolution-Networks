@@ -12,11 +12,11 @@ genpc_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_test/poi
 gengmm_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_test/gmms"
 
 # Define point count of pointclouds to use, and how many points to use for evaluation
-n_points = 20000
+n_points = 1000000
 eval_points = 20000
 
 # Define identifiers of Generators to evaluate and error functions to use
-generator_identifiers = ["GD"]
+generator_identifiers = ["GD", "EM"]
 error_functions: List[ErrorFunction] = [LikelihoodLoss()]
 error_function_identifiers = ["Likelihood Loss"]
 
