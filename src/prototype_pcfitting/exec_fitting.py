@@ -1,7 +1,6 @@
 from prototype_pcfitting import programs, MaxIterationTerminationCriterion, RelChangeTerminationCriterion
 from prototype_pcfitting.generators import GradientDescentGenerator, EMGenerator
 import datetime
-import os
 
 # This takes a polygonal dataset, creates point clouds and then continues to generate gmms from it
 # All the results are stored on disk + Logs
@@ -16,7 +15,7 @@ log_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_test/logs"
 # Define Point Count, Gaussian Count and Batch Size
 n_points = 1000000
 n_gaussians = 100
-batch_size = 10 # ToDo: test with higher size
+batch_size = 10  # ToDo: test with higher size
 
 # Define GMM Generators
 terminator1 = RelChangeTerminationCriterion(0.1, 100)

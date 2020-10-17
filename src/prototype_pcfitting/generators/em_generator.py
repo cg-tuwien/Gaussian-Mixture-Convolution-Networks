@@ -64,7 +64,7 @@ class EMGenerator(GMMGenerator):
         n_sample_points = min(point_count, self._n_sample_points)
         pcbatch = pcbatch.to(self._dtype).cuda()  # dimension: (bs, np, 3)
 
-        assert(point_count > self._n_gaussians)
+        assert (point_count > self._n_gaussians)
 
         # Initialize mixture data
         if gmbatch is None:
@@ -78,7 +78,7 @@ class EMGenerator(GMMGenerator):
 
         # eps is a small multiple of the identity matrix which is added to the cov-matrizes
         # in order to avoid singularities
-        self._eps = (torch.eye(3, 3, dtype=self._dtype) * 1e-6).view(1,1,1,3,3)\
+        self._eps = (torch.eye(3, 3, dtype=self._dtype) * 1e-6).view(1, 1, 1, 3, 3) \
             .expand(batch_size, 1, self._n_gaussians, 3, 3).cuda()
 
         while True:
@@ -89,7 +89,8 @@ class EMGenerator(GMMGenerator):
                 sample_points = data_loading.sample(pcbatch, n_sample_points)
             else:
                 sample_points = pcbatch
-            points_rep = sample_points.unsqueeze(1).unsqueeze(3).expand(batch_size, 1, n_sample_points, self._n_gaussians, 3)
+            points_rep = sample_points.unsqueeze(1).unsqueeze(3) \
+                .expand(batch_size, 1, n_sample_points, self._n_gaussians, 3)
 
             # Expectation: Calculates responsibilities and current losses
             responsibilities, losses = self.expectation(points_rep, gm_data)
@@ -138,16 +139,16 @@ class EMGenerator(GMMGenerator):
         # log(a * exp(-0.5 * M(x))) = log(a) + log(exp(-0.5 * M(x))) = log(a) - 0.5 * M(x)
 
         # GM-Positions, expanded for each PC point. shape: (bs, 1, np, ng, 3)
-        gmpositions_rep = gm_data.get_positions()\
+        gmpositions_rep = gm_data.get_positions() \
             .unsqueeze(2).expand(batch_size, 1, n_sample_points, self._n_gaussians, 3)
         # GM-Inverse Covariances, expanded for each PC point. shape: (bs, 1, np, ng, 3, 3)
-        gmicovs_rep = gm_data.get_inversed_covariances()\
+        gmicovs_rep = gm_data.get_inversed_covariances() \
             .unsqueeze(2).expand(batch_size, 1, n_sample_points, self._n_gaussians, 3, 3)
         # Tensor of {PC-point minus GM-position}-vectors. shape: (bs, 1, np, ng, 3, 1)
         grelpos = (points_rep - gmpositions_rep).unsqueeze(5)
         # Tensor of 0.5 times the Mahalanobis distances of PC points to Gaussians. shape: (bs, 1, np, ng)
         expvalues = 0.5 * \
-                      torch.matmul(grelpos.transpose(-2, -1), torch.matmul(gmicovs_rep, grelpos)).squeeze(5).squeeze(4)
+            torch.matmul(grelpos.transpose(-2, -1), torch.matmul(gmicovs_rep, grelpos)).squeeze(5).squeeze(4)
         # Logarithmized GM-Priors, expanded for each PC point. shape: (bs, 1, np, ng)
         gmpriors_log_rep = \
             torch.log(gm_data.get_amplitudes().unsqueeze(2).expand(batch_size, 1, n_sample_points, self._n_gaussians))
@@ -156,7 +157,7 @@ class EMGenerator(GMMGenerator):
         # Logarithmized Likelihood for each point given the GM. shape: (bs, 1, np, ng)
         llh_sum = torch.logsumexp(likelihood_log, dim=3, keepdim=True)
         # Logarithmized Mean Likelihood for all points. shape: (bs)
-        losses = -llh_sum.mean(dim = 2).view(batch_size)
+        losses = -llh_sum.mean(dim=2).view(batch_size)
         # Calculating responsibilities and returning them and the mean loglikelihoods
         return torch.exp(likelihood_log - llh_sum), losses
 
@@ -221,7 +222,7 @@ class EMGenerator(GMMGenerator):
         point_count = pcbatch.shape[1]
 
         # Calculate the mean pc position. shape: (bs, 1, 3)
-        meanpos = pcbatch.mean(dim=1,keepdim=True)
+        meanpos = pcbatch.mean(dim=1, keepdim=True)
         # Calcualte (point - meanpoint) pairs. Shape: (bs, np, 3, 1)
         diffs = (pcbatch - meanpos.expand(batch_size, point_count, 3)).unsqueeze(3)
         # Squeeze meanpos -> shape: (bs, 3)
