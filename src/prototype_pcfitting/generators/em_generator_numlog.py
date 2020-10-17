@@ -15,13 +15,13 @@ class EMGeneratorNumLog(GMMGenerator):
                  n_gaussians: int,
                  n_sample_points: int,
                  termination_criterion: TerminationCriterion = MaxIterationTerminationCriterion(500),
-                 min_det: float = 1e-10):
+                 dtype: torch.dtype = torch.float32):
         self._n_gaussians = n_gaussians
         self._n_sample_points = n_sample_points
         self._termination_criterion = termination_criterion
-        self._min_det = min_det
         self._logger = None
         self._eps = None
+        self._dtype = dtype
 
     def set_logging(self, logger: GMLogger = None):
         self._logger = logger
@@ -32,7 +32,7 @@ class EMGeneratorNumLog(GMMGenerator):
         batch_size = pcbatch.shape[0]
         point_count = pcbatch.shape[1]
         n_sample_points = min(point_count, self._n_sample_points)
-        pcbatch = pcbatch.to(self._device).double()  # dimension: (bs, np, 3)
+        pcbatch = pcbatch.to(self._device).to(self._dtype)  # dimension: (bs, np, 3)
 
         assert(point_count > self._n_gaussians)
 
@@ -56,7 +56,7 @@ class EMGeneratorNumLog(GMMGenerator):
         if self._logger:
             self._logger.log(iteration, losses, gm_data.pack_mixture())
 
-        self._eps = (torch.eye(3, 3, dtype=torch.double) * 1e-6).view(1,1,1,3,3).expand(batch_size, 1, self._n_gaussians, 3, 3).cuda()
+        self._eps = (torch.eye(3, 3, dtype=self._dtype) * 1e-6).view(1,1,1,3,3).expand(batch_size, 1, self._n_gaussians, 3, 3).cuda()
 
         while self._termination_criterion.may_continue(iteration, loss.item()):
             iteration += 1
@@ -120,7 +120,7 @@ class EMGeneratorNumLog(GMMGenerator):
         new_covariances = matrix.sum(dim=2) / n_k.unsqueeze(3).unsqueeze(4) + self._eps  # dimension: (b_s, 1, ng, 3, 3)
         # Calculate new priors
         new_priors = n_k / n_sample_points  # dimension: (b_s, 1, ng)
-        new_positions[new_priors == 0] = torch.tensor([0.0, 0.0, 0.0]).double().cuda()
+        new_positions[new_priors == 0] = torch.tensor([0.0, 0.0, 0.0], dtype=self._dtype).cuda()
         new_covariances[new_priors == 0] = self._eps[0, 0, 0, :, :]
         # Update GMData
         gm_data.set_positions(new_positions)
@@ -138,15 +138,15 @@ class EMGeneratorNumLog(GMMGenerator):
         meancov = (diffs * diffs.transpose(-1, -2)).mean(dim=[1])
         meanweight = 1.0 / self._n_gaussians
 
-        positions = torch.zeros(batch_size, 1, self._n_gaussians, 3)
+        positions = torch.zeros(batch_size, 1, self._n_gaussians, 3).to(self._dtype)
         for i in range(batch_size):
             positions[i, 0, :, :] = torch.tensor(
                 numpy.random.multivariate_normal(meanpos[i, :].cpu(), meancov[i, :, :].cpu(), self._n_gaussians)).cuda()
         covariances = meancov.view(batch_size, 1, 1, 3, 3).expand(batch_size, 1, self._n_gaussians, 3, 3)
-        weights = torch.zeros(batch_size, 1, self._n_gaussians)
+        weights = torch.zeros(batch_size, 1, self._n_gaussians).to(self._dtype)
         weights[:, :, :] = meanweight
 
-        return gm.pack_mixture(weights.float().cuda(), positions.float().cuda(), covariances.float().cuda()).double()
+        return gm.pack_mixture(weights.cuda(), positions.cuda(), covariances.cuda()).to(self._dtype)
 
     class TrainingData:
 
