@@ -10,7 +10,7 @@ from prototype_pcfitting import GMMGenerator, PCDatasetIterator, Scaler, GMLogge
 def execute_fitting(training_name: str, model_path: str, genpc_path: str, gengmm_path: str, log_path: str,
                     n_points: int, n_gaussians: int, batch_size: int, generators: List[GMMGenerator],
                     generator_identifiers: List[str], log_positions: int, log_loss_console: int,
-                    log_loss_tb: int, log_rendering_tb: int, log_gm: int):
+                    log_loss_tb: int, log_rendering_tb: int, log_gm: int, log_seperate_directories: bool):
     # ---- GMM FITTING ----
 
     # Create Dataset Iterator and Scaler
@@ -40,7 +40,8 @@ def execute_fitting(training_name: str, model_path: str, genpc_path: str, gengmm
             logger = GMLogger(names=names, log_prefix=gen_id, log_path=log_path,
                               log_positions=log_positions, gm_n_components=n_gaussians,
                               log_loss_console=log_loss_console, log_loss_tb=log_loss_tb,
-                              log_rendering_tb=log_rendering_tb, log_gm=log_gm, pointclouds=batch, scaler=scaler)
+                              log_rendering_tb=log_rendering_tb, log_gm=log_gm, pointclouds=batch, scaler=scaler,
+                              log_seperate_directories=log_seperate_directories)
             generators[j].set_logging(logger)
 
             # Generate GMM

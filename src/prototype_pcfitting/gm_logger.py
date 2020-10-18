@@ -28,13 +28,15 @@ class GMLogger:
                  log_rendering_tb: int = 0,
                  log_gm: int = 0,
                  pointclouds: torch.Tensor = None,
-                 scaler: Scaler = None):
+                 scaler: Scaler = None,
+                 log_seperate_directories: bool = True):
         # Constructor. Parameters:
         #   names: List[str]
         #       List of identifiers. There should be a identifier for each batch entry.
         #       These are used as directory names for the logging
         #   log_prefix: str
-        #       A prefix to prepend to the identifiers
+        #       A prefix to prepend to the identifiers for the directory names. Might contain "/" if intermediate
+        #       folders should be used.
         #   log_path: str
         #       Root directory for the logs.
         #   log_positions: int
@@ -61,12 +63,22 @@ class GMLogger:
         #       corresponding point cloud batch. (in original scale!!!)
         #   scaler: Scaler
         #       Needs to be set for everything except loss logging. The scaler for upscaling the given GMMs.
+        #   log_seperate_directories: bool
+        #       If True, each generator has it's own directory.
 
         # Prepare Tensorboard Log Data
         self._log_rendering_tb = log_rendering_tb
         self._log_loss_tb = log_loss_tb
         self._log_loss_console = log_loss_console
         self._names = names
+
+        for i in range(len(names)):
+            names[i] = names[i].replace("/", "-").replace("\\", "-");
+
+        if log_seperate_directories:
+            log_prefix += "/"
+        else:
+            log_prefix += "-"
 
         if log_rendering_tb > 0:
             self._visualizer = GMVisualizer(False, 500, 500)
@@ -79,7 +91,7 @@ class GMLogger:
         if log_rendering_tb > 0 or log_loss_tb > 0:
             self._tbwriters = []
             for i in range(len(names)):
-                tbw = torch.utils.tensorboard.SummaryWriter(os.path.join(log_path, log_prefix, names[i]))
+                tbw = torch.utils.tensorboard.SummaryWriter(os.path.join(log_path, log_prefix + names[i]))
                 self._tbwriters.append(tbw)
 
         # Prepare GM Log Data
@@ -88,7 +100,7 @@ class GMLogger:
         if log_gm > 0 or log_positions > 0:
             for i in range(len(names)):
                 n = names[i]
-                self._gm_paths[i] = os.path.join(log_path, log_prefix, n)
+                self._gm_paths[i] = os.path.join(log_path, log_prefix + n)
                 if not os.path.exists(self._gm_paths[i]):
                     os.makedirs(self._gm_paths[i])
 
@@ -99,7 +111,7 @@ class GMLogger:
             self._position_buffer = torch.zeros(len(names), gm_n_components, log_positions, 3)
             for i in range(len(names)):
                 n = names[i]
-                self._gm_paths[i] = os.path.join(log_path, log_prefix, n)
+                self._gm_paths[i] = os.path.join(log_path, log_prefix + n)
                 for g in range(gm_n_components):
                     f = open(f"{self._gm_paths[i]}/pos-g{g}.bin", "w+")
                     f.close()

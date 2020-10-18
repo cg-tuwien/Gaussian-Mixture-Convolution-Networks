@@ -31,6 +31,7 @@ log_loss_console = 1
 log_loss_tb = 1
 log_rendering_tb = 50
 log_gm = 50
+log_seperate_directories = False
 
 # --- DO NOT CHANGE FROM HERE ---
 # Read in Name
@@ -40,4 +41,4 @@ if training_name == '':
 
 programs.execute_fitting(training_name, model_path, genpc_path, gengmm_path, log_path, n_points, n_gaussians,
                          batch_size, generators, generator_identifiers, log_positions, log_loss_console,
-                         log_loss_tb, log_rendering_tb, log_gm)
+                         log_loss_tb, log_rendering_tb, log_gm, log_seperate_directories)
