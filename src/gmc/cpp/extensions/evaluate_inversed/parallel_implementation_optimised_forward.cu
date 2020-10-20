@@ -62,7 +62,6 @@ at::Tensor parallel_forward_optimised_impl(const torch::Tensor& mixture, const t
 
     TORCH_CHECK(mixture.device() == xes.device(), "mixture and xes must be on the same device");
     TORCH_CHECK(n.batch * n.layers < 65535, "n_batch x n_layers must be smaller than 65535 for CUDA");
-    TORCH_CHECK(n.xes < 65535, "number of xes must be smaller than 65535 for CUDA");
 
 
     dim3 dimBlock = dim3(128, 1, 1);
