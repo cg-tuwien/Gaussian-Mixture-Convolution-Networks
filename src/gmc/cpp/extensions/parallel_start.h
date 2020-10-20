@@ -10,8 +10,10 @@
 #include <cuda_runtime.h>
 #include <torch/types.h>
 
-#include "cuda_qt_creator_definitinos.h"
 #include "common.h"
+#include "cuda_operations.h"
+#include "cuda_qt_creator_definitinos.h"
+
 
 
 // replacement for AT_DISPATCH_FLOATING_TYPES
@@ -46,35 +48,6 @@
   }()
 
 namespace gpe {
-
-template <class T>
-__host__ __device__ __forceinline__ void atomicAdd(T *ptr, T val) {
-//    *ptr += val;
-//    return *ptr;
-#ifdef __CUDA_ARCH__
-    ::atomicAdd(ptr, val);
-#elif defined(_OPENMP)
-    #pragma omp atomic
-    *ptr += val;
-#else
-    #error "Requires OpenMP"
-#endif
-}
-
-
-template <class T>
-__host__ __device__ __forceinline__ T atomicCAS(T *addr, T compare, T val) {
-
-#ifdef __CUDA_ARCH__
-    return ::atomicCAS(addr, compare, val);
-#else
-    // undefined, but works on gcc 10.2, 9.3, clang 10, 11, and msvc 19.27
-    // https://godbolt.org/z/fGK77j
-    auto d = reinterpret_cast<std::atomic_int32_t*>(addr);
-    d->compare_exchange_strong(compare, val);
-    return compare;
-#endif
-}
 
 enum class ComputeDevice {
     CPU, CUDA, Both
@@ -120,7 +93,11 @@ inline dim3 to3dIdx(const dim3& dimension, unsigned idx ) {
 template <typename Fun>
 inline void gpe_start_cpu_parallel(const dim3& gridDim, const dim3& blockDim, Fun function) {
     const auto n = blockDim.x * blockDim.y * blockDim.z;
-    #pragma omp parallel for num_threads(std::min(n, 64u))
+    const auto thread_count = n;//std::min(n, 64u);
+
+    gpe::detail::CpuSynchronisationPoint::setThreadCount(thread_count);
+
+    #pragma omp parallel for num_threads(thread_count)
     for (unsigned i = 0; i < n; ++i) {
         dim3 threadIdx = to3dIdx(blockDim, i);
         for (unsigned blockIdxZ = 0; blockIdxZ < gridDim.z; ++blockIdxZ) {

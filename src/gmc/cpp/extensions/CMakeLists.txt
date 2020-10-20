@@ -63,22 +63,25 @@ set(MY_INCLUDE_PATHS
     ${MY_ANACONDA_PATH}/include/python3.7m/
     ../glm
     ../cub
+    ../yamc/include
     .
 )
 
 
 include_directories(SYSTEM ${MY_INCLUDE_PATHS} SYSTEM ${TORCH_INCLUDE_DIRS})
 
-set(HEADERS
+set(COMMON_SOURCES
     common.h
     mixture.h
     parallel_start.h
     hacked_accessor.h
     cuda_qt_creator_definitinos.h
     cuda_operations.h
+    CpuSynchronisationPoint.h
+    CpuSynchronisationPoint.cpp
 )
 
-set(LBVH_HEADERS
+set(LBVH_SOURCES
     lbvh/aabb.h
     lbvh/bvh.h
     lbvh/bvh.cu
@@ -118,10 +121,10 @@ set(BVH_MHEM_FIT_SOURCES
     bvh_mhem_fit/bindings.h
 )
 
-add_executable(evaluate_inversed_tester ${HEADERS} ${MATH_SOURCES} ${LBVH_HEADERS} ${EVALUATE_SOURCES} evaluate_inversed/test_runner.cpp)
+add_executable(evaluate_inversed_tester ${COMMON_SOURCES} ${MATH_SOURCES} ${LBVH_SOURCES} ${EVALUATE_SOURCES} evaluate_inversed/test_runner.cpp)
 target_link_libraries(evaluate_inversed_tester PUBLIC OpenMP::OpenMP_CXX torch Qt5::Widgets)
 
-add_executable(bvh_mhem_fit_tester ${HEADERS} ${MATH_SOURCES} ${LBVH_HEADERS} ${BVH_MHEM_FIT_SOURCES} ${EVALUATE_SOURCES} bvh_mhem_fit/bvh_fit_tester.cpp)
+add_executable(bvh_mhem_fit_tester ${COMMON_SOURCES} ${MATH_SOURCES} ${LBVH_SOURCES} ${BVH_MHEM_FIT_SOURCES} ${EVALUATE_SOURCES} bvh_mhem_fit/bvh_fit_tester.cpp)
 target_link_libraries(bvh_mhem_fit_tester PUBLIC OpenMP::OpenMP_CXX torch Qt5::Widgets)
 
 #set(EM_FITTING_SOURCES
@@ -131,6 +134,6 @@ target_link_libraries(bvh_mhem_fit_tester PUBLIC OpenMP::OpenMP_CXX torch Qt5::W
 #    em_fitting/em_fitting_cuda.cu
 #)
 
-#add_executable(em_fitting ${HEADERS} ${EM_FITTING_SOURCES})
+#add_executable(em_fitting ${COMMON_SOURCES} ${EM_FITTING_SOURCES})
 #target_link_libraries(em_fitting PUBLIC OpenMP::OpenMP_CXX ${PYTORCH_LIBS})
 
