@@ -23,6 +23,8 @@
 #include "mixture.h"
 #include "parallel_start.h"
 
+#define EXECUTION_DEVICES __host__ __device__
+
 namespace bvh_mhem_fit {
 
 namespace  {
@@ -32,7 +34,7 @@ using node_index_t = lbvh::detail::Node::index_type;
 
 
 template <int REDUCTION_N>
-__host__ __device__ int copy_gaussian_ids(gpe::Accessor32<node_index_torch_t, 1> tmp_g_container_source, node_index_torch_t* destination) {
+EXECUTION_DEVICES int copy_gaussian_ids(gpe::Accessor32<node_index_torch_t, 1> tmp_g_container_source, node_index_torch_t* destination) {
     for (int i = 0; i < REDUCTION_N; ++i) {
         destination[i] = tmp_g_container_source[i];
         if (tmp_g_container_source[i] == -1)
@@ -43,7 +45,7 @@ __host__ __device__ int copy_gaussian_ids(gpe::Accessor32<node_index_torch_t, 1>
 
 
 template <int REDUCTION_N>
-__host__ __device__ int collect_child_gaussian_ids(const lbvh::detail::Node* node,
+EXECUTION_DEVICES int collect_child_gaussian_ids(const lbvh::detail::Node* node,
                                                    gpe::Accessor32<node_index_torch_t, 2> tmp_g_container_a,
                                                    node_index_torch_t* destination) {
     auto n_copied = copy_gaussian_ids<REDUCTION_N>(tmp_g_container_a[node->left_idx], destination);
@@ -54,18 +56,21 @@ __host__ __device__ int collect_child_gaussian_ids(const lbvh::detail::Node* nod
 
 
 template <typename scalar_t, int N_DIMS, int REDUCTION_N>
-__host__ __device__ void fit_reduce_node(const lbvh::detail::Node* node,
+EXECUTION_DEVICES void fit_reduce_node(const lbvh::detail::Node* node,
                                          gpe::Accessor32<node_index_torch_t, 2> tmp_g_container_a,
                                          gpe::Accessor32<scalar_t, 2> mixture_a) {
+    using G = gpe::Gaussian<N_DIMS, scalar_t>;
     // for now (testing) simply select N_GAUSSIANS_TARGET strongest gaussians
     // no stl available in cuda 10.1.
     node_index_torch_t gaussian_ids[REDUCTION_N * 2];
     scalar_t gaussian_v[REDUCTION_N * 2];
     const auto n_input_gaussians = collect_child_gaussian_ids<REDUCTION_N>(node, tmp_g_container_a, gaussian_ids);
     int largest_index = -1;
-    scalar_t largest_value = 0;
+    scalar_t largest_value = -1;
+//    std::vector<G> debug_gaussians;
     for (int i = 0; i < n_input_gaussians; ++i) {
-        gaussian_v[i] = gpe::gaussian<N_DIMS>(mixture_a[gaussian_ids[i]]).weight;
+//        debug_gaussians.push_back(gpe::gaussian<N_DIMS>(mixture_a[gaussian_ids[i]]));
+        gaussian_v[i] = gpe::abs(gpe::gaussian<N_DIMS>(mixture_a[gaussian_ids[i]]).weight);
         if (gaussian_v[i] > largest_value) {
             largest_value = gaussian_v[i];
             largest_index = i;
@@ -94,7 +99,7 @@ __host__ __device__ void fit_reduce_node(const lbvh::detail::Node* node,
 
 
 template <int REDUCTION_N>
-__host__ __device__ int count_gaussians(const lbvh::detail::Node* node,
+EXECUTION_DEVICES int count_gaussians(const lbvh::detail::Node* node,
                                         gpe::Accessor32<node_index_torch_t, 2> tmp_g_container_a) {
     auto c = tmp_g_container_a[node->object_idx];
     for (int i = 0; i < REDUCTION_N; ++i) {
@@ -106,7 +111,7 @@ __host__ __device__ int count_gaussians(const lbvh::detail::Node* node,
 
 
 template <int N_GAUSSIANS_TARGET>
-__host__ __device__ int count_child_gaussians(const lbvh::detail::Node* node,
+EXECUTION_DEVICES int count_child_gaussians(const lbvh::detail::Node* node,
                                                const gpe::Accessor32<node_index_torch_t, 2>& nodes_a,
                                                gpe::Accessor32<node_index_torch_t, 2> tmp_g_container_a) {
     return count_gaussians<N_GAUSSIANS_TARGET>(reinterpret_cast<const lbvh::detail::Node*>(&nodes_a[node->left_idx][0]), tmp_g_container_a)
@@ -115,7 +120,7 @@ __host__ __device__ int count_child_gaussians(const lbvh::detail::Node* node,
 
 
 template <typename scalar_t, int N_DIMS, int REDUCTION_N>
-__host__ __device__ void iterate_over_nodes(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
+EXECUTION_DEVICES void iterate_over_nodes(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
                                             const dim3& gpe_blockIdx, const dim3& gpe_threadIdx,
                                             gpe::PackedTensorAccessor32<scalar_t, 3> mixture,
                                             const gpe::PackedTensorAccessor32<node_index_torch_t, 3> nodes,
@@ -166,7 +171,7 @@ __host__ __device__ void iterate_over_nodes(const dim3& gpe_gridDim, const dim3&
 }
 
 template <typename scalar_t, int N_DIMS, int REDUCTION_N>
-__host__ __device__ void collect_result(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
+EXECUTION_DEVICES void collect_result(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
                                             const dim3& gpe_blockIdx, const dim3& gpe_threadIdx,
                                             const gpe::PackedTensorAccessor32<scalar_t, 3> mixture,
                                             gpe::PackedTensorAccessor32<scalar_t, 3> out_mixture,
@@ -251,15 +256,13 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> forward_impl(at::Tensor 
                                    auto nodes_a = gpe::accessor<lbvh::detail::Node::index_type_torch, 3>(flat_bvh_nodes);
                                    auto aabbs_a = gpe::accessor<scalar_t, 3>(flat_bvh_aabbs);
 
-                                   auto fun = [mixture_a, nodes_a, aabbs_a, flags_a, tmp_g_container_a, n, n_mixtures, n_internal_nodes, n_nodes, n_components_target] __host__ __device__
+                                   auto fun = [mixture_a, nodes_a, aabbs_a, flags_a, tmp_g_container_a, n, n_mixtures, n_internal_nodes, n_nodes, n_components_target] EXECUTION_DEVICES
                                        (const dim3& gpe_gridDim, const dim3& gpe_blockDim, const dim3& gpe_blockIdx, const dim3& gpe_threadIdx) {
                                            iterate_over_nodes<scalar_t, N_DIMS, 4>(gpe_gridDim, gpe_blockDim, gpe_blockIdx, gpe_threadIdx,
                                                                                    mixture_a, nodes_a, aabbs_a, flags_a, tmp_g_container_a,
                                                                                    n, n_mixtures, n_internal_nodes, n_nodes, n_components_target);
                                        };
                                    gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(mixture), dimGrid, dimBlock, fun);
-                                   GPE_CUDA_ASSERT(cudaPeekAtLastError())
-                                   GPE_CUDA_ASSERT(cudaDeviceSynchronize())
                                }));
 
 
@@ -274,11 +277,11 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> forward_impl(at::Tensor 
 
                                             auto mixture_a = gpe::accessor<scalar_t, 3>(scratch_mixture);
                                             auto out_mixture_a = gpe::accessor<scalar_t, 3>(out_mixture);
-                                            auto nodes_a = gpe::accessor<lbvh::detail::Node::index_type_torch, 3>(bvh.m_nodes);
-                                            auto aabbs_a = gpe::accessor<scalar_t, 3>(bvh.m_aabbs);
+                                            auto nodes_a = gpe::accessor<lbvh::detail::Node::index_type_torch, 3>(flat_bvh_nodes);
+                                            auto aabbs_a = gpe::accessor<scalar_t, 3>(flat_bvh_aabbs);
 
                                             auto fun = [mixture_a, out_mixture_a, nodes_a, aabbs_a, flags_a, tmp_g_container_a, n, n_mixtures, n_internal_nodes, n_nodes, n_components_target]
-                                                __host__ __device__
+                                                EXECUTION_DEVICES
                                                 (const dim3& gpe_gridDim, const dim3& gpe_blockDim, const dim3& gpe_blockIdx, const dim3& gpe_threadIdx) {
                                                     collect_result<scalar_t, N_DIMS, 4>(gpe_gridDim, gpe_blockDim, gpe_blockIdx, gpe_threadIdx,
                                                                                         mixture_a, out_mixture_a, nodes_a, aabbs_a, flags_a, tmp_g_container_a,

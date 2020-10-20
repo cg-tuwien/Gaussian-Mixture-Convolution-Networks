@@ -44,7 +44,7 @@ inline int n_components(torch::Tensor mixture) {
 }
 
 inline int n_dimensions(torch::Tensor mixture) {
-    auto vector_length = mixture.size(3);
+    auto vector_length = mixture.size(-1);
     if (vector_length == 7)
         return 2;
     if (vector_length == 13)

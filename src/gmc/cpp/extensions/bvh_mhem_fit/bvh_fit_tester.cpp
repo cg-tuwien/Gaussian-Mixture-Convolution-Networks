@@ -17,7 +17,7 @@
 #include "bvh_mhem_fit/bindings.h"
 
 constexpr uint N_BATCHES = 1;
-constexpr uint N_CONVOLUTION_LAYERS = 3;
+constexpr uint N_CONVOLUTION_LAYERS = 1;
 constexpr uint LIMIT_N_BATCH = 100;
 constexpr bool USE_CUDA = false;
 //constexpr bool BACKWARD = false;
