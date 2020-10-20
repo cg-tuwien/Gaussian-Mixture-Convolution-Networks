@@ -74,6 +74,12 @@ __forceinline__ __device__ float exp(float x) {
 __forceinline__ __device__ double exp(double x) {
     return ::exp(x);
 }
+__forceinline__ __device__ float pow(float x, float y) {
+    return ::powf(x, y);
+}
+__forceinline__ __device__ double pow(double x, double y) {
+    return ::pow(x, y);
+}
 
 __forceinline__ __device__ float log(float x) {
     return ::logf(x);
@@ -111,6 +117,11 @@ inline scalar_t min(scalar_t a, scalar_t b) {
 template <typename scalar_t>
 inline scalar_t exp(scalar_t x) {
     return std::exp(x);
+}
+
+template <typename scalar_t>
+inline scalar_t pow(scalar_t x, scalar_t y) {
+    return std::pow(x, y);
 }
 
 template <typename scalar_t>

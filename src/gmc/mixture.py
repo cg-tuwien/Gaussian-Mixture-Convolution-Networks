@@ -11,6 +11,7 @@ import numpy as np
 from . import mat_tools
 from . import config
 from .cpp.extensions.evaluate_inversed import evaluate_inversed as cppExtensionsEvaluateInversed
+# from .cpp.extensions.integrate_inversed import integrate_inversed as cppExtensionsIntegrateInversed
 
 
 def n_dimensions(mixture: Tensor) -> int:
@@ -93,6 +94,9 @@ def integrate_components(mixture: Tensor) -> Tensor:
 
 
 def integrate(mixture: Tensor) -> Tensor:
+    ## test the cpp version, but disable for now because there is no backward.
+    ## we want to use gaussian integrals internally in the cpp fitting code, and had to verify. python integration is not too slow for the time being.
+    #return cppExtensionsIntegrateInversed.apply(pack_mixture(weights(mixture), positions(mixture), mat_tools.inverse(covariances(mixture))))
     return integrate_components(mixture).sum(dim=2)
 
 

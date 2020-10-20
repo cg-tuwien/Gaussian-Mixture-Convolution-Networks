@@ -4,6 +4,7 @@
 #include <iostream>
 #include <type_traits>
 
+#include <math_constants.h>
 #include <torch/types.h>
 
 #define GLM_FORCE_INLINE
@@ -153,6 +154,11 @@ __forceinline__ __host__ __device__ scalar_t evaluate_gaussian(const glm::vec<DI
     const auto t = evalpos - pos;
     const auto v = scalar_t(-0.5) * glm::dot(t, (inversed_cov * t));
     return weight * gpe::exp(v);
+}
+
+template <typename scalar_t, int DIMS>
+__forceinline__ __host__ __device__ scalar_t integrate_inversed(const Gaussian<DIMS, scalar_t>& gaussian) {
+    return gaussian.weight * gpe::sqrt(gpe::pow(2 * scalar_t(CUDART_PI), scalar_t(DIMS)) / glm::determinant(gaussian.covariance));
 }
 
 inline void check_mixture(torch::Tensor mixture) {
