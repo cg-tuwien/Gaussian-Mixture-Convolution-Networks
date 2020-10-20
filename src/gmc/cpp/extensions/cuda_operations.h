@@ -49,6 +49,15 @@ __host__ __device__
     return value ? __builtin_clzll(value) : 64;
 #endif
 }
+
+template<typename Assignable1, typename Assignable2>
+__host__ __device__
+    inline void swap(Assignable1 &a, Assignable2 &b)
+{
+    Assignable1 temp = a;
+    a = b;
+    b = temp;
+}
 }
 
 #endif // CUDA_OPERATIONS_H

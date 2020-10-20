@@ -11,6 +11,7 @@
 #include <torch/types.h>
 
 #include "cuda_qt_creator_definitinos.h"
+#include "common.h"
 
 
 // replacement for AT_DISPATCH_FLOATING_TYPES
@@ -75,6 +76,10 @@ __host__ __device__ __forceinline__ T atomicCAS(T *addr, T compare, T val) {
 #endif
 }
 
+enum class ComputeDevice {
+    CPU, CUDA, Both
+};
+
 namespace detail {
 
 template <typename Fun>
@@ -113,11 +118,39 @@ inline void gpu_assert(cudaError_t code)
     }
 }
 #endif
-} // namespace detail
 
-enum class ComputeDevice {
-    CPU, CUDA, Both
+template <ComputeDevice device, typename Fun>
+struct CudaStarter {
+    void operator()(const dim3& gridDim, const dim3& blockDim, const Fun& function) {
+        GPE_UNUSED(gridDim)
+        GPE_UNUSED(blockDim)
+        GPE_UNUSED(function)
+#ifdef __CUDACC__
+        detail::gpe_generic_cuda_kernel<<<gridDim, blockDim>>>(function);
+#if not defined(GPE_NO_CUDA_ERROR_CHECKING) and not defined(NDEBUG)
+        detail::gpu_assert(cudaPeekAtLastError());
+        detail::gpu_assert(cudaDeviceSynchronize());
+#endif
+#else
+        std::cerr << "gpe::start_parallel with device CUDA but no CUDA support!" << std::endl;
+        exit(1);
+#endif
+    }
 };
+
+template <typename Fun>
+struct CudaStarter<ComputeDevice::CPU, Fun> {
+    void operator()(const dim3& gridDim, const dim3& blockDim, const Fun& function) {
+        GPE_UNUSED(gridDim)
+        GPE_UNUSED(blockDim)
+        GPE_UNUSED(function)
+        std::cerr << "gpe::start_parallel with device CUDA but CUDA device not allowed!" << std::endl;
+        exit(1);
+    }
+};
+
+//struct Cuda
+} // namespace detail
 
 inline ComputeDevice device(const torch::Tensor& t) {
     return t.is_cuda() ? ComputeDevice::CUDA : ComputeDevice::CPU;
@@ -125,17 +158,8 @@ inline ComputeDevice device(const torch::Tensor& t) {
 
 template <ComputeDevice allowed_devices, typename Fun>
 void start_parallel(ComputeDevice device, const dim3& gridDim, const dim3& blockDim, const Fun& function) {
-    if (device == ComputeDevice::CUDA && (allowed_devices == ComputeDevice::CUDA || allowed_devices == ComputeDevice::Both)) {
-#ifdef __CUDACC__
-        detail::gpe_generic_cuda_kernel<<<gridDim, blockDim>>>(function);
-        #if not defined(GPE_NO_CUDA_ERROR_CHECKING) and not defined(NDEBUG)
-        detail::gpu_assert(cudaPeekAtLastError());
-        detail::gpu_assert(cudaDeviceSynchronize());
-        #endif
-#else
-        std::cerr << "gpe::start_parallel with device CUDA but no CUDA support!" << std::endl;
-        exit(1);
-#endif
+    if (device == ComputeDevice::CUDA) {
+        detail::CudaStarter<allowed_devices, Fun> ()(gridDim, blockDim, function);
     }
     else if (device == ComputeDevice::CPU && (allowed_devices == ComputeDevice::CPU || allowed_devices == ComputeDevice::Both)) {
         detail::gpe_start_cpu_parallel(gridDim, blockDim, function);
