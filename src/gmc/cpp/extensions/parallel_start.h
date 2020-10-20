@@ -82,25 +82,56 @@ enum class ComputeDevice {
 
 namespace detail {
 
+inline dim3 to3dIdx(const dim3& dimension, unsigned idx ) {
+    unsigned x = idx / (dimension.z * dimension.y);
+    idx -= x * dimension.z * dimension.y;
+    unsigned y = idx / dimension.z;
+    unsigned z = idx - y * dimension.z;
+//    unsigned x = idx % dimension.x;
+    return { x, y, z };
+}
+
+//template <typename Fun>
+//inline void gpe_start_cpu_parallel(const dim3& gridDim, const dim3& blockDim, Fun function) {
+//    #pragma omp parallel for num_threads(omp_get_num_procs()) collapse(3)
+//    for (unsigned blockIdxZ = 0; blockIdxZ < gridDim.z; ++blockIdxZ) {
+//        for (unsigned blockIdxY = 0; blockIdxY < gridDim.y; ++blockIdxY) {
+//            for (unsigned blockIdxX = 0; blockIdxX < gridDim.x; ++blockIdxX) {
+//                const auto blockIdx = dim3{blockIdxX, blockIdxY, blockIdxZ};
+//                dim3 threadIdx = {0, 0, 0};
+//                for (threadIdx.z = 0; threadIdx.z < blockDim.z; ++threadIdx.z) {
+//                    for (threadIdx.y = 0; threadIdx.y < blockDim.y; ++threadIdx.y) {
+//                        for (threadIdx.x = 0; threadIdx.x < blockDim.x; ++threadIdx.x) {
+//                            function(gridDim, blockDim, blockIdx, threadIdx);
+//                        }
+//                    }
+//                }
+////                const auto n = blockDim.x * blockDim.y * blockDim.z;
+////                #pragma omp parallel for num_threads(std::min(n, 32u))
+////                for (unsigned i = 0; i < n; ++i) {
+////                    dim3 threadIdx = to3dIdx(blockDim, i);
+////                    function(gridDim, blockDim, blockIdx, threadIdx);
+////                }
+//            }
+//        }
+//    }
+//}
+
 template <typename Fun>
 inline void gpe_start_cpu_parallel(const dim3& gridDim, const dim3& blockDim, Fun function) {
-    #pragma omp parallel for num_threads(omp_get_num_procs()) collapse(3)
-    for (unsigned blockIdxZ = 0; blockIdxZ < gridDim.z; ++blockIdxZ) {
-        for (unsigned blockIdxY = 0; blockIdxY < gridDim.y; ++blockIdxY) {
-            for (unsigned blockIdxX = 0; blockIdxX < gridDim.x; ++blockIdxX) {
-                const auto blockIdx = dim3{blockIdxX, blockIdxY, blockIdxZ};
-                dim3 threadIdx = {0, 0, 0};
-                for (threadIdx.z = 0; threadIdx.z < blockDim.z; ++threadIdx.z) {
-                    for (threadIdx.y = 0; threadIdx.y < blockDim.y; ++threadIdx.y) {
-                        for (threadIdx.x = 0; threadIdx.x < blockDim.x; ++threadIdx.x) {
-                            function(gridDim, blockDim, blockIdx, threadIdx);
-                        }
-                    }
+    const auto n = blockDim.x * blockDim.y * blockDim.z;
+    #pragma omp parallel for num_threads(std::min(n, 64u))
+    for (unsigned i = 0; i < n; ++i) {
+        dim3 threadIdx = to3dIdx(blockDim, i);
+        for (unsigned blockIdxZ = 0; blockIdxZ < gridDim.z; ++blockIdxZ) {
+            for (unsigned blockIdxY = 0; blockIdxY < gridDim.y; ++blockIdxY) {
+                for (unsigned blockIdxX = 0; blockIdxX < gridDim.x; ++blockIdxX) {
+                    const auto blockIdx = dim3{blockIdxX, blockIdxY, blockIdxZ};
+                    function(gridDim, blockDim, blockIdx, threadIdx);
                 }
             }
         }
     }
-
 }
 
 #ifdef __CUDACC__
