@@ -91,7 +91,7 @@ int main(int argc, char *argv[]) {
             cudaDeviceSynchronize();
             auto end = std::chrono::high_resolution_clock::now();
             if (RENDER)
-                show(mixture, 128, LIMIT_N_BATCH);
+                show(fitted_mixture, 128, LIMIT_N_BATCH);
             std::cout << "elapsed time: " << std::chrono::duration_cast<std::chrono::milliseconds>(end-start).count() << "ms\n";
         }
     }
