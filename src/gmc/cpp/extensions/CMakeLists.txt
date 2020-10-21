@@ -79,6 +79,7 @@ set(COMMON_SOURCES
     cuda_operations.h
     CpuSynchronisationPoint.h
     CpuSynchronisationPoint.cpp
+    ParallelStack.h
 )
 
 set(LBVH_SOURCES
