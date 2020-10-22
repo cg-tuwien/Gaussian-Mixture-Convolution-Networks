@@ -406,9 +406,11 @@ EXECUTION_DEVICES void collect_result(const dim3& gpe_gridDim, const dim3& gpe_b
             // first n_level_down bits of target_component_id were used for traversing the bvh, last reduction_n bits are used to select the current G
             auto node_id = selectedNodes[i];
             auto component_id = node_index_t(tmp_g_container_a[mixture_id][node_id][j]);
-            assert(component_id < n.components);
-            if (component_id != node_index_t(-1))
+            if (component_id != node_index_t(-1)) {
+                assert(component_id < n.components);
                 gpe::gaussian<N_DIMS>(out_mixture[mixture_id][i * REDUCTION_N + j]) = gpe::gaussian<N_DIMS>(mixture[mixture_id][component_id]);;
+            }
+            // todo: else log or something. we are loosing slots for more gaussians; adapt node rating function.
         }
     }
 }
