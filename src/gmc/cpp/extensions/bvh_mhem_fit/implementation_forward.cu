@@ -19,6 +19,8 @@
 #include "lbvh/bvh.h"
 #include "lbvh/query.h"
 #include "lbvh/predicator.h"
+#include "math/matrix.h"
+#include "math/scalar.h"
 #include "math/symeig_cuda.h"
 #include "mixture.h"
 #include "parallel_start.h"
@@ -31,12 +33,15 @@ namespace  {
 
 using node_index_torch_t = lbvh::detail::Node::index_type_torch;
 using node_index_t = lbvh::detail::Node::index_type;
+using gaussian_index_t = uint16_t;
+using gaussian_index_torch_t = int16_t;
+
 
 
 template <int REDUCTION_N>
-EXECUTION_DEVICES int copy_gaussian_ids(gpe::Accessor32<node_index_torch_t, 1> tmp_g_container_source, node_index_torch_t* destination) {
+EXECUTION_DEVICES int copy_gaussian_ids(gpe::Accessor32<node_index_torch_t, 1> tmp_g_container_source, gaussian_index_t* destination) {
     for (int i = 0; i < REDUCTION_N; ++i) {
-        destination[i] = tmp_g_container_source[i];
+        destination[i] = gaussian_index_t(tmp_g_container_source[i]);
         if (tmp_g_container_source[i] == -1)
             return i;
     }
@@ -47,7 +52,7 @@ EXECUTION_DEVICES int copy_gaussian_ids(gpe::Accessor32<node_index_torch_t, 1> t
 template <int REDUCTION_N>
 EXECUTION_DEVICES int collect_child_gaussian_ids(const lbvh::detail::Node* node,
                                                    gpe::Accessor32<node_index_torch_t, 2> tmp_g_container_a,
-                                                   node_index_torch_t* destination) {
+                                                   gaussian_index_t* destination) {
     auto n_copied = copy_gaussian_ids<REDUCTION_N>(tmp_g_container_a[node->left_idx], destination);
     destination += n_copied;
     n_copied += copy_gaussian_ids<REDUCTION_N>(tmp_g_container_a[node->right_idx], destination);
@@ -62,38 +67,133 @@ EXECUTION_DEVICES void fit_reduce_node(const lbvh::detail::Node* node,
     using G = gpe::Gaussian<N_DIMS, scalar_t>;
     // for now (testing) simply select N_GAUSSIANS_TARGET strongest gaussians
     // no stl available in cuda 10.1.
-    node_index_torch_t gaussian_ids[REDUCTION_N * 2];
-    scalar_t gaussian_v[REDUCTION_N * 2];
-    const auto n_input_gaussians = collect_child_gaussian_ids<REDUCTION_N>(node, tmp_g_container_a, gaussian_ids);
-    int largest_index = -1;
-    scalar_t largest_value = -1;
-//    std::vector<G> debug_gaussians;
+    gaussian_index_t cached_gaussian_ids[REDUCTION_N * 2];
+    const auto n_input_gaussians = collect_child_gaussian_ids<REDUCTION_N>(node, tmp_g_container_a, cached_gaussian_ids);
+
+    // compute distance matrix
+    float distances[REDUCTION_N * 2][REDUCTION_N * 2];
     for (int i = 0; i < n_input_gaussians; ++i) {
-//        debug_gaussians.push_back(gpe::gaussian<N_DIMS>(mixture_a[gaussian_ids[i]]));
-        gaussian_v[i] = gpe::abs(gpe::gaussian<N_DIMS>(mixture_a[gaussian_ids[i]]).weight);
-        if (gaussian_v[i] > largest_value) {
-            largest_value = gaussian_v[i];
-            largest_index = i;
+        const G& g_i = gpe::gaussian<N_DIMS>(mixture_a[int(cached_gaussian_ids[i])]);
+        distances[i][i] = 0;
+        for (int j = i + 1; j < n_input_gaussians; ++j) {
+            const G& g_j = gpe::gaussian<N_DIMS>(mixture_a[int(cached_gaussian_ids[j])]);
+            // todo: min of KL divergencies is probably a better distance
+            float distance = gpe::sign(g_i.weight) == gpe::sign(g_j.weight) ? 0 : std::numeric_limits<scalar_t>::infinity();
+            assert(std::isnan(distance) == false);
+            distance += float(gpe::squared_norm(g_i.position - g_j.position));
+            assert(std::isnan(distance) == false);
+            distances[i][j] = distance;
+            distances[j][i] = distance;
         }
     }
 
-    assert(largest_index != -1);
-    int currently_largest_i = 0;
-    tmp_g_container_a[node->object_idx][currently_largest_i] = node_index_torch_t(largest_index);
-    for (int i = 1; i < REDUCTION_N; ++i) {
-        scalar_t currently_largest_v = 0;
-        currently_largest_i = -1;
-        for (int j = 0; j < n_input_gaussians; ++j) {
-            auto v = gaussian_v[j];
-            if (v > currently_largest_v && (v < largest_value || (v == largest_value && j > largest_index))) {
-                currently_largest_v = v;
-                currently_largest_i = j;
+    using cache_index_t = uint16_t;
+
+    cache_index_t subgraphs[REDUCTION_N * 2][REDUCTION_N * 2];
+    for (int i = 0; i < REDUCTION_N * 2; ++i) {
+        subgraphs[i][0] = cache_index_t(i);
+        for (int j = 1; j < REDUCTION_N * 2; ++j) {
+            subgraphs[i][j] = cache_index_t(-1);
+        }
+    }
+
+    int n_subgraphs = n_input_gaussians;
+    auto merge_subgraphs = [&](int a, int b) {
+        assert (a != b);
+        auto a_ = gpe::min(a, b);
+        auto b_ = gpe::max(a, b);
+
+        auto a_end = 1;
+        while (subgraphs[a_][a_end] != cache_index_t(-1)) {
+            assert(a_end < REDUCTION_N * 2);
+            ++a_end;
+        }
+        auto b_current = 0;
+        while (subgraphs[b_][b_current] != cache_index_t(-1)) {
+            assert(b_current < REDUCTION_N * 2);
+            subgraphs[a_][a_end] = subgraphs[b_][b_current];
+            // todo: i think the following line can be removed in the final version
+            subgraphs[b_][b_current] = cache_index_t(-1);
+            ++a_end;
+            assert(a_end <= REDUCTION_N * 2);
+            ++b_current;
+        }
+        --n_subgraphs;
+    };
+    auto subgraph_of = [&](cache_index_t id) {
+        for (int i = 0; i < REDUCTION_N * 2; ++i) {
+            auto current = 0;
+            while (subgraphs[i][current] != cache_index_t(-1)) {
+                if (subgraphs[i][current] == id)
+                    return i;
+                ++current;
+                assert(current < REDUCTION_N * 2);
             }
         }
+        assert(false);
+        return -1;
+    };
+    auto shortest_edge = [&](cache_index_t* a, cache_index_t* b) {
+        *a = cache_index_t(-1);
+        *b = cache_index_t(-1);
+        float shortest_length = std::numeric_limits<float>::infinity();
+        for (cache_index_t i = 0; i < n_input_gaussians; ++i) {
+            for (cache_index_t j = i + 1; j < n_input_gaussians; ++j) {
+                if (distances[i][j] < shortest_length) {
+                    *a = i;
+                    *b = j;
+                    shortest_length = distances[i][j];
+                }
+            }
+        }
+        assert(*a != cache_index_t(-1));
+        assert(*b != cache_index_t(-1));
+        assert(shortest_length != std::numeric_limits<float>::infinity());
+    };
 
-        tmp_g_container_a[node->object_idx][i] = node_index_torch_t(currently_largest_i);
-        largest_value = currently_largest_v;
-        largest_index = currently_largest_i;
+    while (n_subgraphs > REDUCTION_N) {
+        cache_index_t a;
+        cache_index_t b;
+        shortest_edge(&a, &b);
+        distances[a][b] = std::numeric_limits<float>::infinity();
+        auto subgraph_a = subgraph_of(a);
+        auto subgraph_b = subgraph_of(b);
+        if (subgraph_a != subgraph_b) {
+            merge_subgraphs(subgraph_a, subgraph_b);
+        }
+    }
+
+
+    auto find_next_subgraph = [&](int subgraph_id) {
+        while(subgraphs[++subgraph_id][0] == cache_index_t(-1)) {
+            assert(subgraph_id < REDUCTION_N * 2);
+        }
+        return subgraph_id;
+    };
+    int subgraph_id = -1;
+    for (int i = 0; i < REDUCTION_N; ++i) {
+        G new_gaussian = {scalar_t(0), typename G::pos_t(0), typename G::cov_t(0)};
+        int n_merge = 0;
+        auto current = 0;
+
+        subgraph_id = find_next_subgraph(subgraph_id);
+        while (subgraphs[subgraph_id][current] != cache_index_t(-1)) {
+            assert(current < REDUCTION_N * 2);
+            G current_g = gpe::gaussian<N_DIMS>(mixture_a[int(cached_gaussian_ids[subgraphs[subgraph_id][current]])]);
+            new_gaussian.weight += current_g.weight;
+            new_gaussian.position += current_g.position;
+            new_gaussian.covariance += glm::inverse(current_g.covariance);
+            ++n_merge;
+            ++current;
+        }
+        new_gaussian.weight /= scalar_t(n_merge);
+        new_gaussian.position /= scalar_t(n_merge);
+        new_gaussian.covariance = glm::inverse(new_gaussian.covariance /  scalar_t(n_merge));
+
+        auto new_gaussian_index = cached_gaussian_ids[subgraphs[subgraph_id][0]];
+        G& new_gaussian_dest = gpe::gaussian<N_DIMS>(mixture_a[int(new_gaussian_index)]);
+        new_gaussian_dest = new_gaussian;
+        tmp_g_container_a[node->object_idx][i] = gaussian_index_torch_t(new_gaussian_index);
     }
 }
 
@@ -126,7 +226,7 @@ EXECUTION_DEVICES void iterate_over_nodes(const dim3& gpe_gridDim, const dim3& g
                                           const gpe::PackedTensorAccessor32<node_index_torch_t, 3> nodes,
                                           const gpe::PackedTensorAccessor32<scalar_t, 3> aabbs,
                                           gpe::PackedTensorAccessor32<int, 2> flags,
-                                          gpe::PackedTensorAccessor32<node_index_torch_t, 3> tmp_g_container_a,
+                                          gpe::PackedTensorAccessor32<gaussian_index_torch_t, 3> tmp_g_container_a,
                                           gpe::PackedTensorAccessor32<int32_t, 3> scratch_container,
                                           const gpe::MixtureNs n, const int n_mixtures, const unsigned n_internal_nodes, const unsigned n_nodes, int n_components_target)
 {
@@ -169,7 +269,7 @@ EXECUTION_DEVICES void iterate_over_nodes(const dim3& gpe_gridDim, const dim3& g
             fit_reduce_node<scalar_t, N_DIMS, REDUCTION_N>(node, tmp_g_container_a[mixture_id], mixture[mixture_id]);
         }
         else {
-            auto* destination = &tmp_g_container_a[mixture_id][node->object_idx][0];
+            gaussian_index_t* destination = reinterpret_cast<gaussian_index_t*>(&tmp_g_container_a[mixture_id][node->object_idx][0]);
             collect_child_gaussian_ids<REDUCTION_N>(node, tmp_g_container_a[mixture_id], destination);
         }
     }
@@ -183,7 +283,7 @@ EXECUTION_DEVICES void collect_result(const dim3& gpe_gridDim, const dim3& gpe_b
                                       const gpe::PackedTensorAccessor32<node_index_torch_t, 3> nodes,
                                       const gpe::PackedTensorAccessor32<scalar_t, 3> aabbs,
                                       gpe::PackedTensorAccessor32<int, 2> flags,
-                                      gpe::PackedTensorAccessor32<node_index_torch_t, 3> tmp_g_container_a,
+                                      gpe::PackedTensorAccessor32<gaussian_index_torch_t, 3> tmp_g_container_a,
                                       gpe::PackedTensorAccessor32<int32_t, 3> scratch_container,
                                       const gpe::MixtureNs n, const int n_mixtures, const unsigned n_internal_nodes, const unsigned n_nodes, int n_components_target)
 {
@@ -259,7 +359,7 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> forward_impl(at::Tensor 
     using namespace torch::indexing;
     using LBVH = lbvh::Bvh<2, float>;
 
-    constexpr int N_GAUSSIANS_TARGET = 4;
+    constexpr int REDUCTION_N = 2;
 
     // todo: flatten mixture for kernel, i.g. nbatch/nlayers/ncomponents/7 => nmixture/ncomponents/7
 
@@ -281,10 +381,10 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> forward_impl(at::Tensor 
 
     // scratch_container: int n_gaussians; float integral_sum;
     auto scratch_container = torch::zeros({n_mixtures, n_nodes, 2}, torch::TensorOptions(mixture.device()).dtype(torch::ScalarType::Int));
-    auto tmp_g_container = -1 * torch::ones({n_mixtures, n_nodes, N_GAUSSIANS_TARGET},
+    auto tmp_g_container = -1 * torch::ones({n_mixtures, n_nodes, REDUCTION_N},
                                             torch::TensorOptions(mixture.device()).dtype(lbvh::detail::TorchTypeMapper<node_index_torch_t>::id()));
     auto flags_a = gpe::accessor<int, 2>(flag_container);
-    auto tmp_g_container_a = gpe::accessor<node_index_torch_t, 3>(tmp_g_container);
+    auto tmp_g_container_a = gpe::accessor<gaussian_index_torch_t, 3>(tmp_g_container);
     auto scratch_container_a = gpe::accessor<int32_t, 3>(scratch_container);
 
 
@@ -300,14 +400,13 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> forward_impl(at::Tensor 
 
                                    auto fun = [mixture_a, nodes_a, aabbs_a, flags_a, tmp_g_container_a, scratch_container_a, n, n_mixtures, n_internal_nodes, n_nodes, n_components_target] EXECUTION_DEVICES
                                        (const dim3& gpe_gridDim, const dim3& gpe_blockDim, const dim3& gpe_blockIdx, const dim3& gpe_threadIdx) {
-                                           iterate_over_nodes<scalar_t, N_DIMS, 4>(gpe_gridDim, gpe_blockDim, gpe_blockIdx, gpe_threadIdx,
+                                           iterate_over_nodes<scalar_t, N_DIMS, REDUCTION_N>(gpe_gridDim, gpe_blockDim, gpe_blockIdx, gpe_threadIdx,
                                                                                    mixture_a, nodes_a, aabbs_a, flags_a, tmp_g_container_a, scratch_container_a,
                                                                                    n, n_mixtures, n_internal_nodes, n_nodes, n_components_target);
                                        };
                                    gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(mixture), dimGrid, dimBlock, fun);
                                }));
 
-    assert((scratch_mixture == mixture).all().item<bool>()); // iiuc, the rudimentary version doesn't change the mixture, only builds a tree of largest gaussians.
     auto out_mixture = torch::zeros({n_mixtures, n_components_target, mixture.size(-1)}, torch::TensorOptions(mixture.device()).dtype(mixture.dtype()));
     // make it valid, in case something doesn't get filled (due to an inbalance of the tree or just not enough elements)
     gpe::covariances(out_mixture) = torch::eye(n.dims, torch::TensorOptions(mixture.device()).dtype(mixture.dtype()));
@@ -323,7 +422,7 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> forward_impl(at::Tensor 
                                             auto fun = [mixture_a, out_mixture_a, nodes_a, aabbs_a, flags_a, tmp_g_container_a, scratch_container_a, n, n_mixtures, n_internal_nodes, n_nodes, n_components_target]
                                                 EXECUTION_DEVICES
                                                 (const dim3& gpe_gridDim, const dim3& gpe_blockDim, const dim3& gpe_blockIdx, const dim3& gpe_threadIdx) {
-                                                    collect_result<scalar_t, N_DIMS, 4>(gpe_gridDim, gpe_blockDim, gpe_blockIdx, gpe_threadIdx,
+                                                    collect_result<scalar_t, N_DIMS, REDUCTION_N>(gpe_gridDim, gpe_blockDim, gpe_blockIdx, gpe_threadIdx,
                                                                                         mixture_a, out_mixture_a, nodes_a, aabbs_a, flags_a, tmp_g_container_a, scratch_container_a,
                                                                                         n, n_mixtures, n_internal_nodes, n_nodes, n_components_target);
                                                 };

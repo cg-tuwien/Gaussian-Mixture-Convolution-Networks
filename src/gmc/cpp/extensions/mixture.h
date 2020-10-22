@@ -95,9 +95,11 @@ inline torch::Tensor pack_mixture(const torch::Tensor weights, const torch::Tens
 
 template<int N_DIMS, typename scalar_t>
 struct Gaussian {
+    using pos_t = glm::vec<N_DIMS, scalar_t>;
+    using cov_t = glm::mat<N_DIMS, N_DIMS, scalar_t>;
     scalar_t weight;
-    glm::vec<N_DIMS, scalar_t> position;
-    glm::mat<N_DIMS, N_DIMS, scalar_t> covariance;
+    pos_t position;
+    cov_t covariance;
 };
 static_assert (sizeof (Gaussian<2, float>) == 7*4, "Something wrong with Gaussian");
 static_assert (sizeof (Gaussian<3, float>) == 13*4, "Something wrong with Gaussian");

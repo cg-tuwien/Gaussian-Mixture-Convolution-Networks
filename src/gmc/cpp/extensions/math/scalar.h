@@ -141,6 +141,11 @@ inline scalar_t abs(scalar_t x) {
 
 #endif
 
+template <typename scalar_t>
+__host__ __device__ __forceinline__ int sign(scalar_t v) {
+    return v >= 0 ? 1 : -1;
 }
+
+} // namespace gpe
 
 #endif // HELPERS_H
