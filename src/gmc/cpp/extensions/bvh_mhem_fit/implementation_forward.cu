@@ -185,7 +185,7 @@ EXECUTION_DEVICES void collect_result(const dim3& gpe_gridDim, const dim3& gpe_b
     using G = gpe::Gaussian<N_DIMS, scalar_t>;
     using Lbvh = lbvh::detail::basic_device_bvh<scalar_t, G, true>;
 
-    auto target_component_id = node_index_t(gpe_blockIdx.x * gpe_blockDim.x + gpe_threadIdx.x + n_internal_nodes);
+    auto target_component_id = node_index_t(gpe_blockIdx.x * gpe_blockDim.x + gpe_threadIdx.x);
     const auto mixture_id = int(gpe_blockIdx.y * gpe_blockDim.y + gpe_threadIdx.y);
     if (mixture_id >= n_mixtures || target_component_id >= n_components_target)
         return;
@@ -209,8 +209,10 @@ EXECUTION_DEVICES void collect_result(const dim3& gpe_gridDim, const dim3& gpe_b
     // copy gaussians to their final location in out_mixture
     // tmp_g_container contains the addresses of the gaussians; we misuse object_idx in internal nodes for addressing that list of addresses.
     // first n_level_down bits of target_component_id were used for traversing the bvh, last reduction_n bits are used to select the current G
-    auto component_id = tmp_g_container_a[mixture_id][node->object_idx][target_component_id & (REDUCTION_N - 1)];
-    gpe::gaussian<N_DIMS>(out_mixture[mixture_id][target_component_id]) = gpe::gaussian<N_DIMS>(mixture[mixture_id][component_id]);;
+    auto component_id = node_index_t(tmp_g_container_a[mixture_id][node->object_idx][target_component_id & (REDUCTION_N - 1)]);
+    if (component_id != node_index_t(-1)) {
+        gpe::gaussian<N_DIMS>(out_mixture[mixture_id][target_component_id]) = gpe::gaussian<N_DIMS>(mixture[mixture_id][component_id]);
+    }
 }
 
 
@@ -265,8 +267,8 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> forward_impl(at::Tensor 
                                    gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(mixture), dimGrid, dimBlock, fun);
                                }));
 
-
-    auto out_mixture = torch::zeros({n_mixtures, n.components, mixture.size(-1)}, torch::TensorOptions(mixture.device()).dtype(mixture.dtype()));
+    assert((scratch_mixture == mixture).all().item<bool>()); // iiuc, the rudimentary version doesn't change the mixture, only builds a tree of largest gaussians.
+    auto out_mixture = torch::zeros({n_mixtures, n_components_target, mixture.size(-1)}, torch::TensorOptions(mixture.device()).dtype(mixture.dtype()));
     // make it valid, in case something doesn't get filled (due to an inbalance of the tree)
     gpe::covariances(out_mixture) = torch::eye(n.dims, torch::TensorOptions(mixture.device()).dtype(mixture.dtype()));
     GPE_DISPATCH_FLOATING_TYPES_AND_DIM(mixture.scalar_type(), n.dims, ([&] {
@@ -293,7 +295,7 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> forward_impl(at::Tensor 
     GPE_CUDA_ASSERT(cudaPeekAtLastError())
     GPE_CUDA_ASSERT(cudaDeviceSynchronize())
 
-    return std::make_tuple(out_mixture.view({n.batch, n.layers, n.components, -1}), bvh.m_nodes, bvh.m_aabbs);
+    return std::make_tuple(out_mixture.view({n.batch, n.layers, n_components_target, -1}), bvh.m_nodes, bvh.m_aabbs);
 }
 
 

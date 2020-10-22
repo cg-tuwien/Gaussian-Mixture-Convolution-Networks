@@ -17,7 +17,7 @@
 #include "bvh_mhem_fit/bindings.h"
 
 constexpr uint N_BATCHES = 1;
-constexpr uint N_CONVOLUTION_LAYERS = 1;
+constexpr uint N_CONVOLUTION_LAYERS = 3;
 constexpr uint LIMIT_N_BATCH = 100;
 constexpr bool USE_CUDA = false;
 //constexpr bool BACKWARD = false;
@@ -30,10 +30,10 @@ void show(torch::Tensor mixture, const int resolution, const int n_batch_limit) 
     mixture = mixture.index({Slice(None, n_batch)});
     const auto n_layers = gpe::n_layers(mixture);
 
-    const auto weights = gpe::weights(mixture);
+//    const auto weights = gpe::weights(mixture);
     const auto positions = gpe::positions(mixture);
-    const auto invCovs = gpe::covariances(mixture).inverse().transpose(-1, -2);
-    mixture = gpe::pack_mixture(weights, positions, invCovs.contiguous());
+//    const auto invCovs = gpe::covariances(mixture).inverse().transpose(-1, -2);
+//    mixture = gpe::pack_mixture(weights, positions, invCovs.contiguous());
 
     const auto minPos = positions.min().item().toFloat() - 1.1f;
     const auto maxPos = positions.max().item().toFloat() + 1.1f;
@@ -70,19 +70,19 @@ int main(int argc, char *argv[]) {
         auto list = container.attributes();
 
         for (uint i = 0; i < N_CONVOLUTION_LAYERS; i++) {
-            auto mixture = container.attr(std::to_string(i)).toTensor();//.index({Slice(0, 2), Slice(0, 1), Slice(0, 5), Slice()});
+            auto mixture = container.attr(std::to_string(i)).toTensor();//.index({Slice(0, 1), Slice(0, 1), Slice(0, 64), Slice()});
 //            auto mixture = torch::tensor({{0.02f, 0.f, 0.f, 1.01f, 1.f, 1.f, 1.0f},
 //                                          {0.02f, 5.f, 5.f, 1.01f, 0.5f, 0.5f, 4.0f}}).view({1, 1, 2, 7});
-            if (USE_CUDA)
-                mixture = mixture.cuda();
-            std::cout << "layer " << i << ": " << mixture.sizes() << " device: " << mixture.device() << std::endl;
-            if (RENDER)
-                show(mixture, 128, LIMIT_N_BATCH);
-
             const auto weights = gpe::weights(mixture);
             const auto positions = gpe::positions(mixture);
             const auto invCovs = gpe::covariances(mixture).inverse().transpose(-1, -2);
             mixture = gpe::pack_mixture(weights, positions, invCovs.contiguous());
+            if (USE_CUDA)
+                mixture = mixture.cuda();
+            std::cout << "layer " << i << ": " << mixture.sizes() << " device: " << mixture.device() << std::endl;
+//            if (RENDER)
+//                show(mixture, 128, LIMIT_N_BATCH);
+
             cudaDeviceSynchronize();
 
             auto start = std::chrono::high_resolution_clock::now();
