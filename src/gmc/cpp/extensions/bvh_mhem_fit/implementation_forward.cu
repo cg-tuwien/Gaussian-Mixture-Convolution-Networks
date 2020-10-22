@@ -121,13 +121,14 @@ EXECUTION_DEVICES int count_child_gaussians(const lbvh::detail::Node* node,
 
 template <typename scalar_t, int N_DIMS, int REDUCTION_N>
 EXECUTION_DEVICES void iterate_over_nodes(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
-                                            const dim3& gpe_blockIdx, const dim3& gpe_threadIdx,
-                                            gpe::PackedTensorAccessor32<scalar_t, 3> mixture,
-                                            const gpe::PackedTensorAccessor32<node_index_torch_t, 3> nodes,
-                                            const gpe::PackedTensorAccessor32<scalar_t, 3> aabbs,
-                                            gpe::PackedTensorAccessor32<int, 2> flags,
-                                            gpe::PackedTensorAccessor32<node_index_torch_t, 3> tmp_g_container_a,
-                                            const gpe::MixtureNs n, const int n_mixtures, const unsigned n_internal_nodes, const unsigned n_nodes, int n_components_target)
+                                          const dim3& gpe_blockIdx, const dim3& gpe_threadIdx,
+                                          gpe::PackedTensorAccessor32<scalar_t, 3> mixture,
+                                          const gpe::PackedTensorAccessor32<node_index_torch_t, 3> nodes,
+                                          const gpe::PackedTensorAccessor32<scalar_t, 3> aabbs,
+                                          gpe::PackedTensorAccessor32<int, 2> flags,
+                                          gpe::PackedTensorAccessor32<node_index_torch_t, 3> tmp_g_container_a,
+                                          gpe::PackedTensorAccessor32<int32_t, 3> scratch_container,
+                                          const gpe::MixtureNs n, const int n_mixtures, const unsigned n_internal_nodes, const unsigned n_nodes, int n_components_target)
 {
     GPE_UNUSED(gpe_gridDim)
     using G = gpe::Gaussian<N_DIMS, scalar_t>;
@@ -138,10 +139,11 @@ EXECUTION_DEVICES void iterate_over_nodes(const dim3& gpe_gridDim, const dim3& g
     if (mixture_id >= n_mixtures || node_id >= n_nodes)
         return;
 
-    // collect Gs int tmp_g_container until N_GAUSSIANS_TARGET * 2 is reached
-    // then merge and cont
+    scratch_container[mixture_id][node_id][0] = 1;
+    reinterpret_cast<float&>(scratch_container[mixture_id][node_id][1]) = gpe::integrate_inversed(gpe::gaussian<N_DIMS>(mixture[mixture_id][node_id - n_internal_nodes]));
 
 
+    // collect Gs int tmp_g_container
     const auto* node = reinterpret_cast<const lbvh::detail::Node*>(&nodes[mixture_id][int(node_id)][0]);
     tmp_g_container_a[mixture_id][node_id][0] = node_index_torch_t(node->object_idx);
     while(node->parent_idx != node_index_t(0xFFFFFFFF)) // means idx == 0
@@ -160,6 +162,9 @@ EXECUTION_DEVICES void iterate_over_nodes(const dim3& gpe_gridDim, const dim3& g
 
         node_id = node->parent_idx;
         node = reinterpret_cast<const lbvh::detail::Node*>(&nodes[mixture_id][node_id][0]);
+        scratch_container[mixture_id][node_id][0] = scratch_container[mixture_id][node->left_idx][0] + scratch_container[mixture_id][node->right_idx][0];
+        reinterpret_cast<float&>(scratch_container[mixture_id][node_id][1]) = reinterpret_cast<float&>(scratch_container[mixture_id][node->left_idx][1])
+                                                                               + reinterpret_cast<float&>(scratch_container[mixture_id][node->right_idx][1]);
         if (count_child_gaussians<REDUCTION_N>(node, nodes[mixture_id], tmp_g_container_a[mixture_id]) > REDUCTION_N) {
             fit_reduce_node<scalar_t, N_DIMS, REDUCTION_N>(node, tmp_g_container_a[mixture_id], mixture[mixture_id]);
         }
@@ -170,48 +175,79 @@ EXECUTION_DEVICES void iterate_over_nodes(const dim3& gpe_gridDim, const dim3& g
     }
 }
 
-template <typename scalar_t, int N_DIMS, int REDUCTION_N>
+template <typename scalar_t, int N_DIMS, int REDUCTION_N, int N_MAX_TARGET_COMPS = 128>
 EXECUTION_DEVICES void collect_result(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
-                                            const dim3& gpe_blockIdx, const dim3& gpe_threadIdx,
-                                            const gpe::PackedTensorAccessor32<scalar_t, 3> mixture,
-                                            gpe::PackedTensorAccessor32<scalar_t, 3> out_mixture,
-                                            const gpe::PackedTensorAccessor32<node_index_torch_t, 3> nodes,
-                                            const gpe::PackedTensorAccessor32<scalar_t, 3> aabbs,
-                                            gpe::PackedTensorAccessor32<int, 2> flags,
-                                            gpe::PackedTensorAccessor32<node_index_torch_t, 3> tmp_g_container_a,
-                                            const gpe::MixtureNs n, const int n_mixtures, const unsigned n_internal_nodes, const unsigned n_nodes, int n_components_target)
+                                      const dim3& gpe_blockIdx, const dim3& gpe_threadIdx,
+                                      const gpe::PackedTensorAccessor32<scalar_t, 3> mixture,
+                                      gpe::PackedTensorAccessor32<scalar_t, 3> out_mixture,
+                                      const gpe::PackedTensorAccessor32<node_index_torch_t, 3> nodes,
+                                      const gpe::PackedTensorAccessor32<scalar_t, 3> aabbs,
+                                      gpe::PackedTensorAccessor32<int, 2> flags,
+                                      gpe::PackedTensorAccessor32<node_index_torch_t, 3> tmp_g_container_a,
+                                      gpe::PackedTensorAccessor32<int32_t, 3> scratch_container,
+                                      const gpe::MixtureNs n, const int n_mixtures, const unsigned n_internal_nodes, const unsigned n_nodes, int n_components_target)
 {
     GPE_UNUSED(gpe_gridDim)
     using G = gpe::Gaussian<N_DIMS, scalar_t>;
     using Lbvh = lbvh::detail::basic_device_bvh<scalar_t, G, true>;
 
-    auto target_component_id = node_index_t(gpe_blockIdx.x * gpe_blockDim.x + gpe_threadIdx.x);
-    const auto mixture_id = int(gpe_blockIdx.y * gpe_blockDim.y + gpe_threadIdx.y);
-    if (mixture_id >= n_mixtures || target_component_id >= n_components_target)
+    assert(n_components_target % REDUCTION_N == 0);
+    static_assert (N_MAX_TARGET_COMPS % REDUCTION_N == 0, "N_MAX_TARGET_COMPS must be divisible by REDUCTION_N");
+
+    const auto mixture_id = int(gpe_blockIdx.x * gpe_blockDim.x + gpe_threadIdx.x);
+    if (mixture_id >= n_mixtures)
         return;
 
-    // collect merged Gs
-    auto n_levels_down = 32 - gpe::clz(uint32_t(n_components_target / REDUCTION_N));
+    constexpr int CACH_SIZE = N_MAX_TARGET_COMPS / REDUCTION_N;
+    float selectedNodesRating[CACH_SIZE]; // up to 32 * REDUCTION_N gaussians
+    node_index_t selectedNodes[CACH_SIZE];
+    for (int i = 0; i < CACH_SIZE; ++i)
+        selectedNodes[i] = node_index_t(-1);
 
-    const auto* node = reinterpret_cast<const lbvh::detail::Node*>(&nodes[mixture_id][int(0)][0]);
+    int n_selected_nodes = 0;
+    auto compute_rating = [&](node_index_t node_id) {
+        return std::abs(reinterpret_cast<const float&>(scratch_container[mixture_id][node_id][1]));
+    };
+    auto cach_id_with_highest_rating = [&]() {
+        float rating = -1;
+        int best_node_id = -1;
+        for (int i = 0; i < n_selected_nodes; ++i) {
+            if (selectedNodesRating[i] > rating) {
+                rating = selectedNodesRating[i];
+                best_node_id = i;
+            }
+        }
+        assert(best_node_id != -1);
+        return best_node_id;
+    };
+    auto set_cache = [&](int cache_location, node_index_t node_id) {
+        selectedNodes[cache_location] = node_id;
+        selectedNodesRating[cache_location] = compute_rating(node_id);
+    };
 
-    // go down the bvh tree and decide on going left or right depending on the current thread (target_component_id)
-    for (int i = 0; i < n_levels_down; ++i) {
-        auto decision_bit = 1 << (n_levels_down - i);
-        if (node->left_idx == node_index_t(-1)) // leaf
-            return;     // quick'n dirty handling of unbalanced trees.
-        if (target_component_id & decision_bit)
-            node = node = reinterpret_cast<const lbvh::detail::Node*>(&nodes[mixture_id][node->left_idx][0]);
-        else
-            node = node = reinterpret_cast<const lbvh::detail::Node*>(&nodes[mixture_id][node->right_idx][0]);
+    set_cache(0, 0);
+    n_selected_nodes++;
+
+    while (n_selected_nodes < n_components_target / REDUCTION_N) {
+        auto best_node_cache_id = cach_id_with_highest_rating();
+        auto best_node_id = selectedNodes[best_node_cache_id];
+        auto best_node = reinterpret_cast<const lbvh::detail::Node*>(&nodes[mixture_id][best_node_id][0]);
+        set_cache(best_node_cache_id, best_node->left_idx);
+        set_cache(n_selected_nodes, best_node->right_idx);
+        n_selected_nodes++;
+        assert(n_selected_nodes < CACH_SIZE);
     }
 
-    // copy gaussians to their final location in out_mixture
-    // tmp_g_container contains the addresses of the gaussians; we misuse object_idx in internal nodes for addressing that list of addresses.
-    // first n_level_down bits of target_component_id were used for traversing the bvh, last reduction_n bits are used to select the current G
-    auto component_id = node_index_t(tmp_g_container_a[mixture_id][node->object_idx][target_component_id & (REDUCTION_N - 1)]);
-    if (component_id != node_index_t(-1)) {
-        gpe::gaussian<N_DIMS>(out_mixture[mixture_id][target_component_id]) = gpe::gaussian<N_DIMS>(mixture[mixture_id][component_id]);
+    assert(n_selected_nodes == n_components_target / REDUCTION_N);
+    for (int i = 0; i < n_selected_nodes; ++i) {
+        for (int j = 0; j < REDUCTION_N; ++j) {
+            // copy gaussians to their final location in out_mixture
+            // tmp_g_container contains the addresses of the gaussians; we misuse object_idx in internal nodes for addressing that list of addresses.
+            // first n_level_down bits of target_component_id were used for traversing the bvh, last reduction_n bits are used to select the current G
+            auto component_id = node_index_t(tmp_g_container_a[mixture_id][selectedNodes[i]][j]);
+            if (component_id != node_index_t(-1))
+                gpe::gaussian<N_DIMS>(out_mixture[mixture_id][i * REDUCTION_N + j]) = gpe::gaussian<N_DIMS>(mixture[mixture_id][component_id]);;
+        }
     }
 }
 
@@ -242,10 +278,14 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> forward_impl(at::Tensor 
     auto flat_bvh_aabbs = bvh.m_aabbs.view({n_mixtures, n_nodes, -1});
     auto scratch_mixture = mixture.clone();
     auto flag_container = torch::zeros({n_mixtures, n_internal_nodes}, torch::TensorOptions(mixture.device()).dtype(torch::ScalarType::Int));
+
+    // scratch_container: int n_gaussians; float integral_sum;
+    auto scratch_container = torch::zeros({n_mixtures, n_nodes, 2}, torch::TensorOptions(mixture.device()).dtype(torch::ScalarType::Int));
     auto tmp_g_container = -1 * torch::ones({n_mixtures, n_nodes, N_GAUSSIANS_TARGET},
                                             torch::TensorOptions(mixture.device()).dtype(lbvh::detail::TorchTypeMapper<node_index_torch_t>::id()));
     auto flags_a = gpe::accessor<int, 2>(flag_container);
     auto tmp_g_container_a = gpe::accessor<node_index_torch_t, 3>(tmp_g_container);
+    auto scratch_container_a = gpe::accessor<int32_t, 3>(scratch_container);
 
 
     GPE_DISPATCH_FLOATING_TYPES_AND_DIM(mixture.scalar_type(), n.dims, ([&] {
@@ -258,10 +298,10 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> forward_impl(at::Tensor 
                                    auto nodes_a = gpe::accessor<lbvh::detail::Node::index_type_torch, 3>(flat_bvh_nodes);
                                    auto aabbs_a = gpe::accessor<scalar_t, 3>(flat_bvh_aabbs);
 
-                                   auto fun = [mixture_a, nodes_a, aabbs_a, flags_a, tmp_g_container_a, n, n_mixtures, n_internal_nodes, n_nodes, n_components_target] EXECUTION_DEVICES
+                                   auto fun = [mixture_a, nodes_a, aabbs_a, flags_a, tmp_g_container_a, scratch_container_a, n, n_mixtures, n_internal_nodes, n_nodes, n_components_target] EXECUTION_DEVICES
                                        (const dim3& gpe_gridDim, const dim3& gpe_blockDim, const dim3& gpe_blockIdx, const dim3& gpe_threadIdx) {
                                            iterate_over_nodes<scalar_t, N_DIMS, 4>(gpe_gridDim, gpe_blockDim, gpe_blockIdx, gpe_threadIdx,
-                                                                                   mixture_a, nodes_a, aabbs_a, flags_a, tmp_g_container_a,
+                                                                                   mixture_a, nodes_a, aabbs_a, flags_a, tmp_g_container_a, scratch_container_a,
                                                                                    n, n_mixtures, n_internal_nodes, n_nodes, n_components_target);
                                        };
                                    gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(mixture), dimGrid, dimBlock, fun);
@@ -269,24 +309,22 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> forward_impl(at::Tensor 
 
     assert((scratch_mixture == mixture).all().item<bool>()); // iiuc, the rudimentary version doesn't change the mixture, only builds a tree of largest gaussians.
     auto out_mixture = torch::zeros({n_mixtures, n_components_target, mixture.size(-1)}, torch::TensorOptions(mixture.device()).dtype(mixture.dtype()));
-    // make it valid, in case something doesn't get filled (due to an inbalance of the tree)
+    // make it valid, in case something doesn't get filled (due to an inbalance of the tree or just not enough elements)
     gpe::covariances(out_mixture) = torch::eye(n.dims, torch::TensorOptions(mixture.device()).dtype(mixture.dtype()));
     GPE_DISPATCH_FLOATING_TYPES_AND_DIM(mixture.scalar_type(), n.dims, ([&] {
                                             dim3 dimBlock = dim3(32, 1, 1);
-                                            dim3 dimGrid = dim3((uint(n_components_target) + dimBlock.x - 1) / dimBlock.x,
-                                                                (uint(n_mixtures) + dimBlock.y - 1) / dimBlock.y,
-                                                                (uint(1) + dimBlock.z - 1) / dimBlock.z);
+                                            dim3 dimGrid = dim3((uint(n_mixtures) + dimBlock.x - 1) / dimBlock.x, 1, 1);
 
                                             auto mixture_a = gpe::accessor<scalar_t, 3>(scratch_mixture);
                                             auto out_mixture_a = gpe::accessor<scalar_t, 3>(out_mixture);
                                             auto nodes_a = gpe::accessor<lbvh::detail::Node::index_type_torch, 3>(flat_bvh_nodes);
                                             auto aabbs_a = gpe::accessor<scalar_t, 3>(flat_bvh_aabbs);
 
-                                            auto fun = [mixture_a, out_mixture_a, nodes_a, aabbs_a, flags_a, tmp_g_container_a, n, n_mixtures, n_internal_nodes, n_nodes, n_components_target]
+                                            auto fun = [mixture_a, out_mixture_a, nodes_a, aabbs_a, flags_a, tmp_g_container_a, scratch_container_a, n, n_mixtures, n_internal_nodes, n_nodes, n_components_target]
                                                 EXECUTION_DEVICES
                                                 (const dim3& gpe_gridDim, const dim3& gpe_blockDim, const dim3& gpe_blockIdx, const dim3& gpe_threadIdx) {
                                                     collect_result<scalar_t, N_DIMS, 4>(gpe_gridDim, gpe_blockDim, gpe_blockIdx, gpe_threadIdx,
-                                                                                        mixture_a, out_mixture_a, nodes_a, aabbs_a, flags_a, tmp_g_container_a,
+                                                                                        mixture_a, out_mixture_a, nodes_a, aabbs_a, flags_a, tmp_g_container_a, scratch_container_a,
                                                                                         n, n_mixtures, n_internal_nodes, n_nodes, n_components_target);
                                                 };
                                             gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(mixture), dimGrid, dimBlock, fun);
