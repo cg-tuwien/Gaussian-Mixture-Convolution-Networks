@@ -35,49 +35,102 @@ using node_index_torch_t = lbvh::detail::Node::index_type_torch;
 using node_index_t = lbvh::detail::Node::index_type;
 using gaussian_index_t = uint16_t;
 using gaussian_index_torch_t = int16_t;
+using Node  = lbvh::detail::Node;
+
+
+struct NodeAttributes {
+    int n_child_leaves;
+    float gm_integral;
+};
+
+template<typename scalar_t, int N_DIMS, int REDUCTION_N>
+struct AugmentedBvh
+{
+    using aabb_type  = lbvh::Aabb<scalar_t>;
+    using Gaussian_type = gpe::Gaussian<N_DIMS, scalar_t>;
+    using PerNodeGaussianList_type = gaussian_index_t[REDUCTION_N];
+
+    const unsigned n_internal_nodes;
+    const unsigned n_leaves;
+    const unsigned n_nodes;
+    const int32_t _padding = 0;
+
+    const Node* nodes;                         // size = n_nodes
+    const aabb_type* aabbs;                         // size = n_nodes
+    Gaussian_type* gaussians;                       // size = n_leaves
+    PerNodeGaussianList_type* per_node_gaussians;   // size = n_nodes
+    NodeAttributes* per_node_attributes;            // size = n_nodes
+
+    EXECUTION_DEVICES
+    AugmentedBvh(int mixture_id,
+                 const gpe::PackedTensorAccessor32<node_index_torch_t, 3> nodes,
+                 const gpe::PackedTensorAccessor32<scalar_t, 3> aabbs,
+                 gpe::PackedTensorAccessor32<scalar_t, 3> mixture,
+                 gpe::PackedTensorAccessor32<gaussian_index_torch_t, 3> tmp_g_container_a,
+                 gpe::PackedTensorAccessor32<int32_t, 3> scratch_container,
+                 const gpe::MixtureNs n, const unsigned n_internal_nodes, const unsigned n_nodes)
+        : n_internal_nodes(n_internal_nodes), n_leaves(unsigned(n.components)), n_nodes(n_nodes),
+          nodes(reinterpret_cast<const Node*>(&nodes[mixture_id][0][0])),
+          aabbs(reinterpret_cast<const aabb_type*>(&aabbs[mixture_id][0][0])),
+          gaussians(reinterpret_cast<Gaussian_type*>(&mixture[mixture_id][0][0])),
+          per_node_gaussians(reinterpret_cast<PerNodeGaussianList_type*>(&tmp_g_container_a[mixture_id][0][0])),
+          per_node_attributes(reinterpret_cast<NodeAttributes*>(&scratch_container[mixture_id][0][0]))
+    {}
 
 
 
-template <int REDUCTION_N>
-EXECUTION_DEVICES int copy_gaussian_ids(gpe::Accessor32<node_index_torch_t, 1> tmp_g_container_source, gaussian_index_t* destination) {
-    for (int i = 0; i < REDUCTION_N; ++i) {
-        destination[i] = gaussian_index_t(tmp_g_container_source[i]);
-        if (tmp_g_container_source[i] == -1)
-            return i;
+    EXECUTION_DEVICES int count_per_node_gaussians(node_index_t index) const {
+        assert(index < n_nodes);
+        const auto& c = per_node_gaussians[index];
+        for (int i = 0; i < REDUCTION_N; ++i) {
+            if (c[i] == -1)
+                return i;
+        }
+        return REDUCTION_N;
     }
-    return REDUCTION_N;
-}
 
+    EXECUTION_DEVICES int count_per_node_gaussians_of_children(const lbvh::detail::Node* node) {
+        assert(node->left_idx != node_index_t(-1));
+        assert(node->right_idx != node_index_t(-1));
+        return count_per_node_gaussians(node->left_idx) + count_per_node_gaussians(node->right_idx);
+    }
 
-template <int REDUCTION_N>
-EXECUTION_DEVICES int collect_child_gaussian_ids(const lbvh::detail::Node* node,
-                                                   gpe::Accessor32<node_index_torch_t, 2> tmp_g_container_a,
-                                                   gaussian_index_t* destination) {
-    auto n_copied = copy_gaussian_ids<REDUCTION_N>(tmp_g_container_a[node->left_idx], destination);
-    destination += n_copied;
-    n_copied += copy_gaussian_ids<REDUCTION_N>(tmp_g_container_a[node->right_idx], destination);
-    return n_copied;
-}
+    EXECUTION_DEVICES int copy_per_node_gaussian_ids(node_index_t node_id, gaussian_index_t* destination) {
+        assert(node_id < n_nodes);
+        for (int i = 0; i < REDUCTION_N; ++i) {
+            destination[i] = per_node_gaussians[node_id][i];
+            if (per_node_gaussians[node_id][i] == gaussian_index_t(-1))
+                return i;
+        }
+        return REDUCTION_N;
+    }
 
+    EXECUTION_DEVICES int collect_child_gaussian_ids(const lbvh::detail::Node* node,
+                                                     gaussian_index_t* destination) {
+        auto n_copied = copy_per_node_gaussian_ids(node->left_idx, destination);
+        destination += n_copied;
+        n_copied += copy_per_node_gaussian_ids(node->right_idx, destination);
+        assert(n_copied <= REDUCTION_N * 2);
+        return n_copied;
+    }
+};
 
 template <typename scalar_t, int N_DIMS, int REDUCTION_N>
-EXECUTION_DEVICES void fit_reduce_node(const lbvh::detail::Node* node,
-                                       gpe::Accessor32<node_index_torch_t, 2> tmp_g_container_a,
-                                       gpe::Accessor32<scalar_t, 2> mixture_a,
-                                       const gpe::MixtureNs& n) {
+EXECUTION_DEVICES void fit_reduce_node(AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>& bvh,
+                                       const lbvh::detail::Node* node) {
     using G = gpe::Gaussian<N_DIMS, scalar_t>;
     // for now (testing) simply select N_GAUSSIANS_TARGET strongest gaussians
     // no stl available in cuda 10.1.
     gaussian_index_t cached_gaussian_ids[REDUCTION_N * 2];
-    const auto n_input_gaussians = collect_child_gaussian_ids<REDUCTION_N>(node, tmp_g_container_a, cached_gaussian_ids);
+    const auto n_input_gaussians = bvh.collect_child_gaussian_ids(node, cached_gaussian_ids);
 
     // compute distance matrix
     float distances[REDUCTION_N * 2][REDUCTION_N * 2];
     for (int i = 0; i < n_input_gaussians; ++i) {
-        const G& g_i = gpe::gaussian<N_DIMS>(mixture_a[int(cached_gaussian_ids[i])]);
+        const G& g_i = bvh.gaussians[cached_gaussian_ids[i]];
         distances[i][i] = 0;
         for (int j = i + 1; j < n_input_gaussians; ++j) {
-            const G& g_j = gpe::gaussian<N_DIMS>(mixture_a[int(cached_gaussian_ids[j])]);
+            const G& g_j = bvh.gaussians[cached_gaussian_ids[j]];
             // todo: min of KL divergencies is probably a better distance
             float distance = gpe::sign(g_i.weight) == gpe::sign(g_j.weight) ? 0 : std::numeric_limits<scalar_t>::infinity();
             assert(std::isnan(distance) == false);
@@ -184,9 +237,9 @@ EXECUTION_DEVICES void fit_reduce_node(const lbvh::detail::Node* node,
             cache_index_t cache_id = subgraphs[subgraph_id][current];
             assert(cache_id < REDUCTION_N * 2);
             gaussian_index_t gaussian_id = cached_gaussian_ids[cache_id];
-            assert(gaussian_id < n.components);
+            assert(gaussian_id < bvh.n_leaves);
 
-            G current_g = gpe::gaussian<N_DIMS>(mixture_a[gaussian_id]);
+            G current_g = bvh.gaussians[gaussian_id];
             new_gaussian.weight += current_g.weight;
             new_gaussian.position += current_g.position;
             new_gaussian.covariance += glm::inverse(current_g.covariance);
@@ -203,32 +256,22 @@ EXECUTION_DEVICES void fit_reduce_node(const lbvh::detail::Node* node,
     for (int i = 0; i < REDUCTION_N; ++i) {
         subgraph_id = find_next_subgraph(subgraph_id);
         gaussian_index_t new_gaussian_index = cached_gaussian_ids[subgraphs[subgraph_id][0]];
-        assert(new_gaussian_index < n.components);
-        gpe::gaussian<N_DIMS>(mixture_a[int(new_gaussian_index)]) = reduce_subgraph(subgraph_id);
-        tmp_g_container_a[node->object_idx][i] = gaussian_index_torch_t(new_gaussian_index);
+        assert(new_gaussian_index < bvh.n_leaves);
+        bvh.gaussians[new_gaussian_index] = reduce_subgraph(subgraph_id);
+        assert(bvh.per_node_gaussians[node->object_idx][i] == gaussian_index_t(-1));
+        bvh.per_node_gaussians[node->object_idx][i] = new_gaussian_index;
     }
 }
 
 
-template <int REDUCTION_N>
-EXECUTION_DEVICES int count_gaussians(const lbvh::detail::Node* node,
-                                        gpe::Accessor32<node_index_torch_t, 2> tmp_g_container_a) {
-    auto c = tmp_g_container_a[node->object_idx];
-    for (int i = 0; i < REDUCTION_N; ++i) {
-        if (c[i] == -1)
-            return i;
-    }
-    return REDUCTION_N;
-}
 
 
-template <int N_GAUSSIANS_TARGET>
-EXECUTION_DEVICES int count_child_gaussians(const lbvh::detail::Node* node,
-                                               const gpe::Accessor32<node_index_torch_t, 2>& nodes_a,
-                                               gpe::Accessor32<node_index_torch_t, 2> tmp_g_container_a) {
-    return count_gaussians<N_GAUSSIANS_TARGET>(reinterpret_cast<const lbvh::detail::Node*>(&nodes_a[node->left_idx][0]), tmp_g_container_a)
-           + count_gaussians<N_GAUSSIANS_TARGET>(reinterpret_cast<const lbvh::detail::Node*>(&nodes_a[node->right_idx][0]), tmp_g_container_a);
-}
+
+
+
+
+//template <typename scalar_t, int N_DIMS>
+//lbvh::detail::basic_device_bvh<scalar_t, gpe::Gaussian<N_DIMS, scalar_t>, true>
 
 template <typename scalar_t, int N_DIMS, int REDUCTION_N>
 EXECUTION_DEVICES void iterate_over_nodes(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
@@ -243,20 +286,21 @@ EXECUTION_DEVICES void iterate_over_nodes(const dim3& gpe_gridDim, const dim3& g
 {
     GPE_UNUSED(gpe_gridDim)
     using G = gpe::Gaussian<N_DIMS, scalar_t>;
-    using Lbvh = lbvh::detail::basic_device_bvh<scalar_t, G, true>;
+    using Bvh = AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>;
 
     auto node_id = node_index_t(gpe_blockIdx.x * gpe_blockDim.x + gpe_threadIdx.x + n_internal_nodes);
     const auto mixture_id = int(gpe_blockIdx.y * gpe_blockDim.y + gpe_threadIdx.y);
     if (mixture_id >= n_mixtures || node_id >= n_nodes)
         return;
 
-    scratch_container[mixture_id][node_id][0] = 1;
-    reinterpret_cast<float&>(scratch_container[mixture_id][node_id][1]) = gpe::integrate_inversed(gpe::gaussian<N_DIMS>(mixture[mixture_id][node_id - n_internal_nodes]));
+    Bvh bvh = AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>(mixture_id, nodes, aabbs, mixture, tmp_g_container_a, scratch_container, n, n_internal_nodes, n_nodes);
 
+    bvh.per_node_attributes[node_id].n_child_leaves = 1;
+    bvh.per_node_attributes[node_id].gm_integral = float(gpe::integrate_inversed(bvh.gaussians[node_id - n_internal_nodes]));
 
-    // collect Gs int tmp_g_container
-    const auto* node = reinterpret_cast<const lbvh::detail::Node*>(&nodes[mixture_id][int(node_id)][0]);
-    tmp_g_container_a[mixture_id][node_id][0] = node_index_torch_t(node->object_idx);
+    // collect Gs in per_node_gaussians
+    const Node* node = &bvh.nodes[node_id];
+    bvh.per_node_gaussians[node_id][0] = node->object_idx;
     while(node->parent_idx != node_index_t(0xFFFFFFFF)) // means idx == 0
     {
         auto* flag = &reinterpret_cast<int&>(flags[mixture_id][node->parent_idx]);
@@ -272,16 +316,16 @@ EXECUTION_DEVICES void iterate_over_nodes(const dim3& gpe_gridDim, const dim3& g
         // thread is the 2nd thread. merge AABB of both childlen.
 
         node_id = node->parent_idx;
-        node = reinterpret_cast<const lbvh::detail::Node*>(&nodes[mixture_id][node_id][0]);
-        scratch_container[mixture_id][node_id][0] = scratch_container[mixture_id][node->left_idx][0] + scratch_container[mixture_id][node->right_idx][0];
-        reinterpret_cast<float&>(scratch_container[mixture_id][node_id][1]) = reinterpret_cast<float&>(scratch_container[mixture_id][node->left_idx][1])
-                                                                               + reinterpret_cast<float&>(scratch_container[mixture_id][node->right_idx][1]);
-        if (count_child_gaussians<REDUCTION_N>(node, nodes[mixture_id], tmp_g_container_a[mixture_id]) > REDUCTION_N) {
-            fit_reduce_node<scalar_t, N_DIMS, REDUCTION_N>(node, tmp_g_container_a[mixture_id], mixture[mixture_id]);
+        node = &bvh.nodes[node_id];
+        bvh.per_node_attributes[node_id].n_child_leaves = bvh.per_node_attributes[node->left_idx].n_child_leaves + bvh.per_node_attributes[node->right_idx].n_child_leaves;
+        bvh.per_node_attributes[node_id].gm_integral = bvh.per_node_attributes[node->left_idx].gm_integral + bvh.per_node_attributes[node->right_idx].gm_integral;
+
+        if (bvh.count_per_node_gaussians_of_children(node) > REDUCTION_N) {
+            fit_reduce_node<scalar_t, N_DIMS, REDUCTION_N>(bvh, node);
         }
         else {
-            gaussian_index_t* destination = reinterpret_cast<gaussian_index_t*>(&tmp_g_container_a[mixture_id][node->object_idx][0]);
-            auto n_copied = collect_child_gaussian_ids<REDUCTION_N>(node, nodes[mixture_id], tmp_g_container_a[mixture_id], destination);
+            typename Bvh::PerNodeGaussianList_type& destination = bvh.per_node_gaussians[node->object_idx];
+            auto n_copied = bvh.collect_child_gaussian_ids(node, destination);
             assert(n_copied <= REDUCTION_N);
         }
     }
@@ -425,6 +469,8 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> forward_impl(at::Tensor 
                                    gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(mixture), dimGrid, dimBlock, fun);
                                }));
 
+    std::cout << "nodes: " << flat_bvh_nodes << std::endl;
+    std::cout << "tmp_g_container: " << tmp_g_container << std::endl;
     auto out_mixture = torch::zeros({n_mixtures, n_components_target, mixture.size(-1)}, torch::TensorOptions(mixture.device()).dtype(mixture.dtype()));
     // make it valid, in case something doesn't get filled (due to an inbalance of the tree or just not enough elements)
     gpe::covariances(out_mixture) = torch::eye(n.dims, torch::TensorOptions(mixture.device()).dtype(mixture.dtype()));
@@ -446,6 +492,7 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> forward_impl(at::Tensor 
                                                 };
                                             gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(mixture), dimGrid, dimBlock, fun);
                                         }));
+    std::cout << flat_bvh_nodes << std::endl;
 
     GPE_CUDA_ASSERT(cudaPeekAtLastError())
     GPE_CUDA_ASSERT(cudaDeviceSynchronize())
