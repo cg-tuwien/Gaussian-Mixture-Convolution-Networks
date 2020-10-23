@@ -35,8 +35,11 @@ void show(torch::Tensor mixture, const int resolution, const int n_batch_limit) 
 //    const auto invCovs = gpe::covariances(mixture).inverse().transpose(-1, -2);
 //    mixture = gpe::pack_mixture(weights, positions, invCovs.contiguous());
 
-    const auto minPos = positions.min().item().toFloat() - 1.1f;
-    const auto maxPos = positions.max().item().toFloat() + 1.1f;
+//    const auto minPos = positions.min().item().toFloat() - 1.1f;
+//    const auto maxPos = positions.max().item().toFloat() + 1.1f;
+
+    const auto minPos = -1.0f;
+    const auto maxPos = 33.0f;
 
     const auto mesh = torch::meshgrid({torch::arange(minPos, maxPos, 1.00001f * (maxPos - minPos) / float(resolution), mixture.device()),
                                        torch::arange(minPos, maxPos, 1.00001f * (maxPos - minPos) / float(resolution), mixture.device())});
