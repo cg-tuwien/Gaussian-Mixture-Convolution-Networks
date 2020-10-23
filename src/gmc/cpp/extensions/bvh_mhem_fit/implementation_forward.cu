@@ -81,21 +81,20 @@ struct AugmentedBvh
 
     EXECUTION_DEVICES int count_per_node_gaussians(node_index_t index) const {
         assert(index < n_nodes);
-        const auto& c = per_node_gaussians[index];
         for (int i = 0; i < REDUCTION_N; ++i) {
-            if (c[i] == -1)
+            if (per_node_gaussians[index][i] == gaussian_index_t(-1))
                 return i;
         }
         return REDUCTION_N;
     }
 
-    EXECUTION_DEVICES int count_per_node_gaussians_of_children(const lbvh::detail::Node* node) {
+    EXECUTION_DEVICES int count_per_node_gaussians_of_children(const lbvh::detail::Node* node) const {
         assert(node->left_idx != node_index_t(-1));
         assert(node->right_idx != node_index_t(-1));
         return count_per_node_gaussians(node->left_idx) + count_per_node_gaussians(node->right_idx);
     }
 
-    EXECUTION_DEVICES int copy_per_node_gaussian_ids(node_index_t node_id, gaussian_index_t* destination) {
+    EXECUTION_DEVICES int copy_per_node_gaussian_ids(node_index_t node_id, gaussian_index_t* destination) const {
         assert(node_id < n_nodes);
         for (int i = 0; i < REDUCTION_N; ++i) {
             destination[i] = per_node_gaussians[node_id][i];
@@ -105,14 +104,22 @@ struct AugmentedBvh
         return REDUCTION_N;
     }
 
-    EXECUTION_DEVICES int collect_child_gaussian_ids(const lbvh::detail::Node* node,
-                                                     gaussian_index_t* destination) {
+    EXECUTION_DEVICES int collect_child_gaussian_ids(const lbvh::detail::Node* node, gaussian_index_t* destination) const {
+        assert(node->left_idx != node_index_t(-1));
+        assert(node->right_idx != node_index_t(-1));
         auto n_copied = copy_per_node_gaussian_ids(node->left_idx, destination);
         destination += n_copied;
         n_copied += copy_per_node_gaussian_ids(node->right_idx, destination);
         assert(n_copied <= REDUCTION_N * 2);
         return n_copied;
     }
+
+    EXECUTION_DEVICES node_index_t node_id(const lbvh::detail::Node* node) {
+        auto id = node_index_t(node - nodes);
+        assert(id < n_nodes);
+        return id;
+    }
+
 };
 
 template <typename scalar_t, int N_DIMS, int REDUCTION_N>
@@ -240,26 +247,37 @@ EXECUTION_DEVICES void fit_reduce_node(AugmentedBvh<scalar_t, N_DIMS, REDUCTION_
             assert(gaussian_id < bvh.n_leaves);
 
             G current_g = bvh.gaussians[gaussian_id];
+            assert(new_gaussian.weight == 0 || gpe::sign(new_gaussian.weight) == gpe::sign(current_g.weight));
             new_gaussian.weight += current_g.weight;
-            new_gaussian.position += current_g.position;
-            new_gaussian.covariance += glm::inverse(current_g.covariance);
+            new_gaussian.position += current_g.weight * current_g.position;
+            assert(glm::determinant(current_g.covariance) > 0);
+            new_gaussian.covariance += current_g.weight * glm::inverse(current_g.covariance);
+
             ++n_merge;
             ++current;
         }
+        if (new_gaussian.weight == 0) {
+            new_gaussian.covariance = typename G::cov_t();
+            assert(glm::determinant(new_gaussian.covariance) > 0);
+        }
+        new_gaussian.position /= new_gaussian.weight;
+        new_gaussian.covariance /= new_gaussian.weight;
         new_gaussian.weight /= scalar_t(n_merge);
-        new_gaussian.position /= scalar_t(n_merge);
-        new_gaussian.covariance = glm::inverse(new_gaussian.covariance /  scalar_t(n_merge));
+        assert(glm::determinant(new_gaussian.covariance) > 0);
+        new_gaussian.covariance = glm::inverse(new_gaussian.covariance);
+        assert(glm::determinant(new_gaussian.covariance) > 0);
         return new_gaussian;
     };
 
     int subgraph_id = -1;
     for (int i = 0; i < REDUCTION_N; ++i) {
         subgraph_id = find_next_subgraph(subgraph_id);
-        gaussian_index_t new_gaussian_index = cached_gaussian_ids[subgraphs[subgraph_id][0]];
+        gaussian_index_t new_gaussian_index = cached_gaussian_ids[i];
         assert(new_gaussian_index < bvh.n_leaves);
         bvh.gaussians[new_gaussian_index] = reduce_subgraph(subgraph_id);
-        assert(bvh.per_node_gaussians[node->object_idx][i] == gaussian_index_t(-1));
-        bvh.per_node_gaussians[node->object_idx][i] = new_gaussian_index;
+        assert(node->object_idx == bvh.node_id(node));
+        assert(bvh.per_node_gaussians[bvh.node_id(node)][i] == gaussian_index_t(-1));
+        bvh.per_node_gaussians[bvh.node_id(node)][i] = new_gaussian_index;
     }
 }
 
@@ -320,11 +338,13 @@ EXECUTION_DEVICES void iterate_over_nodes(const dim3& gpe_gridDim, const dim3& g
         bvh.per_node_attributes[node_id].n_child_leaves = bvh.per_node_attributes[node->left_idx].n_child_leaves + bvh.per_node_attributes[node->right_idx].n_child_leaves;
         bvh.per_node_attributes[node_id].gm_integral = bvh.per_node_attributes[node->left_idx].gm_integral + bvh.per_node_attributes[node->right_idx].gm_integral;
 
-        if (bvh.count_per_node_gaussians_of_children(node) > REDUCTION_N) {
+
+        auto gaussian_count = bvh.count_per_node_gaussians_of_children(node);
+        if (gaussian_count > REDUCTION_N) {
             fit_reduce_node<scalar_t, N_DIMS, REDUCTION_N>(bvh, node);
         }
         else {
-            typename Bvh::PerNodeGaussianList_type& destination = bvh.per_node_gaussians[node->object_idx];
+            typename Bvh::PerNodeGaussianList_type& destination = bvh.per_node_gaussians[node_id];
             auto n_copied = bvh.collect_child_gaussian_ids(node, destination);
             assert(n_copied <= REDUCTION_N);
         }
@@ -355,7 +375,7 @@ EXECUTION_DEVICES void collect_result(const dim3& gpe_gridDim, const dim3& gpe_b
         return;
 
     constexpr int CACH_SIZE = N_MAX_TARGET_COMPS / REDUCTION_N;
-    float selectedNodesRating[CACH_SIZE]; // up to 32 * REDUCTION_N gaussians
+    float selectedNodesRating[CACH_SIZE];
     node_index_t selectedNodes[CACH_SIZE];
     for (int i = 0; i < CACH_SIZE; ++i)
         selectedNodes[i] = node_index_t(-1);
@@ -391,10 +411,16 @@ EXECUTION_DEVICES void collect_result(const dim3& gpe_gridDim, const dim3& gpe_b
         auto best_node_cache_id = cach_id_with_highest_rating();
         auto best_node_id = selectedNodes[best_node_cache_id];
         assert(best_node_id < n_nodes);
-        auto best_node = reinterpret_cast<const lbvh::detail::Node*>(&nodes[mixture_id][best_node_id][0]);
-        set_cache(best_node_cache_id, best_node->left_idx);
-        set_cache(n_selected_nodes, best_node->right_idx);
-        n_selected_nodes++;
+        if (best_node_id < n_internal_nodes) {
+            auto best_node = reinterpret_cast<const lbvh::detail::Node*>(&nodes[mixture_id][best_node_id][0]);
+            set_cache(best_node_cache_id, best_node->left_idx);
+            set_cache(n_selected_nodes, best_node->right_idx);
+            n_selected_nodes++;
+        }
+        else {
+            // best_node_id is a leaf node, it can't be further expanded.; ignore it.
+            selectedNodesRating[best_node_cache_id] = -1;
+        }
         assert(n_selected_nodes < CACH_SIZE);
     }
 
@@ -402,8 +428,7 @@ EXECUTION_DEVICES void collect_result(const dim3& gpe_gridDim, const dim3& gpe_b
     for (int i = 0; i < n_selected_nodes; ++i) {
         for (int j = 0; j < REDUCTION_N; ++j) {
             // copy gaussians to their final location in out_mixture
-            // tmp_g_container contains the addresses of the gaussians; we misuse object_idx in internal nodes for addressing that list of addresses.
-            // first n_level_down bits of target_component_id were used for traversing the bvh, last reduction_n bits are used to select the current G
+            // tmp_g_container contains the addresses of the gaussians;
             auto node_id = selectedNodes[i];
             auto component_id = node_index_t(tmp_g_container_a[mixture_id][node_id][j]);
             if (component_id != node_index_t(-1)) {
