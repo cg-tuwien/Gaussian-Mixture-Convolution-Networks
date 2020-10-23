@@ -112,6 +112,15 @@ struct AugmentedBvh
     }
 };
 
+// todo: min of KL divergencies is probably a better distance
+template <typename scalar_t, int N_DIMS>
+EXECUTION_DEVICES scalar_t gaussian_distance(const gpe::Gaussian<N_DIMS, scalar_t>& a, const gpe::Gaussian<N_DIMS, scalar_t>& b) {
+    if (gpe::sign(a.weight) != gpe::sign(b.weight))
+        return std::numeric_limits<scalar_t>::infinity();
+    return gpe::squared_norm(a.position - b.position);
+}
+
+
 template <typename scalar_t, int N_DIMS, int REDUCTION_N>
 EXECUTION_DEVICES void fit_reduce_node(AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>& bvh,
                                        const lbvh::detail::Node* node) {
@@ -129,10 +138,7 @@ EXECUTION_DEVICES void fit_reduce_node(AugmentedBvh<scalar_t, N_DIMS, REDUCTION_
         distances[i][i] = 0;
         for (int j = i + 1; j < n_input_gaussians; ++j) {
             const G& g_j = cached_gaussians[j];
-            // todo: min of KL divergencies is probably a better distance
-            scalar_t distance = gpe::sign(g_i.weight) == gpe::sign(g_j.weight) ? 0 : std::numeric_limits<scalar_t>::infinity();
-            assert(std::isnan(distance) == false);
-            distance += gpe::squared_norm(g_i.position - g_j.position);
+            scalar_t distance = gaussian_distance(g_i, g_j);
             assert(std::isnan(distance) == false);
             distances[i][j] = distance;
             distances[j][i] = distance;
