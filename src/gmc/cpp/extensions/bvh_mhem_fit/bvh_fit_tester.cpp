@@ -19,7 +19,7 @@
 constexpr uint N_BATCHES = 1;
 constexpr uint N_CONVOLUTION_LAYERS = 3;
 constexpr uint LIMIT_N_BATCH = 100;
-constexpr bool USE_CUDA = false;
+constexpr bool USE_CUDA = true;
 //constexpr bool BACKWARD = false;
 constexpr bool RENDER = true;
 
@@ -73,7 +73,7 @@ int main(int argc, char *argv[]) {
         auto list = container.attributes();
 
         for (uint i = 0; i < N_CONVOLUTION_LAYERS; i++) {
-            auto mixture = container.attr(std::to_string(i)).toTensor().index({Slice(0, 1), Slice(), Slice(0, 128), Slice()});
+            auto mixture = container.attr(std::to_string(i)).toTensor();//.index({Slice(5, 6), Slice(0, 1), Slice(), Slice()});
 //            auto mixture = torch::tensor({{0.02f, 0.f, 0.f, 1.01f, 1.f, 1.f, 1.0f},
 //                                          {0.02f, 5.f, 5.f, 1.01f, 0.5f, 0.5f, 4.0f}}).view({1, 1, 2, 7});
             const auto weights = gpe::weights(mixture);
@@ -93,7 +93,6 @@ int main(int argc, char *argv[]) {
             std::tie(fitted_mixture, nodes, aabbs) = bvh_mhem_fit_forward(mixture, 32);
             cudaDeviceSynchronize();
             auto end = std::chrono::high_resolution_clock::now();
-            std::cout << fitted_mixture << std::endl;
             if (RENDER)
                 show(fitted_mixture, 128, LIMIT_N_BATCH);
             std::cout << "elapsed time: " << std::chrono::duration_cast<std::chrono::milliseconds>(end-start).count() << "ms\n";
