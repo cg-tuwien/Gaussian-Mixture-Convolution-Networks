@@ -122,99 +122,66 @@ EXECUTION_DEVICES scalar_t gaussian_distance(const gpe::Gaussian<N_DIMS, scalar_
 }
 
 
-template <typename scalar_t, int N_DIMS, int REDUCTION_N>
-EXECUTION_DEVICES void fit_reduce_node(AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>& bvh,
-                                       const lbvh::detail::Node* node) {
-    using Abvh = AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>;
+template <uint32_t N_CLUSTERS, typename scalar_t, int N_DIMS, uint32_t N_INPUT>
+EXECUTION_DEVICES
+gpe::Array<gpe::Vector<gaussian_index_t, N_INPUT - N_CLUSTERS + 1>, N_CLUSTERS> clusterise(const gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_INPUT>& gaussians,
+                                                                                           const gpe::Array2d<scalar_t, N_INPUT>& distances) {
+    // this is a greedy smallest spanning subtrees algorithm
     using G = gpe::Gaussian<N_DIMS, scalar_t>;
-    // for now (testing) simply select N_GAUSSIANS_TARGET strongest gaussians
-    // no stl available in cuda 10.1.
-    const auto cached_gaussians = bvh.collect_child_gaussians(node);
-    const auto n_input_gaussians = cached_gaussians.size();
+    static_assert (N_CLUSTERS <= N_INPUT, "N output clusters must be larger than n input");
+    assert(N_CLUSTERS <= gaussians.size());
 
-    // compute distance matrix
-    scalar_t distances[REDUCTION_N * 2][REDUCTION_N * 2];
-    for (unsigned i = 0; i < n_input_gaussians; ++i) {
-        const G& g_i = cached_gaussians[i];
-        distances[i][i] = 0;
-        for (unsigned j = i + 1; j < n_input_gaussians; ++j) {
-            const G& g_j = cached_gaussians[j];
-            scalar_t distance = gaussian_distance(g_i, g_j);
-            assert(std::isnan(distance) == false);
-            distances[i][j] = distance;
-            distances[j][i] = distance;
-        }
+    gpe::Vector2d<gaussian_index_t, N_INPUT> subgraphs;
+    for (unsigned i = 0; i < gaussians.size(); ++i) {
+        subgraphs.push_back({i});
     }
+    unsigned n_subgraphs = subgraphs.size();
 
-    using cache_index_t = uint16_t;
-
-    cache_index_t subgraphs[REDUCTION_N * 2][REDUCTION_N * 2];
-    for (cache_index_t i = 0; i < REDUCTION_N * 2; ++i) {
-        subgraphs[i][0] = i;
-        for (cache_index_t j = 1; j < REDUCTION_N * 2; ++j) {
-            subgraphs[i][j] = cache_index_t(-1);
-        }
-    }
-
-    unsigned n_subgraphs = n_input_gaussians;
-    auto merge_subgraphs = [&](int a, int b) {
+    auto merge_subgraphs = [&](unsigned a, unsigned b) {
         assert (a != b);
         auto a_ = gpe::min(a, b);
         auto b_ = gpe::max(a, b);
 
-        auto a_end = 1;
-        while (subgraphs[a_][a_end] != cache_index_t(-1)) {
-            assert(a_end < REDUCTION_N * 2);
-            ++a_end;
-        }
-        auto b_current = 0;
-        while (subgraphs[b_][b_current] != cache_index_t(-1)) {
-            assert(b_current < REDUCTION_N * 2);
-            subgraphs[a_][a_end] = subgraphs[b_][b_current];
-            // todo: i think the following line can be removed in the final version
-            subgraphs[b_][b_current] = cache_index_t(-1);
-            ++a_end;
-            assert(a_end <= REDUCTION_N * 2);
-            ++b_current;
-        }
+        subgraphs[a_].push_all_back(subgraphs[b_]);
+        subgraphs[b_].clear();
         --n_subgraphs;
     };
-    auto subgraph_of = [&](cache_index_t id) {
-        for (int i = 0; i < REDUCTION_N * 2; ++i) {
-            auto current = 0;
-            while (subgraphs[i][current] != cache_index_t(-1)) {
-                if (subgraphs[i][current] == id)
+    auto subgraph_of = [&](gaussian_index_t id) {
+        for (unsigned i = 0; i < subgraphs.size(); ++i) {
+            for (unsigned j = 0; j < subgraphs[i].size(); ++j) {
+                if (subgraphs[i][j] == id)
                     return i;
-                ++current;
-                assert(current < REDUCTION_N * 2);
             }
         }
         assert(false);
-        return -1;
+        return unsigned(-1);
     };
-    auto shortest_edge = [&](cache_index_t* a, cache_index_t* b) {
-        *a = cache_index_t(-1);
-        *b = cache_index_t(-1);
+
+    gpe::BitSet<N_INPUT * N_INPUT> invalid_edges;
+    auto shortest_edge = [&](gaussian_index_t* a, gaussian_index_t* b) {
+        *a = gaussian_index_t(-1);
+        *b = gaussian_index_t(-1);
         scalar_t shortest_length = std::numeric_limits<scalar_t>::infinity();
-        for (cache_index_t i = 0; i < n_input_gaussians; ++i) {
-            for (cache_index_t j = i + 1; j < n_input_gaussians; ++j) {
-                if (distances[i][j] < shortest_length) {
+        for (gaussian_index_t i = 0; i < gaussians.size(); ++i) {
+            for (gaussian_index_t j = i + 1; j < gaussians.size(); ++j) {
+                if (!invalid_edges.isSet(i * gaussians.size() + j) && distances[i][j] < shortest_length) {
                     *a = i;
                     *b = j;
                     shortest_length = distances[i][j];
                 }
             }
         }
-        assert(*a != cache_index_t(-1));
-        assert(*b != cache_index_t(-1));
+        assert(*a != gaussian_index_t(-1));
+        assert(*b != gaussian_index_t(-1));
         assert(shortest_length != std::numeric_limits<scalar_t>::infinity());
     };
 
-    while (n_subgraphs > REDUCTION_N) {
-        cache_index_t a;
-        cache_index_t b;
+    while (n_subgraphs > N_CLUSTERS) {
+        gaussian_index_t a;
+        gaussian_index_t b;
         shortest_edge(&a, &b);
-        distances[a][b] = std::numeric_limits<scalar_t>::infinity();
+        assert(a < b);
+        invalid_edges.set1(a * gaussians.size() + b);
         auto subgraph_a = subgraph_of(a);
         auto subgraph_b = subgraph_of(b);
         if (subgraph_a != subgraph_b) {
@@ -222,63 +189,91 @@ EXECUTION_DEVICES void fit_reduce_node(AugmentedBvh<scalar_t, N_DIMS, REDUCTION_
         }
     }
 
-
-    auto find_next_subgraph = [&](int subgraph_id) {
-        while(subgraphs[++subgraph_id][0] == cache_index_t(-1)) {
-            assert(subgraph_id < REDUCTION_N * 2);
+    auto find_next_subgraph = [&](unsigned subgraph_id) {
+        while(subgraphs[++subgraph_id].size() == 0) {
+            assert(subgraph_id < N_INPUT);
         }
+        assert(subgraph_id < N_INPUT);
         return subgraph_id;
     };
 
-    auto reduce_subgraph = [&](int subgraph_id) {
-        assert(subgraph_id >= 0);
-        assert(subgraph_id < REDUCTION_N * 2);
+    unsigned subgraph_id = unsigned(-1);
+    assert(n_subgraphs == N_CLUSTERS);
+    gpe::Array<gpe::Vector<gaussian_index_t, N_INPUT - N_CLUSTERS + 1>, N_CLUSTERS> retval;
+    for (unsigned i = 0; i < N_CLUSTERS; ++i) {
+        subgraph_id = find_next_subgraph(subgraph_id);
+        retval[i].push_all_back(subgraphs[subgraph_id]);
+    }
 
-        G new_gaussian = {scalar_t(0), typename G::pos_t(0), typename G::cov_t(0)};
-        int n_merge = 0;
+    return retval;
+}
 
-        unsigned current = 0;
-        while (subgraphs[subgraph_id][current] != cache_index_t(-1)) {
-            assert(current < REDUCTION_N * 2);
-            cache_index_t cache_id = subgraphs[subgraph_id][current];
-            assert(cache_id < REDUCTION_N * 2);
+template <typename scalar_t, int N_DIMS, uint32_t N_GAUSSIANS_CAPACITY, uint32_t N_MAX_CLUSTER_ELEMENTS>
+EXECUTION_DEVICES
+gpe::Gaussian<N_DIMS, scalar_t> averageCluster(const gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_GAUSSIANS_CAPACITY>& mixture,
+                                               const gpe::Vector<gaussian_index_t, N_MAX_CLUSTER_ELEMENTS>& cluster_indices) {
+    using G = gpe::Gaussian<N_DIMS, scalar_t>;
+    G new_gaussian = {scalar_t(0), typename G::pos_t(0), typename G::cov_t(0)};
 
-            G current_g = cached_gaussians[cache_id];
-            assert(new_gaussian.weight == 0 || gpe::sign(new_gaussian.weight) == gpe::sign(current_g.weight)); // can't merge positive and negative gaussian
-            new_gaussian.weight += current_g.weight;
-            new_gaussian.position += current_g.weight * current_g.position;
-            assert(glm::determinant(current_g.covariance) > 0);
-            new_gaussian.covariance += current_g.weight * glm::inverse(current_g.covariance);
+    for (unsigned i = 0; i < cluster_indices.size(); ++i) {
+        auto gaussian_id = cluster_indices[i];
+        const auto& gaussian = mixture[gaussian_id];
 
-            ++n_merge;
-            ++current;
+        assert(new_gaussian.weight == 0 || gpe::sign(new_gaussian.weight) == gpe::sign(gaussian.weight)); // can't merge positive and negative gaussian
+        new_gaussian.weight += gaussian.weight;
+        new_gaussian.position += gaussian.weight * gaussian.position;
+        assert(glm::determinant(gaussian.covariance) > 0);
+        new_gaussian.covariance += gaussian.weight * glm::inverse(gaussian.covariance);
+    }
+    if (new_gaussian.weight == 0) {
+        new_gaussian.covariance = typename G::cov_t(1.0);
+        assert(glm::determinant(new_gaussian.covariance) > 0);
+    }
+    else {
+        new_gaussian.position /= new_gaussian.weight;
+        new_gaussian.covariance /= new_gaussian.weight;
+        new_gaussian.weight /= scalar_t(cluster_indices.size());
+        assert(glm::determinant(new_gaussian.covariance) > 0);
+        new_gaussian.covariance = glm::inverse(new_gaussian.covariance);
+        assert(glm::determinant(new_gaussian.covariance) > 0);
+    }
+    assert(std::isnan(new_gaussian.weight) == false);
+    assert(std::isnan(glm::dot(new_gaussian.position, new_gaussian.position)) == false);
+    assert(std::isnan(glm::determinant(new_gaussian.covariance)) == false);
+
+    return new_gaussian;
+};
+
+template <typename scalar_t, int N_DIMS, int REDUCTION_N>
+EXECUTION_DEVICES void fit_reduce_node(AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>& bvh,
+                                       const lbvh::detail::Node* node) {
+    using Abvh = AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>;
+    using G = gpe::Gaussian<N_DIMS, scalar_t>;
+    // for now (testing) simply select N_GAUSSIANS_TARGET strongest gaussians
+    // no stl available in cuda 10.1.
+    const auto gaussians = bvh.collect_child_gaussians(node);
+    const auto n_input_gaussians = gaussians.size();
+
+    // compute distance matrix
+    gpe::Array2d<scalar_t, REDUCTION_N * 2> distances;
+    for (unsigned i = 0; i < n_input_gaussians; ++i) {
+        const G& g_i = gaussians[i];
+        distances[i][i] = 0;
+        for (unsigned j = i + 1; j < n_input_gaussians; ++j) {
+            const G& g_j = gaussians[j];
+            scalar_t distance = gaussian_distance(g_i, g_j);
+            assert(std::isnan(distance) == false);
+            distances[i][j] = distance;
+            distances[j][i] = distance;
         }
-        if (new_gaussian.weight == 0) {
-            new_gaussian.covariance = typename G::cov_t(1.0);
-            assert(glm::determinant(new_gaussian.covariance) > 0);
-        }
-        else {
-            new_gaussian.position /= new_gaussian.weight;
-            new_gaussian.covariance /= new_gaussian.weight;
-            new_gaussian.weight /= scalar_t(n_merge);
-            assert(glm::determinant(new_gaussian.covariance) > 0);
-            new_gaussian.covariance = glm::inverse(new_gaussian.covariance);
-            assert(glm::determinant(new_gaussian.covariance) > 0);
-        }
-        assert(std::isnan(new_gaussian.weight) == false);
-        assert(std::isnan(glm::dot(new_gaussian.position, new_gaussian.position)) == false);
-        assert(std::isnan(glm::determinant(new_gaussian.covariance)) == false);
+    }
 
-//        assert(std::is)
-        return new_gaussian;
-    };
+    auto clustering = clusterise<REDUCTION_N>(gaussians, distances);
 
-    int subgraph_id = -1;
-    assert(n_subgraphs == REDUCTION_N);
+    assert(clustering.size() == REDUCTION_N);
     typename Abvh::NodeAttributes& destination_attribute = bvh.per_node_attributes[bvh.node_id(node)];
     for (unsigned i = 0; i < REDUCTION_N; ++i) {
-        subgraph_id = find_next_subgraph(subgraph_id);;
-        destination_attribute.gaussians.push_back(reduce_subgraph(subgraph_id));
+        destination_attribute.gaussians.push_back(averageCluster(gaussians, clustering[i]));
     }
 }
 

@@ -81,6 +81,7 @@ set(COMMON_SOURCES
     CpuSynchronisationPoint.h
     CpuSynchronisationPoint.cpp
     ParallelStack.h
+    unit_tests.cpp
 )
 
 set(LBVH_SOURCES
