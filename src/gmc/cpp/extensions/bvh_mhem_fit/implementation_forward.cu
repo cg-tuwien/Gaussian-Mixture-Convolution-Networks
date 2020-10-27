@@ -115,17 +115,43 @@ struct AugmentedBvh
 
 // todo: min of KL divergencies is probably a better distance
 template <typename scalar_t, int N_DIMS>
-EXECUTION_DEVICES scalar_t gaussian_distance(const gpe::Gaussian<N_DIMS, scalar_t>& a, const gpe::Gaussian<N_DIMS, scalar_t>& b) {
+EXECUTION_DEVICES scalar_t centroid_distance(const gpe::Gaussian<N_DIMS, scalar_t>& a, const gpe::Gaussian<N_DIMS, scalar_t>& b) {
     if (gpe::sign(a.weight) != gpe::sign(b.weight))
         return std::numeric_limits<scalar_t>::infinity();
     return gpe::squared_norm(a.position - b.position);
 }
 
 
+template<typename scalar_t, int N_DIMS, uint32_t N_GAUSSIANS_CAPACITY, typename DisparityFunction>
+EXECUTION_DEVICES
+gpe::Vector2d<scalar_t, N_GAUSSIANS_CAPACITY> compute_disparity_matrix(const gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_GAUSSIANS_CAPACITY>& gaussians,
+                                                                        DisparityFunction disparity_fun) {
+    using G = gpe::Gaussian<N_DIMS, scalar_t>;
+    gpe::Vector2d<scalar_t, N_GAUSSIANS_CAPACITY> matrix;
+    matrix.resize(gaussians.size());
+    for (unsigned i = 0; i < matrix.size(); ++i) {
+        matrix[i].resize(gaussians.size());
+    }
+
+    for (unsigned i = 0; i < gaussians.size(); ++i) {
+        const G& g_i = gaussians[i];
+        matrix[i][i] = 0;
+        for (unsigned j = i + 1; j < gaussians.size(); ++j) {
+            const G& g_j = gaussians[j];
+            scalar_t disparity = disparity_fun(g_i, g_j);
+            assert(std::isnan(disparity) == false);
+            // todo: non-symmetric disparities, like kl-divergence
+            matrix[i][j] = disparity;
+            matrix[j][i] = disparity;
+        }
+    }
+    return matrix;
+}
+
 template <uint32_t N_CLUSTERS, typename scalar_t, int N_DIMS, uint32_t N_INPUT>
 EXECUTION_DEVICES
 gpe::Array<gpe::Vector<gaussian_index_t, N_INPUT - N_CLUSTERS + 1>, N_CLUSTERS> clusterise(const gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_INPUT>& gaussians,
-                                                                                           const gpe::Array2d<scalar_t, N_INPUT>& distances) {
+                                                                                           const gpe::Vector2d<scalar_t, N_INPUT>& disparities) {
     // this is a greedy smallest spanning subtrees algorithm
     using G = gpe::Gaussian<N_DIMS, scalar_t>;
     static_assert (N_CLUSTERS <= N_INPUT, "N output clusters must be larger than n input");
@@ -164,10 +190,10 @@ gpe::Array<gpe::Vector<gaussian_index_t, N_INPUT - N_CLUSTERS + 1>, N_CLUSTERS> 
         scalar_t shortest_length = std::numeric_limits<scalar_t>::infinity();
         for (gaussian_index_t i = 0; i < gaussians.size(); ++i) {
             for (gaussian_index_t j = i + 1; j < gaussians.size(); ++j) {
-                if (!invalid_edges.isSet(i * gaussians.size() + j) && distances[i][j] < shortest_length) {
+                if (!invalid_edges.isSet(i * gaussians.size() + j) && disparities[i][j] < shortest_length) {
                     *a = i;
                     *b = j;
-                    shortest_length = distances[i][j];
+                    shortest_length = disparities[i][j];
                 }
             }
         }
@@ -252,25 +278,11 @@ EXECUTION_DEVICES void fit_reduce_node(AugmentedBvh<scalar_t, N_DIMS, REDUCTION_
     // for now (testing) simply select N_GAUSSIANS_TARGET strongest gaussians
     // no stl available in cuda 10.1.
     const auto gaussians = bvh.collect_child_gaussians(node);
-    const auto n_input_gaussians = gaussians.size();
 
-    // compute distance matrix
-    gpe::Array2d<scalar_t, REDUCTION_N * 2> distances;
-    for (unsigned i = 0; i < n_input_gaussians; ++i) {
-        const G& g_i = gaussians[i];
-        distances[i][i] = 0;
-        for (unsigned j = i + 1; j < n_input_gaussians; ++j) {
-            const G& g_j = gaussians[j];
-            scalar_t distance = gaussian_distance(g_i, g_j);
-            assert(std::isnan(distance) == false);
-            distances[i][j] = distance;
-            distances[j][i] = distance;
-        }
-    }
-
-    auto clustering = clusterise<REDUCTION_N>(gaussians, distances);
-
+    const auto disparity_matrix = compute_disparity_matrix(gaussians, centroid_distance<scalar_t, N_DIMS>);   // returns gpe::Vector<gpe::Vector>
+    const auto clustering = clusterise<REDUCTION_N>(gaussians, disparity_matrix);                            // returns gpe::Array<gpe::Vector>
     assert(clustering.size() == REDUCTION_N);
+
     typename Abvh::NodeAttributes& destination_attribute = bvh.per_node_attributes[bvh.node_id(node)];
     for (unsigned i = 0; i < REDUCTION_N; ++i) {
         destination_attribute.gaussians.push_back(averageCluster(gaussians, clustering[i]));

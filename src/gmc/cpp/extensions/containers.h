@@ -133,6 +133,11 @@ struct Vector {
         return uint32_t(m_size);
     }
     __host__ __device__ __forceinline__
+    void resize(uint32_t new_size) {
+        assert(new_size <= N);
+        m_size = new_size;
+    }
+    __host__ __device__ __forceinline__
     void push_back(T v) {
         assert(m_size < N);
         data[m_size] = v;
