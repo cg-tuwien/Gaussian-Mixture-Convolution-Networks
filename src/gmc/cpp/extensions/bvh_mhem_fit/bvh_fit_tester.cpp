@@ -19,7 +19,7 @@
 constexpr uint N_BATCHES = 1;
 constexpr uint N_CONVOLUTION_LAYERS = 3;
 constexpr uint LIMIT_N_BATCH = 100;
-constexpr bool USE_CUDA = true;
+constexpr bool USE_CUDA = false;
 //constexpr bool BACKWARD = false;
 constexpr bool RENDER = true;
 
@@ -83,8 +83,8 @@ int main(int argc, char *argv[]) {
             if (USE_CUDA)
                 mixture = mixture.cuda();
             std::cout << "layer " << i << ": " << mixture.sizes() << " device: " << mixture.device() << std::endl;
-            if (RENDER)
-                show(mixture, 128, LIMIT_N_BATCH);
+//            if (RENDER)
+//                show(mixture, 128, LIMIT_N_BATCH);
 
             cudaDeviceSynchronize();
 

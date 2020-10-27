@@ -12,6 +12,7 @@
 
 #include "bvh_mhem_fit/implementation_common.cuh"
 #include "common.h"
+#include "containers.h"
 #include "cuda_qt_creator_definitinos.h"
 #include "cuda_operations.h"
 #include "hacked_accessor.h"
@@ -27,6 +28,7 @@
 
 #define EXECUTION_DEVICES __host__ __device__
 
+
 namespace bvh_mhem_fit {
 
 namespace  {
@@ -38,7 +40,15 @@ using gaussian_index_torch_t = int16_t;
 using Node  = lbvh::detail::Node;
 
 
+template <typename scalar_t>
+struct UIntOfSize {
+    using type = uint32_t;
+};
 
+template <>
+struct UIntOfSize<double> {
+    using type = uint64_t;
+};
 
 template<typename scalar_t, int N_DIMS, int REDUCTION_N>
 struct AugmentedBvh
@@ -46,13 +56,16 @@ struct AugmentedBvh
     using aabb_type  = lbvh::Aabb<scalar_t>;
     using Gaussian_type = gpe::Gaussian<N_DIMS, scalar_t>;
     struct NodeAttributes {
-        Gaussian_type gaussians[REDUCTION_N];
+        using UIntType = typename UIntOfSize<scalar_t>::type;
+        gpe::Vector<Gaussian_type, REDUCTION_N, UIntType> gaussians;
         scalar_t gm_integral;
-        int n_child_leaves;
-        int n_gaussians;
+        UIntType n_child_leaves;
         // when adding an attribute, remember to update the line
         // auto node_attributes = torch::zeros({n_mixtures, n_nodes, REDUCTION_N * mixture.size(-1) + 3}, torch::TensorOptions(mixture.device()).dtype(mixture.scalar_type()));
     };
+//    static_assert (alignof (Gaussian_type) == 4, "adsf");
+    static_assert (sizeof (NodeAttributes) <= sizeof(scalar_t) * (REDUCTION_N * (1 + N_DIMS + N_DIMS * N_DIMS) + 3), "NodeAttribute is too large and won't fit into the torch::Tensor");
+    static_assert (sizeof (NodeAttributes) == sizeof(scalar_t) * (REDUCTION_N * (1 + N_DIMS + N_DIMS * N_DIMS) + 3), "NodeAttribute has unexpected size (it could be smaller, no problem, just unexpected)");
 
     const unsigned n_internal_nodes;
     const unsigned n_leaves;
@@ -78,31 +91,19 @@ struct AugmentedBvh
           per_node_attributes(reinterpret_cast<NodeAttributes*>(&node_attributes[mixture_id][0][0]))
     {}
 
-    EXECUTION_DEVICES int count_per_node_gaussians_of_children(const lbvh::detail::Node* node) const {
+    EXECUTION_DEVICES unsigned count_per_node_gaussians_of_children(const lbvh::detail::Node* node) const {
         assert(node->left_idx != node_index_t(-1));
         assert(node->right_idx != node_index_t(-1));
-        return this->per_node_attributes[node->left_idx].n_gaussians + this->per_node_attributes[node->right_idx].n_gaussians;
+        return this->per_node_attributes[node->left_idx].gaussians.size() + this->per_node_attributes[node->right_idx].gaussians.size();
     }
 
-    EXECUTION_DEVICES int copy_per_node_gaussian_ids(node_index_t node_id, Gaussian_type* destination) const {
-        assert(node_id < n_nodes);
-        const NodeAttributes& attributes = per_node_attributes[node_id];
-        assert(attributes.n_gaussians <= REDUCTION_N);
-        for (int i = 0; i < attributes.n_gaussians; ++i) {
-            destination[i] = attributes.gaussians[i];
-        }
-        return attributes.n_gaussians;
-    }
-
-    EXECUTION_DEVICES int collect_child_gaussians(const lbvh::detail::Node* node, Gaussian_type* destination) const {
+    EXECUTION_DEVICES gpe::Vector<Gaussian_type, REDUCTION_N * 2> collect_child_gaussians(const lbvh::detail::Node* node) const {
         assert(node->left_idx != node_index_t(-1));
         assert(node->right_idx != node_index_t(-1));
-        auto n_copied = copy_per_node_gaussian_ids(node->left_idx, destination);
-        destination += n_copied;
-        n_copied += copy_per_node_gaussian_ids(node->right_idx, destination);
-        assert(n_copied <= REDUCTION_N * 2);
-        assert(n_copied == this->count_per_node_gaussians_of_children(node));
-        return n_copied;
+        gpe::Vector<Gaussian_type, REDUCTION_N * 2> retval;
+        retval.push_all_back(per_node_attributes[node->left_idx].gaussians);
+        retval.push_all_back(per_node_attributes[node->right_idx].gaussians);
+        return retval;
     }
 
     EXECUTION_DEVICES node_index_t node_id(const lbvh::detail::Node* node) {
@@ -128,15 +129,15 @@ EXECUTION_DEVICES void fit_reduce_node(AugmentedBvh<scalar_t, N_DIMS, REDUCTION_
     using G = gpe::Gaussian<N_DIMS, scalar_t>;
     // for now (testing) simply select N_GAUSSIANS_TARGET strongest gaussians
     // no stl available in cuda 10.1.
-    G cached_gaussians[REDUCTION_N * 2];
-    const auto n_input_gaussians = bvh.collect_child_gaussians(node, cached_gaussians);
+    const auto cached_gaussians = bvh.collect_child_gaussians(node);
+    const auto n_input_gaussians = cached_gaussians.size();
 
     // compute distance matrix
     scalar_t distances[REDUCTION_N * 2][REDUCTION_N * 2];
-    for (int i = 0; i < n_input_gaussians; ++i) {
+    for (unsigned i = 0; i < n_input_gaussians; ++i) {
         const G& g_i = cached_gaussians[i];
         distances[i][i] = 0;
-        for (int j = i + 1; j < n_input_gaussians; ++j) {
+        for (unsigned j = i + 1; j < n_input_gaussians; ++j) {
             const G& g_j = cached_gaussians[j];
             scalar_t distance = gaussian_distance(g_i, g_j);
             assert(std::isnan(distance) == false);
@@ -155,7 +156,7 @@ EXECUTION_DEVICES void fit_reduce_node(AugmentedBvh<scalar_t, N_DIMS, REDUCTION_
         }
     }
 
-    int n_subgraphs = n_input_gaussians;
+    unsigned n_subgraphs = n_input_gaussians;
     auto merge_subgraphs = [&](int a, int b) {
         assert (a != b);
         auto a_ = gpe::min(a, b);
@@ -275,11 +276,10 @@ EXECUTION_DEVICES void fit_reduce_node(AugmentedBvh<scalar_t, N_DIMS, REDUCTION_
     int subgraph_id = -1;
     assert(n_subgraphs == REDUCTION_N);
     typename Abvh::NodeAttributes& destination_attribute = bvh.per_node_attributes[bvh.node_id(node)];
-    for (int i = 0; i < REDUCTION_N; ++i) {
+    for (unsigned i = 0; i < REDUCTION_N; ++i) {
         subgraph_id = find_next_subgraph(subgraph_id);;
-        destination_attribute.gaussians[i] = reduce_subgraph(subgraph_id);
+        destination_attribute.gaussians.push_back(reduce_subgraph(subgraph_id));
     }
-    destination_attribute.n_gaussians = REDUCTION_N;
 }
 
 
@@ -306,8 +306,7 @@ EXECUTION_DEVICES void iterate_over_nodes(const dim3& gpe_gridDim, const dim3& g
     Bvh bvh = AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>(mixture_id, nodes, aabbs, mixture, node_attributes, n, n_internal_nodes, n_nodes);
     {
         const G& leaf_gaussian = bvh.gaussians[node_id - n_internal_nodes];
-        bvh.per_node_attributes[node_id].gaussians[0] = leaf_gaussian;
-        bvh.per_node_attributes[node_id].n_gaussians = 1;
+        bvh.per_node_attributes[node_id].gaussians.push_back(leaf_gaussian);
         bvh.per_node_attributes[node_id].n_child_leaves = 1;
         bvh.per_node_attributes[node_id].gm_integral = gpe::integrate_inversed(leaf_gaussian);
     }
@@ -338,10 +337,8 @@ EXECUTION_DEVICES void iterate_over_nodes(const dim3& gpe_gridDim, const dim3& g
             fit_reduce_node<scalar_t, N_DIMS, REDUCTION_N>(bvh, node);
         }
         else {
-            typename Bvh::Gaussian_type* destination = bvh.per_node_attributes[node_id].gaussians;
-            auto n_copied = bvh.collect_child_gaussians(node, destination);
-            bvh.per_node_attributes[node_id].n_gaussians = n_copied;
-            assert(n_copied <= REDUCTION_N);
+            bvh.per_node_attributes[node_id].gaussians.push_all_back(bvh.collect_child_gaussians(node));
+
         }
     }
 }
@@ -426,8 +423,8 @@ EXECUTION_DEVICES void collect_result(const dim3& gpe_gridDim, const dim3& gpe_b
         auto node_id = selectedNodes[i];
         typename Bvh::NodeAttributes& destination_attribute = bvh.per_node_attributes[node_id];
 
-        for (int j = 0; j < destination_attribute.n_gaussians; ++j) {
-            gpe::gaussian<N_DIMS>(out_mixture[mixture_id][i * REDUCTION_N + j]) = destination_attribute.gaussians[j];
+        for (unsigned j = 0; j < destination_attribute.gaussians.size(); ++j) {
+            gpe::gaussian<N_DIMS>(out_mixture[mixture_id][i * REDUCTION_N + int(j)]) = destination_attribute.gaussians[j];
         }
         // todo: log or something if destination_attribute.n_gaussians != REDUCTION_N. we are loosing slots for more gaussians; adapt node rating function.
     }
