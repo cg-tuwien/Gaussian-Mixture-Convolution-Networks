@@ -169,51 +169,112 @@ struct Vector {
 template<typename T, uint32_t N_ROWS, uint32_t N_COLS = N_ROWS, typename size_type = uint32_t>
 using Vector2d = Vector<Vector<T, N_COLS, size_type>, N_ROWS, size_type>;
 
-static struct UnitTests {
-    UnitTests() {
-        testBitSet();
-    }
+namespace functors {
+template<typename T>
+T plus(const T& a, const T& b) {
+    return a + b;
+}
+template<typename T>
+T times(const T& a, const T& b) {
+    return a * b;
+}
+template<typename T>
+bool logical_and(const T& a, const T& b) {
+    return a && b;
+}
+template<typename T>
+bool logical_or(const T& a, const T& b) {
+    return a || b;
+}
+template<typename T>
+bool bit_or(const T& a, const T& b) {
+    return a | b;
+}
+template<typename T>
+bool bit_and(const T& a, const T& b) {
+    return a & b;
+}
 
-    void testBitSet() {
-        BitSet<32> bs;
-        for (unsigned i = 0; i < 32; i++)
-            assert(bs.isSet(i) == false);
+}
 
-        bs.set1(10);
-        bs.set1(15);
-        bs.set1(20);
-
-        for (unsigned i = 0; i < 32; i++) {
-            if (i != 10 && i != 15 && i != 20)
-                assert(bs.isSet(i) == false);
-            else
-                assert(bs.isSet(i) == true);
+template<typename T1, typename T2, uint32_t N1, uint32_t N2, typename Function>
+__host__ __device__ __forceinline__
+auto outer_product(const gpe::Vector<T1, N1>& m1,
+                   const gpe::Vector<T2, N2>& m2,
+                   Function fun) -> Vector2d<decltype (fun(m1.front(), m2.front())), N1, N2> {
+    using ProductType = decltype (fun(m1.front(), m2.front()));
+    gpe::Vector2d<ProductType, N1, N2> matrix;
+    matrix.resize(m1.size());
+    for (unsigned i = 0; i < m1.size(); ++i) {
+        matrix[i].resize(m2.size());
+        const T1& c_i = m1[i];
+        for (unsigned j = 0; j < m2.size(); ++j) {
+            const T2& c_j = m2[j];
+            ProductType v = fun(c_i, c_j);
+            matrix[i][j] = v;
         }
-
-        for (unsigned i = 0; i < 32; i++)
-            bs.set1(i);
-
-        for (unsigned i = 0; i < 32; i++)
-            assert(bs.isSet(i) == true);
-
-        bs.set0(15);
-        bs.set0(16);
-        bs.set0(17);
-
-        for (unsigned i = 0; i < 32; i++) {
-            if (i != 15 && i != 16 && i != 17)
-                assert(bs.isSet(i) == true);
-            else
-                assert(bs.isSet(i) == false);
-        }
-
-        for (unsigned i = 0; i < 32; i++)
-            bs.set0(i);
-
-        for (unsigned i = 0; i < 32; i++)
-            assert(bs.isSet(i) == false);
     }
-} unit_tests;
+    return matrix;
+}
+
+template<typename T1, typename T2, uint32_t N, typename Function>
+__host__ __device__ __forceinline__
+auto cwise_fun(const gpe::Vector<T1, N>& m1,
+               const gpe::Vector<T2, N>& m2,
+               Function fun) -> Vector<decltype (fun(m1.front(), m2.front())), N> {
+    using ProductType = decltype (fun(m1.front(), m2.front()));
+    assert(m1.size() == m2.size());
+    gpe::Vector<ProductType, N> vec;
+    vec.resize(m1.size());
+    for (unsigned i = 0; i < m1.size(); ++i) {
+        const T1& a = m1[i];
+        const T2& b = m2[i];
+        vec[i] = fun(a, b);
+    }
+    return vec;
+}
+
+template<typename T1, typename T2, uint32_t N1, uint32_t N2, typename Function>
+__host__ __device__ __forceinline__
+auto cwise_fun(const Vector2d<T1, N1, N2>& m1,
+               const Vector2d<T2, N1, N2>& m2,
+               Function fun) -> Vector2d<decltype (fun(m1.front().front(), m2.front().front())), N1, N2> {
+    using ProductType = decltype (fun(m1.front().front(), m2.front().front()));
+    assert(m1.size() == m2.size());
+    gpe::Vector2d<ProductType, N1, N2> matrix;
+    matrix.resize(m1.size());
+    for (unsigned i = 0; i < m1.size(); ++i) {
+        matrix[i].resize(m2.size());
+        for (unsigned j = 0; j < m2.size(); ++j) {
+            const T1& a = m1[i][j];
+            const T2& b = m2[i][j];
+            ProductType v = fun(a, b);
+            matrix[i][j] = v;
+        }
+    }
+    return matrix;
+}
+
+template<typename T1, typename T2, uint32_t N, typename Function>
+__host__ __device__ __forceinline__
+T2 reduce(const gpe::Vector<T1, N>& m1, T2 initial, Function fun) {
+    for (unsigned i = 0; i < m1.size(); ++i) {
+        const T1& a = m1[i];
+        initial = fun(initial, a);
+    }
+    return initial;
+}
+
+template<typename T1, typename T2, uint32_t N1, uint32_t N2, typename Function>
+__host__ __device__ __forceinline__
+T2 reduce(const gpe::Vector2d<T1, N1, N2>& matrix, T2 initial, Function fun) {
+    for (unsigned i = 0; i < matrix.size(); ++i) {
+        for (unsigned j = 0; j < matrix[i].size(); ++j) {
+            initial = fun(initial, matrix[i][j]);
+        }
+    }
+    return initial;
+}
 
 }
 
