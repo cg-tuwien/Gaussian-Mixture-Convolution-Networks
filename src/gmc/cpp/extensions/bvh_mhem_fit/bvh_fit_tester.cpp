@@ -83,8 +83,8 @@ int main(int argc, char *argv[]) {
 //            if (USE_CUDA)
 //                mixture = mixture.cuda();
             std::cout << "layer " << i << ": " << mixture.sizes() << " device: " << mixture.device() << std::endl;
-            if (RENDER)
-                show(mixture, 128, LIMIT_N_BATCH);
+//            if (RENDER)
+//                show(mixture, 128, LIMIT_N_BATCH);
 
             cudaDeviceSynchronize();
 

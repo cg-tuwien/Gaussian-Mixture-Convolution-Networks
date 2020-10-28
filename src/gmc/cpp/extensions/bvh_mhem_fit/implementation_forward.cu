@@ -328,7 +328,7 @@ EXECUTION_DEVICES void fit_reduce_node(AugmentedBvh<scalar_t, N_DIMS, REDUCTION_
 //    assert not torch.any(torch.isnan(responsibilities))
     assert(!gpe::reduce(responsibilities, false, [](bool o, scalar_t v) { return o || gpe::isnan(v); }));
 //    assert torch.all(responsibilities >= 0)
-    assert(!gpe::reduce(responsibilities, false, [](bool o, scalar_t v) { return o || v >= 0; }));
+    assert(!gpe::reduce(responsibilities, false, [](bool o, scalar_t v) { return o || v < 0; }));
 
 //    newPositions = torch.sum(responsibilities.unsqueeze(-1) * gm.positions(target_double_gmm).view(n_batch, n_layers, n_components_target, 1, n_dims), 2)
     gpe::Vector2d<pos_t, N_TARGET, N_FITTING> weightedPositions = gpe::cwise_fun(responsibilities, target, [](scalar_t r, const G& g) { return r * g.position; });

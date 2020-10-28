@@ -56,7 +56,7 @@ __forceinline__ __host__ __device__ glm::mat<DIMS, DIMS, scalar_t>& mat(scalar_t
 }
 
 template <int DIMS, typename scalar_t>
-__forceinline__ __device__ bool isnan(const glm::vec<DIMS, scalar_t>& x) {
+__forceinline__ __host__ __device__ bool isnan(const glm::vec<DIMS, scalar_t>& x) {
     bool nan = false;
     for (unsigned i = 0; i < DIMS; ++i)
         nan = nan || gpe::isnan(x[i]);
@@ -64,7 +64,7 @@ __forceinline__ __device__ bool isnan(const glm::vec<DIMS, scalar_t>& x) {
 }
 
 template <int DIMS, typename scalar_t>
-__forceinline__ __device__ bool isnan(const glm::mat<DIMS, DIMS, scalar_t>& x) {
+__forceinline__ __host__ __device__ bool isnan(const glm::mat<DIMS, DIMS, scalar_t>& x) {
     bool nan = false;
     for (unsigned i = 0; i < DIMS; ++i)
         for (unsigned j = 0; j < DIMS; ++j)

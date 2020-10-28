@@ -146,7 +146,7 @@ inline scalar_t abs(scalar_t x) {
 }
 
 template <typename T>
-bool isnan(T x) {
+inline bool isnan(T x) {
     return std::isnan(x);
 }
 
