@@ -6,7 +6,6 @@ namespace  {
 
 static struct UnitTests {
     UnitTests() {
-        testVector0Init();
         testBitSet();
         testOuterProduct();
         testTransform1d();
@@ -20,12 +19,6 @@ static struct UnitTests {
         testReduce2d();
         testReduceRows();
         testReduceCols();
-    }
-
-    void testVector0Init() {
-        gpe::Vector<int, 1024> v = {0};
-        for (unsigned i = 0; i < 1024; i++)
-            assert(v[i] == 0);
     }
 
     void testBitSet() {
@@ -163,21 +156,22 @@ static struct UnitTests {
     }
 
     void testReduceRows() {
-        Vector2d<int, 2> m1;
-        m1.push_back(Vector<int, 2>{1, 2});
-        m1.push_back(Vector<int, 2>{3, 4});
-        auto result = reduce_rows(m1, int(1), functors::times<int>);
-        assert(result[0] == 1*2);
-        assert(result[1] == 3*4);
+        Vector2d<int, 2, 3> m1;
+        m1.push_back(Vector<int, 3>{1, 2, 3});
+        m1.push_back(Vector<int, 3>{3, 4, 5});
+        Vector<int, 2> result = reduce_rows(m1, int(1), functors::times<int>);
+        assert(result[0] == 1*2*3);
+        assert(result[1] == 3*4*5);
     }
 
     void testReduceCols() {
-        Vector2d<int, 2> m1;
-        m1.push_back(Vector<int, 2>{1, 2});
-        m1.push_back(Vector<int, 2>{3, 4});
-        auto result = reduce_cols(m1, int(1), functors::times<int>);
+        Vector2d<int, 2, 3> m1;
+        m1.push_back(Vector<int, 3>{1, 2, 3});
+        m1.push_back(Vector<int, 3>{3, 4, 5});
+        Vector<int, 3> result = reduce_cols(m1, int(1), functors::times<int>);
         assert(result[0] == 1*3);
         assert(result[1] == 2*4);
+        assert(result[2] == 3*5);
     }
 } unit_tests;
 

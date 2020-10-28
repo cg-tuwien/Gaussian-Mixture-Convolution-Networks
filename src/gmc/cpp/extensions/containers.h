@@ -260,7 +260,7 @@ auto transform(const gpe::Vector2d<T, N1, N2>& mat, Function fun) -> Vector2d<de
         assert(mat[0].size() == mat[i].size());
         assert(mat[i].size() == mat[i].size());
         retmat[i].resize(mat[i].size());
-        for (unsigned j = 0; j < mat.size(); ++j) {
+        for (unsigned j = 0; j < mat[i].size(); ++j) {
             retmat[i][j] = fun(mat[i][j]);
         }
     }
@@ -375,21 +375,22 @@ T2 reduce(const gpe::Vector2d<T1, N1, N2>& matrix, T2 initial, Function fun) {
 }
 
 template<typename T1, typename T2, uint32_t N1, uint32_t N2, typename Function>
-__host__ __device__ __forceinline__
+__host__ __device__/* __forceinline__*/
 gpe::Vector<T2, N1> reduce_rows(const gpe::Vector2d<T1, N1, N2>& matrix, T2 initial, Function fun) {
     gpe::Vector<T2, N1> retvec;
     retvec.resize(matrix.size());
     for (unsigned i = 0; i < matrix.size(); ++i) {
+        assert(matrix[0].size() == matrix[i].size());
         retvec[i] = initial;
         for (unsigned j = 0; j < matrix[i].size(); ++j) {
             retvec[i] = fun(retvec[i], matrix[i][j]);
         }
     }
-    return initial;
+    return retvec;
 }
 
 template<typename T1, typename T2, uint32_t N1, uint32_t N2, typename Function>
-__host__ __device__ __forceinline__
+__host__ __device__/* __forceinline__*/
     gpe::Vector<T2, N2> reduce_cols(const gpe::Vector2d<T1, N1, N2>& matrix, T2 initial, Function fun) {
     gpe::Vector<T2, N2> retvec;
     if (matrix[0].size()) {
@@ -404,7 +405,7 @@ __host__ __device__ __forceinline__
             retvec[j] = fun(retvec[j], matrix[i][j]);
         }
     }
-    return initial;
+    return retvec;
 }
 
 }
