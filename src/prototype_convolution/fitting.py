@@ -53,6 +53,18 @@ def fixed_point_and_mhem(mixture: Tensor, constant: Tensor, n_components: int, c
 
     return fitting, ret_const, [initial_fitting, fp_fitting, reduced_fitting]
 
+def cpp_debug(mixture: Tensor, constant: Tensor, n_components: int, config: Config = Config(), tensorboard: TensorboardWriter = None) -> typing.Tuple[Tensor, Tensor, typing.List[Tensor]]:
+    mixture = torch.tensor([[[[0.5, 5.0, 5.0, 4.0, -0.5, -0.5, 4.0],
+                              [0.5, 8.0, 8.0, 4.0, -2.5, -2.5, 4.0],
+                              [0.5, 20.0, 10.0, 5.0, 0.0, 0.0, 7.0],
+                              [0.5, 20.0, 20.0, 5.0, 0.5, 0.5, 7.0]]]])
+    mixture = mixture.cuda()
+    initial_fitting = torch.tensor([[[[0.5,  6.5,  6.5, 4.0, -0.5, -0.5, 4.0],
+                                      [0.5, 20.0, 15.0, 4.0, -2.5, -2.5, 4.0]]]])
+    initial_fitting = initial_fitting.cuda()
+
+    fitting = mhem_fit_a_to_b(initial_fitting, mixture, config, tensorboard)
+
 
 def fixed_point_only(mixture: Tensor, constant: Tensor, n_components: int, config: Config = Config()) -> typing.Tuple[Tensor, Tensor, typing.List[Tensor]]:
     if n_components < 0:
@@ -171,10 +183,11 @@ def calc_KL_divergence(target: Tensor, fitting: Tensor) -> Tensor:
     fitting_covariances_inversed = mat_tools.inverse(fitting_covariances)
 
     p_diff = target_positions - fitting_positions
-    mahalanobis_distance = torch.sqrt(p_diff.unsqueeze(-2) @ fitting_covariances_inversed @ p_diff.unsqueeze(-1)).squeeze(dim=-1).squeeze(dim=-1)
+    # mahalanobis_factor = mahalanobis distance squared
+    mahalanobis_factor = (p_diff.unsqueeze(-2) @ fitting_covariances_inversed @ p_diff.unsqueeze(-1)).squeeze(dim=-1).squeeze(dim=-1)
     trace = mat_tools.batched_trace(fitting_covariances_inversed @ target_covariances)
     logarithm = torch.log(target_covariances.det() / fitting_covariances.det())
-    KL_divergence = 0.5 * (mahalanobis_distance + trace - gm.n_dimensions(target) - logarithm)
+    KL_divergence = 0.5 * (mahalanobis_factor + trace - gm.n_dimensions(target) - logarithm)
 
     return KL_divergence
 

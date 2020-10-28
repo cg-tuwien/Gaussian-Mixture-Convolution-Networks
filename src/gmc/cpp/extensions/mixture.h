@@ -92,6 +92,13 @@ inline torch::Tensor pack_mixture(const torch::Tensor weights, const torch::Tens
     return torch::cat({weights.view({n_batch, n_layers, n_components, 1}), positions, covariances.view({n_batch, n_layers, n_components, n_dims * n_dims})}, 3);
 }
 
+inline torch::Tensor mixture_with_inversed_covariances(torch::Tensor mixture) {
+    const auto weights = torch::abs(gpe::weights(mixture));
+    const auto positions = gpe::positions(mixture);
+    const auto invCovs = gpe::covariances(mixture).inverse().transpose(-1, -2);
+    return gpe::pack_mixture(weights, positions, invCovs.contiguous());
+}
+
 
 template<int N_DIMS, typename scalar_t>
 struct Gaussian {
@@ -159,10 +166,28 @@ __forceinline__ __host__ __device__ scalar_t evaluate_inversed(const glm::vec<DI
 }
 
 template <typename scalar_t, int DIMS>
+__forceinline__ __host__ __device__ scalar_t evaluate(const glm::vec<DIMS, scalar_t>& evalpos,
+                                                      const scalar_t& weight,
+                                                      const glm::vec<DIMS, scalar_t>& pos,
+                                                      const glm::mat<DIMS, DIMS, scalar_t>& cov) {
+    const auto t = evalpos - pos;
+    const auto v = scalar_t(-0.5) * glm::dot(t, (glm::inverse(cov) * t));
+    return weight * gpe::exp(v);
+}
+
+template <typename scalar_t, int DIMS>
 __forceinline__ __host__ __device__ scalar_t evaluate_inversed(const Gaussian<DIMS, scalar_t>& gaussian,
                                                                const glm::vec<DIMS, scalar_t>& evalpos) {
     const auto t = evalpos - gaussian.position;
     const auto v = scalar_t(-0.5) * glm::dot(t, (gaussian.covariance * t));
+    return gaussian.weight * gpe::exp(v);
+}
+
+template <typename scalar_t, int DIMS>
+__forceinline__ __host__ __device__ scalar_t evaluate(const Gaussian<DIMS, scalar_t>& gaussian,
+                                                      const glm::vec<DIMS, scalar_t>& evalpos) {
+    const auto t = evalpos - gaussian.position;
+    const auto v = scalar_t(-0.5) * glm::dot(t, (glm::inverse(gaussian.covariance) * t));
     return gaussian.weight * gpe::exp(v);
 }
 
@@ -172,10 +197,22 @@ __forceinline__ __host__ __device__ scalar_t integrate_inversed(const Gaussian<D
 }
 
 template <typename scalar_t, int DIMS>
-__forceinline__ __host__ __device__ scalar_t gaussian_amplitude(const glm::mat<DIMS, DIMS, scalar_t>& inversed_cov) {
+__forceinline__ __host__ __device__ scalar_t integrate(const Gaussian<DIMS, scalar_t>& gaussian) {
+    return gaussian.weight * gpe::sqrt(gpe::pow(2 * glm::pi<scalar_t>(), scalar_t(DIMS)) * glm::determinant(gaussian.covariance));
+}
+
+template <typename scalar_t, int DIMS>
+__forceinline__ __host__ __device__ scalar_t gaussian_amplitude_inversed(const glm::mat<DIMS, DIMS, scalar_t>& inversed_cov) {
     constexpr auto a = gcem::pow(scalar_t(2) * glm::pi<scalar_t>(), - DIMS * scalar_t(0.5));
     assert(glm::determinant(inversed_cov) > 0);
     return a * gpe::sqrt(glm::determinant(inversed_cov));
+}
+
+template <typename scalar_t, int DIMS>
+__forceinline__ __host__ __device__ scalar_t gaussian_amplitude(const glm::mat<DIMS, DIMS, scalar_t>& cov) {
+    constexpr auto a = gcem::pow(scalar_t(2) * glm::pi<scalar_t>(), - DIMS * scalar_t(0.5));
+    assert(glm::determinant(cov) > 0);
+    return a / gpe::sqrt(glm::determinant(cov));
 }
 
 inline void check_mixture(torch::Tensor mixture) {

@@ -124,8 +124,8 @@ EXECUTION_DEVICES scalar_t centroid_distance(const gpe::Gaussian<N_DIMS, scalar_
 template <typename scalar_t, int N_DIMS, int N_FITTING_COMPONENTS>
 EXECUTION_DEVICES scalar_t likelihood(const gpe::Gaussian<N_DIMS, scalar_t>& target, const gpe::Gaussian<N_DIMS, scalar_t>& fitting) {
     // Continuous projection for fast L 1 reconstruction: Equation 9
-    scalar_t a = gpe::evaluate_inversed(fitting.position, gpe::gaussian_amplitude(target.covariance), target.position, target.covariance);
-    auto c = fitting.covariance * glm::inverse(target.covariance);
+    scalar_t a = gpe::evaluate(fitting.position, gpe::gaussian_amplitude(target.covariance), target.position, target.covariance);
+    auto c = glm::inverse(fitting.covariance) * target.covariance;
     scalar_t b = gpe::exp(scalar_t(-0.5) * gpe::trace(c));
     scalar_t wi_bar = N_FITTING_COMPONENTS * fitting.weight / gpe::gaussian_amplitude(fitting.covariance);
     return gpe::pow(a * b, wi_bar);
@@ -135,13 +135,16 @@ template <typename scalar_t, int N_DIMS>
 EXECUTION_DEVICES scalar_t kl_divergence(const gpe::Gaussian<N_DIMS, scalar_t>& target, const gpe::Gaussian<N_DIMS, scalar_t>& fitting) {
     auto p_diff = target.position - fitting.position;
 
-    auto target_cov = glm::inverse(target.covariance);
-    auto fitting_cov = glm::inverse(fitting.covariance);
+    auto target_cov = target.covariance;
+    auto fitting_cov = fitting.covariance;
+    auto inversed_target_cov = glm::inverse(target.covariance);
+    auto inversed_fitting_cov = glm::inverse(fitting.covariance);
 
-    auto mahalanobis_distance = gpe::sqrt(glm::dot(p_diff, fitting.covariance * p_diff));
-    auto trace = gpe::trace(fitting.covariance * target_cov);
+    // mahalanobis_factor = mahalanobis distance squared
+    auto mahalanobis_factor = glm::dot(p_diff, inversed_fitting_cov * p_diff);
+    auto trace = gpe::trace(inversed_fitting_cov * target_cov);
     auto logarithm = gpe::log(glm::determinant(target_cov) / glm::determinant(fitting_cov));
-    return scalar_t(0.5) * (mahalanobis_distance + trace - N_DIMS - logarithm);
+    return scalar_t(0.5) * (mahalanobis_factor + trace - N_DIMS - logarithm);
 }
 
 template <uint32_t N_CLUSTERS, typename scalar_t, int N_DIMS, uint32_t N_INPUT>
@@ -245,7 +248,7 @@ gpe::Gaussian<N_DIMS, scalar_t> averageCluster(const gpe::Vector<gpe::Gaussian<N
         new_gaussian.weight += gaussian.weight;
         new_gaussian.position += gaussian.weight * gaussian.position;
         assert(glm::determinant(gaussian.covariance) > 0);
-        new_gaussian.covariance += gaussian.weight * glm::inverse(gaussian.covariance);
+        new_gaussian.covariance += gaussian.weight * gaussian.covariance;
     }
     if (new_gaussian.weight == 0) {
         new_gaussian.covariance = typename G::cov_t(1.0);
@@ -255,8 +258,6 @@ gpe::Gaussian<N_DIMS, scalar_t> averageCluster(const gpe::Vector<gpe::Gaussian<N
         new_gaussian.position /= new_gaussian.weight;
         new_gaussian.covariance /= new_gaussian.weight;
         new_gaussian.weight /= scalar_t(cluster_indices.size());
-        assert(glm::determinant(new_gaussian.covariance) > 0);
-        new_gaussian.covariance = glm::inverse(new_gaussian.covariance);
         assert(glm::determinant(new_gaussian.covariance) > 0);
     }
     assert(std::isnan(new_gaussian.weight) == false);
@@ -286,8 +287,9 @@ EXECUTION_DEVICES void fit_reduce_node(AugmentedBvh<scalar_t, N_DIMS, REDUCTION_
 
 //    typename Abvh::NodeAttributes& destination_attribute = bvh.per_node_attributes[bvh.node_id(node)];
 //    for (unsigned i = 0; i < N_FITTING; ++i) {
-//        destination_attribute.gaussians.push_back(averageCluster(gaussians, clustering[i]));
+//        destination_attribute.gaussians.push_back(averageCluster(target, clustering[i]));
 //    }
+//    return;
     gpe::Vector<G, N_FITTING> fitting;
     for (unsigned i = 0; i < N_FITTING; ++i) {
         fitting.push_back(averageCluster(target, clustering[i]));
@@ -364,7 +366,7 @@ EXECUTION_DEVICES void fit_reduce_node(AugmentedBvh<scalar_t, N_DIMS, REDUCTION_
     assert(!gpe::reduce(newCovariances, false, [](bool o, const cov_t& v) { return o || gpe::isnan(v); }));
 
 //    normal_amplitudes = gm.normal_amplitudes(newCovariances)
-    gpe::Vector<scalar_t, N_FITTING> normal_amplitudes = gpe::transform(newCovariances, [](const cov_t& cov) { return gpe::gaussian_amplitude(cov); });
+    gpe::Vector<scalar_t, N_FITTING> normal_amplitudes = gpe::transform(newCovariances, [](const cov_t& cov) { return gpe::gaussian_amplitude_inversed(cov); });
     assert(!gpe::reduce(normal_amplitudes, false, [](bool o, const scalar_t& v) { return o || gpe::isnan(v); }));
 
 //    fitting_double_gmm = gm.pack_mixture(newWeights.contiguous() * normal_amplitudes * gm.weights(fitting_double_gmm).sign(), newPositions.contiguous(), newCovariances.contiguous())
@@ -402,7 +404,7 @@ EXECUTION_DEVICES void iterate_over_nodes(const dim3& gpe_gridDim, const dim3& g
         const G& leaf_gaussian = bvh.gaussians[node_id - n_internal_nodes];
         bvh.per_node_attributes[node_id].gaussians.push_back(leaf_gaussian);
         bvh.per_node_attributes[node_id].n_child_leaves = 1;
-        bvh.per_node_attributes[node_id].gm_integral = gpe::integrate_inversed(leaf_gaussian);
+        bvh.per_node_attributes[node_id].gm_integral = gpe::integrate(leaf_gaussian);
     }
 
     // collect Gs in per_node_gaussians
@@ -532,7 +534,7 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> forward_impl(at::Tensor 
     using namespace torch::indexing;
     using LBVH = lbvh::Bvh<2, float>;
 
-    constexpr int REDUCTION_N = 8;
+    constexpr int REDUCTION_N = 2;
 
     // todo: flatten mixture for kernel, i.g. nbatch/nlayers/ncomponents/7 => nmixture/ncomponents/7
 
@@ -543,13 +545,12 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> forward_impl(at::Tensor 
     TORCH_CHECK(mixture.dtype() == caffe2::TypeMeta::Make<float>(), "atm only float")
 
     const auto n_mixtures = n.batch * n.layers;
-    const auto bvh = LBVH(mixture);
+    const auto bvh = LBVH(gpe::mixture_with_inversed_covariances(mixture).contiguous());
     const auto n_internal_nodes = bvh.m_n_internal_nodes;
     const auto n_nodes = bvh.m_n_nodes;
-    mixture = mixture.view({n_mixtures, n.components, -1});
+    mixture = mixture.view({n_mixtures, n.components, -1}).contiguous();
     auto flat_bvh_nodes = bvh.m_nodes.view({n_mixtures, n_nodes, -1});
     auto flat_bvh_aabbs = bvh.m_aabbs.view({n_mixtures, n_nodes, -1});
-    auto scratch_mixture = mixture.clone();
     auto flag_container = torch::zeros({n_mixtures, n_internal_nodes}, torch::TensorOptions(mixture.device()).dtype(torch::ScalarType::Int));
 
     // scratch_container: int n_gaussians; float integral_sum;
@@ -567,7 +568,7 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> forward_impl(at::Tensor 
                                                        (uint(1) + dimBlock.z - 1) / dimBlock.z);
 
 
-                                   auto mixture_a = gpe::accessor<scalar_t, 3>(scratch_mixture);
+                                   auto mixture_a = gpe::accessor<scalar_t, 3>(mixture);
                                    auto nodes_a = gpe::accessor<lbvh::detail::Node::index_type_torch, 3>(flat_bvh_nodes);
                                    auto aabbs_a = gpe::accessor<scalar_t, 3>(flat_bvh_aabbs);
                                    auto node_attributes_a = gpe::accessor<scalar_t, 3>(node_attributes);
@@ -588,7 +589,7 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> forward_impl(at::Tensor 
                                             dim3 dimBlock = dim3(32, 1, 1);
                                             dim3 dimGrid = dim3((uint(n_mixtures) + dimBlock.x - 1) / dimBlock.x, 1, 1);
 
-                                            auto mixture_a = gpe::accessor<scalar_t, 3>(scratch_mixture);
+                                            auto mixture_a = gpe::accessor<scalar_t, 3>(mixture);
                                             auto out_mixture_a = gpe::accessor<scalar_t, 3>(out_mixture);
                                             auto nodes_a = gpe::accessor<lbvh::detail::Node::index_type_torch, 3>(flat_bvh_nodes);
                                             auto aabbs_a = gpe::accessor<scalar_t, 3>(flat_bvh_aabbs);
