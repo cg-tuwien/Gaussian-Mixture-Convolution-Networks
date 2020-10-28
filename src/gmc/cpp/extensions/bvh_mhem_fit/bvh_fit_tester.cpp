@@ -76,15 +76,15 @@ int main(int argc, char *argv[]) {
             auto mixture = container.attr(std::to_string(i)).toTensor();//.index({Slice(5, 6), Slice(0, 1), Slice(), Slice()});
 //            auto mixture = torch::tensor({{0.02f, 0.f, 0.f, 1.01f, 1.f, 1.f, 1.0f},
 //                                          {0.02f, 5.f, 5.f, 1.01f, 0.5f, 0.5f, 4.0f}}).view({1, 1, 2, 7});
-            const auto weights = gpe::weights(mixture);
+            const auto weights = torch::abs(gpe::weights(mixture));
             const auto positions = gpe::positions(mixture);
             const auto invCovs = gpe::covariances(mixture).inverse().transpose(-1, -2);
             mixture = gpe::pack_mixture(weights, positions, invCovs.contiguous());
-            if (USE_CUDA)
-                mixture = mixture.cuda();
+//            if (USE_CUDA)
+//                mixture = mixture.cuda();
             std::cout << "layer " << i << ": " << mixture.sizes() << " device: " << mixture.device() << std::endl;
-//            if (RENDER)
-//                show(mixture, 128, LIMIT_N_BATCH);
+            if (RENDER)
+                show(mixture, 128, LIMIT_N_BATCH);
 
             cudaDeviceSynchronize();
 

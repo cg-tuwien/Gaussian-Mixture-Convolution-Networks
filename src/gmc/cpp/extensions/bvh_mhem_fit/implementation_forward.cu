@@ -121,31 +121,27 @@ EXECUTION_DEVICES scalar_t centroid_distance(const gpe::Gaussian<N_DIMS, scalar_
     return gpe::squared_norm(a.position - b.position);
 }
 
+template <typename scalar_t, int N_DIMS, int N_FITTING_COMPONENTS>
+EXECUTION_DEVICES scalar_t likelihood(const gpe::Gaussian<N_DIMS, scalar_t>& target, const gpe::Gaussian<N_DIMS, scalar_t>& fitting) {
+    // Continuous projection for fast L 1 reconstruction: Equation 9
+    scalar_t a = gpe::evaluate_inversed(fitting.position, gpe::gaussian_amplitude(target.covariance), target.position, target.covariance);
+    auto c = fitting.covariance * glm::inverse(target.covariance);
+    scalar_t b = gpe::exp(scalar_t(-0.5) * gpe::trace(c));
+    scalar_t wi_bar = N_FITTING_COMPONENTS * fitting.weight / gpe::gaussian_amplitude(fitting.covariance);
+    return gpe::pow(a * b, wi_bar);
+}
 
-template<typename scalar_t, int N_DIMS, uint32_t N_GAUSSIANS_CAPACITY, typename DisparityFunction>
-EXECUTION_DEVICES
-gpe::Vector2d<scalar_t, N_GAUSSIANS_CAPACITY> compute_disparity_matrix(const gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_GAUSSIANS_CAPACITY>& gaussians,
-                                                                        DisparityFunction disparity_fun) {
-    using G = gpe::Gaussian<N_DIMS, scalar_t>;
-    gpe::Vector2d<scalar_t, N_GAUSSIANS_CAPACITY> matrix;
-    matrix.resize(gaussians.size());
-    for (unsigned i = 0; i < matrix.size(); ++i) {
-        matrix[i].resize(gaussians.size());
-    }
+template <typename scalar_t, int N_DIMS>
+EXECUTION_DEVICES scalar_t kl_divergence(const gpe::Gaussian<N_DIMS, scalar_t>& target, const gpe::Gaussian<N_DIMS, scalar_t>& fitting) {
+    auto p_diff = target.position - fitting.position;
 
-    for (unsigned i = 0; i < gaussians.size(); ++i) {
-        const G& g_i = gaussians[i];
-        matrix[i][i] = 0;
-        for (unsigned j = i + 1; j < gaussians.size(); ++j) {
-            const G& g_j = gaussians[j];
-            scalar_t disparity = disparity_fun(g_i, g_j);
-            assert(std::isnan(disparity) == false);
-            // todo: non-symmetric disparities, like kl-divergence
-            matrix[i][j] = disparity;
-            matrix[j][i] = disparity;
-        }
-    }
-    return matrix;
+    auto target_cov = glm::inverse(target.covariance);
+    auto fitting_cov = glm::inverse(fitting.covariance);
+
+    auto mahalanobis_distance = gpe::sqrt(glm::dot(p_diff, fitting.covariance * p_diff));
+    auto trace = gpe::trace(fitting.covariance * target_cov);
+    auto logarithm = gpe::log(glm::determinant(target_cov) / glm::determinant(fitting_cov));
+    return scalar_t(0.5) * (mahalanobis_distance + trace - N_DIMS - logarithm);
 }
 
 template <uint32_t N_CLUSTERS, typename scalar_t, int N_DIMS, uint32_t N_INPUT>
@@ -275,17 +271,108 @@ EXECUTION_DEVICES void fit_reduce_node(AugmentedBvh<scalar_t, N_DIMS, REDUCTION_
                                        const lbvh::detail::Node* node) {
     using Abvh = AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>;
     using G = gpe::Gaussian<N_DIMS, scalar_t>;
-    // for now (testing) simply select N_GAUSSIANS_TARGET strongest gaussians
-    // no stl available in cuda 10.1.
-    const auto gaussians = bvh.collect_child_gaussians(node);
+    using pos_t = typename G::pos_t;
+    using cov_t = typename G::cov_t;
 
-    const auto disparity_matrix = compute_disparity_matrix(gaussians, centroid_distance<scalar_t, N_DIMS>);   // returns gpe::Vector<gpe::Vector>
-    const auto clustering = clusterise<REDUCTION_N>(gaussians, disparity_matrix);                            // returns gpe::Array<gpe::Vector>
-    assert(clustering.size() == REDUCTION_N);
+    constexpr scalar_t kl_div_threshold = scalar_t(1.5);
+    constexpr unsigned N_FITTING = REDUCTION_N;
+    constexpr unsigned N_TARGET = REDUCTION_N * 2;
 
+    const gpe::Vector<G, N_TARGET> target = bvh.collect_child_gaussians(node);
+
+    const auto disparity_matrix = gpe::outer_product(target, target, centroid_distance<scalar_t, N_DIMS>);   // returns gpe::Vector<gpe::Vector>
+    const auto clustering = clusterise<N_FITTING>(target, disparity_matrix);                             // returns gpe::Array<gpe::Vector>
+    assert(clustering.size() == N_FITTING);
+
+//    typename Abvh::NodeAttributes& destination_attribute = bvh.per_node_attributes[bvh.node_id(node)];
+//    for (unsigned i = 0; i < N_FITTING; ++i) {
+//        destination_attribute.gaussians.push_back(averageCluster(gaussians, clustering[i]));
+//    }
+    gpe::Vector<G, N_FITTING> fitting;
+    for (unsigned i = 0; i < N_FITTING; ++i) {
+        fitting.push_back(averageCluster(target, clustering[i]));
+    }
+
+    const gpe::Vector2d<scalar_t, N_TARGET, N_FITTING> likelihood_matrix = gpe::outer_product(target, fitting, likelihood<scalar_t, N_DIMS, N_FITTING>);
+//    auto clamp_matrix = gpe::outer_product(target, fitting, [kl_div_threshold](auto target, auto fitting) {
+//        return (gpe::sign(fitting.weight) == gpe::sign(target.weight) && kl_divergence<scalar_t, N_DIMS>(target, fitting) < kl_div_threshold) ? scalar_t(1) : scalar_t(0);
+//    });
+
+//    likelihoods = likelihoods * (gm.weights(fitting_double_gmm).abs() / gm.normal_amplitudes(gm.covariances(fitting_double_gmm))).view(n_batch, n_layers, 1, n_components_fitting)
+    const auto massaged_fitting_weights = gpe::transform(fitting, [](const G& g) { return gpe::abs(g.weight) / gpe::gaussian_amplitude(g.covariance); });
+    assert(!gpe::reduce(massaged_fitting_weights, false, [](bool o, scalar_t v) { return o || gpe::isnan(v); }));
+    const gpe::Vector2d<scalar_t, N_TARGET, N_FITTING> massaged_likelihood_matrix = gpe::cwise_fun(massaged_fitting_weights, likelihood_matrix, gpe::functors::times<scalar_t>);
+    assert(!gpe::reduce(massaged_likelihood_matrix, false, [](bool o, scalar_t v) { return o || gpe::isnan(v); }));
+
+
+//    likelihoods_sum = likelihoods.sum(3, keepdim=True)
+    const gpe::Vector<scalar_t, N_TARGET> massaged_likelihood_sum = gpe::reduce_rows(massaged_likelihood_matrix, scalar_t(0.00001), gpe::functors::plus<scalar_t>);
+//    responsibilities = likelihoods / (likelihoods_sum + 0.00001)
+    gpe::Vector2d<scalar_t, N_TARGET, N_FITTING> responsibilities = gpe::cwise_fun(massaged_likelihood_matrix, massaged_likelihood_sum, gpe::functors::divided_AbyB<scalar_t>);
+
+//    responsibilities = responsibilities * (gm.weights(target_double_gmm).abs() / gm.normal_amplitudes(gm.covariances(target_double_gmm))).unsqueeze(-1)
+    const auto massaged_target_weights = gpe::transform(fitting, [](const G& g) { return gpe::abs(g.weight) / gpe::gaussian_amplitude(g.covariance); });
+    assert(!gpe::reduce(massaged_target_weights, false, [](bool o, scalar_t v) { return o || gpe::isnan(v); }));
+    responsibilities = gpe::cwise_fun(massaged_target_weights, responsibilities, gpe::functors::times<scalar_t>);
+
+//    assert not torch.any(torch.isnan(responsibilities))
+    assert(!gpe::reduce(responsibilities, false, [](bool o, scalar_t v) { return o || gpe::isnan(v); }));
+
+//    newWeights = torch.sum(responsibilities, 2)
+    gpe::Vector<scalar_t, N_FITTING> newWeights = gpe::reduce_cols(responsibilities, scalar_t(0), gpe::functors::plus<scalar_t>);
+//    assert not torch.any(torch.isnan(newWeights))
+    assert(!gpe::reduce(newWeights, false, [](bool o, scalar_t v) { return o || gpe::isnan(v); }));
+
+//    responsibilities = responsibilities / (newWeights + 0.00001).view(n_batch, n_layers, 1, n_components_fitting)
+    responsibilities = gpe::cwise_fun(gpe::transform(newWeights, [](auto w) { return w + scalar_t(0.00001); }), responsibilities, gpe::functors::divided_BbyA<scalar_t>);
+//    assert not torch.any(torch.isnan(responsibilities))
+    assert(!gpe::reduce(responsibilities, false, [](bool o, scalar_t v) { return o || gpe::isnan(v); }));
+//    assert torch.all(responsibilities >= 0)
+    assert(!gpe::reduce(responsibilities, false, [](bool o, scalar_t v) { return o || v >= 0; }));
+
+//    newPositions = torch.sum(responsibilities.unsqueeze(-1) * gm.positions(target_double_gmm).view(n_batch, n_layers, n_components_target, 1, n_dims), 2)
+    gpe::Vector2d<pos_t, N_TARGET, N_FITTING> weightedPositions = gpe::cwise_fun(responsibilities, target, [](scalar_t r, const G& g) { return r * g.position; });
+    gpe::Vector<pos_t, N_FITTING> newPositions = gpe::reduce_cols(weightedPositions, pos_t(0), gpe::functors::plus<pos_t>);
+//    assert not torch.any(torch.isnan(newPositions))
+    assert(!gpe::reduce(newPositions, false, [](bool o, const pos_t& v) { return o || gpe::isnan(v); }));
+
+//    posDiffs = gm.positions(target_double_gmm).view(n_batch, n_layers, n_components_target, 1, n_dims, 1) - newPositions.view(n_batch, n_layers, 1, n_components_fitting, n_dims, 1)
+    gpe::Vector<pos_t, N_TARGET> targetPositions = gpe::transform(target, [](const G& g){ return g.position; });
+    gpe::Vector2d<pos_t, N_TARGET, N_FITTING> posDiffs = gpe::outer_product(targetPositions, newPositions, gpe::functors::minus<pos_t>);
+//    assert not torch.any(torch.isnan(posDiffs))
+    assert(!gpe::reduce(posDiffs, false, [](bool o, const pos_t& v) { return o || gpe::isnan(v); }));
+
+/*
+    newCovariances = (torch.sum(responsibilities.unsqueeze(-1).unsqueeze(-1) *
+                                (gm.covariances(target_double_gmm).view(n_batch, n_layers, n_components_target, 1, n_dims, n_dims) + posDiffs.matmul(posDiffs.transpose(-1, -2))), 2))
+*/
+    const gpe::Vector2d<cov_t, N_TARGET, N_FITTING> posDiffsOuter = gpe::transform(posDiffs, [](const pos_t& p) { return glm::outerProduct(p, p); });
+    gpe::Vector<cov_t, N_TARGET> targetCovs = gpe::transform(target, [](const G& g){ return g.covariance; });
+    const gpe::Vector2d<cov_t, N_TARGET, N_FITTING> unweightedCovs = gpe::cwise_fun(posDiffsOuter, targetCovs, gpe::functors::plus<cov_t>);
+
+    const gpe::Vector2d<cov_t, N_TARGET, N_FITTING> weightedCovs = gpe::cwise_fun(responsibilities, unweightedCovs, [](scalar_t r, const cov_t& cov) { return r * cov; });
+    gpe::Vector<cov_t, N_FITTING> newCovariances = gpe::reduce_cols(weightedCovs, cov_t(0), gpe::functors::plus<cov_t>);
+
+//    newCovariances = newCovariances + (newWeights < 0.0001).unsqueeze(-1).unsqueeze(-1) * torch.eye(n_dims, device=device).view(1, 1, 1, n_dims, n_dims) * 0.0001
+    newCovariances = gpe::cwise_fun(newCovariances, newWeights, [](cov_t cov, scalar_t w) {
+        if (w < scalar_t(0.0001))
+            cov += cov_t(1) * scalar_t(0.0001);
+        return cov;
+    });
+
+//    assert not torch.any(torch.isnan(newCovariances))
+    assert(!gpe::reduce(newCovariances, false, [](bool o, const cov_t& v) { return o || gpe::isnan(v); }));
+
+//    normal_amplitudes = gm.normal_amplitudes(newCovariances)
+    gpe::Vector<scalar_t, N_FITTING> normal_amplitudes = gpe::transform(newCovariances, [](const cov_t& cov) { return gpe::gaussian_amplitude(cov); });
+    assert(!gpe::reduce(normal_amplitudes, false, [](bool o, const scalar_t& v) { return o || gpe::isnan(v); }));
+
+//    fitting_double_gmm = gm.pack_mixture(newWeights.contiguous() * normal_amplitudes * gm.weights(fitting_double_gmm).sign(), newPositions.contiguous(), newCovariances.contiguous())
     typename Abvh::NodeAttributes& destination_attribute = bvh.per_node_attributes[bvh.node_id(node)];
-    for (unsigned i = 0; i < REDUCTION_N; ++i) {
-        destination_attribute.gaussians.push_back(averageCluster(gaussians, clustering[i]));
+    for (unsigned i = 0; i < target.size(); ++i) {
+        destination_attribute.gaussians.push_back(G{newWeights[i] * normal_amplitudes[i],
+                                                    newPositions[i],
+                                                    newCovariances[i]});
     }
 }
 
