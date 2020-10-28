@@ -95,6 +95,15 @@ struct Vector {
         m_size = size;
     }
 
+    static Vector<T, N, size_type> filled(const T& value, unsigned n_elements) {
+        assert(n_elements < N);
+        Vector<T, N, size_type> vec;
+        vec.resize(n_elements);
+        for (int i = 0; i < n_elements; ++i) {
+            vec[i] = value;
+        }
+    }
+
     __host__ __device__ __forceinline__
     T& operator[](size_t i) {
         assert(i < m_size);
@@ -175,8 +184,20 @@ T plus(const T& a, const T& b) {
     return a + b;
 }
 template<typename T>
+T minus(const T& a, const T& b) {
+    return a - b;
+}
+template<typename T>
 T times(const T& a, const T& b) {
     return a * b;
+}
+template<typename T>
+T divided_AbyB(const T& a, const T& b) {
+    return a / b;
+}
+template<typename T>
+T divided_BbyA(const T& a, const T& b) {
+    return b / a;
 }
 template<typename T>
 bool logical_and(const T& a, const T& b) {
@@ -217,6 +238,35 @@ auto outer_product(const gpe::Vector<T1, N1>& m1,
     return matrix;
 }
 
+template<typename T, uint32_t N, typename Function>
+__host__ __device__ __forceinline__
+auto transform(const gpe::Vector<T, N>& vec, Function fun) -> Vector<decltype (fun(vec.front())), N> {
+    using ProductType = decltype (fun(vec.front()));
+    gpe::Vector<ProductType, N> retvec;
+    retvec.resize(vec.size());
+    for (unsigned i = 0; i < vec.size(); ++i) {
+        retvec[i] = fun(vec[i]);
+    }
+    return retvec;
+}
+
+template<typename T, uint32_t N1, uint32_t N2, typename Function>
+__host__ __device__ __forceinline__
+auto transform(const gpe::Vector2d<T, N1, N2>& mat, Function fun) -> Vector2d<decltype (fun(mat.front().front())), N1, N2> {
+    using ProductType = decltype (fun(mat.front().front()));
+    gpe::Vector2d<ProductType, N1, N2> retmat;
+    retmat.resize(mat.size());
+    for (unsigned i = 0; i < mat.size(); ++i) {
+        assert(mat[0].size() == mat[i].size());
+        assert(mat[i].size() == mat[i].size());
+        retmat[i].resize(mat[i].size());
+        for (unsigned j = 0; j < mat.size(); ++j) {
+            retmat[i][j] = fun(mat[i][j]);
+        }
+    }
+    return retmat;
+}
+
 template<typename T1, typename T2, uint32_t N, typename Function>
 __host__ __device__ __forceinline__
 auto cwise_fun(const gpe::Vector<T1, N>& m1,
@@ -244,10 +294,58 @@ auto cwise_fun(const Vector2d<T1, N1, N2>& m1,
     gpe::Vector2d<ProductType, N1, N2> matrix;
     matrix.resize(m1.size());
     for (unsigned i = 0; i < m1.size(); ++i) {
-        matrix[i].resize(m2.size());
-        for (unsigned j = 0; j < m2.size(); ++j) {
+        assert(m1[0].size() == m1[i].size());
+        assert(m1[i].size() == m2[i].size());
+        matrix[i].resize(m1[i].size());
+        for (unsigned j = 0; j < m1[i].size(); ++j) {
             const T1& a = m1[i][j];
             const T2& b = m2[i][j];
+            ProductType v = fun(a, b);
+            matrix[i][j] = v;
+        }
+    }
+    return matrix;
+}
+
+/// multiplies every row in m with the corresponding element in v (column vector)
+template<typename T1, typename T2, uint32_t N1, uint32_t N2, typename Function>
+__host__ __device__ __forceinline__
+auto cwise_fun(const Vector2d<T1, N1, N2>& m,
+               const Vector<T2, N1>& v,
+               Function fun) -> Vector2d<decltype (fun(m.front().front(), v.front())), N1, N2> {
+    using ProductType = decltype (fun(m.front().front(), v.front()));
+    gpe::Vector2d<ProductType, N1, N2> matrix;
+    assert(m.size() == v.size());
+    matrix.resize(m.size());
+    for (unsigned i = 0; i < m.size(); ++i) {
+        assert(m[0].size() == m[i].size());
+        matrix[i].resize(m[i].size());
+        for (unsigned j = 0; j < m[i].size(); ++j) {
+            const T1& a = m[i][j];
+            const T2& b = v[i];
+            ProductType v = fun(a, b);
+            matrix[i][j] = v;
+        }
+    }
+    return matrix;
+}
+
+/// multiplies every column in m with the corresponding element in v (row vector)
+template<typename T1, typename T2, uint32_t N1, uint32_t N2, typename Function>
+__host__ __device__ __forceinline__
+auto cwise_fun(const Vector<T1, N2>& v,
+               const Vector2d<T2, N1, N2>& m,
+               Function fun) -> Vector2d<decltype (fun(v.front(), m.front().front())), N1, N2> {
+    using ProductType = decltype (fun(v.front(), m.front().front()));
+    gpe::Vector2d<ProductType, N1, N2> matrix;
+    matrix.resize(m.size());
+    for (unsigned i = 0; i < m.size(); ++i) {
+        assert(m[0].size() == v.size());
+        assert(m[0].size() == m[i].size());
+        matrix[i].resize(m[i].size());
+        for (unsigned j = 0; j < m[i].size(); ++j) {
+            const T2& a = m[i][j];
+            const T1& b = v[j];
             ProductType v = fun(a, b);
             matrix[i][j] = v;
         }
@@ -271,6 +369,39 @@ T2 reduce(const gpe::Vector2d<T1, N1, N2>& matrix, T2 initial, Function fun) {
     for (unsigned i = 0; i < matrix.size(); ++i) {
         for (unsigned j = 0; j < matrix[i].size(); ++j) {
             initial = fun(initial, matrix[i][j]);
+        }
+    }
+    return initial;
+}
+
+template<typename T1, typename T2, uint32_t N1, uint32_t N2, typename Function>
+__host__ __device__ __forceinline__
+gpe::Vector<T2, N1> reduce_rows(const gpe::Vector2d<T1, N1, N2>& matrix, T2 initial, Function fun) {
+    gpe::Vector<T2, N1> retvec;
+    retvec.resize(matrix.size());
+    for (unsigned i = 0; i < matrix.size(); ++i) {
+        retvec[i] = initial;
+        for (unsigned j = 0; j < matrix[i].size(); ++j) {
+            retvec[i] = fun(retvec[i], matrix[i][j]);
+        }
+    }
+    return initial;
+}
+
+template<typename T1, typename T2, uint32_t N1, uint32_t N2, typename Function>
+__host__ __device__ __forceinline__
+    gpe::Vector<T2, N2> reduce_cols(const gpe::Vector2d<T1, N1, N2>& matrix, T2 initial, Function fun) {
+    gpe::Vector<T2, N2> retvec;
+    if (matrix[0].size()) {
+        retvec.resize(matrix[0].size());
+        for (unsigned j = 0; j < retvec.size(); ++j) {
+            retvec[j] = initial;
+        }
+    }
+    for (unsigned i = 0; i < matrix.size(); ++i) {
+        assert(matrix[0].size() == matrix[i].size());
+        for (unsigned j = 0; j < matrix[i].size(); ++j) {
+            retvec[j] = fun(retvec[j], matrix[i][j]);
         }
     }
     return initial;
