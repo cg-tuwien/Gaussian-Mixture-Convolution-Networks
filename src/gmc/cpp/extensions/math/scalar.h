@@ -101,6 +101,12 @@ __forceinline__ __device__ float abs(float x) {
 __forceinline__ __device__ double abs(double x) {
     return ::fabs(x);
 }
+
+template <typename T>
+__forceinline__ __device__ bool isnan(T x) {
+    return ::isnan(x);
+}
+
 #else
 
 template <typename scalar_t>
@@ -138,6 +144,12 @@ template <typename scalar_t>
 inline scalar_t abs(scalar_t x) {
     return std::abs(x);
 }
+
+template <typename T>
+bool isnan(T x) {
+    return std::isnan(x);
+}
+
 
 #endif
 

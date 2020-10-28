@@ -64,6 +64,7 @@ set(MY_INCLUDE_PATHS
     ../glm
     ../cub
     ../yamc/include
+    ../gcem/include
     .
 )
 

@@ -3,6 +3,8 @@
 
 #include <glm/geometric.hpp>
 
+#include "math/scalar.h"
+
 #ifndef __CUDACC__
 #define __device__
 #define __host__
@@ -51,6 +53,23 @@ __forceinline__ __host__ __device__ const glm::mat<DIMS, DIMS, scalar_t>& mat(co
 template <int DIMS, typename scalar_t>
 __forceinline__ __host__ __device__ glm::mat<DIMS, DIMS, scalar_t>& mat(scalar_t& memory_location) {
     return reinterpret_cast<glm::mat<DIMS, DIMS, scalar_t>&>(memory_location);
+}
+
+template <int DIMS, typename scalar_t>
+__forceinline__ __device__ bool isnan(const glm::vec<DIMS, scalar_t>& x) {
+    bool nan = false;
+    for (unsigned i = 0; i < DIMS; ++i)
+        nan = nan || gpe::isnan(x[i]);
+    return nan;
+}
+
+template <int DIMS, typename scalar_t>
+__forceinline__ __device__ bool isnan(const glm::mat<DIMS, DIMS, scalar_t>& x) {
+    bool nan = false;
+    for (unsigned i = 0; i < DIMS; ++i)
+        for (unsigned j = 0; j < DIMS; ++j)
+            nan = nan || gpe::isnan(x[i][j]);
+    return nan;
 }
 
 }

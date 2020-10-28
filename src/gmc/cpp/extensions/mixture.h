@@ -4,11 +4,11 @@
 #include <iostream>
 #include <type_traits>
 
-#include <math_constants.h>
-#include <torch/types.h>
-
+#include <gcem.hpp>
 #define GLM_FORCE_INLINE
+#include <glm/gtc/constants.hpp>
 #include <glm/matrix.hpp>
+#include <torch/types.h>
 
 #include "math/scalar.h"
 #include "math/matrix.h"
@@ -149,7 +149,7 @@ __forceinline__ __host__ __device__ auto gaussian(const TensorAccessor&& gaussia
 }
 
 template <typename scalar_t, int DIMS>
-__forceinline__ __host__ __device__ scalar_t evaluate_gaussian(const glm::vec<DIMS, scalar_t>& evalpos,
+__forceinline__ __host__ __device__ scalar_t evaluate_inversed(const glm::vec<DIMS, scalar_t>& evalpos,
                                                                const scalar_t& weight,
                                                                const glm::vec<DIMS, scalar_t>& pos,
                                                                const glm::mat<DIMS, DIMS, scalar_t>& inversed_cov) {
@@ -159,8 +159,23 @@ __forceinline__ __host__ __device__ scalar_t evaluate_gaussian(const glm::vec<DI
 }
 
 template <typename scalar_t, int DIMS>
+__forceinline__ __host__ __device__ scalar_t evaluate_inversed(const Gaussian<DIMS, scalar_t>& gaussian,
+                                                               const glm::vec<DIMS, scalar_t>& evalpos) {
+    const auto t = evalpos - gaussian.position;
+    const auto v = scalar_t(-0.5) * glm::dot(t, (gaussian.covariance * t));
+    return gaussian.weight * gpe::exp(v);
+}
+
+template <typename scalar_t, int DIMS>
 __forceinline__ __host__ __device__ scalar_t integrate_inversed(const Gaussian<DIMS, scalar_t>& gaussian) {
-    return gaussian.weight * gpe::sqrt(gpe::pow(2 * scalar_t(CUDART_PI), scalar_t(DIMS)) / glm::determinant(gaussian.covariance));
+    return gaussian.weight * gpe::sqrt(gpe::pow(2 * glm::pi<scalar_t>(), scalar_t(DIMS)) / glm::determinant(gaussian.covariance));
+}
+
+template <typename scalar_t, int DIMS>
+__forceinline__ __host__ __device__ scalar_t gaussian_amplitude(const glm::mat<DIMS, DIMS, scalar_t>& inversed_cov) {
+    constexpr auto a = gcem::pow(scalar_t(2) * glm::pi<scalar_t>(), - DIMS * scalar_t(0.5));
+    assert(glm::determinant(inversed_cov) > 0);
+    return a * gpe::sqrt(glm::determinant(inversed_cov));
 }
 
 inline void check_mixture(torch::Tensor mixture) {

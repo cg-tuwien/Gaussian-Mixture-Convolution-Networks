@@ -59,7 +59,7 @@ void evaluate_bvh_forward(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
     auto& sum = sums[batch_index][layer_index][xes_index];
     auto evaluate = [&bvh, &sum, &x_pos] (unsigned index) {
         const auto& g = bvh.objects[index];
-        sum += gpe::evaluate_gaussian(x_pos, g.weight, g.position, g.covariance);
+        sum += gpe::evaluate_inversed(x_pos, g.weight, g.position, g.covariance);
     };
     lbvh::query_device_with_fun(bvh, lbvh::inside_aabb(point), evaluate);
 }
