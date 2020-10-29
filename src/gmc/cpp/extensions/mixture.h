@@ -193,12 +193,14 @@ __forceinline__ __host__ __device__ scalar_t evaluate(const Gaussian<DIMS, scala
 
 template <typename scalar_t, int DIMS>
 __forceinline__ __host__ __device__ scalar_t integrate_inversed(const Gaussian<DIMS, scalar_t>& gaussian) {
-    return gaussian.weight * gpe::sqrt(gpe::pow(2 * glm::pi<scalar_t>(), scalar_t(DIMS)) / glm::determinant(gaussian.covariance));
+    constexpr scalar_t factor = gcem::pow(2 * glm::pi<scalar_t>(), scalar_t(DIMS));
+    return gaussian.weight * gpe::sqrt(factor / glm::determinant(gaussian.covariance));
 }
 
 template <typename scalar_t, int DIMS>
 __forceinline__ __host__ __device__ scalar_t integrate(const Gaussian<DIMS, scalar_t>& gaussian) {
-    return gaussian.weight * gpe::sqrt(gpe::pow(2 * glm::pi<scalar_t>(), scalar_t(DIMS)) * glm::determinant(gaussian.covariance));
+    constexpr scalar_t factor = gcem::pow(2 * glm::pi<scalar_t>(), scalar_t(DIMS));
+    return gaussian.weight * gpe::sqrt(factor * glm::determinant(gaussian.covariance));
 }
 
 template <typename scalar_t, int DIMS>

@@ -186,13 +186,14 @@ gpe::Array<gpe::Vector<gaussian_index_t, N_INPUT - N_CLUSTERS + 1>, N_CLUSTERS> 
     };
 
     gpe::BitSet<N_INPUT * N_INPUT> invalid_edges;
-    auto shortest_edge = [&](gaussian_index_t* a, gaussian_index_t* b) {
+
+    auto shortest_edge = [&disparities, &gaussians](gaussian_index_t* a, gaussian_index_t* b, gpe::BitSet<N_INPUT * N_INPUT>* invalid_edges) {
         *a = gaussian_index_t(-1);
         *b = gaussian_index_t(-1);
         scalar_t shortest_length = std::numeric_limits<scalar_t>::infinity();
         for (gaussian_index_t i = 0; i < gaussians.size(); ++i) {
             for (gaussian_index_t j = i + 1; j < gaussians.size(); ++j) {
-                if (!invalid_edges.isSet(i * gaussians.size() + j) && disparities[i][j] < shortest_length) {
+                if (!invalid_edges->isSet(i * gaussians.size() + j) && disparities[i][j] < shortest_length) {
                     *a = i;
                     *b = j;
                     shortest_length = disparities[i][j];
@@ -207,7 +208,7 @@ gpe::Array<gpe::Vector<gaussian_index_t, N_INPUT - N_CLUSTERS + 1>, N_CLUSTERS> 
     while (n_subgraphs > N_CLUSTERS) {
         gaussian_index_t a;
         gaussian_index_t b;
-        shortest_edge(&a, &b);
+        shortest_edge(&a, &b, &invalid_edges);
         assert(a < b);
         invalid_edges.set1(a * gaussians.size() + b);
         auto subgraph_a = subgraph_of(a);
@@ -243,6 +244,8 @@ gpe::Gaussian<N_DIMS, scalar_t> averageCluster(const gpe::Vector<gpe::Gaussian<N
     using G = gpe::Gaussian<N_DIMS, scalar_t>;
     G new_gaussian = {scalar_t(0), typename G::pos_t(0), typename G::cov_t(0)};
 
+    assert(cluster_indices.size() > 0);
+
     for (unsigned i = 0; i < cluster_indices.size(); ++i) {
         auto gaussian_id = cluster_indices[i];
         const auto& gaussian = mixture[gaussian_id];
@@ -272,9 +275,9 @@ gpe::Gaussian<N_DIMS, scalar_t> averageCluster(const gpe::Vector<gpe::Gaussian<N
 
 template <typename scalar_t, int N_DIMS, unsigned N_GAUSSIANS>
 EXECUTION_DEVICES
-gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_GAUSSIANS> normalise_mixture(const gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_GAUSSIANS>& m, scalar_t* abs_integral_ptr = nullptr) {
+gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_GAUSSIANS> normalise_mixture(const gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_GAUSSIANS>& mixture, scalar_t* abs_integral_ptr = nullptr) {
     using G = gpe::Gaussian<N_DIMS, scalar_t>;
-    scalar_t abs_integral = gpe::reduce(m, scalar_t(0), [](scalar_t i, const G& g) {
+    scalar_t abs_integral = gpe::reduce(mixture, scalar_t(0), [](scalar_t i, const G& g) {
         scalar_t ci = gpe::integrate(g);
         return i + gpe::abs(ci);
     });
@@ -282,7 +285,7 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_GAUSSIANS> normalise_mixture(cons
     if (abs_integral_ptr)
         *abs_integral_ptr = abs_integral;
 
-    return gpe::transform(m, [abs_integral](const G& g) { return G{g.weight / abs_integral, g.position, g.covariance}; });
+    return gpe::transform(mixture, [abs_integral](const G& g) { return G{g.weight / abs_integral, g.position, g.covariance}; });
 }
 
 template <typename scalar_t, int N_DIMS, int REDUCTION_N>
