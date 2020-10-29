@@ -53,15 +53,15 @@ def fixed_point_and_mhem(mixture: Tensor, constant: Tensor, n_components: int, c
 
     return fitting, ret_const, [initial_fitting, fp_fitting, reduced_fitting]
 
-def cpp_debug(mixture: Tensor, constant: Tensor, n_components: int, config: Config = Config(), tensorboard: TensorboardWriter = None) -> typing.Tuple[Tensor, Tensor, typing.List[Tensor]]:
-    mixture = torch.tensor([[[[0.5, 5.0, 5.0, 4.0, -0.5, -0.5, 4.0],
-                              [0.5, 8.0, 8.0, 4.0, -2.5, -2.5, 4.0],
-                              [0.5, 20.0, 10.0, 5.0, 0.0, 0.0, 7.0],
-                              [0.5, 20.0, 20.0, 5.0, 0.5, 0.5, 7.0]]]])
-    mixture = mixture.cuda()
-    initial_fitting = torch.tensor([[[[0.5,  6.5,  6.5, 4.0, -0.5, -0.5, 4.0],
-                                      [0.5, 20.0, 15.0, 4.0, -2.5, -2.5, 4.0]]]])
-    initial_fitting = initial_fitting.cuda()
+def cpp_debug(config: Config = Config(), tensorboard: TensorboardWriter = None) -> typing.Tuple[Tensor, Tensor, typing.List[Tensor]]:
+    mixture = torch.tensor([[[[0.5,  5.0,  5.0, 4.0, -0.5, -0.5,  4.0],
+                              [0.5,  8.0,  8.0, 4.0, -2.5, -2.5,  4.0],
+                              [0.5, 20.0, 10.0, 5.0,  0.0,  0.0,  7.0],
+                              [0.5, 20.0, 20.0, 5.0,  0.5,  0.5,  7.0]]]])
+    # mixture = mixture.cuda()
+    initial_fitting = torch.tensor([[[[0.5,  6.5,  6.5, 4.0, -1.5, -1.5, 4.0],
+                                      [0.5, 20.0, 15.0, 5.0, 0.25, 0.25, 7.0]]]])
+    # initial_fitting = initial_fitting.cuda()
 
     fitting = mhem_fit_a_to_b(initial_fitting, mixture, config, tensorboard)
 
@@ -163,8 +163,9 @@ def calc_likelihoods(target: Tensor, fitting: Tensor) -> Tensor:
 
     # preiner equation 9
     gaussian_values = gm.evaluate_componentwise(gm.pack_mixture(fitting_normal_amplitudes, fitting_positions, fitting_covariances), target_positions)
-    exp_values = torch.exp(-0.5 * mat_tools.batched_trace(mat_tools.inverse(fitting_covariances).view(n_batch, n_layers, 1, n_fitting_components, n_dims, n_dims) @
-                                                          target_covariances.view(n_batch, n_layers, n_target_components, 1, n_dims, n_dims)))
+    c = mat_tools.inverse(fitting_covariances).view(n_batch, n_layers, 1, n_fitting_components, n_dims, n_dims) \
+        @ target_covariances.view(n_batch, n_layers, n_target_components, 1, n_dims, n_dims)
+    exp_values = torch.exp(-0.5 * mat_tools.batched_trace(c))
 
     almost_likelihoods = gaussian_values * exp_values
 

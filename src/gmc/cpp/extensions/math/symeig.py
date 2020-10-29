@@ -6,9 +6,6 @@ import torch.autograd
 from gmc.cpp.extensions.compile_flags import *
 
 source_dir = os.path.dirname(__file__)
-print(source_dir)
-
-extra_include_paths = [source_dir + "/../../glm/", source_dir + "/.."]
 
 cuda = load('symeig_cuda', [source_dir + '/symeig_cuda.cpp', source_dir + '/symeig_cuda.cu'],
             extra_include_paths=extra_include_paths,

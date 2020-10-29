@@ -1,4 +1,9 @@
 import platform
+import os
+
+source_dir = os.path.dirname(__file__)
+print(f"compile_flags.py: source_dir={source_dir}")
+extra_include_paths = [source_dir + "/../glm/", source_dir + "/../cub/", source_dir + "/", source_dir + "/../yamc/include", source_dir + "/../gcem/include"]
 
 cuda_extra_cuda_cflags = ["-O3",  "--use_fast_math", "--std=c++14", "--expt-extended-lambda", " --expt-relaxed-constexpr", "-DNDEBUG"]
 if platform.system() == "Windows":

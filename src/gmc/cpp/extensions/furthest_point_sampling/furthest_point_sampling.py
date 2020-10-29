@@ -4,11 +4,7 @@ import torch.autograd
 from gmc.cpp.extensions.compile_flags import *
 
 source_dir = os.path.dirname(__file__)
-print(source_dir)
-
-extra_include_paths = [source_dir + "/../../glm/", source_dir + "/.."]
-
-
+# print(source_dir)
 
 cuda = load('furthest_point_sampling_cuda', [source_dir + '/furthest_point_sampling.cpp', source_dir + '/furthest_point_sampling.cu'],
             extra_include_paths=extra_include_paths,

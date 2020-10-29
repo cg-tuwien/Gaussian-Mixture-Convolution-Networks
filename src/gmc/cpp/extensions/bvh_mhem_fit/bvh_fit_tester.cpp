@@ -73,23 +73,23 @@ int main(int argc, char *argv[]) {
         auto list = container.attributes();
 
         for (uint i = 0; i < N_CONVOLUTION_LAYERS; i++) {
-//            auto mixture = container.attr(std::to_string(i)).toTensor();//.index({Slice(5, 6), Slice(0, 1), Slice(), Slice()});
-            auto mixture = torch::tensor({{0.5f,  5.0f,  5.0f,  4.0f, -0.5f, -0.5f,  4.0f},
-                                          {0.5f,  8.0f,  8.0f,  4.0f, -2.5f, -2.5f,  4.0f},
-                                          {0.5f, 20.0f, 10.0f,  5.0f,  0.0f,  0.0f,  7.0f},
-                                          {0.5f, 20.0f, 20.0f,  5.0f,  0.5f,  0.5f,  7.0f}}).view({1, 1, 4, 7});
+            auto mixture = container.attr(std::to_string(i)).toTensor();//.index({Slice(5, 6), Slice(0, 1), Slice(), Slice()});
+//            auto mixture = torch::tensor({{0.5f,  5.0f,  5.0f,  4.0f, -0.5f, -0.5f,  4.0f},
+//                                          {0.5f,  8.0f,  8.0f,  4.0f, -2.5f, -2.5f,  4.0f},
+//                                          {0.5f, 20.0f, 10.0f,  5.0f,  0.0f,  0.0f,  7.0f},
+//                                          {0.5f, 20.0f, 20.0f,  5.0f,  0.5f,  0.5f,  7.0f}}).view({1, 1, 4, 7});
             mixture = gpe::pack_mixture(torch::abs(gpe::weights(mixture)), gpe::positions(mixture), gpe::covariances(mixture));
             if (USE_CUDA)
                 mixture = mixture.cuda();
             std::cout << "layer " << i << ": " << mixture.sizes() << " device: " << mixture.device() << std::endl;
-            if (RENDER)
-                show(gpe::mixture_with_inversed_covariances(mixture), 128, LIMIT_N_BATCH);
+//            if (RENDER)
+//                show(gpe::mixture_with_inversed_covariances(mixture), 128, LIMIT_N_BATCH);
 
             cudaDeviceSynchronize();
 
             auto start = std::chrono::high_resolution_clock::now();
             torch::Tensor fitted_mixture, nodes, aabbs;
-            std::tie(fitted_mixture, nodes, aabbs) = bvh_mhem_fit_forward(mixture, 2);
+            std::tie(fitted_mixture, nodes, aabbs) = bvh_mhem_fit_forward(mixture, 32);
             cudaDeviceSynchronize();
             auto end = std::chrono::high_resolution_clock::now();
             if (RENDER) {

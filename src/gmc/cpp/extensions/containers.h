@@ -360,8 +360,8 @@ auto cwise_fun(const Vector<T1, N2>& v,
         assert(m[0].size() == m[i].size());
         matrix[i].resize(m[i].size());
         for (unsigned j = 0; j < m[i].size(); ++j) {
-            const T2& a = m[i][j];
-            const T1& b = v[j];
+            const T2& a = v[j];
+            const T1& b = m[i][j];
             ProductType v = fun(a, b);
             matrix[i][j] = v;
         }
