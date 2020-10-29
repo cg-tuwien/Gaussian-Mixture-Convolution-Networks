@@ -130,7 +130,8 @@ EXECUTION_DEVICES scalar_t likelihood(const gpe::Gaussian<N_DIMS, scalar_t>& tar
     scalar_t b = gpe::exp(scalar_t(-0.5) * gpe::trace(c));
     scalar_t target_normal_amplitudes = gpe::gaussian_amplitude(target.covariance);
     scalar_t wi_bar = N_FITTING_COMPONENTS * target.weight / target_normal_amplitudes;
-    return gpe::pow(a * b, wi_bar);
+    // pow(0, 0) gives nan in cuda with fast math
+    return gpe::pow(gpe::abs(a * b) + scalar_t(0.000000001), wi_bar);
 }
 
 template <typename scalar_t, int N_DIMS>

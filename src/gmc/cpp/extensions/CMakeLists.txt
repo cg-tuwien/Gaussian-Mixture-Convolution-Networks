@@ -14,8 +14,8 @@ set(CMAKE_CUDA_ARCHITECTURES 60)
 #     "-D_GLIBCXX_USE_CXX11_ABI=0 -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --expt-relaxed-constexpr --compiler-options '-fPIC' -O3 --use_fast_math -std=c++14"
 #     )
 string(APPEND CMAKE_CUDA_FLAGS " -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --expt-extended-lambda --expt-relaxed-constexpr")
-string(APPEND CMAKE_CUDA_FLAGS " -Xcompiler -fPIC,-fopenmp")
-string(APPEND CMAKE_CUDA_FLAGS_RELEASE " --use_fast_math --generate-line-info")
+string(APPEND CMAKE_CUDA_FLAGS " -Xcompiler -fPIC,-fopenmp  --use_fast_math")
+string(APPEND CMAKE_CUDA_FLAGS_RELEASE " --generate-line-info")
 string(APPEND CMAKE_CUDA_FLAGS_RELEASE " -Xcompiler '-ffast-math,-O4,-march=native'")
 string(APPEND CMAKE_CUDA_FLAGS_DEBUG " -g -G")
 
