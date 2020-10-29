@@ -75,10 +75,17 @@ __forceinline__ __device__ double exp(double x) {
     return ::exp(x);
 }
 __forceinline__ __device__ float pow(float x, float y) {
-    return ::powf(x, y);
+    auto v = ::powf(x, y);
+    // i'm leaving this assert in, as it can help finding surprising NaNs.
+    // if fast math is in place, pow(0, 0) will give a NaN.
+    // adding a small epsilon on x helps.
+    assert(!::isnan(v));
+    return v;
 }
 __forceinline__ __device__ double pow(double x, double y) {
-    return ::pow(x, y);
+    auto v = ::pow(x, y);
+    assert(!::isnan(v));
+    return v;
 }
 
 __forceinline__ __device__ float log(float x) {
