@@ -1,6 +1,8 @@
 from prototype_pcfitting import GMMGenerator, GMLogger, data_loading
 from prototype_pcfitting import TerminationCriterion, MaxIterationTerminationCriterion
 from prototype_pcfitting.error_functions import LikelihoodLoss
+from gmc.cpp.extensions.furthest_point_sampling import furthest_point_sampling
+from .em_generator import EMGenerator
 import torch
 import torch.optim
 import gmc.mixture as gm
@@ -15,6 +17,7 @@ class GradientDescentGenerator(GMMGenerator):
                  n_gaussians: int,
                  n_sample_points: int,
                  termination_criterion: TerminationCriterion = MaxIterationTerminationCriterion(500),
+                 initialization_method: int = 0,
                  learn_rate_pos: float = 1e-3,
                  learn_rate_cov: float = 1e-4,
                  learn_rate_weights: float = 5e-4):
@@ -29,6 +32,12 @@ class GradientDescentGenerator(GMMGenerator):
         #       Defining when to terminate. Default: After 500 Iterations.
         #       As this algorithm works on batches, the common batch loss is given to the termination criterion
         #       (We could implement saving of the best result in order to avoid moving out of optima)
+        #   initialization_method: int
+        #       Defines which initialization to use:
+        #           0 = Random means from positions, random covs and weights,
+        #           1 = furthest point sampling from positions, random covs and weights
+        #           2 = furthest point sampling from positions, covs by artificial EM-step, fixed weights
+        #           3 = Random by sample mean and cov
         #   learn_rate_pos: float
         #       Learning rate for the positions. Default: 1e-3
         #   learn_rate_cov: float
@@ -39,6 +48,7 @@ class GradientDescentGenerator(GMMGenerator):
         self._n_gaussians = n_gaussians
         self._n_sample_points = n_sample_points
         self._termination_criterion = termination_criterion
+        self._initialization_method = initialization_method
         self._learn_rate_pos = learn_rate_pos
         self._learn_rate_cov = learn_rate_cov
         self._learn_rate_weights = learn_rate_weights
@@ -75,13 +85,7 @@ class GradientDescentGenerator(GMMGenerator):
 
         # Initialize mixture (Important: Assumes intervall [0,1])
         if gmbatch is None:
-            gmbatch = gm.generate_random_mixtures(n_batch=batch_size, n_layers=1, n_components=self._n_gaussians,
-                                                  n_dims=3, pos_radius=0.5,
-                                                  cov_radius=0.01 / (self._n_gaussians ** (1 / 3)),
-                                                  weight_min=0, weight_max=1, device=self._device)
-            indizes = torch.randperm(point_count)[0:self._n_gaussians]
-            positions = pcbatch[:, indizes, :].view(batch_size, 1, self._n_gaussians, 3)
-            gmbatch = gm.pack_mixture(gm.weights(gmbatch), positions, gm.covariances(gmbatch))
+            gmbatch = self.initialize(pcbatch)
 
         # Initialize Training Data
         gm_data = self.TrainingData()
@@ -135,6 +139,40 @@ class GradientDescentGenerator(GMMGenerator):
         final_gmm = gm.pack_mixture(gm_data.pi_normalized, gm_data.get_positions(), gm_data.get_covariances())
 
         return final_gm, final_gmm
+
+    def initialize(self, pcbatch: torch.Tensor) -> torch.Tensor:
+        batch_size = pcbatch.shape[0]
+        point_count = pcbatch.shape[1]
+
+        if self._initialization_method == 0:
+            # Random means from positions, random covs and weights
+            gmbatch = gm.generate_random_mixtures(n_batch=batch_size, n_layers=1, n_components=self._n_gaussians,
+                                                  n_dims=3, pos_radius=0.5,
+                                                  cov_radius=0.01 / (self._n_gaussians ** (1 / 3)),
+                                                  weight_min=0, weight_max=1, device=self._device)
+            indizes = torch.randperm(point_count)[0:self._n_gaussians]
+            positions = pcbatch[:, indizes, :].view(batch_size, 1, self._n_gaussians, 3)
+            return gm.pack_mixture(gm.weights(gmbatch), positions, gm.covariances(gmbatch))
+        elif self._initialization_method == 1:
+            # furthest point sampling from positions, random covs and weights
+            gmbatch = gm.generate_random_mixtures(n_batch=batch_size, n_layers=1, n_components=self._n_gaussians,
+                                                  n_dims=3, pos_radius=0.5,
+                                                  cov_radius=0.01 / (self._n_gaussians ** (1 / 3)),
+                                                  weight_min=0, weight_max=1, device=self._device)
+            sampled = furthest_point_sampling.apply(pcbatch, self._n_gaussians).to(torch.long).reshape(-1)
+            batch_indizes = torch.arange(0, batch_size).repeat(self._n_gaussians, 1).transpose(-1, -2).reshape(-1)
+            gmpositions = pcbatch[batch_indizes, sampled, :].view(batch_size, 1, self._n_gaussians, 3)
+            return gm.pack_mixture(gm.weights(gmbatch), gmpositions, gm.covariances(gmbatch))
+        elif self._initialization_method == 2:
+            # furthest point sampling from positions, covs by artificial EM-step, fixed weights
+            initializer = EMGenerator(self._n_gaussians, 20000)
+            gmbatch = initializer.initialize_adam2(pcbatch)
+            return gm.convert_priors_to_amplitudes(gmbatch)
+        else:
+            # Random by sample mean and cov
+            initializer = EMGenerator(self._n_gaussians, point_count)
+            gmbatch = initializer.initialize_rand1(pcbatch)
+            return gm.convert_priors_to_amplitudes(gmbatch)
 
     class TrainingData:
         # Helper class. Capsules all the training data of the current gm batch

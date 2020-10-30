@@ -1,5 +1,6 @@
 from prototype_pcfitting import GMMGenerator, GMLogger, data_loading
 from prototype_pcfitting import TerminationCriterion, MaxIterationTerminationCriterion
+from gmc.cpp.extensions.furthest_point_sampling import furthest_point_sampling
 import torch
 import gmc.mixture as gm
 import numpy
@@ -12,6 +13,7 @@ class EMGenerator(GMMGenerator):
                  n_gaussians: int,
                  n_sample_points: int,
                  termination_criterion: TerminationCriterion = MaxIterationTerminationCriterion(100),
+                 initialization_method: int = 0,
                  dtype: torch.dtype = torch.float32):
         # Constructor. Creates a new EMGenerator.
         # Parameters:
@@ -24,12 +26,17 @@ class EMGenerator(GMMGenerator):
         #       Defining when to terminate. Default: After 100 Iterations.
         #       As this algorithm works on batches, the common batch loss is given to the termination criterion
         #       (We could implement saving of the best result in order to avoid moving out of optima)
+        #   initialization_method: int
+        #       Defines which initialization to use: 0 = Random by sample mean and cov, 1 = Random responsibilities,
+        #       2 = furthest point sampling, 3 = furthest point sampling and artifical responsibilities
         #   dtype: torch.dtype
         #       In which data type (precision) the operations should be performed. The final gmm is always
         #       converted to float32 though. Default: torch.float32
         #
         self._n_gaussians = n_gaussians
         self._n_sample_points = n_sample_points
+        self._initialization_method = initialization_method
+        assert (0 <= initialization_method <= 3)
         self._termination_criterion = termination_criterion
         self._logger = None
         self._eps = None
@@ -66,20 +73,27 @@ class EMGenerator(GMMGenerator):
 
         assert (point_count > self._n_gaussians)
 
+        # eps is a small multiple of the identity matrix which is added to the cov-matrizes
+        # in order to avoid singularities
+        self._eps = (torch.eye(3, 3, dtype=self._dtype) * 1e-6).view(1, 1, 1, 3, 3) \
+            .expand(batch_size, 1, self._n_gaussians, 3, 3).cuda()
+
         # Initialize mixture data
         if gmbatch is None:
-            gmbatch = self.initialize(pcbatch)
+            if self._initialization_method == 0:
+                gmbatch = self.initialize_rand1(pcbatch)
+            elif self._initialization_method == 1:
+                gmbatch = self.initialize_rand2(pcbatch)
+            elif self._initialization_method == 2:
+                gmbatch = self.initialize_adam1(pcbatch)
+            else:
+                gmbatch = self.initialize_adam2(pcbatch)
         gm_data = self.TrainingData()
         gm_data.set_positions(gm.positions(gmbatch))
         gm_data.set_covariances(gm.covariances(gmbatch))
         gm_data.set_amplitudes(gm.weights(gmbatch))
 
         iteration = 0
-
-        # eps is a small multiple of the identity matrix which is added to the cov-matrizes
-        # in order to avoid singularities
-        self._eps = (torch.eye(3, 3, dtype=self._dtype) * 1e-6).view(1, 1, 1, 3, 3) \
-            .expand(batch_size, 1, self._n_gaussians, 3, 3).cuda()
 
         while True:
             iteration += 1
@@ -98,6 +112,7 @@ class EMGenerator(GMMGenerator):
             # Log Loss (before changing the values in the maximization step,
             # so basically we use the logg of the previous iteration)
             loss = losses.sum()
+            assert not torch.isnan(loss).any()
             if self._logger:
                 self._logger.log(iteration - 1, losses, gm_data.pack_mixture())
 
@@ -111,7 +126,7 @@ class EMGenerator(GMMGenerator):
 
         # Create final mixtures
         final_gm = gm_data.pack_mixture().float()
-        final_gmm = gm.pack_mixture(gm_data.get_priors(), gm_data.get_positions(), gm_data.get_covariances())
+        final_gmm = gm_data.pack_mixture_model().float()
 
         # Gaussian-Weights might be set to zero. This prints for how many Gs this is the case
         print("EM: # of invalid Gaussians: ", torch.sum(gm_data.get_priors() == 0).item())
@@ -210,7 +225,7 @@ class EMGenerator(GMMGenerator):
         gm_data.set_covariances(new_covariances)
         gm_data.set_priors(new_priors)
 
-    def initialize(self, pcbatch: torch.Tensor) -> torch.Tensor:
+    def initialize_rand1(self, pcbatch: torch.Tensor) -> torch.Tensor:
         # Creates a new initial Gaussian Mixture (batch) for a given point cloud (batch).
         # The initialization is done according to McLachlan and Peel "Finite Mixture Models" (2000), Chapter 2.12.2
         # The positions are sampled from a normal distribution based on the empirical mean and covariances
@@ -245,6 +260,100 @@ class EMGenerator(GMMGenerator):
 
         # pack gmm-mixture
         return gm.pack_mixture(weights.cuda(), positions.cuda(), covariances.cuda()).to(self._dtype)
+
+    def initialize_rand2(self, pcbatch: torch.Tensor) -> torch.Tensor:
+        # Creates a new initial Gaussian Mixture (batch) for a given point cloud (batch).
+        # The initialization is done according to McLachlan and Peel "Finite Mixture Models" (2000), Chapter 2.12.2
+        # The responsibilities are created somewhat randomly and from these the M step calculates the Gaussians.
+        # Parameters:
+        #   pcbatch: torch.Tensor(batch_size, n_points, 3)
+        batch_size = pcbatch.shape[0]
+        point_count = pcbatch.shape[1]
+        n_sample_points = min(point_count, self._n_sample_points)
+        if n_sample_points < point_count:
+            sample_points = data_loading.sample(pcbatch, n_sample_points)
+        else:
+            sample_points = pcbatch
+
+        if self._eps is None:
+            self._eps = (torch.eye(3, 3, dtype=self._dtype) * 1e-6).view(1, 1, 1, 3, 3) \
+                .expand(batch_size, 1, self._n_gaussians, 3, 3).cuda()
+
+        assignments = torch.randint(low=0, high=self._n_gaussians, size=(batch_size * n_sample_points,))
+        point_indizes = torch.arange(0, n_sample_points).repeat(batch_size)
+        batch_indizes = torch.arange(0, batch_size).repeat(n_sample_points, 1).transpose(-1, -2).reshape(-1)
+        responsibilities = torch.zeros(batch_size, n_sample_points, self._n_gaussians).cuda()
+        responsibilities[batch_indizes, point_indizes, assignments] = 1
+        responsibilities = responsibilities.unsqueeze(1).to(self._dtype)
+
+        gm_data = self.TrainingData()
+        sp_rep = sample_points.unsqueeze(1).unsqueeze(3).expand(batch_size, 1, n_sample_points, self._n_gaussians, 3)
+        self.maximization(sp_rep, responsibilities, gm_data)
+        return gm_data.pack_mixture_model().cuda().to(self._dtype)
+
+    def initialize_adam1(self, pcbatch: torch.Tensor) -> torch.Tensor:
+        # Creates a new initial Gaussian Mixture (batch) for a given point cloud (batch).
+        # The initialization is done according to Adam's method.
+        # Furthest Point Sampling for mean selection, then assigning each point to the closest mean, then performing
+        # an M step.
+        # Parameters:
+        #   pcbatch: torch.Tensor(batch_size, n_points, 3)
+        batch_size = pcbatch.shape[0]
+        point_count = pcbatch.shape[1]
+
+        sampled = furthest_point_sampling.apply(pcbatch, self._n_gaussians).to(torch.long).reshape(-1)
+        batch_indizes = torch.arange(0, batch_size).repeat(self._n_gaussians, 1).transpose(-1, -2).reshape(-1)
+        gmpositions = pcbatch[batch_indizes, sampled, :].view(batch_size, 1, self._n_gaussians, 3)
+        # Achtung! Das gibt wohl eher die Indizes zurück
+        gmcovariances = torch.zeros(batch_size, 1, self._n_gaussians, 3, 3).to(self._dtype).cuda()
+        gmcovariances[:, :, :] = torch.eye(3, dtype=self._dtype).cuda()
+        gmpriors = torch.zeros(batch_size, 1, self._n_gaussians).to(self._dtype).cuda()
+        gmpriors[:, :, :] = 1 / self._n_gaussians
+
+        return gm.pack_mixture(gmpriors, gmpositions, gmcovariances)
+
+    def initialize_adam2(self, pcbatch: torch.Tensor) -> torch.Tensor:
+        # Creates a new initial Gaussian Mixture (batch) for a given point cloud (batch).
+        # The initialization is done according to Adam's method.
+        # Furthest Point Sampling for mean selection, then assigning each point to the closest mean, then performing
+        # an M step
+        # Parameters:
+        #   pcbatch: torch.Tensor(batch_size, n_points, 3)
+        batch_size = pcbatch.shape[0]
+        point_count = pcbatch.shape[1]
+
+        n_sample_points = min(point_count, self._n_sample_points)
+        if n_sample_points < point_count:
+            sample_points = data_loading.sample(pcbatch, n_sample_points)
+        else:
+            sample_points = pcbatch
+
+        if self._eps is None:
+            self._eps = (torch.eye(3, 3, dtype=self._dtype) * 1e-6).view(1, 1, 1, 3, 3) \
+                .expand(batch_size, 1, self._n_gaussians, 3, 3).cuda()
+
+        mix = self.initialize_adam1(pcbatch)
+
+        gm_data = self.TrainingData()
+        gm_data.set_positions(gm.positions(mix))
+        gm_data.set_covariances(gm.covariances(mix))
+        gm_data.set_priors(gm.weights(mix))
+
+        sp_rep = sample_points.unsqueeze(1).unsqueeze(3).expand(batch_size, 1, n_sample_points, self._n_gaussians, 3)
+
+        responsibilities, llh = self.expectation(sp_rep, gm_data)
+
+        # resp dimension: (batch_size, 1, n_points, n_gaussians)
+        # let's find the maximum per gaussian
+        assignments = responsibilities.argmax(dim = 3).view(-1)
+        point_indizes = torch.arange(0, n_sample_points).repeat(batch_size)
+        batch_indizes = torch.arange(0, batch_size).repeat(n_sample_points, 1).transpose(-1, -2).reshape(-1)
+        assignedresps = torch.zeros(batch_size, n_sample_points, self._n_gaussians).cuda()
+        assignedresps[batch_indizes, point_indizes, assignments] = 1
+        assignedresps = assignedresps.unsqueeze(1).to(self._dtype)
+
+        self.maximization(sp_rep, assignedresps, gm_data)
+        return gm_data.pack_mixture_model().cuda().to(self._dtype)
 
     class TrainingData:
         # Helper class. Capsules all relevant training data of the current GM batch.
@@ -293,3 +402,6 @@ class EMGenerator(GMMGenerator):
 
         def pack_mixture(self):
             return gm.pack_mixture(self._amplitudes, self._positions, self._covariances)
+
+        def pack_mixture_model(self):
+            return gm.pack_mixture(self._priors, self._positions, self._covariances)
