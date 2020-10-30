@@ -158,6 +158,7 @@ gpe::Array<gpe::Vector<gaussian_index_t, N_INPUT - N_CLUSTERS + 1>, N_CLUSTERS> 
     using G = gpe::Gaussian<N_DIMS, scalar_t>;
     static_assert (N_CLUSTERS <= N_INPUT, "N output clusters must be larger than n input");
     assert(N_CLUSTERS <= gaussians.size());
+    assert(!gpe::reduce(disparities, false, [](bool o, scalar_t v) { return o || gpe::isnan(v); }));
 
     gpe::Vector2d<gaussian_index_t, N_INPUT> subgraphs;
     for (unsigned i = 0; i < gaussians.size(); ++i) {
@@ -256,7 +257,7 @@ gpe::Gaussian<N_DIMS, scalar_t> averageCluster(const gpe::Vector<gpe::Gaussian<N
         assert(glm::determinant(gaussian.covariance) > 0);
         new_gaussian.covariance += gaussian.weight * gaussian.covariance;
     }
-    if (new_gaussian.weight == 0) {
+    if (gpe::abs(new_gaussian.weight) < scalar_t(0.00000000001)) {
         new_gaussian.covariance = typename G::cov_t(1.0);
         assert(glm::determinant(new_gaussian.covariance) > 0);
     }
