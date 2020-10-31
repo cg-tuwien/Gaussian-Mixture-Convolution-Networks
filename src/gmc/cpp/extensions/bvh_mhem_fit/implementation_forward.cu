@@ -289,6 +289,8 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_GAUSSIANS> normalise_mixture(cons
     return gpe::transform(mixture, [abs_integral](const G& g) { return G{g.weight / abs_integral, g.position, g.covariance}; });
 }
 
+#define GPE_DISPARITY_METHOD 2
+
 template <typename scalar_t, int N_DIMS, int REDUCTION_N>
 EXECUTION_DEVICES
 void fit_reduce_node(AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>& bvh,
@@ -306,7 +308,24 @@ void fit_reduce_node(AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>& bvh,
     scalar_t abs_integral;
     const gpe::Vector<G, N_TARGET> target_double_gmm = normalise_mixture(target, &abs_integral);
 
-    const auto disparity_matrix = gpe::outer_product(target_double_gmm, target_double_gmm, centroid_distance<scalar_t, N_DIMS>);   // returns gpe::Vector<gpe::Vector>
+#if GPE_DISPARITY_METHOD == 0
+    auto disparity_matrix = gpe::outer_product(target_double_gmm, target_double_gmm, centroid_distance<scalar_t, N_DIMS>);   // returns gpe::Vector<gpe::Vector>
+#elif GPE_DISPARITY_METHOD == 1
+    auto disparity_matrix = gpe::outer_product(target_double_gmm, target_double_gmm, likelihood<scalar_t, N_DIMS, N_TARGET>);   // returns gpe::Vector<gpe::Vector>
+    for (unsigned i = 0; i < disparity_matrix.size(); ++i) {
+        for (unsigned j = i + 1; j < disparity_matrix[i].size(); ++j) {
+            disparity_matrix[i][j] = gpe::min(-disparity_matrix[i][j], -disparity_matrix[j][i]);
+        }
+    }
+#else
+    auto disparity_matrix = gpe::outer_product(target_double_gmm, target_double_gmm, kl_divergence<scalar_t, N_DIMS>);   // returns gpe::Vector<gpe::Vector>
+    for (unsigned i = 0; i < disparity_matrix.size(); ++i) {
+        for (unsigned j = i + 1; j < disparity_matrix[i].size(); ++j) {
+            disparity_matrix[i][j] = gpe::min(disparity_matrix[i][j], disparity_matrix[j][i]);
+        }
+    }
+#endif
+
     const auto clustering = clusterise<N_FITTING>(target_double_gmm, disparity_matrix);                             // returns gpe::Array<gpe::Vector>
     assert(clustering.size() == N_FITTING);
 
