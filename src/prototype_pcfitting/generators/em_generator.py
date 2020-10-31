@@ -301,7 +301,7 @@ class EMGenerator(GMMGenerator):
         batch_size = pcbatch.shape[0]
         point_count = pcbatch.shape[1]
 
-        sampled = furthest_point_sampling.apply(pcbatch, self._n_gaussians).to(torch.long).reshape(-1)
+        sampled = furthest_point_sampling.apply(pcbatch.float(), self._n_gaussians).to(torch.long).reshape(-1)
         batch_indizes = torch.arange(0, batch_size).repeat(self._n_gaussians, 1).transpose(-1, -2).reshape(-1)
         gmpositions = pcbatch[batch_indizes, sampled, :].view(batch_size, 1, self._n_gaussians, 3)
         # Achtung! Das gibt wohl eher die Indizes zurück

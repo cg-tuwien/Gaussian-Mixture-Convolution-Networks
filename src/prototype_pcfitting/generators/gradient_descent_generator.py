@@ -159,7 +159,7 @@ class GradientDescentGenerator(GMMGenerator):
                                                   n_dims=3, pos_radius=0.5,
                                                   cov_radius=0.01 / (self._n_gaussians ** (1 / 3)),
                                                   weight_min=0, weight_max=1, device=self._device)
-            sampled = furthest_point_sampling.apply(pcbatch, self._n_gaussians).to(torch.long).reshape(-1)
+            sampled = furthest_point_sampling.apply(pcbatch.float(), self._n_gaussians).to(torch.long).reshape(-1)
             batch_indizes = torch.arange(0, batch_size).repeat(self._n_gaussians, 1).transpose(-1, -2).reshape(-1)
             gmpositions = pcbatch[batch_indizes, sampled, :].view(batch_size, 1, self._n_gaussians, 3)
             return gm.pack_mixture(gm.weights(gmbatch), gmpositions, gm.covariances(gmbatch))
