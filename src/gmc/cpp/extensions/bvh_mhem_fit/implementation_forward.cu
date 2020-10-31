@@ -376,9 +376,10 @@ void fit_reduce_node(AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>& bvh,
 
 
 //    likelihoods_sum = likelihoods.sum(3, keepdim=True)
-    const gpe::Vector<scalar_t, N_TARGET> weighted_likelihood_sum = gpe::reduce_rows(weighted_likelihood_matrix, scalar_t(0.00001), gpe::functors::plus<scalar_t>);
+    const gpe::Vector<scalar_t, N_TARGET> weighted_likelihood_sum = gpe::reduce_rows(weighted_likelihood_matrix, scalar_t(0), fun::plus<scalar_t>);
+    const gpe::Vector<scalar_t, N_TARGET> weighted_likelihood_sum_clamped = gpe::transform(weighted_likelihood_sum, [](scalar_t v) { return gpe::max(v, scalar_t(0.00000000000001)); });
 //    responsibilities = likelihoods / (likelihoods_sum + 0.00001)
-    const gpe::Vector2d<scalar_t, N_TARGET, N_FITTING> responsibilities_1 = gpe::cwise_fun(weighted_likelihood_matrix, weighted_likelihood_sum, fun::divided_AbyB<scalar_t>);
+    const gpe::Vector2d<scalar_t, N_TARGET, N_FITTING> responsibilities_1 = gpe::cwise_fun(weighted_likelihood_matrix, weighted_likelihood_sum_clamped, fun::divided_AbyB<scalar_t>);
 
 //    responsibilities = responsibilities * (gm.weights(target_double_gmm).abs() / gm.normal_amplitudes(gm.covariances(target_double_gmm))).unsqueeze(-1)
     const auto pure_target_weights = gpe::transform(target_double_gmm, [](const G& g) { return gpe::abs(g.weight) / gpe::gaussian_amplitude(g.covariance); });
@@ -395,7 +396,10 @@ void fit_reduce_node(AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>& bvh,
     assert(!has_nan(newWeights));
 
 //    responsibilities = responsibilities / (newWeights + 0.00001).view(n_batch, n_layers, 1, n_components_fitting)
-    const gpe::Vector2d<scalar_t, N_TARGET, N_FITTING> responsibilities_3 = gpe::cwise_fun(gpe::transform(newWeights, [](auto w) { return w + scalar_t(0.00001); }), responsibilities_2, gpe::functors::divided_BbyA<scalar_t>);
+    const gpe::Vector2d<scalar_t, N_TARGET, N_FITTING> responsibilities_3 = gpe::cwise_fun(
+                                                                                gpe::transform(newWeights, [](auto w) { return gpe::max(w, scalar_t(0.00000000000001)); }),
+                                                                                responsibilities_2,
+                                                                                fun::divided_BbyA<scalar_t>);
 //    assert not torch.any(torch.isnan(responsibilities))
     assert(!has_nan(responsibilities_3));
 //    assert torch.all(responsibilities >= 0)
