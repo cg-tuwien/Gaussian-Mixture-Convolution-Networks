@@ -182,7 +182,7 @@ struct Vector {
 
     template<uint32_t N_, typename size_type_ = uint32_t>
     __host__ __device__ GPE_CONTAINER_INLINE
-    void push_all_back(const Vector<T, N_, size_type_>  v) {
+    void push_back(const Vector<T, N_, size_type_>  v) {
         assert(v.size() + size() <= N);
         for (uint32_t i = 0; i < v.size(); ++i)
             push_back(v[i]);

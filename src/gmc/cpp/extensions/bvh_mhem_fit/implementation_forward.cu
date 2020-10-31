@@ -145,18 +145,18 @@ EXECUTION_DEVICES scalar_t kl_divergence(const gpe::Gaussian<N_DIMS, scalar_t>& 
     return scalar_t(0.5) * (mahalanobis_factor + trace - N_DIMS - logarithm);
 }
 
-template <uint32_t N_CLUSTERS, typename scalar_t, int N_DIMS, uint32_t N_INPUT>
+
+// todo: gaussian is not necessary in the parameter list. only used for size and size can we get from disparities as well;
+template <uint32_t N_CLUSTERS, typename scalar_t, uint32_t N_INPUT>
 EXECUTION_DEVICES
-gpe::Array<gpe::Vector<gaussian_index_t, N_INPUT - N_CLUSTERS + 1>, N_CLUSTERS> clusterise(const gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_INPUT>& gaussians,
-                                                                                           const gpe::Vector2d<scalar_t, N_INPUT>& disparities) {
+gpe::Array<gpe::Vector<gaussian_index_t, N_INPUT - N_CLUSTERS + 1>, N_CLUSTERS> clusterise(const gpe::Vector2d<scalar_t, N_INPUT>& disparities) {
     // this is a greedy smallest spanning subtrees algorithm
-    using G = gpe::Gaussian<N_DIMS, scalar_t>;
     static_assert (N_CLUSTERS <= N_INPUT, "N output clusters must be larger than n input");
-    assert(N_CLUSTERS <= gaussians.size());
+    assert(N_CLUSTERS <= disparities.size());
     assert(!gpe::reduce(disparities, false, [](bool o, scalar_t v) { return o || gpe::isnan(v); }));
 
     gpe::Vector2d<gaussian_index_t, N_INPUT> subgraphs;
-    for (unsigned i = 0; i < gaussians.size(); ++i) {
+    for (unsigned i = 0; i < disparities.size(); ++i) {
         subgraphs.push_back({i});
     }
     unsigned n_subgraphs = subgraphs.size();
@@ -166,7 +166,7 @@ gpe::Array<gpe::Vector<gaussian_index_t, N_INPUT - N_CLUSTERS + 1>, N_CLUSTERS> 
         auto a_ = gpe::min(a, b);
         auto b_ = gpe::max(a, b);
 
-        subgraphs[a_].push_all_back(subgraphs[b_]);
+        subgraphs[a_].push_back(subgraphs[b_]);
         subgraphs[b_].clear();
         --n_subgraphs;
     };
@@ -183,13 +183,13 @@ gpe::Array<gpe::Vector<gaussian_index_t, N_INPUT - N_CLUSTERS + 1>, N_CLUSTERS> 
 
     gpe::BitSet<N_INPUT * N_INPUT> invalid_edges;
 
-    auto shortest_edge = [&disparities, &gaussians](gaussian_index_t* a, gaussian_index_t* b, gpe::BitSet<N_INPUT * N_INPUT>* invalid_edges) {
+    auto shortest_edge = [&disparities](gaussian_index_t* a, gaussian_index_t* b, gpe::BitSet<N_INPUT * N_INPUT>* invalid_edges) {
         *a = gaussian_index_t(-1);
         *b = gaussian_index_t(-1);
         scalar_t shortest_length = std::numeric_limits<scalar_t>::infinity();
-        for (gaussian_index_t i = 0; i < gaussians.size(); ++i) {
-            for (gaussian_index_t j = i + 1; j < gaussians.size(); ++j) {
-                if (!invalid_edges->isSet(i * gaussians.size() + j) && disparities[i][j] < shortest_length) {
+        for (gaussian_index_t i = 0; i < disparities.size(); ++i) {
+            for (gaussian_index_t j = i + 1; j < disparities.size(); ++j) {
+                if (!invalid_edges->isSet(i * disparities.size() + j) && disparities[i][j] < shortest_length) {
                     *a = i;
                     *b = j;
                     shortest_length = disparities[i][j];
@@ -206,7 +206,7 @@ gpe::Array<gpe::Vector<gaussian_index_t, N_INPUT - N_CLUSTERS + 1>, N_CLUSTERS> 
         gaussian_index_t b;
         shortest_edge(&a, &b, &invalid_edges);
         assert(a < b);
-        invalid_edges.set1(a * gaussians.size() + b);
+        invalid_edges.set1(a * disparities.size() + b);
         auto subgraph_a = subgraph_of(a);
         auto subgraph_b = subgraph_of(b);
         if (subgraph_a != subgraph_b) {
@@ -227,7 +227,7 @@ gpe::Array<gpe::Vector<gaussian_index_t, N_INPUT - N_CLUSTERS + 1>, N_CLUSTERS> 
     gpe::Array<gpe::Vector<gaussian_index_t, N_INPUT - N_CLUSTERS + 1>, N_CLUSTERS> retval;
     for (unsigned i = 0; i < N_CLUSTERS; ++i) {
         subgraph_id = find_next_subgraph(subgraph_id);
-        retval[i].push_all_back(subgraphs[subgraph_id]);
+        retval[i].push_back(subgraphs[subgraph_id]);
     }
 
     return retval;
@@ -325,7 +325,7 @@ EXECUTION_DEVICES
     }
 #endif
 
-    const auto clustering = clusterise<N_FITTING>(target_double_gmm, disparity_matrix);                             // returns gpe::Array<gpe::Vector>
+    const auto clustering = clusterise<N_FITTING>(disparity_matrix);                             // returns gpe::Array<gpe::Vector>
     assert(clustering.size() == N_FITTING);
 
     gpe::Vector<G, N_FITTING> result;
@@ -529,7 +529,7 @@ EXECUTION_DEVICES void iterate_over_nodes(const dim3& gpe_gridDim, const dim3& g
             bvh.per_node_attributes[node_id].gaussians = fit_em<REDUCTION_N>(child_gaussians);
         }
         else {
-            bvh.per_node_attributes[node_id].gaussians.push_all_back(child_gaussians);
+            bvh.per_node_attributes[node_id].gaussians.push_back(child_gaussians);
 
         }
     }
