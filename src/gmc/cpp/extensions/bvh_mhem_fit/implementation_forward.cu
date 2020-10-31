@@ -91,12 +91,6 @@ struct AugmentedBvh
           per_node_attributes(reinterpret_cast<NodeAttributes*>(&node_attributes[mixture_id][0][0]))
     {}
 
-    EXECUTION_DEVICES unsigned count_per_node_gaussians_of_children(const lbvh::detail::Node* node) const {
-        assert(node->left_idx != node_index_t(-1));
-        assert(node->right_idx != node_index_t(-1));
-        return this->per_node_attributes[node->left_idx].gaussians.size() + this->per_node_attributes[node->right_idx].gaussians.size();
-    }
-
     EXECUTION_DEVICES gpe::Vector<Gaussian_type, REDUCTION_N * 2> collect_child_gaussians(const lbvh::detail::Node* node) const {
         assert(node->left_idx != node_index_t(-1));
         assert(node->right_idx != node_index_t(-1));
@@ -303,27 +297,21 @@ EXECUTION_DEVICES
 
 #define GPE_DISPARITY_METHOD 2
 
-template <typename scalar_t, int N_DIMS, int REDUCTION_N>
+template <unsigned N_FITTING, typename scalar_t, int N_DIMS, unsigned N_TARGET>
 EXECUTION_DEVICES
-void fit_reduce_node(AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>& bvh,
-                     const lbvh::detail::Node* node) {
-    using Abvh = AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>;
+gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_em(gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_TARGET> target) {
     using G = gpe::Gaussian<N_DIMS, scalar_t>;
     using pos_t = typename G::pos_t;
     using cov_t = typename G::cov_t;
 
     namespace fun = gpe::functors;
 
-
     auto has_nan = [](const auto& vec) {
         return gpe::reduce(vec, false, [](bool o, auto v) { return o || gpe::isnan(v); });
     };
 
     constexpr scalar_t kl_div_threshold = scalar_t(2.0);
-    constexpr unsigned N_FITTING = REDUCTION_N;
-    constexpr unsigned N_TARGET = REDUCTION_N * 2;
 
-    const gpe::Vector<G, N_TARGET> target = bvh.collect_child_gaussians(node);
     scalar_t abs_integral;
     const gpe::Vector<G, N_TARGET> target_double_gmm = normalise_mixture(target, &abs_integral);
 
@@ -348,11 +336,6 @@ void fit_reduce_node(AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>& bvh,
     const auto clustering = clusterise<N_FITTING>(target_double_gmm, disparity_matrix);                             // returns gpe::Array<gpe::Vector>
     assert(clustering.size() == N_FITTING);
 
-//    typename Abvh::NodeAttributes& destination_attribute = bvh.per_node_attributes[bvh.node_id(node)];
-//    for (unsigned i = 0; i < N_FITTING; ++i) {
-//        destination_attribute.gaussians.push_back(averageCluster(target, clustering[i]));
-//    }
-//    return;
     gpe::Vector<G, N_FITTING> fitting;
     for (unsigned i = 0; i < N_FITTING; ++i) {
         fitting.push_back(averageCluster(target_double_gmm, clustering[i]));
@@ -446,14 +429,71 @@ void fit_reduce_node(AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>& bvh,
     assert(!has_nan(normal_amplitudes));
 
 //    fitting_double_gmm = gm.pack_mixture(newWeights.contiguous() * normal_amplitudes * gm.weights(fitting_double_gmm).sign(), newPositions.contiguous(), newCovariances.contiguous())
-    typename Abvh::NodeAttributes& destination_attribute = bvh.per_node_attributes[bvh.node_id(node)];
-    for (unsigned i = 0; i < fitting.size(); ++i) {
-        destination_attribute.gaussians.push_back(G{newWeights[i] * normal_amplitudes[i] * abs_integral,
-                                                    newPositions[i],
-                                                    newCovariances[i]});
+    gpe::Vector<G, N_FITTING> result;
+    for (unsigned i = 0; i < N_FITTING; ++i) {
+        result.push_back(G{newWeights[i] * normal_amplitudes[i] * abs_integral,
+                           newPositions[i],
+                           newCovariances[i]});
     }
+
+    // todo: will break when enabeling negative gaussians
+//    auto scaling_factor = integrate_abs_mixture(destination_attribute.gaussians);
+//    if (std::abs(scaling_factor) > scalar_t(0.00001))
+//        scaling_factor = destination_attribute.gm_integral / scaling_factor;
+//    destination_attribute.gaussians.clear();
+//    for (unsigned i = 0; i < fitting.size(); ++i) {
+//        destination_attribute.gaussians.push_back(G{newWeights[i] * scaling_factor,
+//                                                    newPositions[i],
+//                                                    newCovariances[i]});
+//    }
+    auto abs_integral_result = integrate_abs_mixture(result);
+    auto diff = abs_integral - abs_integral_result;
+//    assert(node->left_idx != 3 && node->right_idx != 4 && node->parent_idx != 17 && node->object_idx != 2);
+//    assert(gpe::abs(diff) < scalar_t(0.0001));
+    return result;
 }
 
+
+template <unsigned N_FITTING, typename scalar_t, int N_DIMS, unsigned N_TARGET>
+EXECUTION_DEVICES
+gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_weighted_average(gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_TARGET> target) {
+    using G = gpe::Gaussian<N_DIMS, scalar_t>;
+
+    scalar_t abs_integral;
+    const gpe::Vector<G, N_TARGET> target_double_gmm = normalise_mixture(target, &abs_integral);
+
+#if GPE_DISPARITY_METHOD == 0
+    auto disparity_matrix = gpe::outer_product(target_double_gmm, target_double_gmm, centroid_distance<scalar_t, N_DIMS>);   // returns gpe::Vector<gpe::Vector>
+#elif GPE_DISPARITY_METHOD == 1
+    auto disparity_matrix = gpe::outer_product(target_double_gmm, target_double_gmm, likelihood<scalar_t, N_DIMS, N_TARGET>);   // returns gpe::Vector<gpe::Vector>
+    for (unsigned i = 0; i < disparity_matrix.size(); ++i) {
+        for (unsigned j = i + 1; j < disparity_matrix[i].size(); ++j) {
+            disparity_matrix[i][j] = gpe::min(-disparity_matrix[i][j], -disparity_matrix[j][i]);
+        }
+    }
+#else
+    auto disparity_matrix = gpe::outer_product(target_double_gmm, target_double_gmm, kl_divergence<scalar_t, N_DIMS>);   // returns gpe::Vector<gpe::Vector>
+    for (unsigned i = 0; i < disparity_matrix.size(); ++i) {
+        for (unsigned j = i + 1; j < disparity_matrix[i].size(); ++j) {
+            disparity_matrix[i][j] = gpe::min(disparity_matrix[i][j], disparity_matrix[j][i]);
+        }
+    }
+#endif
+
+    const auto clustering = clusterise<N_FITTING>(target_double_gmm, disparity_matrix);                             // returns gpe::Array<gpe::Vector>
+    assert(clustering.size() == N_FITTING);
+
+    gpe::Vector<G, N_FITTING> result;
+    for (unsigned i = 0; i < N_FITTING; ++i) {
+        result.push_back(averageCluster(target_double_gmm, clustering[i]));
+    }
+    scalar_t result_integral = integrate_abs_mixture(result);
+    auto factor = abs_integral / gpe::max(result_integral, scalar_t(0.0000000000001));
+    for (unsigned i = 0; i < N_FITTING; ++i) {
+        result[i].weight *= factor;
+    }
+    return result;
+}
 
 template <typename scalar_t, int N_DIMS, int REDUCTION_N>
 EXECUTION_DEVICES void iterate_over_nodes(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
@@ -504,12 +544,12 @@ EXECUTION_DEVICES void iterate_over_nodes(const dim3& gpe_gridDim, const dim3& g
         bvh.per_node_attributes[node_id].n_child_leaves = bvh.per_node_attributes[node->left_idx].n_child_leaves + bvh.per_node_attributes[node->right_idx].n_child_leaves;
         bvh.per_node_attributes[node_id].gm_integral = bvh.per_node_attributes[node->left_idx].gm_integral + bvh.per_node_attributes[node->right_idx].gm_integral;
 
-        auto gaussian_count = bvh.count_per_node_gaussians_of_children(node);
-        if (gaussian_count > REDUCTION_N) {
-            fit_reduce_node<scalar_t, N_DIMS, REDUCTION_N>(bvh, node);
+        auto child_gaussians = bvh.collect_child_gaussians(node);
+        if (child_gaussians.size() > REDUCTION_N) {
+            bvh.per_node_attributes[node_id].gaussians = fit_em<REDUCTION_N>(child_gaussians);
         }
         else {
-            bvh.per_node_attributes[node_id].gaussians.push_all_back(bvh.collect_child_gaussians(node));
+            bvh.per_node_attributes[node_id].gaussians.push_all_back(child_gaussians);
 
         }
     }

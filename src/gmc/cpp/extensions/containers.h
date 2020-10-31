@@ -101,6 +101,20 @@ struct Vector {
         m_size = size;
     }
 
+    template <typename size_type_other>
+    __host__ __device__ GPE_CONTAINER_INLINE
+    Vector(const Vector<T, N, size_type_other>& other) : data{other.data}, m_size(other.m_size) {}
+
+
+    template <typename size_type_other>
+    __host__ __device__ GPE_CONTAINER_INLINE
+    Vector<T, N, size_type>& operator=(const Vector<T, N, size_type_other>& other) {
+        m_size = other.m_size;
+        for (unsigned i = 0; i < N; ++i)
+            data[i] = other.data[i];
+        return *this;
+    }
+
     __host__ __device__ GPE_CONTAINER_INLINE
     static Vector<T, N, size_type> filled(const T& value, unsigned n_elements) {
         assert(n_elements < N);
