@@ -188,6 +188,16 @@ struct Vector {
             push_back(v[i]);
     }
 
+    template<uint32_t N_, typename size_type_ = uint32_t, typename Predicate>
+    __host__ __device__ GPE_CONTAINER_INLINE
+    void push_back_if(const Vector<T, N_, size_type_>  v, Predicate condition) {
+        assert(v.size() + size() <= N);
+        for (uint32_t i = 0; i < v.size(); ++i) {
+            if (condition(v[i]))
+                push_back(v[i]);
+        }
+    }
+
     __host__ __device__ GPE_CONTAINER_INLINE
     void clear() {
         m_size = 0;
