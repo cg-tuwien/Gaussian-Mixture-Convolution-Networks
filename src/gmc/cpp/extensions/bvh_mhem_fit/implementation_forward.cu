@@ -264,7 +264,9 @@ gpe::Gaussian<N_DIMS, scalar_t> averageCluster(const gpe::Vector<gpe::Gaussian<N
     else {
         new_gaussian.position /= new_gaussian.weight;
         new_gaussian.covariance /= new_gaussian.weight;
-        new_gaussian.weight /= scalar_t(cluster_indices.size());
+        // no good (?): very large weight G + small weight G should result in large G and not 1/2 large G
+        // subsequently we'll rescale the whole mixture anyways
+//        new_gaussian.weight /= scalar_t(cluster_indices.size());
         assert(glm::determinant(new_gaussian.covariance) > 0);
     }
     assert(std::isnan(new_gaussian.weight) == false);
@@ -361,6 +363,7 @@ void fit_reduce_node(AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>& bvh,
 
     // todo: test modification of clamp matrix: at least one row element or x percent row elements should be 1.
     //       rational: otherwise certain target gaussians are not covered at all.
+    //       could assign gaussian from the cluster; modulo zero weight gaussians
     auto clamp_matrix = gpe::outer_product(target_double_gmm, fitting_double_gmm, [kl_div_threshold](auto target, auto fitting) {
         return (gpe::sign(fitting.weight) == gpe::sign(target.weight) && kl_divergence<scalar_t, N_DIMS>(target, fitting) < kl_div_threshold) ? scalar_t(1) : scalar_t(0);
     });

@@ -51,7 +51,7 @@ fastexp (float p)
 __forceinline__ __device__ float max(float a, float b) {
     return ::fmaxf(a, b);
 }
-__forceinline__ __device__ float max(double a, double b) {
+__forceinline__ __device__ double max(double a, double b) {
     return ::fmax(a, b);
 }
 template <typename T>
