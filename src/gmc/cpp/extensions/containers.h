@@ -369,9 +369,9 @@ auto cwise_fun(const Vector<T1, N2>& v,
     return matrix;
 }
 
-template<typename T1, typename T2, uint32_t N, typename Function>
+template<typename T1, typename T2, uint32_t N, typename Function, typename VectorSizeType>
 __host__ __device__ GPE_CONTAINER_INLINE
-T2 reduce(const gpe::Vector<T1, N>& m1, T2 initial, Function fun) {
+T2 reduce(const gpe::Vector<T1, N, VectorSizeType>& m1, T2 initial, Function fun) {
     for (unsigned i = 0; i < m1.size(); ++i) {
         const T1& a = m1[i];
         initial = fun(initial, a);
@@ -379,9 +379,9 @@ T2 reduce(const gpe::Vector<T1, N>& m1, T2 initial, Function fun) {
     return initial;
 }
 
-template<typename T1, typename T2, uint32_t N1, uint32_t N2, typename Function>
+template<typename T1, typename T2, uint32_t N1, uint32_t N2, typename Function, typename VectorSizeType>
 __host__ __device__ GPE_CONTAINER_INLINE
-T2 reduce(const gpe::Vector2d<T1, N1, N2>& matrix, T2 initial, Function fun) {
+T2 reduce(const gpe::Vector2d<T1, N1, N2, VectorSizeType>& matrix, T2 initial, Function fun) {
     for (unsigned i = 0; i < matrix.size(); ++i) {
         for (unsigned j = 0; j < matrix[i].size(); ++j) {
             initial = fun(initial, matrix[i][j]);

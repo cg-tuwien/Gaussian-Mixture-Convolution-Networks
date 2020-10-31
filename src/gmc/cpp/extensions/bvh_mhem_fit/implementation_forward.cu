@@ -274,14 +274,24 @@ gpe::Gaussian<N_DIMS, scalar_t> averageCluster(const gpe::Vector<gpe::Gaussian<N
     return new_gaussian;
 };
 
-template <typename scalar_t, int N_DIMS, unsigned N_GAUSSIANS>
+template <typename scalar_t, int N_DIMS, uint32_t N_GAUSSIANS, typename VectorSizeType>
 EXECUTION_DEVICES
-gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_GAUSSIANS> normalise_mixture(const gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_GAUSSIANS>& mixture, scalar_t* abs_integral_ptr = nullptr) {
+scalar_t integrate_abs_mixture(const gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_GAUSSIANS, VectorSizeType>& mixture) {
     using G = gpe::Gaussian<N_DIMS, scalar_t>;
     scalar_t abs_integral = gpe::reduce(mixture, scalar_t(0), [](scalar_t i, const G& g) {
         scalar_t ci = gpe::integrate(g);
         return i + gpe::abs(ci);
     });
+
+    return abs_integral;
+}
+
+
+template <typename scalar_t, int N_DIMS, unsigned N_GAUSSIANS>
+EXECUTION_DEVICES
+    gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_GAUSSIANS> normalise_mixture(const gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_GAUSSIANS>& mixture, scalar_t* abs_integral_ptr = nullptr) {
+    using G = gpe::Gaussian<N_DIMS, scalar_t>;
+    scalar_t abs_integral = integrate_abs_mixture(mixture);
     abs_integral = gpe::max(scalar_t(0.05), abs_integral);
     if (abs_integral_ptr)
         *abs_integral_ptr = abs_integral;
@@ -299,6 +309,13 @@ void fit_reduce_node(AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>& bvh,
     using G = gpe::Gaussian<N_DIMS, scalar_t>;
     using pos_t = typename G::pos_t;
     using cov_t = typename G::cov_t;
+
+    namespace fun = gpe::functors;
+
+
+    auto has_nan = [](const auto& vec) {
+        return gpe::reduce(vec, false, [](bool o, auto v) { return o || gpe::isnan(v); });
+    };
 
     constexpr scalar_t kl_div_threshold = scalar_t(2.0);
     constexpr unsigned N_FITTING = REDUCTION_N;
@@ -352,48 +369,49 @@ void fit_reduce_node(AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>& bvh,
 
 
 //    likelihoods = likelihoods * (gm.weights(fitting_double_gmm).abs() / gm.normal_amplitudes(gm.covariances(fitting_double_gmm))).view(n_batch, n_layers, 1, n_components_fitting)
-    const auto massaged_fitting_weights = gpe::transform(fitting_double_gmm, [](const G& g) { return gpe::abs(g.weight) / gpe::gaussian_amplitude(g.covariance); });
-    assert(!gpe::reduce(massaged_fitting_weights, false, [](bool o, scalar_t v) { return o || gpe::isnan(v); }));
-    const gpe::Vector2d<scalar_t, N_TARGET, N_FITTING> massaged_likelihood_matrix = gpe::cwise_fun(massaged_fitting_weights, clamped_likelihood_matrix, gpe::functors::times<scalar_t>);
-    assert(!gpe::reduce(massaged_likelihood_matrix, false, [](bool o, scalar_t v) { return o || gpe::isnan(v); }));
+    const auto pure_fitting_weights = gpe::transform(fitting_double_gmm, [](const G& g) { return gpe::abs(g.weight) / gpe::gaussian_amplitude(g.covariance); });
+    assert(!has_nan(pure_fitting_weights));
+    const gpe::Vector2d<scalar_t, N_TARGET, N_FITTING> weighted_likelihood_matrix = gpe::cwise_fun(pure_fitting_weights, clamped_likelihood_matrix, fun::times<scalar_t>);
+    assert(!has_nan(weighted_likelihood_matrix));
 
 
 //    likelihoods_sum = likelihoods.sum(3, keepdim=True)
-    const gpe::Vector<scalar_t, N_TARGET> massaged_likelihood_sum = gpe::reduce_rows(massaged_likelihood_matrix, scalar_t(0.00001), gpe::functors::plus<scalar_t>);
+    const gpe::Vector<scalar_t, N_TARGET> weighted_likelihood_sum = gpe::reduce_rows(weighted_likelihood_matrix, scalar_t(0.00001), gpe::functors::plus<scalar_t>);
 //    responsibilities = likelihoods / (likelihoods_sum + 0.00001)
-    gpe::Vector2d<scalar_t, N_TARGET, N_FITTING> responsibilities = gpe::cwise_fun(massaged_likelihood_matrix, massaged_likelihood_sum, gpe::functors::divided_AbyB<scalar_t>);
+    const gpe::Vector2d<scalar_t, N_TARGET, N_FITTING> responsibilities_1 = gpe::cwise_fun(weighted_likelihood_matrix, weighted_likelihood_sum, fun::divided_AbyB<scalar_t>);
 
 //    responsibilities = responsibilities * (gm.weights(target_double_gmm).abs() / gm.normal_amplitudes(gm.covariances(target_double_gmm))).unsqueeze(-1)
-    const auto massaged_target_weights = gpe::transform(target_double_gmm, [](const G& g) { return gpe::abs(g.weight) / gpe::gaussian_amplitude(g.covariance); });
-    assert(!gpe::reduce(massaged_target_weights, false, [](bool o, scalar_t v) { return o || gpe::isnan(v); }));
-    responsibilities = gpe::cwise_fun(responsibilities, massaged_target_weights, gpe::functors::times<scalar_t>);
+    const auto pure_target_weights = gpe::transform(target_double_gmm, [](const G& g) { return gpe::abs(g.weight) / gpe::gaussian_amplitude(g.covariance); });
+    assert(!has_nan(pure_target_weights));
+
+    const gpe::Vector2d<scalar_t, N_TARGET, N_FITTING> responsibilities_2 = gpe::cwise_fun(responsibilities_1, pure_target_weights, fun::times<scalar_t>);
 
 //    assert not torch.any(torch.isnan(responsibilities))
-    assert(!gpe::reduce(responsibilities, false, [](bool o, scalar_t v) { return o || gpe::isnan(v); }));
+    assert(!has_nan(responsibilities_2));
 
 //    newWeights = torch.sum(responsibilities, 2)
-    gpe::Vector<scalar_t, N_FITTING> newWeights = gpe::reduce_cols(responsibilities, scalar_t(0), gpe::functors::plus<scalar_t>);
+    gpe::Vector<scalar_t, N_FITTING> newWeights = gpe::reduce_cols(responsibilities_2, scalar_t(0), fun::plus<scalar_t>);
 //    assert not torch.any(torch.isnan(newWeights))
-    assert(!gpe::reduce(newWeights, false, [](bool o, scalar_t v) { return o || gpe::isnan(v); }));
+    assert(!has_nan(newWeights));
 
 //    responsibilities = responsibilities / (newWeights + 0.00001).view(n_batch, n_layers, 1, n_components_fitting)
-    responsibilities = gpe::cwise_fun(gpe::transform(newWeights, [](auto w) { return w + scalar_t(0.00001); }), responsibilities, gpe::functors::divided_BbyA<scalar_t>);
+    const gpe::Vector2d<scalar_t, N_TARGET, N_FITTING> responsibilities_3 = gpe::cwise_fun(gpe::transform(newWeights, [](auto w) { return w + scalar_t(0.00001); }), responsibilities_2, gpe::functors::divided_BbyA<scalar_t>);
 //    assert not torch.any(torch.isnan(responsibilities))
-    assert(!gpe::reduce(responsibilities, false, [](bool o, scalar_t v) { return o || gpe::isnan(v); }));
+    assert(!has_nan(responsibilities_3));
 //    assert torch.all(responsibilities >= 0)
-    assert(!gpe::reduce(responsibilities, false, [](bool o, scalar_t v) { return o || v < 0; }));
+    assert(!gpe::reduce(responsibilities_3, false, [](bool o, scalar_t v) { return o || v < 0; }));
 
 //    newPositions = torch.sum(responsibilities.unsqueeze(-1) * gm.positions(target_double_gmm).view(n_batch, n_layers, n_components_target, 1, n_dims), 2)
-    gpe::Vector2d<pos_t, N_TARGET, N_FITTING> weightedPositions = gpe::cwise_fun(responsibilities, target, [](scalar_t r, const G& g) { return r * g.position; });
-    gpe::Vector<pos_t, N_FITTING> newPositions = gpe::reduce_cols(weightedPositions, pos_t(0), gpe::functors::plus<pos_t>);
+    gpe::Vector2d<pos_t, N_TARGET, N_FITTING> weightedPositions = gpe::cwise_fun(responsibilities_3, target, [](scalar_t r, const G& g) { return r * g.position; });
+    gpe::Vector<pos_t, N_FITTING> newPositions = gpe::reduce_cols(weightedPositions, pos_t(0), fun::plus<pos_t>);
 //    assert not torch.any(torch.isnan(newPositions))
-    assert(!gpe::reduce(newPositions, false, [](bool o, const pos_t& v) { return o || gpe::isnan(v); }));
+    assert(!has_nan(newPositions));
 
 //    posDiffs = gm.positions(target_double_gmm).view(n_batch, n_layers, n_components_target, 1, n_dims, 1) - newPositions.view(n_batch, n_layers, 1, n_components_fitting, n_dims, 1)
     gpe::Vector<pos_t, N_TARGET> targetPositions = gpe::transform(target, [](const G& g){ return g.position; });
-    gpe::Vector2d<pos_t, N_TARGET, N_FITTING> posDiffs = gpe::outer_product(targetPositions, newPositions, gpe::functors::minus<pos_t>);
+    gpe::Vector2d<pos_t, N_TARGET, N_FITTING> posDiffs = gpe::outer_product(targetPositions, newPositions, fun::minus<pos_t>);
 //    assert not torch.any(torch.isnan(posDiffs))
-    assert(!gpe::reduce(posDiffs, false, [](bool o, const pos_t& v) { return o || gpe::isnan(v); }));
+    assert(!has_nan(posDiffs));
 
 /*
     newCovariances = (torch.sum(responsibilities.unsqueeze(-1).unsqueeze(-1) *
@@ -401,10 +419,10 @@ void fit_reduce_node(AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>& bvh,
 */
     const gpe::Vector2d<cov_t, N_TARGET, N_FITTING> posDiffsOuter = gpe::transform(posDiffs, [](const pos_t& p) { return glm::outerProduct(p, p); });
     gpe::Vector<cov_t, N_TARGET> targetCovs = gpe::transform(target, [](const G& g){ return g.covariance; });
-    const gpe::Vector2d<cov_t, N_TARGET, N_FITTING> unweightedCovs = gpe::cwise_fun(posDiffsOuter, targetCovs, gpe::functors::plus<cov_t>);
+    const gpe::Vector2d<cov_t, N_TARGET, N_FITTING> unweightedCovs = gpe::cwise_fun(posDiffsOuter, targetCovs, fun::plus<cov_t>);
 
-    const gpe::Vector2d<cov_t, N_TARGET, N_FITTING> weightedCovs = gpe::cwise_fun(responsibilities, unweightedCovs, [](scalar_t r, const cov_t& cov) { return r * cov; });
-    gpe::Vector<cov_t, N_FITTING> newCovariances = gpe::reduce_cols(weightedCovs, cov_t(0), gpe::functors::plus<cov_t>);
+    const gpe::Vector2d<cov_t, N_TARGET, N_FITTING> weightedCovs = gpe::cwise_fun(responsibilities_3, unweightedCovs, [](scalar_t r, const cov_t& cov) { return r * cov; });
+    gpe::Vector<cov_t, N_FITTING> newCovariances = gpe::reduce_cols(weightedCovs, cov_t(0), fun::plus<cov_t>);
 
 //    newCovariances = newCovariances + (newWeights < 0.0001).unsqueeze(-1).unsqueeze(-1) * torch.eye(n_dims, device=device).view(1, 1, 1, n_dims, n_dims) * 0.0001
     newCovariances = gpe::cwise_fun(newCovariances, newWeights, [](cov_t cov, scalar_t w) {
@@ -414,11 +432,11 @@ void fit_reduce_node(AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>& bvh,
     });
 
 //    assert not torch.any(torch.isnan(newCovariances))
-    assert(!gpe::reduce(newCovariances, false, [](bool o, const cov_t& v) { return o || gpe::isnan(v); }));
+    assert(!has_nan(newCovariances));
 
 //    normal_amplitudes = gm.normal_amplitudes(newCovariances)
     gpe::Vector<scalar_t, N_FITTING> normal_amplitudes = gpe::transform(newCovariances, [](const cov_t& cov) { return gpe::gaussian_amplitude(cov); });
-    assert(!gpe::reduce(normal_amplitudes, false, [](bool o, const scalar_t& v) { return o || gpe::isnan(v); }));
+    assert(!has_nan(normal_amplitudes));
 
 //    fitting_double_gmm = gm.pack_mixture(newWeights.contiguous() * normal_amplitudes * gm.weights(fitting_double_gmm).sign(), newPositions.contiguous(), newCovariances.contiguous())
     typename Abvh::NodeAttributes& destination_attribute = bvh.per_node_attributes[bvh.node_id(node)];
