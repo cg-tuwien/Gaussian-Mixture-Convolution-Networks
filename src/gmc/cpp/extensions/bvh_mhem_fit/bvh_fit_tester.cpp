@@ -110,6 +110,8 @@ int main(int argc, char *argv[]) {
 
 //    torch::load(d, "/home/madam/Documents/work/tuw/gmc_net/data/fitting_input/fitting_input_batch0_netlayer0.tensor");
     std::cout << "DONE" << std::endl;
-    return a.exec();
-    return 0;
+    if (RENDER)
+        return a.exec();
+    else
+        return 0;
 }
