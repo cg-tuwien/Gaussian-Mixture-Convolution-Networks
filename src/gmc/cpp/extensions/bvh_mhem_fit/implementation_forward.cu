@@ -610,12 +610,14 @@ EXECUTION_DEVICES void collect_result(const dim3& gpe_gridDim, const dim3& gpe_b
 //    }
 
     // copy gaussians to their final location in out_mixture
+    unsigned write_position = 0;
     for (unsigned i = 0; i < selectedNodes.size(); ++i) {
         auto node_id = selectedNodes[i];
         typename Bvh::NodeAttributes& destination_attribute = bvh.per_node_attributes[node_id];
 
         for (unsigned j = 0; j < destination_attribute.gaussians.size(); ++j) {
-            gpe::gaussian<N_DIMS>(out_mixture[mixture_id][int(i * REDUCTION_N + j)]) = destination_attribute.gaussians[j];
+            assert(write_position < n_components_target);
+            gpe::gaussian<N_DIMS>(out_mixture[mixture_id][int(write_position++)]) = destination_attribute.gaussians[j];
         }
     }
 }
