@@ -34,7 +34,7 @@ namespace kernels
 
 template<typename UInt>
 __host__ __device__
-    inline uint2 determine_range(UInt const* node_code, const unsigned int num_leaves, unsigned int idx)
+inline uint2 determine_range(UInt const* node_code, const unsigned int num_leaves, unsigned int idx)
 {
     if(idx == 0)
     {
@@ -94,7 +94,7 @@ __host__ __device__
 
 template<typename UInt>
 __host__ __device__
-    inline unsigned int find_split(UInt const* node_code, const unsigned int num_leaves,
+inline unsigned int find_split(UInt const* node_code, const unsigned int num_leaves,
                const unsigned int first, const unsigned int last) noexcept
 {
     const UInt first_code = node_code[first];
@@ -304,8 +304,6 @@ at::Tensor Bvh<N_DIMS, scalar_t>::compute_aabbs() {
                 aabb.lower = make_vector_of(lower);
     };
     gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(m_mixture), dimGrid, dimBlock, fun);
-    GPE_CUDA_ASSERT(cudaPeekAtLastError());
-    GPE_CUDA_ASSERT(cudaDeviceSynchronize());
     return aabbs;
 }
 
@@ -355,9 +353,6 @@ at::Tensor Bvh<N_DIMS, scalar_t>::compute_morton_codes(const at::Tensor& aabbs, 
                 //    morton_code = component_id;
     };
     gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(m_mixture), dimGrid, dimBlock, fun);
-
-    GPE_CUDA_ASSERT(cudaPeekAtLastError());
-    GPE_CUDA_ASSERT(cudaDeviceSynchronize());
     return morton_codes.view({m_n.batch, m_n.layers, m_n.components});
 }
 
@@ -464,9 +459,6 @@ at::Tensor Bvh<N_DIMS, scalar_t>::create_leaf_nodes(const at::Tensor& morton_cod
         node.object_idx = lbvh::detail::Node::index_type(morton_code); // imo the cast will cut away the morton code. no need for "& 0xfffffff" // uint32_t(morton_code & 0xffffffff);
     };
     gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(m_mixture), dimGrid, dimBlock, fun);
-
-    GPE_CUDA_ASSERT(cudaPeekAtLastError());
-    GPE_CUDA_ASSERT(cudaDeviceSynchronize());
     return morton_codes;
 }
 
@@ -520,9 +512,6 @@ void Bvh<N_DIMS, scalar_t>::create_internal_nodes(const at::Tensor& morton_codes
                 reinterpret_cast<detail::Node&>(nodes_a[mixture_id][int(node.right_idx)][0]).parent_idx = lbvh::detail::Node::index_type(node_id);
     };
     gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(m_mixture), dimGrid, dimBlock, fun);
-
-    GPE_CUDA_ASSERT(cudaPeekAtLastError());
-    GPE_CUDA_ASSERT(cudaDeviceSynchronize());
 }
 
 template<int N_DIMS, typename scalar_t>
@@ -575,8 +564,6 @@ void Bvh<N_DIMS, scalar_t>::create_aabbs_for_internal_nodes() {
                 }
     };
     gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(m_mixture), dimGrid, dimBlock, fun);
-    GPE_CUDA_ASSERT(cudaPeekAtLastError());
-    GPE_CUDA_ASSERT(cudaDeviceSynchronize());
 }
 
 template class Bvh<2, float>;
