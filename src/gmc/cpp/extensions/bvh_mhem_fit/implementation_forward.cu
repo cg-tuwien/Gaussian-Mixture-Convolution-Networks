@@ -28,6 +28,12 @@
 
 #define EXECUTION_DEVICES __host__ __device__
 
+// todo:
+// - when fitting 1024 components (more than input), mse doesn't go to 0, although the rendering looks good.
+// - in collect_result, run a new fitting with the most important node to fill up the remaining gaussian slots
+// - kl-divergenece filter: at least one should pass (select from clustering), otherwise we loose mass
+// - check integration mass again (after kl-div filter)
+// - debug 2nd and 3rd layer: why are we lossing these important gaussians?
 
 namespace bvh_mhem_fit {
 
@@ -38,6 +44,18 @@ using node_index_t = lbvh::detail::Node::index_type;
 using gaussian_index_t = uint16_t;
 using gaussian_index_torch_t = int16_t;
 using Node  = lbvh::detail::Node;
+
+template <typename scalar_t = float>
+struct Epsilon {
+    static constexpr scalar_t value = scalar_t(0.0000000000000001);
+    static EXECUTION_DEVICES scalar_t clip(scalar_t v) { return gpe::max(v, value); }
+};
+
+template<>
+struct Epsilon<double> {
+    static constexpr double value = 0.000000000000000000001;
+    static EXECUTION_DEVICES double clip(double v) { return gpe::max(v, value); }
+};
 
 
 template <typename scalar_t>
@@ -126,7 +144,7 @@ EXECUTION_DEVICES scalar_t likelihood(const gpe::Gaussian<N_DIMS, scalar_t>& tar
     scalar_t target_normal_amplitudes = gpe::gaussian_amplitude(target.covariance);
     scalar_t wi_bar = N_FITTING_COMPONENTS * target.weight / target_normal_amplitudes;
     // pow(0, 0) gives nan in cuda with fast math
-    return gpe::pow(gpe::abs(a * b) + scalar_t(0.000000001), wi_bar);
+    return gpe::pow(Epsilon<scalar_t>::clip(a * b), wi_bar);
 }
 
 template <typename scalar_t, int N_DIMS>
@@ -252,7 +270,7 @@ gpe::Gaussian<N_DIMS, scalar_t> averageCluster(const gpe::Vector<gpe::Gaussian<N
         assert(glm::determinant(gaussian.covariance) > 0);
         new_gaussian.covariance += gaussian.weight * gaussian.covariance;
     }
-    if (gpe::abs(new_gaussian.weight) < scalar_t(0.00000000001)) {
+    if (gpe::abs(new_gaussian.weight) < Epsilon<scalar_t>::value) {
         new_gaussian.covariance = typename G::cov_t(1.0);
         assert(glm::determinant(new_gaussian.covariance) > 0);
     }
@@ -289,7 +307,7 @@ EXECUTION_DEVICES
     gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_GAUSSIANS> normalise_mixture(const gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_GAUSSIANS>& mixture, scalar_t* abs_integral_ptr = nullptr) {
     using G = gpe::Gaussian<N_DIMS, scalar_t>;
     scalar_t abs_integral = integrate_abs_mixture(mixture);
-    abs_integral = gpe::max(scalar_t(0.0000000001), abs_integral);
+    abs_integral = Epsilon<scalar_t>::clip(abs_integral);
     if (abs_integral_ptr)
         *abs_integral_ptr = abs_integral;
 
@@ -303,7 +321,7 @@ EXECUTION_DEVICES
     using G = gpe::Gaussian<N_DIMS, scalar_t>;
 
 //    // enable for testing the tree walking without em
-//    // change factor computation below to "auto factor = abs_integral / gpe::max(result_integral, scalar_t(0.0000000000001));"
+//    // change factor computation below to "auto factor = abs_integral / Epsilon<scalar_t>::clip(result_integral);"
 //    scalar_t abs_integral;
 //    const gpe::Vector<G, N_TARGET> target_double_gmm = normalise_mixture(target, &abs_integral);
 
@@ -383,7 +401,7 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_em(gpe::Vector<gpe::
 
 //    likelihoods_sum = likelihoods.sum(3, keepdim=True)
     const gpe::Vector<scalar_t, N_TARGET> weighted_likelihood_sum = gpe::reduce_rows(weighted_likelihood_matrix, scalar_t(0), fun::plus<scalar_t>);
-    const gpe::Vector<scalar_t, N_TARGET> weighted_likelihood_sum_clamped = gpe::transform(weighted_likelihood_sum, [](scalar_t v) { return gpe::max(v, scalar_t(0.00000000000001)); });
+    const gpe::Vector<scalar_t, N_TARGET> weighted_likelihood_sum_clamped = gpe::transform(weighted_likelihood_sum, Epsilon<scalar_t>::clip);
 //    responsibilities = likelihoods / (likelihoods_sum + 0.00001)
     const gpe::Vector2d<scalar_t, N_TARGET, N_FITTING> responsibilities_1 = gpe::cwise_fun(weighted_likelihood_matrix, weighted_likelihood_sum_clamped, fun::divided_AbyB<scalar_t>);
 
@@ -403,7 +421,7 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_em(gpe::Vector<gpe::
 
 //    responsibilities = responsibilities / (newWeights + 0.00001).view(n_batch, n_layers, 1, n_components_fitting)
     const gpe::Vector2d<scalar_t, N_TARGET, N_FITTING> responsibilities_3 = gpe::cwise_fun(
-                                                                                gpe::transform(newWeights, [](auto w) { return gpe::max(w, scalar_t(0.00000000000001)); }),
+                                                                                gpe::transform(newWeights, Epsilon<scalar_t>::clip),
                                                                                 responsibilities_2,
                                                                                 fun::divided_BbyA<scalar_t>);
 //    assert not torch.any(torch.isnan(responsibilities))
@@ -436,8 +454,8 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_em(gpe::Vector<gpe::
 
 //    newCovariances = newCovariances + (newWeights < 0.0001).unsqueeze(-1).unsqueeze(-1) * torch.eye(n_dims, device=device).view(1, 1, 1, n_dims, n_dims) * 0.0001
     newCovariances = gpe::cwise_fun(newCovariances, newWeights, [](cov_t cov, scalar_t w) {
-        if (w < scalar_t(0.0001))
-            cov += cov_t(1) * scalar_t(0.0001);
+        if (w < Epsilon<scalar_t>::value)
+            cov += cov_t(1) * Epsilon<scalar_t>::value;
         return cov;
     });
 
@@ -524,7 +542,7 @@ EXECUTION_DEVICES void iterate_over_nodes(const dim3& gpe_gridDim, const dim3& g
         bvh.per_node_attributes[node_id].n_child_leaves = bvh.per_node_attributes[node->left_idx].n_child_leaves + bvh.per_node_attributes[node->right_idx].n_child_leaves;
         bvh.per_node_attributes[node_id].gm_integral = bvh.per_node_attributes[node->left_idx].gm_integral + bvh.per_node_attributes[node->right_idx].gm_integral;
 
-        auto child_gaussians = bvh.collect_child_gaussians(node, scalar_t(0.00001));
+        auto child_gaussians = bvh.collect_child_gaussians(node, Epsilon<scalar_t>::value);
         if (child_gaussians.size() > REDUCTION_N) {
             bvh.per_node_attributes[node_id].gaussians = fit_em<REDUCTION_N>(child_gaussians);
         }
@@ -535,7 +553,7 @@ EXECUTION_DEVICES void iterate_over_nodes(const dim3& gpe_gridDim, const dim3& g
     }
 }
 
-template <typename scalar_t, int N_DIMS, int REDUCTION_N, int N_MAX_TARGET_COMPS = 128>
+template <typename scalar_t, int N_DIMS, int REDUCTION_N, int N_MAX_TARGET_COMPS = 1024>
 EXECUTION_DEVICES void collect_result(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
                                       const dim3& gpe_blockIdx, const dim3& gpe_threadIdx,
                                       const gpe::PackedTensorAccessor32<scalar_t, 3> mixture,
