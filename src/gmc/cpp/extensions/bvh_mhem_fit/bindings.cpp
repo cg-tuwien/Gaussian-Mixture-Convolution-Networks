@@ -7,7 +7,7 @@
 #include "bindings.h"
 #include "implementation.h"
 
-std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> bvh_mhem_fit_forward(const torch::Tensor& mixture, int n_components_target) {
+std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> bvh_mhem_fit_forward(const torch::Tensor& mixture, unsigned n_components_target) {
     at::cuda::OptionalCUDAGuard device_guard;
     if (mixture.is_cuda()) {
         assert (device_of(mixture).has_value());

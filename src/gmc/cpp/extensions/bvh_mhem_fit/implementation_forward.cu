@@ -483,7 +483,7 @@ EXECUTION_DEVICES void iterate_over_nodes(const dim3& gpe_gridDim, const dim3& g
                                           const gpe::PackedTensorAccessor32<scalar_t, 3> aabbs,
                                           gpe::PackedTensorAccessor32<int, 2> flags,
                                           gpe::PackedTensorAccessor32<scalar_t, 3> node_attributes,
-                                          const gpe::MixtureNs n, const int n_mixtures, const unsigned n_internal_nodes, const unsigned n_nodes, int n_components_target)
+                                          const gpe::MixtureNs n, const int n_mixtures, const unsigned n_internal_nodes, const unsigned n_nodes, unsigned n_components_target)
 {
     GPE_UNUSED(gpe_gridDim)
     GPE_UNUSED(n_components_target);
@@ -544,7 +544,7 @@ EXECUTION_DEVICES void collect_result(const dim3& gpe_gridDim, const dim3& gpe_b
                                       const gpe::PackedTensorAccessor32<scalar_t, 3> aabbs,
                                       gpe::PackedTensorAccessor32<int, 2> flags,
                                       gpe::PackedTensorAccessor32<scalar_t, 3> node_attributes,
-                                      const gpe::MixtureNs n, const int n_mixtures, const unsigned n_internal_nodes, const unsigned n_nodes, int n_components_target)
+                                      const gpe::MixtureNs n, const int n_mixtures, const unsigned n_internal_nodes, const unsigned n_nodes, unsigned n_components_target)
 {
     GPE_UNUSED(gpe_gridDim)
     GPE_UNUSED(flags);
@@ -552,6 +552,7 @@ EXECUTION_DEVICES void collect_result(const dim3& gpe_gridDim, const dim3& gpe_b
     using Bvh = AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>;
 
     assert(n_components_target % REDUCTION_N == 0);
+    assert(n_components_target < N_MAX_TARGET_COMPS);
     static_assert (N_MAX_TARGET_COMPS % REDUCTION_N == 0, "N_MAX_TARGET_COMPS must be divisible by REDUCTION_N");
 
     const auto mixture_id = int(gpe_blockIdx.x * gpe_blockDim.x + gpe_threadIdx.x);
@@ -559,66 +560,63 @@ EXECUTION_DEVICES void collect_result(const dim3& gpe_gridDim, const dim3& gpe_b
         return;
 
     Bvh bvh = AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>(mixture_id, nodes, aabbs, mixture, node_attributes, n, n_internal_nodes, n_nodes);
-    constexpr int CACH_SIZE = N_MAX_TARGET_COMPS / REDUCTION_N;
-    scalar_t selectedNodesRating[CACH_SIZE];
-    node_index_t selectedNodes[CACH_SIZE];
-    for (int i = 0; i < CACH_SIZE; ++i)
-        selectedNodes[i] = node_index_t(-1);
 
-    int n_selected_nodes = 0;
+    gpe::Vector<scalar_t, N_MAX_TARGET_COMPS> selectedNodesRating;
+    gpe::Vector<node_index_t, N_MAX_TARGET_COMPS> selectedNodes;
+
+    unsigned n_selected_components = 0;
     auto compute_rating = [&](node_index_t node_id) {
         assert(node_id < n_nodes);
-        return std::abs(bvh.per_node_attributes[node_id].gm_integral);
+        // todo: will break with negative weights, should compute sum of abs integrals / seperately positive and negative integrals
+        if (bvh.per_node_attributes[node_id].gaussians.size() < REDUCTION_N)
+            return scalar_t(0);
+        else
+            return std::abs(bvh.per_node_attributes[node_id].gm_integral);
     };
     auto cach_id_with_highest_rating = [&]() {
         scalar_t rating = -1;
-        int best_node_id = -1;
-        for (int i = 0; i < n_selected_nodes; ++i) {
+        unsigned best_node_id = unsigned(-1);
+        for (unsigned i = 0; i < selectedNodes.size(); ++i) {
             if (selectedNodesRating[i] > rating) {
                 rating = selectedNodesRating[i];
                 best_node_id = i;
             }
         }
-        assert(best_node_id != -1);
+        // can become unsigned(-1) when no selectable node remains
         return best_node_id;
     };
-    auto set_cache = [&](int cache_location, node_index_t node_id) {
-        assert(node_id < n_nodes);
-        assert(cache_location < CACH_SIZE);
-        selectedNodes[cache_location] = node_id;
-        selectedNodesRating[cache_location] = compute_rating(node_id);
-    };
+    selectedNodes.push_back(0); // root node
+    selectedNodesRating.push_back(compute_rating(0));
+    n_selected_components = bvh.per_node_attributes[0].gaussians.size();
 
-    set_cache(0, 0);
-    n_selected_nodes++;
-
-    while (n_selected_nodes < n_components_target / REDUCTION_N) {
+    while (n_selected_components < n_components_target - REDUCTION_N)  {
         auto best_node_cache_id = cach_id_with_highest_rating();
+        if (best_node_cache_id >= selectedNodes.size())
+            break;  // ran out of nodes
         auto best_node_id = selectedNodes[best_node_cache_id];
-        assert(best_node_id < n_nodes);
-        if (best_node_id < n_internal_nodes) {
-            const auto& best_node = bvh.nodes[best_node_id];
-            set_cache(best_node_cache_id, best_node.left_idx);
-            set_cache(n_selected_nodes, best_node.right_idx);
-            n_selected_nodes++;
-        }
-        else {
-            // best_node_id is a leaf node, it can't be further expanded.; ignore it.
-            selectedNodesRating[best_node_cache_id] = -1;
-        }
-        assert(n_selected_nodes < CACH_SIZE);
+        assert(best_node_id < n_internal_nodes); // we should have only internal nodes at this point as cach_id_with_highest_rating() returns 0xffff.. if the node is not full.
+        const auto& best_descend_node = bvh.nodes[best_node_id];
+
+        selectedNodes[best_node_cache_id] = best_descend_node.left_idx;
+        selectedNodesRating[best_node_cache_id] = compute_rating(best_descend_node.left_idx);
+
+        selectedNodes.push_back(best_descend_node.right_idx);
+        selectedNodesRating.push_back(compute_rating(best_descend_node.right_idx));
+        n_selected_components = n_selected_components - REDUCTION_N + bvh.per_node_attributes[best_descend_node.left_idx].gaussians.size() + bvh.per_node_attributes[best_descend_node.right_idx].gaussians.size();
     }
 
+//    if (n_selected_components < n_components_target) {
+//        printf("n_selected_components = %d / %d\n", n_selected_components, n_components_target);
+//    }
+
     // copy gaussians to their final location in out_mixture
-    assert(n_selected_nodes == n_components_target / REDUCTION_N);
-    for (int i = 0; i < n_selected_nodes; ++i) {
+    for (unsigned i = 0; i < selectedNodes.size(); ++i) {
         auto node_id = selectedNodes[i];
         typename Bvh::NodeAttributes& destination_attribute = bvh.per_node_attributes[node_id];
 
         for (unsigned j = 0; j < destination_attribute.gaussians.size(); ++j) {
-            gpe::gaussian<N_DIMS>(out_mixture[mixture_id][i * REDUCTION_N + int(j)]) = destination_attribute.gaussians[j];
+            gpe::gaussian<N_DIMS>(out_mixture[mixture_id][int(i * REDUCTION_N + j)]) = destination_attribute.gaussians[j];
         }
-        // todo: log or something if destination_attribute.n_gaussians != REDUCTION_N. we are loosing slots for more gaussians; adapt node rating function.
     }
 }
 
@@ -626,7 +624,7 @@ EXECUTION_DEVICES void collect_result(const dim3& gpe_gridDim, const dim3& gpe_b
 } // anonymous namespace
 
 
-std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> forward_impl(at::Tensor mixture, int n_components_target = 32) {
+std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> forward_impl(at::Tensor mixture, unsigned n_components_target = 32) {
     using namespace torch::indexing;
     using LBVH = lbvh::Bvh<2, float>;
 
