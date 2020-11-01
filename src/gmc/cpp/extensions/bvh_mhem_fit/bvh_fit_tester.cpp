@@ -16,12 +16,12 @@
 #include "evaluate_inversed/parallel_binding.h"
 #include "bvh_mhem_fit/bindings.h"
 
-constexpr uint N_BATCHES = 1;
+constexpr uint N_BATCHES = 2;
 constexpr uint N_CONVOLUTION_LAYERS = 3;
 constexpr uint LIMIT_N_BATCH = 100;
-constexpr bool USE_CUDA = false;
+constexpr bool USE_CUDA = true;
 //constexpr bool BACKWARD = false;
-constexpr bool RENDER = true;
+constexpr bool RENDER = false;
 
 torch::Tensor render(torch::Tensor mixture, const int resolution, const int n_batch_limit) {
     using namespace torch::indexing;
