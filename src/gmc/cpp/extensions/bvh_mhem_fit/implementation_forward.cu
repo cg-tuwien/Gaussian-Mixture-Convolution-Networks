@@ -552,7 +552,7 @@ EXECUTION_DEVICES void collect_result(const dim3& gpe_gridDim, const dim3& gpe_b
     using Bvh = AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>;
 
     assert(n_components_target % REDUCTION_N == 0);
-    assert(n_components_target < N_MAX_TARGET_COMPS);
+    assert(n_components_target <= N_MAX_TARGET_COMPS);
     static_assert (N_MAX_TARGET_COMPS % REDUCTION_N == 0, "N_MAX_TARGET_COMPS must be divisible by REDUCTION_N");
 
     const auto mixture_id = int(gpe_blockIdx.x * gpe_blockDim.x + gpe_threadIdx.x);
@@ -569,7 +569,7 @@ EXECUTION_DEVICES void collect_result(const dim3& gpe_gridDim, const dim3& gpe_b
         assert(node_id < n_nodes);
         // todo: will break with negative weights, should compute sum of abs integrals / seperately positive and negative integrals
         if (bvh.per_node_attributes[node_id].gaussians.size() < REDUCTION_N)
-            return scalar_t(0);
+            return scalar_t(-2); // -2 so it's safely below -1 from cach_id_with_highest_rating
         else
             return std::abs(bvh.per_node_attributes[node_id].gm_integral);
     };
@@ -594,8 +594,9 @@ EXECUTION_DEVICES void collect_result(const dim3& gpe_gridDim, const dim3& gpe_b
         if (best_node_cache_id >= selectedNodes.size())
             break;  // ran out of nodes
         auto best_node_id = selectedNodes[best_node_cache_id];
-        assert(best_node_id < n_internal_nodes); // we should have only internal nodes at this point as cach_id_with_highest_rating() returns 0xffff.. if the node is not full.
+        assert(best_node_id < n_nodes);
         const auto& best_descend_node = bvh.nodes[best_node_id];
+        assert(best_node_id < n_internal_nodes); // we should have only internal nodes at this point as cach_id_with_highest_rating() returns 0xffff.. if the node is not full.
 
         selectedNodes[best_node_cache_id] = best_descend_node.left_idx;
         selectedNodesRating[best_node_cache_id] = compute_rating(best_descend_node.left_idx);
