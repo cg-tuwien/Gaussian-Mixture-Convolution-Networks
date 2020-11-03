@@ -1,5 +1,11 @@
 import torch
 import gmc.mixture as gm
+from enum import Enum
+
+
+class ScalingMethod(Enum):
+    SMALLEST_TO_ONE = 1
+    LARGEST_TO_ONE = 2
 
 
 class Scaler:
@@ -8,8 +14,9 @@ class Scaler:
     # The scaling would scale down these point clouds to [0,1].
     # These extracted scalings can then be used to scale pointclouds and GMs.
 
-    def __init__(self):
+    def __init__(self, scaling_method: ScalingMethod = ScalingMethod.SMALLEST_TO_ONE):
         self.scaleP = self.scaleA = self.scaleC = None
+        self._scalingMethod = scaling_method
 
     def set_pointcloud_batch(self, pcbatch: torch.Tensor):
         # Has to be called before scaling!
@@ -19,7 +26,10 @@ class Scaler:
         extends = bbmax - bbmin  # shape: (m, 3)
 
         # Scale point clouds to [0,1] in the smallest dimension
-        self.scaleP = torch.min(extends, dim=1)[0]  # shape: (m)
+        if self._scalingMethod == ScalingMethod.SMALLEST_TO_ONE:
+            self.scaleP = torch.min(extends, dim=1)[0]  # shape: (m)
+        else:
+            self.scaleP = torch.max(extends, dim=1)[0]  # shape: (m)
         self.scaleP = self.scaleP.view(-1, 1, 1)  # shape: (m,1,1)
         self.scaleA = torch.pow(self.scaleP, 3)  # shape: (m,1,1)
         self.scaleC = (self.scaleP ** 2).view(-1, 1, 1, 1, 1)  # shape: (m,1,1)
