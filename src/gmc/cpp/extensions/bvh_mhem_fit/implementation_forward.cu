@@ -291,6 +291,71 @@ gpe::Gaussian<N_DIMS, scalar_t> averageCluster(const gpe::Vector<gpe::Gaussian<N
     return new_gaussian;
 };
 
+template <typename scalar_t, int N_DIMS, uint32_t N_GAUSSIANS_CAPACITY, uint32_t N_MAX_CLUSTER_ELEMENTS>
+EXECUTION_DEVICES
+gpe::Gaussian<N_DIMS, scalar_t> averageCluster_corrected(const gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_GAUSSIANS_CAPACITY>& mixture,
+                                               const gpe::Vector<gaussian_index_t, N_MAX_CLUSTER_ELEMENTS>& cluster_indices) {
+    using G = gpe::Gaussian<N_DIMS, scalar_t>;
+    G new_gaussian = {scalar_t(0), typename G::pos_t(0), typename G::cov_t(0)};
+
+    assert(cluster_indices.size() > 0);
+
+    for (unsigned i = 0; i < cluster_indices.size(); ++i) {
+        auto gaussian_id = cluster_indices[i];
+        const auto& gaussian = mixture[gaussian_id];
+
+        assert(new_gaussian.weight == 0 || gpe::sign(new_gaussian.weight) == gpe::sign(gaussian.weight)); // can't merge positive and negative gaussian
+        auto weight = gaussian.weight;
+        weight /= gpe::gaussian_amplitude(gaussian.covariance);
+        new_gaussian.weight += weight;
+        new_gaussian.position += weight * gaussian.position;
+        assert(glm::determinant(gaussian.covariance) > 0);
+        new_gaussian.covariance += weight * gaussian.covariance;
+    }
+    if (gpe::abs(new_gaussian.weight) < Epsilon<scalar_t>::value) {
+        new_gaussian.covariance = typename G::cov_t(1.0);
+        assert(glm::determinant(new_gaussian.covariance) > 0);
+    }
+    else {
+        new_gaussian.position /= new_gaussian.weight;
+        new_gaussian.covariance /= new_gaussian.weight;
+        new_gaussian.weight *= gpe::gaussian_amplitude(new_gaussian.covariance);
+        // no good (?): very large weight G + small weight G should result in large G and not 1/2 large G
+        // subsequently we'll rescale the whole mixture anyways
+//        new_gaussian.weight /= scalar_t(cluster_indices.size());
+        assert(glm::determinant(new_gaussian.covariance) > 0);
+    }
+    assert(std::isnan(new_gaussian.weight) == false);
+    assert(std::isnan(glm::dot(new_gaussian.position, new_gaussian.position)) == false);
+    assert(std::isnan(glm::determinant(new_gaussian.covariance)) == false);
+
+    return new_gaussian;
+};
+
+template <typename scalar_t, int N_DIMS, uint32_t N_GAUSSIANS_CAPACITY, uint32_t N_MAX_CLUSTER_ELEMENTS>
+EXECUTION_DEVICES
+gpe::Gaussian<N_DIMS, scalar_t> maxOfCluster(const gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_GAUSSIANS_CAPACITY>& mixture,
+                                             const gpe::Vector<gaussian_index_t, N_MAX_CLUSTER_ELEMENTS>& cluster_indices) {
+    using G = gpe::Gaussian<N_DIMS, scalar_t>;
+    G new_gaussian = {scalar_t(0), typename G::pos_t(0), typename G::cov_t(0)};
+    scalar_t max_abs_weight = 0;
+    assert(cluster_indices.size() > 0);
+
+    for (unsigned i = 0; i < cluster_indices.size(); ++i) {
+        auto gaussian_id = cluster_indices[i];
+        const auto& gaussian = mixture[gaussian_id];
+        if (gpe::abs(gaussian.weight) > max_abs_weight) {
+            max_abs_weight = gpe::abs(gaussian.weight);
+            new_gaussian = gaussian;
+        }
+    }
+    assert(std::isnan(new_gaussian.weight) == false);
+    assert(std::isnan(glm::dot(new_gaussian.position, new_gaussian.position)) == false);
+    assert(std::isnan(glm::determinant(new_gaussian.covariance)) == false);
+
+    return new_gaussian;
+};
+
 template <typename scalar_t, int N_DIMS, uint32_t N_GAUSSIANS, typename VectorSizeType>
 EXECUTION_DEVICES
 scalar_t integrate_abs_mixture(const gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_GAUSSIANS, VectorSizeType>& mixture) {
