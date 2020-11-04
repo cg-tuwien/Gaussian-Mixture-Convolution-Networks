@@ -364,7 +364,7 @@ EXECUTION_DEVICES
 
 template <unsigned N_FITTING, typename scalar_t, int N_DIMS, unsigned N_TARGET>
 EXECUTION_DEVICES
-gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_em(gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_TARGET> target) {
+gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_em(gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_TARGET> target, const scalar_t kl_div_threshold = scalar_t(2.0)) {
     using G = gpe::Gaussian<N_DIMS, scalar_t>;
     using pos_t = typename G::pos_t;
     using cov_t = typename G::cov_t;
@@ -375,20 +375,22 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_em(gpe::Vector<gpe::
         return gpe::reduce(vec, false, [](bool o, auto v) { return o || gpe::isnan(v); });
     };
 
-    constexpr scalar_t kl_div_threshold = scalar_t(2.0);
-
     scalar_t abs_integral;
     const auto target_double_gmm = normalise_mixture(target, &abs_integral);
     const auto fitting_double_gmm = fit_initial<N_FITTING>(target_double_gmm);
 
     const auto likelihood_matrix = gpe::outer_product(target_double_gmm, fitting_double_gmm, likelihood<scalar_t, N_DIMS>);
     // todo: test modification of clamp matrix: at least one row element or x percent row elements should be 1.
-    //       rational: otherwise certain target gaussians are not covered at all.
+    //       rational: otherwise certain target gaussians are not covered at all and resulting fitting is missing mass.
     //       could assign gaussian from the cluster; modulo zero weight gaussians
-    auto clamp_matrix = gpe::outer_product(target_double_gmm, fitting_double_gmm, [kl_div_threshold](auto target, auto fitting) {
-        return (gpe::sign(fitting.weight) == gpe::sign(target.weight) && kl_divergence<scalar_t, N_DIMS>(target, fitting) < kl_div_threshold) ? scalar_t(1) : scalar_t(0);
+    const auto kldiv_sign_matrix = gpe::outer_product(target_double_gmm, fitting_double_gmm, [](auto target, auto fitting) {
+//        return int(1);
+        return (gpe::sign(fitting.weight) == gpe::sign(target.weight)) ? kl_divergence<scalar_t, N_DIMS>(target, fitting) : scalar_t(0);
     });
-    const auto clamped_likelihood_matrix = gpe::cwise_fun(likelihood_matrix, clamp_matrix, [] EXECUTION_DEVICES (scalar_t a, scalar_t b) { return a * b; });
+
+    auto clamp_matrix = gpe::transform(kldiv_sign_matrix, [kl_div_threshold](scalar_t v) { return v < kl_div_threshold ? scalar_t(1) : scalar_t(0); });
+
+    const auto clamped_likelihood_matrix = gpe::cwise_fun(likelihood_matrix, clamp_matrix, fun::times<scalar_t>);
 
     const auto pure_fitting_weights = gpe::transform(fitting_double_gmm, [](const G& g) { return gpe::abs(g.weight) / gpe::gaussian_amplitude(g.covariance); });
     const auto weighted_likelihood_matrix = gpe::cwise_fun(pure_fitting_weights, clamped_likelihood_matrix, fun::times<scalar_t>);
@@ -455,7 +457,7 @@ EXECUTION_DEVICES void iterate_over_nodes(const dim3& gpe_gridDim, const dim3& g
                                           const gpe::MixtureNs n, const int n_mixtures, const unsigned n_internal_nodes, const unsigned n_nodes, unsigned n_components_target)
 {
     GPE_UNUSED(gpe_gridDim)
-    GPE_UNUSED(n_components_target);
+    GPE_UNUSED(n_components_target)
     using G = gpe::Gaussian<N_DIMS, scalar_t>;
     using Bvh = AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>;
 
