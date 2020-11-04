@@ -389,6 +389,19 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_em(gpe::Vector<gpe::
     });
 
     auto clamp_matrix = gpe::transform(kldiv_sign_matrix, [kl_div_threshold](scalar_t v) { return v < kl_div_threshold ? scalar_t(1) : scalar_t(0); });
+    for (unsigned target_id = 0; target_id < clamp_matrix.size(); ++target_id) {
+        auto& row = kldiv_sign_matrix[target_id];
+        unsigned best_fitting_id = unsigned(-1);
+        scalar_t smallest_value = std::numeric_limits<scalar_t>::infinity();
+        for (unsigned fitting_id = 0; fitting_id < row.size(); ++fitting_id) {
+            if (row[fitting_id] < smallest_value) {
+                smallest_value = row[fitting_id];
+                best_fitting_id = fitting_id;
+            }
+        }
+        assert(best_fitting_id < N_FITTING);
+        clamp_matrix[target_id][best_fitting_id] = scalar_t(1);  // no change if largest value was > kl_div_threshold.
+    }
 
     const auto clamped_likelihood_matrix = gpe::cwise_fun(likelihood_matrix, clamp_matrix, fun::times<scalar_t>);
 
@@ -437,10 +450,8 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_em(gpe::Vector<gpe::
                            newCovariances[i]});
     }
 
-//    auto abs_integral_result = integrate_abs_mixture(result);
-//    auto diff = abs_integral - abs_integral_result;
-//    assert(node->left_idx != 3 && node->right_idx != 4 && node->parent_idx != 17 && node->object_idx != 2);
-//    assert(gpe::abs(diff) < scalar_t(0.0001));
+    assert(false);
+    assert(gpe::abs(abs_integral - integrate_abs_mixture(result)) < scalar_t(0.0001));
     return result;
 }
 
