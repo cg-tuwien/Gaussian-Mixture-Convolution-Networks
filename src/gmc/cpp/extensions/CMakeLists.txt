@@ -15,8 +15,9 @@ set(CMAKE_CUDA_ARCHITECTURES 60)
 #     )
 string(APPEND CMAKE_CUDA_FLAGS " -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --expt-extended-lambda --expt-relaxed-constexpr")
 string(APPEND CMAKE_CUDA_FLAGS " -Xcompiler -fPIC,-fopenmp  --use_fast_math")
-string(APPEND CMAKE_CUDA_FLAGS_RELEASE " --generate-line-info")
-string(APPEND CMAKE_CUDA_FLAGS_RELEASE " -Xcompiler '-ffast-math,-O4,-march=native'")
+string(APPEND CMAKE_CUDA_FLAGS " --generate-line-info -DNDEBUG")
+string(APPEND CMAKE_CUDA_FLAGS " -Xcompiler '-ffast-math'")
+string(APPEND CMAKE_CUDA_FLAGS_RELEASE " -Xcompiler '-O4,-march=native'")
 string(APPEND CMAKE_CUDA_FLAGS_DEBUG " -g -G")
 
 # ASan:
@@ -25,7 +26,8 @@ string(APPEND CMAKE_CUDA_FLAGS_DEBUG " -g -G")
 #string(APPEND CMAKE_LINKER_FLAGS_DEBUG " -fno-omit-frame-pointer -fsanitize=address")
 
 #target_compile_options(kre -Wall -Wextra -Wpedantic -Werror)
-string(APPEND CMAKE_CXX_FLAGS_RELEASE " -ffast-math -O4 -march=native")
+string(APPEND CMAKE_CXX_FLAGS " -ffast-math")
+string(APPEND CMAKE_CXX_FLAGS_RELEASE " -O4 -march=native")
 
 # this will enable the lld (llvm) linker. it's parallel and much faster, but not installed by default.
 # if it's not installed, you'll get errors, that openmp or other stuff is not installed (hard to track down)

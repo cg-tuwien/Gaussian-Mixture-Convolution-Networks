@@ -32,6 +32,23 @@ struct Array {
     constexpr uint32_t size() const {
         return N;
     }
+    __host__ __device__ GPE_CONTAINER_INLINE
+    T* begin() {
+        return data;
+    }
+    __host__ __device__ GPE_CONTAINER_INLINE
+    const T* begin() const {
+        return data;
+    }
+    __host__ __device__ GPE_CONTAINER_INLINE
+    T* end() {
+        return data + size();
+    }
+    __host__ __device__ GPE_CONTAINER_INLINE
+    const T* end() const {
+        return data + size();
+    }
+
 };
 
 template<size_t N>
@@ -162,6 +179,24 @@ struct Vector {
     uint32_t size() const {
         return uint32_t(m_size);
     }
+
+    __host__ __device__ GPE_CONTAINER_INLINE
+    T* begin() {
+        return data;
+    }
+    __host__ __device__ GPE_CONTAINER_INLINE
+    const T* begin() const {
+        return data;
+    }
+    __host__ __device__ GPE_CONTAINER_INLINE
+    T* end() {
+        return data + size();
+    }
+    __host__ __device__ GPE_CONTAINER_INLINE
+    const T* end() const {
+        return data + size();
+    }
+
     __host__ __device__ GPE_CONTAINER_INLINE
     void resize(uint32_t new_size) {
         assert(new_size <= N);

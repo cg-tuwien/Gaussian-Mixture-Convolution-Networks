@@ -16,12 +16,13 @@
 #include "evaluate_inversed/parallel_binding.h"
 #include "bvh_mhem_fit/bindings.h"
 
-constexpr uint N_BATCHES = 2;
-constexpr uint N_CONVOLUTION_LAYERS = 3;
+constexpr uint N_BATCHES = 1;
+constexpr uint CONVOLUTION_LAYER_START = 0;
+constexpr uint CONVOLUTION_LAYER_END = 3;
 constexpr uint LIMIT_N_BATCH = 100;
-constexpr bool USE_CUDA = true;
+constexpr bool USE_CUDA = false;
 //constexpr bool BACKWARD = false;
-constexpr bool RENDER = false;
+constexpr bool RENDER = true;
 
 torch::Tensor render(torch::Tensor mixture, const int resolution, const int n_batch_limit) {
     using namespace torch::indexing;
@@ -76,8 +77,10 @@ int main(int argc, char *argv[]) {
         torch::jit::script::Module container = torch::jit::load("/home/madam/Documents/work/tuw/gmc_net/data/fitting_input/fitting_input_batch" + std::to_string(i) + ".pt");
         auto list = container.attributes();
 
-        for (uint i = 0; i < N_CONVOLUTION_LAYERS; i++) {
-            auto mixture = container.attr(std::to_string(i)).toTensor();//.index({Slice(5, 6), Slice(0, 1), Slice(), Slice()});
+        for (uint i = CONVOLUTION_LAYER_START; i < CONVOLUTION_LAYER_END; i++) {
+            assert(i < 3);
+            auto mixture = container.attr(std::to_string(i)).toTensor();
+//            mixture = mixture.index({Slice(7, 8), Slice(0,1), Slice(), Slice()});
 //            auto mixture = torch::tensor({{0.5f,  5.0f,  5.0f,  4.0f, -0.5f, -0.5f,  4.0f},
 //                                          {0.5f,  8.0f,  8.0f,  4.0f, -2.5f, -2.5f,  4.0f},
 //                                          {0.5f, 20.0f, 10.0f,  5.0f,  0.0f,  0.0f,  7.0f},
