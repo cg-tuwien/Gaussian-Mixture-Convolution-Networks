@@ -10,4 +10,4 @@ from .termination_criterion import TerminationCriterion, \
     MaxIterationTerminationCriterion, RelChangeTerminationCriterion, AndCombinedTerminationCriterion, \
     OrCombinedTerminationCriterion
 from .pc_dataset_iterator import PCDatasetIterator
-from .scaler import Scaler
+from .scaler import Scaler, ScalingMethod

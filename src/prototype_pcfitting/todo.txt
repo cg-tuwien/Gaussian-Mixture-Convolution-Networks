@@ -1,0 +1,6 @@
+Things To Do:
+
+- Figure out Out Of Memory Error when working on complete batch
+- Measure total running time
+- TerminationCriterions should check each GMM individually. Can return an "operation mask", that is a list of pc indices
+- Check if Adam needs fixed size GMMs, as Eckart would usually return a somewhat arbitrary amount
