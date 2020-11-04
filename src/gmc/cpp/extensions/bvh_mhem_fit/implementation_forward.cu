@@ -134,7 +134,9 @@ EXECUTION_DEVICES scalar_t centroid_distance(const gpe::Gaussian<N_DIMS, scalar_
     return gpe::squared_norm(a.position - b.position);
 }
 
-template <typename scalar_t, int N_DIMS, int N_FITTING_COMPONENTS>
+// numerical problems when N_VIRTUAL_POINTS is large: a*b for instance 0.001, wi_bar becomes 5.6 -> bad things
+// that depends on cov magnitude => better normalise mixture to have covs in the magnitude of the identity
+template <typename scalar_t, int N_DIMS, int N_VIRTUAL_POINTS = 4>
 EXECUTION_DEVICES scalar_t likelihood(const gpe::Gaussian<N_DIMS, scalar_t>& target, const gpe::Gaussian<N_DIMS, scalar_t>& fitting) {
     // Continuous projection for fast L 1 reconstruction: Equation 9
     scalar_t normal_amplitude = gpe::gaussian_amplitude(fitting.covariance);
@@ -142,7 +144,7 @@ EXECUTION_DEVICES scalar_t likelihood(const gpe::Gaussian<N_DIMS, scalar_t>& tar
     auto c = glm::inverse(fitting.covariance) * target.covariance;
     scalar_t b = gpe::exp(scalar_t(-0.5) * gpe::trace(c));
     scalar_t target_normal_amplitudes = gpe::gaussian_amplitude(target.covariance);
-    scalar_t wi_bar = N_FITTING_COMPONENTS * target.weight / target_normal_amplitudes;
+    scalar_t wi_bar = N_VIRTUAL_POINTS * target.weight / target_normal_amplitudes;
     // pow(0, 0) gives nan in cuda with fast math
     return gpe::pow(Epsilon<scalar_t>::clip(a * b), wi_bar);
 }
@@ -328,7 +330,7 @@ EXECUTION_DEVICES
 #if GPE_DISPARITY_METHOD == 0
     auto disparity_matrix = gpe::outer_product(target_double_gmm, target_double_gmm, centroid_distance<scalar_t, N_DIMS>);   // returns gpe::Vector<gpe::Vector>
 #elif GPE_DISPARITY_METHOD == 1
-    auto disparity_matrix = gpe::outer_product(target_double_gmm, target_double_gmm, likelihood<scalar_t, N_DIMS, N_TARGET>);   // returns gpe::Vector<gpe::Vector>
+    auto disparity_matrix = gpe::outer_product(target_double_gmm, target_double_gmm, likelihood<scalar_t, N_DIMS>);   // returns gpe::Vector<gpe::Vector>
     for (unsigned i = 0; i < disparity_matrix.size(); ++i) {
         for (unsigned j = i + 1; j < disparity_matrix[i].size(); ++j) {
             disparity_matrix[i][j] = gpe::min(-disparity_matrix[i][j], -disparity_matrix[j][i]);
@@ -379,7 +381,7 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_em(gpe::Vector<gpe::
     const auto target_double_gmm = normalise_mixture(target, &abs_integral);
     const auto fitting_double_gmm = fit_initial<N_FITTING>(target_double_gmm);
 
-    const auto likelihood_matrix = gpe::outer_product(target_double_gmm, fitting_double_gmm, likelihood<scalar_t, N_DIMS, N_FITTING>);
+    const auto likelihood_matrix = gpe::outer_product(target_double_gmm, fitting_double_gmm, likelihood<scalar_t, N_DIMS>);
     // todo: test modification of clamp matrix: at least one row element or x percent row elements should be 1.
     //       rational: otherwise certain target gaussians are not covered at all.
     //       could assign gaussian from the cluster; modulo zero weight gaussians
