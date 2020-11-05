@@ -103,3 +103,15 @@ class Scaler:
         covariances = gm.covariances(gmmbatch).clone()
         covariances *= self.scaleC
         return gm.pack_mixture(gm.weights(gmmbatch).clone(), positions, covariances)
+
+    def scale_up_gmm_wpc(self, weights: torch.Tensor, positions: torch.Tensor, covariances: torch.Tensor) -> (torch.Tensor, torch.Tensor, torch.Tensor):
+        # Scales up the given GMMs (with priors as weights!) according to the scales extracted in set_pointcloud_batch
+        # The scaled GMs are returned.
+        if len(self.scaleP.shape) != 4:
+            self.scaleP = self.scaleP.view(-1, 1, 1, 1)
+        positions = positions.clone()
+        positions -= 0.5
+        positions *= self.scaleP
+        covariances = covariances.clone()
+        covariances *= self.scaleC
+        return weights.clone(), positions, covariances

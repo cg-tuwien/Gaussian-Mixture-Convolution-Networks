@@ -37,17 +37,19 @@ class EckartGenerator(GMMGenerator):
         self._eps = (torch.eye(3, 3, dtype=self._dtype) * 1e-6).view(1, 1, 1, 3, 3) \
             .expand(batch_size, 1, self._n_gaussians_per_node, 3, 3).cuda()
 
-        parents = torch.zeros(1, point_count).to(self._dtype).cuda()
-        parents[:, :] = -self._n_gaussians_per_node
+        parents = torch.zeros(1, point_count).to(torch.long).cuda()
+        parents[:, :] = -1
 
         hierarchy = []
         
-        gmmindex = -1
+        gmmindex = -2
 
         # Iterate over levels
         for l in range(self._n_levels):
             # Iterate over GMMs for this level
             for j in range(self._n_gaussians_per_node ** l):   # <- WE SHOULD GET RID OF THIS LOOP! PARALLEL!
+                print("Level ", l, " Gaussian ", j)
+
                 # Calculate index of this GMM
                 gmmindex += 1
 
@@ -55,7 +57,7 @@ class EckartGenerator(GMMGenerator):
                 # This will be hard to parallelize, as the point counts might be different per batch entry
                 # currently only supports batch_size == 1
                 point_indizes = torch.nonzero(parents == gmmindex)
-                relevant_points = pcbatch[point_indizes[:, 0], point_indizes[:, 1], :]
+                relevant_points = pcbatch[:, point_indizes[:, 1], :]
                 relevant_point_count = point_indizes.shape[0]
 
                 # Relevant point count might be zero
@@ -79,7 +81,9 @@ class EckartGenerator(GMMGenerator):
                 iteration = 0
 
                 while True:
-                    points_rep = pcbatch.unsqueeze(1).unsqueeze(3).expand(batch_size, 1, point_count)
+                    iteration += 1
+
+                    points_rep = relevant_points.unsqueeze(1).unsqueeze(3).expand(batch_size, 1, relevant_point_count, self._n_gaussians_per_node, 3)
 
                     responsibilities, losses = self._expectation(points_rep, gm_data)
 
@@ -89,19 +93,18 @@ class EckartGenerator(GMMGenerator):
                     if iteration == 20:
                         current_parent_indizes = responsibilities.argmax(dim=3)
                         current_parent_indizes += (gmmindex+1)*self._n_gaussians_per_node
-                        parents[point_indizes[:, 0], point_indizes[:, 1]] = current_parent_indizes
+                        parents[:, point_indizes[:, 1]] = current_parent_indizes
                         break
 
                     self._maximization(points_rep, responsibilities, gm_data)
 
-                # ToDo: Upscale that stuff again
+                gm_data.scale_up(scaler)
                 hierarchy.append(gm_data)
         res_gm, res_gmm = self._construct_gm_from_hierarchy(hierarchy)
         res_gm = res_gm.float()
         res_gmm = res_gmm.float()
 
         return res_gm, res_gmm
-
 
     def _construct_gm_from_hierarchy(self, hierarchy) -> (torch.Tensor, torch.Tensor):
         last_h_n = self._n_gaussians_per_node ** (self._n_levels - 1)
@@ -299,3 +302,10 @@ class EckartGenerator(GMMGenerator):
         def multiply_weights(self, factor):
             self._priors *= factor
             self._amplitudes *= factor
+
+        def scale_up(self, scaler: Scaler):
+            newpriors, newpositions, newcovariances = \
+                scaler.scale_up_gmm_wpc(self._priors, self._positions, self._covariances)
+            self.set_positions(newpositions)
+            self.set_covariances(newcovariances)
+            self.set_priors(newpriors)
