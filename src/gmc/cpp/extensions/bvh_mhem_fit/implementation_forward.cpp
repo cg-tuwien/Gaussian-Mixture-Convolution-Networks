@@ -47,14 +47,16 @@ using Node  = lbvh::detail::Node;
 
 template <typename scalar_t = float>
 struct Epsilon {
-    static constexpr scalar_t value = scalar_t(0.0000000000000001);
-    static EXECUTION_DEVICES scalar_t clip(scalar_t v) { return gpe::max(v, value); }
+    static constexpr scalar_t small = scalar_t(0.0000000000000000000000001);
+    static constexpr scalar_t large = scalar_t(0.0000000000000001);
+    static EXECUTION_DEVICES scalar_t clip(scalar_t v) { return gpe::max(v, small); }
 };
 
 template<>
 struct Epsilon<double> {
-    static constexpr double value = 0.000000000000000000001;
-    static EXECUTION_DEVICES double clip(double v) { return gpe::max(v, value); }
+    static constexpr double small = 0.0000000000000000000000000000001;
+    static constexpr double large = 0.00000000000000000000000000000000000000000000000001;
+    static EXECUTION_DEVICES double clip(double v) { return gpe::max(v, small); }
 };
 
 
@@ -272,7 +274,7 @@ gpe::Gaussian<N_DIMS, scalar_t> averageCluster(const gpe::Vector<gpe::Gaussian<N
         assert(glm::determinant(gaussian.covariance) > 0);
         new_gaussian.covariance += gaussian.weight * gaussian.covariance;
     }
-    if (gpe::abs(new_gaussian.weight) < Epsilon<scalar_t>::value) {
+    if (gpe::abs(new_gaussian.weight) < Epsilon<scalar_t>::large) {
         new_gaussian.covariance = typename G::cov_t(1.0);
         assert(glm::determinant(new_gaussian.covariance) > 0);
     }
@@ -312,7 +314,7 @@ gpe::Gaussian<N_DIMS, scalar_t> averageCluster_corrected(const gpe::Vector<gpe::
         assert(glm::determinant(gaussian.covariance) > 0);
         new_gaussian.covariance += weight * gaussian.covariance;
     }
-    if (gpe::abs(new_gaussian.weight) < Epsilon<scalar_t>::value) {
+    if (gpe::abs(new_gaussian.weight) < Epsilon<scalar_t>::large) {
         new_gaussian.covariance = typename G::cov_t(1.0);
         assert(glm::determinant(new_gaussian.covariance) > 0);
     }
@@ -499,8 +501,8 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_em(gpe::Vector<gpe::
     const auto weightedCovs = gpe::cwise_fun(responsibilities_3, unweightedCovs, [](scalar_t r, const cov_t& cov) { return r * cov; });
     auto newCovariances = gpe::reduce_cols(weightedCovs, cov_t(0), fun::plus<cov_t>);
     newCovariances = gpe::cwise_fun(newCovariances, newWeights, [](cov_t cov, scalar_t w) {
-        if (w < Epsilon<scalar_t>::value)
-            cov += cov_t(1) * Epsilon<scalar_t>::value;
+        if (w < Epsilon<scalar_t>::large)
+            cov += cov_t(1) * Epsilon<scalar_t>::large;
         return cov;
     });
     assert(!has_nan(newCovariances));
@@ -570,7 +572,7 @@ EXECUTION_DEVICES void iterate_over_nodes(const dim3& gpe_gridDim, const dim3& g
         bvh.per_node_attributes[node_id].n_child_leaves = bvh.per_node_attributes[node->left_idx].n_child_leaves + bvh.per_node_attributes[node->right_idx].n_child_leaves;
         bvh.per_node_attributes[node_id].gm_integral = bvh.per_node_attributes[node->left_idx].gm_integral + bvh.per_node_attributes[node->right_idx].gm_integral;
 
-        auto child_gaussians = bvh.collect_child_gaussians(node, Epsilon<scalar_t>::value);
+        auto child_gaussians = bvh.collect_child_gaussians(node, Epsilon<scalar_t>::large);
         if (child_gaussians.size() > REDUCTION_N) {
             bvh.per_node_attributes[node_id].gaussians = fit_em<REDUCTION_N>(child_gaussians);
         }

@@ -113,6 +113,20 @@ static_assert (sizeof (Gaussian<3, float>) == 13*4, "Something wrong with Gaussi
 static_assert (sizeof (Gaussian<2, double>) == 7*8, "Something wrong with Gaussian");
 static_assert (sizeof (Gaussian<3, double>) == 13*8, "Something wrong with Gaussian");
 
+template<typename scalar_t>
+void printGaussian(const Gaussian<2, scalar_t>& g) {
+    printf("g(w=%f, p=%f/%f, c=%f/%f//%f\n", g.weight, g.position.x, g.position.y, g.covariance[0][0], g.covariance[0][1], g.covariance[1][1]);
+}
+template<typename scalar_t>
+void printGaussian(const Gaussian<3, scalar_t>& g) {
+    printf("g(w=%f, p=%f/%f/%f, c=%f/%f/%f//%f/%f//%f\n",
+           g.weight,
+           g.position.x, g.position.y, g.position.z,
+           g.covariance[0][0], g.covariance[0][1], g.covariance[0][2],
+           g.covariance[1][1], g.covariance[1][2],
+           g.covariance[2][2]);
+}
+
 template<int N_DIMS, typename scalar_t>
 std::ostream& operator <<(std::ostream& stream, const Gaussian<N_DIMS, scalar_t>& g) {
     stream << "Gauss[" << g.weight << "; " << g.position[0];
