@@ -120,7 +120,7 @@ set(EVALUATE_SOURCES
 
 set(BVH_MHEM_FIT_SOURCES
     bvh_mhem_fit/implementation.h
-    bvh_mhem_fit/implementation_forward.cu
+    bvh_mhem_fit/implementation_forward.cpp
     bvh_mhem_fit/implementation_backward.cu
     bvh_mhem_fit/implementation_common.cuh
     bvh_mhem_fit/bindings.cpp

@@ -722,7 +722,7 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> forward_impl(at::Tensor 
                                                                                    mixture_a, nodes_a, aabbs_a, flags_a, node_attributes_a,
                                                                                    n, n_mixtures, n_internal_nodes, n_nodes, n_components_target);
                                        };
-                                   gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(mixture), dimGrid, dimBlock, fun);
+                                   gpe::start_parallel<gpe::ComputeDevice::CPU>(gpe::device(mixture), dimGrid, dimBlock, fun);
                                }));
 
     auto out_mixture = torch::zeros({n_mixtures, n_components_target, mixture.size(-1)}, torch::TensorOptions(mixture.device()).dtype(mixture.dtype()));
@@ -745,7 +745,7 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> forward_impl(at::Tensor 
                                                                                         mixture_a, out_mixture_a, nodes_a, aabbs_a, flags_a, node_attributes_a,
                                                                                         n, n_mixtures, n_internal_nodes, n_nodes, n_components_target);
                                                 };
-                                            gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(mixture), dimGrid, dimBlock, fun);
+                                            gpe::start_parallel<gpe::ComputeDevice::CPU>(gpe::device(mixture), dimGrid, dimBlock, fun);
                                         }));
 
 
