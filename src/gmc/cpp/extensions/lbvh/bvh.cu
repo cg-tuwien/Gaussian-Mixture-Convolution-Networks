@@ -307,8 +307,17 @@ at::Tensor Bvh<N_DIMS, scalar_t>::compute_aabbs() {
     return aabbs;
 }
 
+template<typename scalar_t>
+__host__ __device__ __forceinline__
+glm::vec<3, scalar_t> make_vec3(const glm::vec<3, scalar_t>& v) { return v; }
+
+template<typename scalar_t>
+__host__ __device__ __forceinline__
+glm::vec<3, scalar_t> make_vec3(const glm::vec<2, scalar_t>& v) { return glm::vec<3, scalar_t>(v, 0); }
+
 template<int N_DIMS, typename scalar_t>
 at::Tensor Bvh<N_DIMS, scalar_t>::compute_morton_codes(const at::Tensor& aabbs, const at::Tensor& aabb_whole) const {
+    using namespace torch::indexing;
     const auto aabbs_view = aabbs.view({-1, m_n.components, 8});
     const auto aabb_whole_view = aabb_whole.view({-1, 8});
     const auto aabb_a = gpe::accessor<scalar_t, 3>(aabbs_view);
@@ -321,10 +330,16 @@ at::Tensor Bvh<N_DIMS, scalar_t>::compute_morton_codes(const at::Tensor& aabbs, 
     auto morton_codes = torch::empty({n_mixtures, m_n_leaf_nodes}, torch::TensorOptions(aabbs.device()).dtype(detail::TorchTypeMapper<morton_torch_t>::id()));
     auto morton_codes_a = gpe::accessor<morton_torch_t, 2>(morton_codes);
 
+    auto mixture_view = m_mixture.view({n_mixtures, m_n.components, -1});
+    auto mixture_a = gpe::accessor<scalar_t, 3>(mixture_view);
+    auto cov_max = std::get<0>(gpe::covariances(mixture_view).diagonal(0, -2, -1).max(-2));
+    auto cov_max_a = gpe::accessor<scalar_t, 2>(cov_max);
+
+
     dim3 dimBlock = dim3(1, 128, 1);
     dim3 dimGrid = dim3((unsigned(n_mixtures) + dimBlock.x - 1) / dimBlock.x,
                         (unsigned(m_n_leaf_nodes) + dimBlock.y - 1) / dimBlock.y);
-    auto fun = [morton_codes_a, aabb_a, aabb_whole_a, n_mixtures, n_components] __host__ __device__
+    auto fun = [morton_codes_a, aabb_a, aabb_whole_a, n_mixtures, n_components, mixture_a, cov_max_a] __host__ __device__
             (const dim3& gpe_gridDim, const dim3& gpe_blockDim, const dim3& gpe_blockIdx, const dim3& gpe_threadIdx) mutable {
                 GPE_UNUSED(gpe_gridDim)
 
@@ -332,6 +347,11 @@ at::Tensor Bvh<N_DIMS, scalar_t>::compute_morton_codes(const at::Tensor& aabbs, 
                 const auto component_id = int(gpe_blockIdx.y * gpe_blockDim.y + gpe_threadIdx.y);
                 if (mixture_id >= n_mixtures || component_id >= n_components)
                     return;
+
+                const gpe::Gaussian<N_DIMS, scalar_t>& gaussian = gpe::gaussian<N_DIMS>(mixture_a[mixture_id][component_id]);
+                const glm::vec<N_DIMS, scalar_t>& cov_max = gpe::vec<N_DIMS>(cov_max_a[mixture_id][0]);
+                const auto cov_diag_nd = gpe::diagonal(gaussian.covariance) / cov_max;
+                const auto cov_diag_3d = make_vec3(cov_diag_nd);
 
                 const auto& aabb = reinterpret_cast<const Aabb<float>&>(aabb_a[mixture_id][component_id][0]);
                 const auto& whole = reinterpret_cast<const Aabb<float>&>(aabb_whole_a[mixture_id][0]);
@@ -344,13 +364,14 @@ at::Tensor Bvh<N_DIMS, scalar_t>::compute_morton_codes(const at::Tensor& aabbs, 
                 p.x /= (whole.upper.x - whole.lower.x);
                 p.y /= (whole.upper.y - whole.lower.y);
                 p.z /= (whole.upper.z - whole.lower.z);
-                morton_code = lbvh::morton_code(p);
 
-                //    morton_code << sizeof (morton_torch_t) * 2;
-                //    morton_code = mixture_id;
-                morton_code <<= 32;
-                morton_code |= morton_cuda_t(component_id);
-                //    morton_code = component_id;
+
+                assert(component_id < 65535);
+                morton_code = lbvh::morton_code(uint16_t(component_id), glm::vec<3, scalar_t>(p.x, p.y, p.z), cov_diag_3d);
+
+//                morton_code = lbvh::morton_code(p);
+//                morton_code <<= 32;
+//                morton_code |= morton_cuda_t(component_id);
     };
     gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(m_mixture), dimGrid, dimBlock, fun);
     return morton_codes.view({m_n.batch, m_n.layers, m_n.components});

@@ -72,6 +72,14 @@ __forceinline__ __host__ __device__ bool isnan(const glm::mat<DIMS, DIMS, scalar
     return nan;
 }
 
+template <int DIMS, typename scalar_t>
+__forceinline__ __host__ __device__ glm::vec<DIMS, scalar_t> diagonal(const glm::mat<DIMS, DIMS, scalar_t>& x) {
+    glm::vec<DIMS, scalar_t> d;
+    for (unsigned i = 0; i < DIMS; ++i)
+        d[i] = x[i][i];
+    return d;
+}
+
 }
 
 #endif // HELPERS_H

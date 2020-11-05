@@ -699,6 +699,7 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> forward_impl(at::Tensor 
     auto n = gpe::get_ns(mixture);
     TORCH_CHECK(n.batch * n.layers < 65535, "n_batch x n_layers must be smaller than 65535 for CUDA")
     TORCH_CHECK(n.components > 1, "number of components must be greater 1 for this implementation")
+    TORCH_CHECK(n.components < 65535, "number of components must be smaller than 65535 for morton code computation")
     TORCH_CHECK(n.dims == 2, "atm only 2d gaussians")
     TORCH_CHECK(mixture.dtype() == caffe2::TypeMeta::Make<float>(), "atm only float")
 
