@@ -16,13 +16,15 @@
 #include "evaluate_inversed/parallel_binding.h"
 #include "bvh_mhem_fit/bindings.h"
 
-constexpr uint N_BATCHES = 1;
+constexpr uint N_BATCHES = 10;
 constexpr uint CONVOLUTION_LAYER_START = 0;
 constexpr uint CONVOLUTION_LAYER_END = 3;
 constexpr uint LIMIT_N_BATCH = 100;
 constexpr bool USE_CUDA = false;
 //constexpr bool BACKWARD = false;
-constexpr bool RENDER = true;
+constexpr bool RENDER = false;
+constexpr uint RESOLUTION = 128;
+constexpr bool DO_STATS = true;
 
 torch::Tensor render(torch::Tensor mixture, const int resolution, const int n_batch_limit) {
     using namespace torch::indexing;
@@ -73,6 +75,9 @@ int main(int argc, char *argv[]) {
     using namespace torch::indexing;
     QApplication a(argc, argv);
 
+    std::array<std::vector<torch::Tensor>, CONVOLUTION_LAYER_END - CONVOLUTION_LAYER_START> error_data;
+
+
     for (uint i = 0; i < N_BATCHES; ++i) {
         torch::jit::script::Module container = torch::jit::load("/home/madam/Documents/work/tuw/gmc_net/data/fitting_input/fitting_input_batch" + std::to_string(i) + ".pt");
         auto list = container.attributes();
@@ -89,9 +94,9 @@ int main(int argc, char *argv[]) {
             if (USE_CUDA)
                 mixture = mixture.cuda();
             std::cout << "layer " << i << ": " << mixture.sizes() << " device: " << mixture.device() << std::endl;
-            auto gt_rendering = render(gpe::mixture_with_inversed_covariances(mixture), 128, LIMIT_N_BATCH);
+            auto gt_rendering = render(gpe::mixture_with_inversed_covariances(mixture), RESOLUTION, LIMIT_N_BATCH);
             if (RENDER)
-                show(gt_rendering, 128, LIMIT_N_BATCH);
+                show(gt_rendering, RESOLUTION, LIMIT_N_BATCH);
 
             cudaDeviceSynchronize();
 
@@ -100,19 +105,33 @@ int main(int argc, char *argv[]) {
             std::tie(fitted_mixture, nodes, aabbs) = bvh_mhem_fit_forward(mixture, 32);
             cudaDeviceSynchronize();
             auto end = std::chrono::high_resolution_clock::now();
-            auto fitted_rendering = render(gpe::mixture_with_inversed_covariances(fitted_mixture), 128, LIMIT_N_BATCH);
+            auto fitted_rendering = render(gpe::mixture_with_inversed_covariances(fitted_mixture), RESOLUTION, LIMIT_N_BATCH);
             if (RENDER) {
-                show(fitted_rendering, 128, LIMIT_N_BATCH);
+                show(fitted_rendering, RESOLUTION, LIMIT_N_BATCH);
             }
             auto diff = gt_rendering - fitted_rendering;
+            if (DO_STATS) {
+                error_data[i].push_back(diff.cpu().view({1, -1, RESOLUTION * RESOLUTION}));
+            }
             auto rmse = torch::sqrt(torch::mean(diff * diff)).item<float>();
-            std::cout << "elapsed time: " << std::chrono::duration_cast<std::chrono::milliseconds>(end-start).count() << "ms, RMSE: " << rmse << std::endl;
+            std::cout << "elapsed time: " << std::chrono::duration_cast<std::chrono::milliseconds>(end-start).count() << "ms, RMSE: " << rmse * 1000 << "e-3" << std::endl;
         }
     }
 
+    if (DO_STATS) {
+        std::cout << std::endl << "totals:" << std::endl;
+        for (uint i = CONVOLUTION_LAYER_START; i < CONVOLUTION_LAYER_END; i++) {
+            std::cout << "layer " << i << ": ";
+            torch::Tensor d = torch::cat(error_data[i], 0);
+            std::cout << "RMSE=" << torch::sqrt(torch::mean(d * d)).item<float>() * 1000 << "e-3";
+            d = d.view({-1, RESOLUTION * RESOLUTION});
+            std::cout << " std(RMSE)=" << torch::sqrt(torch::sqrt(torch::mean(d * d, 1)).var() / d.size(0)).item<float>() * 1000 << "e-3";
+            std::cout << std::endl;
+        }
+    }
 
 //    torch::load(d, "/home/madam/Documents/work/tuw/gmc_net/data/fitting_input/fitting_input_batch0_netlayer0.tensor");
-    std::cout << "DONE" << std::endl;
+    std::cout << std::endl << "DONE" << std::endl;
     if (RENDER)
         return a.exec();
     else

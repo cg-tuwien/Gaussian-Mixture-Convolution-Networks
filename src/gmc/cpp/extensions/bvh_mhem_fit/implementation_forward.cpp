@@ -721,7 +721,7 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> forward_impl(at::Tensor 
 
 
     GPE_DISPATCH_FLOATING_TYPES_AND_DIM(mixture.scalar_type(), n.dims, ([&] {
-                                   dim3 dimBlock = dim3(32, 1, 1);
+                                   dim3 dimBlock = dim3(1024, 1, 1);
                                    dim3 dimGrid = dim3((uint(bvh.m_n_leaf_nodes) + dimBlock.x - 1) / dimBlock.x,
                                                        (uint(n_mixtures) + dimBlock.y - 1) / dimBlock.y,
                                                        (uint(1) + dimBlock.z - 1) / dimBlock.z);
