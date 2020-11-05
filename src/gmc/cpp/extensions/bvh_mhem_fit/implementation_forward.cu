@@ -515,7 +515,6 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_em(gpe::Vector<gpe::
                            newCovariances[i]});
     }
 
-    assert(false);
     assert(gpe::abs(abs_integral - integrate_abs_mixture(result)) < scalar_t(0.0001));
     return result;
 }
