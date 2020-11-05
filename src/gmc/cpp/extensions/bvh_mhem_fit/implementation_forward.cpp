@@ -517,6 +517,19 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_em(gpe::Vector<gpe::
                            newCovariances[i]});
     }
 
+//    if (gpe::abs(abs_integral - integrate_abs_mixture(result)) > scalar_t(0.0001)) {
+//        printf("target:\n");
+//        for (const auto& g : target_double_gmm) {
+//            gpe::printGaussian(g);
+//        }
+//        printf("initial fitting:\n");
+//        for (const auto& g : fitting_double_gmm) {
+//            gpe::printGaussian(g);
+//        }
+//#ifndef __CUDA_ARCH__
+//        fflush(stdout);
+//#endif
+//    }
     assert(gpe::abs(abs_integral - integrate_abs_mixture(result)) < scalar_t(0.0001));
     return result;
 }
