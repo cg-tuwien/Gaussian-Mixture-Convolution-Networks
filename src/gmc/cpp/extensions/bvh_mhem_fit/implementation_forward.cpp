@@ -608,7 +608,7 @@ EXECUTION_DEVICES void collect_result(const dim3& gpe_gridDim, const dim3& gpe_b
                                       const gpe::MixtureNs n, const int n_mixtures, const unsigned n_internal_nodes, const unsigned n_nodes, unsigned n_components_target)
 {
     GPE_UNUSED(gpe_gridDim)
-    GPE_UNUSED(flags);
+    GPE_UNUSED(flags)
     using G = gpe::Gaussian<N_DIMS, scalar_t>;
     using Bvh = AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>;
 
@@ -688,11 +688,10 @@ EXECUTION_DEVICES void collect_result(const dim3& gpe_gridDim, const dim3& gpe_b
 } // anonymous namespace
 
 
-std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> forward_impl(at::Tensor mixture, unsigned n_components_target = 32) {
+template<int REDUCTION_N = 4>
+std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> forward_impl_t(at::Tensor mixture, const BvhMhemFitConfig& config, unsigned n_components_target = 32) {
     using namespace torch::indexing;
     using LBVH = lbvh::Bvh<2, float>;
-
-    constexpr int REDUCTION_N = 4;
 
     // todo: flatten mixture for kernel, i.g. nbatch/nlayers/ncomponents/7 => nmixture/ncomponents/7
 
@@ -704,7 +703,7 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> forward_impl(at::Tensor 
     TORCH_CHECK(mixture.dtype() == caffe2::TypeMeta::Make<float>(), "atm only float")
 
     const auto n_mixtures = n.batch * n.layers;
-    const auto bvh = LBVH(gpe::mixture_with_inversed_covariances(mixture).contiguous());
+    const auto bvh = LBVH(gpe::mixture_with_inversed_covariances(mixture).contiguous(), config.bvh_config);
     const auto n_internal_nodes = bvh.m_n_internal_nodes;
     const auto n_nodes = bvh.m_n_nodes;
     mixture = mixture.view({n_mixtures, n.components, -1}).contiguous();
@@ -768,6 +767,28 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> forward_impl(at::Tensor 
     return std::make_tuple(out_mixture.view({n.batch, n.layers, n_components_target, -1}), bvh.m_nodes, bvh.m_aabbs);
 }
 
+
+std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> forward_impl(at::Tensor mixture, const BvhMhemFitConfig& config, unsigned n_components_target) {
+    switch (config.reduction_n) {
+    case 2:
+        return forward_impl_t<2>(mixture, config, n_components_target);
+        break;
+    case 4:
+        return forward_impl_t<4>(mixture, config, n_components_target);
+        break;
+    case 8:
+        return forward_impl_t<8>(mixture, config, n_components_target);
+        break;
+    case 16:
+        return forward_impl_t<16>(mixture, config, n_components_target);
+        break;
+    default:
+        std::cout << "invalid BvhMhemFitConfig::reduction_n" << std::endl;
+        exit(1);
+        break;
+
+    }
+}
 
 } // namespace bvh_mhem_fit
 

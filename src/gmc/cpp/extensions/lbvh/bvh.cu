@@ -185,7 +185,25 @@ void Bvh<N_DIMS, scalar_t>::construct()
 
     // --------------------------------------------------------------------
     // we produce unique morton codes by extending the actual morton code with the index.
-    torch::Tensor morton_codes = compute_morton_codes(object_aabbs, aabb_whole);
+    torch::Tensor morton_codes;
+    switch (m_config.morton_code_algorithm) {
+    case lbvh::Config::MortonCodeAlgorithm::Old:
+        morton_codes= compute_morton_codes<0>(object_aabbs, aabb_whole);
+        break;
+    case lbvh::Config::MortonCodeAlgorithm::Cov1_12p36pc16i:
+        morton_codes= compute_morton_codes<1>(object_aabbs, aabb_whole);
+        break;
+    case lbvh::Config::MortonCodeAlgorithm::Cov2_54pc10i:
+        morton_codes= compute_morton_codes<2>(object_aabbs, aabb_whole);
+        break;
+    case lbvh::Config::MortonCodeAlgorithm::Cov3_27p27c10i:
+        morton_codes= compute_morton_codes<3>(object_aabbs, aabb_whole);
+        break;
+    case lbvh::Config::MortonCodeAlgorithm::Cov4_27c27p10i:
+        morton_codes= compute_morton_codes<4>(object_aabbs, aabb_whole);
+        break;
+    }
+
     watch_stop("compute_morton_codes");
 
     // --------------------------------------------------------------------
@@ -316,6 +334,7 @@ __host__ __device__ __forceinline__
 glm::vec<3, scalar_t> make_vec3(const glm::vec<2, scalar_t>& v) { return glm::vec<3, scalar_t>(v, 0); }
 
 template<int N_DIMS, typename scalar_t>
+template<int MORTON_CODE_ALGORITHM>
 at::Tensor Bvh<N_DIMS, scalar_t>::compute_morton_codes(const at::Tensor& aabbs, const at::Tensor& aabb_whole) const {
     using namespace torch::indexing;
     const auto aabbs_view = aabbs.view({-1, m_n.components, 8});
@@ -367,7 +386,7 @@ at::Tensor Bvh<N_DIMS, scalar_t>::compute_morton_codes(const at::Tensor& aabbs, 
 
 
                 assert(component_id < 65535);
-                morton_code = lbvh::morton_code(uint16_t(component_id), glm::vec<3, scalar_t>(p.x, p.y, p.z), cov_diag_3d);
+                morton_code = lbvh::morton_code<MORTON_CODE_ALGORITHM>(uint16_t(component_id), glm::vec<3, scalar_t>(p.x, p.y, p.z), cov_diag_3d);
 
 //                morton_code = lbvh::morton_code(p);
 //                morton_code <<= 32;

@@ -146,7 +146,7 @@ def calc_likelihoods(target: Tensor, fitting: Tensor) -> Tensor:
     n_target_components = gm.n_components(target)
     n_fitting_components = gm.n_components(fitting)
     n_dims = gm.n_dimensions(target)
-    n_virtual_points = n_fitting_components
+    n_virtual_points = 20
 
     target_weights = gm.weights(target).abs()
     target_positions = gm.positions(target)

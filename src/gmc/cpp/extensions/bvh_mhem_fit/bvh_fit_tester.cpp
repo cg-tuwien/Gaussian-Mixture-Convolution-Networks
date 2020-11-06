@@ -76,57 +76,64 @@ int main(int argc, char *argv[]) {
     QApplication a(argc, argv);
 
     std::array<std::vector<torch::Tensor>, CONVOLUTION_LAYER_END - CONVOLUTION_LAYER_START> error_data;
+    std::vector<std::pair<std::string, BvhMhemFitConfig>> configs;
+    configs.emplace_back("c1", BvhMhemFitConfig{2, lbvh::Config{lbvh::Config::MortonCodeAlgorithm::Old}});
+    configs.emplace_back("c2", BvhMhemFitConfig{4, lbvh::Config{lbvh::Config::MortonCodeAlgorithm::Old}});
+    configs.emplace_back("c3", BvhMhemFitConfig{8, lbvh::Config{lbvh::Config::MortonCodeAlgorithm::Old}});
+    configs.emplace_back("c4", BvhMhemFitConfig{16, lbvh::Config{lbvh::Config::MortonCodeAlgorithm::Old}});
 
 
-    for (uint i = 0; i < N_BATCHES; ++i) {
-        torch::jit::script::Module container = torch::jit::load("/home/madam/Documents/work/tuw/gmc_net/data/fitting_input/fitting_input_batch" + std::to_string(i) + ".pt");
-        auto list = container.attributes();
+    for (const auto& named_config : configs) {
+        for (uint i = 0; i < N_BATCHES; ++i) {
+            torch::jit::script::Module container = torch::jit::load("/home/madam/Documents/work/tuw/gmc_net/data/fitting_input/fitting_input_batch" + std::to_string(i) + ".pt");
+            auto list = container.attributes();
 
-        for (uint i = CONVOLUTION_LAYER_START; i < CONVOLUTION_LAYER_END; i++) {
-            assert(i < 3);
-            auto mixture = container.attr(std::to_string(i)).toTensor();
-//            mixture = mixture.index({Slice(7, 8), Slice(0,1), Slice(), Slice()});
-//            auto mixture = torch::tensor({{0.5f,  5.0f,  5.0f,  4.0f, -0.5f, -0.5f,  4.0f},
-//                                          {0.5f,  8.0f,  8.0f,  4.0f, -2.5f, -2.5f,  4.0f},
-//                                          {0.5f, 20.0f, 10.0f,  5.0f,  0.0f,  0.0f,  7.0f},
-//                                          {0.5f, 20.0f, 20.0f,  5.0f,  0.5f,  0.5f,  7.0f}}).view({1, 1, 4, 7});
-            mixture = gpe::pack_mixture(torch::abs(gpe::weights(mixture)), gpe::positions(mixture), gpe::covariances(mixture));
-            if (USE_CUDA)
-                mixture = mixture.cuda();
-            std::cout << "layer " << i << ": " << mixture.sizes() << " device: " << mixture.device() << std::endl;
-            auto gt_rendering = render(gpe::mixture_with_inversed_covariances(mixture), RESOLUTION, LIMIT_N_BATCH);
-            if (RENDER)
-                show(gt_rendering, RESOLUTION, LIMIT_N_BATCH);
+            for (uint i = CONVOLUTION_LAYER_START; i < CONVOLUTION_LAYER_END; i++) {
+                assert(i < 3);
+                auto mixture = container.attr(std::to_string(i)).toTensor();
+    //            mixture = mixture.index({Slice(7, 8), Slice(0,1), Slice(), Slice()});
+    //            auto mixture = torch::tensor({{0.5f,  5.0f,  5.0f,  4.0f, -0.5f, -0.5f,  4.0f},
+    //                                          {0.5f,  8.0f,  8.0f,  4.0f, -2.5f, -2.5f,  4.0f},
+    //                                          {0.5f, 20.0f, 10.0f,  5.0f,  0.0f,  0.0f,  7.0f},
+    //                                          {0.5f, 20.0f, 20.0f,  5.0f,  0.5f,  0.5f,  7.0f}}).view({1, 1, 4, 7});
+                mixture = gpe::pack_mixture(torch::abs(gpe::weights(mixture)), gpe::positions(mixture), gpe::covariances(mixture));
+                if (USE_CUDA)
+                    mixture = mixture.cuda();
+    //            std::cout << "layer " << i << ": " << mixture.sizes() << " device: " << mixture.device() << std::endl;
+                auto gt_rendering = render(gpe::mixture_with_inversed_covariances(mixture), RESOLUTION, LIMIT_N_BATCH);
+                if (RENDER)
+                    show(gt_rendering, RESOLUTION, LIMIT_N_BATCH);
 
-            cudaDeviceSynchronize();
+                cudaDeviceSynchronize();
 
-            auto start = std::chrono::high_resolution_clock::now();
-            torch::Tensor fitted_mixture, nodes, aabbs;
-            std::tie(fitted_mixture, nodes, aabbs) = bvh_mhem_fit_forward(mixture, 32);
-            cudaDeviceSynchronize();
-            auto end = std::chrono::high_resolution_clock::now();
-            auto fitted_rendering = render(gpe::mixture_with_inversed_covariances(fitted_mixture), RESOLUTION, LIMIT_N_BATCH);
-            if (RENDER) {
-                show(fitted_rendering, RESOLUTION, LIMIT_N_BATCH);
+//                auto start = std::chrono::high_resolution_clock::now();
+                torch::Tensor fitted_mixture, nodes, aabbs;
+                std::tie(fitted_mixture, nodes, aabbs) = bvh_mhem_fit_forward(mixture, named_config.second, 32);
+                cudaDeviceSynchronize();
+//                auto end = std::chrono::high_resolution_clock::now();
+                auto fitted_rendering = render(gpe::mixture_with_inversed_covariances(fitted_mixture), RESOLUTION, LIMIT_N_BATCH);
+                if (RENDER) {
+                    show(fitted_rendering, RESOLUTION, LIMIT_N_BATCH);
+                }
+                auto diff = gt_rendering - fitted_rendering;
+                if (DO_STATS) {
+                    error_data[i].push_back(diff.cpu().view({1, -1, RESOLUTION * RESOLUTION}));
+                }
+//                auto rmse = torch::sqrt(torch::mean(diff * diff)).item<float>();
+    //            std::cout << "elapsed time: " << std::chrono::duration_cast<std::chrono::milliseconds>(end-start).count() << "ms, RMSE: " << rmse * 1000 << "e-3" << std::endl;
             }
-            auto diff = gt_rendering - fitted_rendering;
-            if (DO_STATS) {
-                error_data[i].push_back(diff.cpu().view({1, -1, RESOLUTION * RESOLUTION}));
-            }
-            auto rmse = torch::sqrt(torch::mean(diff * diff)).item<float>();
-            std::cout << "elapsed time: " << std::chrono::duration_cast<std::chrono::milliseconds>(end-start).count() << "ms, RMSE: " << rmse * 1000 << "e-3" << std::endl;
         }
-    }
 
-    if (DO_STATS) {
-        std::cout << std::endl << "totals:" << std::endl;
-        for (uint i = CONVOLUTION_LAYER_START; i < CONVOLUTION_LAYER_END; i++) {
-            std::cout << "layer " << i << ": ";
-            torch::Tensor d = torch::cat(error_data[i], 0);
-            std::cout << "RMSE=" << torch::sqrt(torch::mean(d * d)).item<float>() * 1000 << "e-3";
-            d = d.view({-1, RESOLUTION * RESOLUTION});
-            std::cout << " std(RMSE)=" << torch::sqrt(torch::sqrt(torch::mean(d * d, 1)).var() / d.size(0)).item<float>() * 1000 << "e-3";
-            std::cout << std::endl;
+        if (DO_STATS) {
+            std::cout << std::endl << "totals " << named_config.first << ":" << std::endl;
+            for (uint i = CONVOLUTION_LAYER_START; i < CONVOLUTION_LAYER_END; i++) {
+                std::cout << "layer " << i << ": ";
+                torch::Tensor d = torch::cat(error_data[i], 0);
+                std::cout << "RMSE=" << torch::sqrt(torch::mean(d * d)).item<float>() * 1000 << "e-3";
+                d = d.view({-1, RESOLUTION * RESOLUTION});
+                std::cout << " std(RMSE)=" << torch::sqrt(torch::sqrt(torch::mean(d * d, 1)).var() / d.size(0)).item<float>() * 1000 << "e-3";
+                std::cout << std::endl;
+            }
         }
     }
 

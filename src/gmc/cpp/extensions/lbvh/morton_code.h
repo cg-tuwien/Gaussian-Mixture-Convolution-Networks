@@ -88,84 +88,96 @@ inline std::uint32_t morton_code(const glm::vec<3, scalar_t>& vec, uint32_t reso
 }
 
 
-template<typename scalar_t>
+template<int MORTON_CODE_ALGORITHM, typename scalar_t>
 __device__ __host__
 inline std::uint64_t morton_code(uint16_t component_id, const glm::vec<3, scalar_t>& pos, const glm::vec<3, scalar_t>& cov_diag, scalar_t resolution = 1024.0) {
-    /// old
-//    uint32_t morton_pos = morton_code(pos);         // 30 bits
-//    uint64_t result = morton_pos;
-//    result = (result << 16) | component_id;
+    if (MORTON_CODE_ALGORITHM == 0) {
+        /// old
+        uint32_t morton_pos = morton_code(pos, resolution);         // 30 bits
+        uint64_t result = morton_pos;
+        result = (result << 16) | component_id;
+        return result;
+    }
+    else if (MORTON_CODE_ALGORITHM == 1) {
+        /// cov 1
+        // layout:
+        // we use 30 bits of position morton code, 18 bits for cov_diag morton code and 16 bits for component_id
+        // in the result:
+        // 12 bits only position, 18 + 18 bits interleaved position with cov_diag, and 16 bits component id
+        uint32_t morton_pos = morton_code(pos, resolution);         // 30 bits
+        uint32_t morton_cov = morton_code(cov_diag, resolution);    // 30 bits
+        uint64_t result = 0;
+        result |= morton_pos >> 18;
+        morton_pos = morton_pos & 0xFFFu;               // 12 bits
+        morton_cov = morton_cov >> 18;                  // 12 most significant bits
+        morton_pos = expand_bits2(uint16_t(morton_pos));
+        morton_cov = expand_bits2(uint16_t(morton_cov));
+        uint32_t morton_poscov = (morton_pos << 1) | morton_cov;    // 24 bits
+        assert((morton_poscov & 0xFF'FFFF) == morton_poscov);
+        result = (result << 24) | morton_poscov;
+        result = (result << 16) | component_id;
+        return result;
+    }
+    else if (MORTON_CODE_ALGORITHM == 2) {
+        /// 2. cov 2
+        // layout:
+        // here we use 27 bits of position morton code, 27 bits for cov_diag morton code and 10 bits for component_id
+        // in the result:
+        // 27 + 27 bits interleaved position with cov_diag, and 10 bits component id
+        uint32_t morton_pos = morton_code(pos, resolution);         // 30 bits
+        uint32_t morton_cov = morton_code(cov_diag, resolution);    // 30 bits
+        morton_pos = expand_bits2(uint16_t(morton_pos));
+        morton_cov = expand_bits2(uint16_t(morton_cov));
+        auto morton_poscov = (morton_pos << 1) | morton_cov;    // 60 bits
+        uint64_t result = morton_poscov << 4;
+        result = result & (~0x3FFu);
+        assert (componend_id < 1024);
+        result = result | component_id;
+        return result;
+    }
+    else if (MORTON_CODE_ALGORITHM == 3) {
+        /// 3. cov 3, second
+        // layout:
+        // here we use 27 bits of position morton code, 27 bits for cov_diag morton code and 10 bits for component_id
+        // in the result:
+        // 27 bits position, then 27 bits cov_diag, and 10 bits component id
+        uint32_t morton_pos = morton_code(pos, resolution);         // 30 bits
+        uint32_t morton_cov = morton_code(cov_diag, resolution);    // 30 bits
+        uint64_t result = (morton_pos & (~0x1F)) << 34;
+        assert((result & 0xFFFF'FFE0'0000'0000u) == result);
+        assert((result >> (64 - 27)) == (morton_pos >> 3));
 
-    /// cov 1
-    // layout:
-    // we use 30 bits of position morton code, 18 bits for cov_diag morton code and 16 bits for component_id
-    // in the result:
-    // 12 bits only position, 18 + 18 bits interleaved position with cov_diag, and 16 bits component id
+        result |= (morton_cov & (~0x1F)) << 9;
+        assert((result & 0xFFFF'FFFF'FFFF'FC00u) == result);
+        assert((((result << 27) >> 27) >> (64 - 27)) == (morton_cov >> 3));
+        assert (componend_id < 1024);
+        result = result | (component_id & 0x3FF);
+        return result;
 
-//    uint32_t morton_pos = morton_code(pos);         // 30 bits
-//    uint32_t morton_cov = morton_code(cov_diag);    // 30 bits
-//    uint64_t result = 0;
-//    result |= morton_pos >> 18;
-//    morton_pos = morton_pos & 0xFFFu;               // 12 bits
-//    morton_cov = morton_cov >> 18;                  // 12 most significant bits
-//    morton_pos = expand_bits2(uint16_t(morton_pos));
-//    morton_cov = expand_bits2(uint16_t(morton_cov));
-//    uint32_t morton_poscov = (morton_pos << 1) | morton_cov;    // 24 bits
-//    assert((morton_poscov & 0xFF'FFFF) == morton_poscov);
-//    result = (result << 24) | morton_poscov;
-//    result = (result << 16) | component_id;
+    }
+    else if (MORTON_CODE_ALGORITHM == 4) {
+        /// 4. cov 4, first
+        // layout:
+        // here we use 27 bits of position morton code, 27 bits for cov_diag morton code and 10 bits for component_id
+        // in the result:
+        // 28 bits position, then 28 bits cov_diag, and 10 bits component id
+        uint32_t morton_pos = morton_code(pos, resolution);         // 30 bits
+        uint32_t morton_cov = morton_code(cov_diag, resolution);    // 30 bits
+        uint64_t result = (morton_cov & (~0x1F)) << 34;
+        assert((result & 0xFFFF'FFE0'0000'0000u) == result);
+        assert((result >> (64 - 27)) == (morton_cov >> 3));
 
-    /// cov 2
-    // layout:
-    // here we use 27 bits of position morton code, 27 bits for cov_diag morton code and 10 bits for component_id
-    // in the result:
-    // 27 + 27 bits interleaved position with cov_diag, and 10 bits component id
-    uint32_t morton_pos = morton_code(pos);         // 30 bits
-    uint32_t morton_cov = morton_code(cov_diag);    // 30 bits
-    morton_pos = expand_bits2(uint16_t(morton_pos));
-    morton_cov = expand_bits2(uint16_t(morton_cov));
-    auto morton_poscov = (morton_pos << 1) | morton_cov;    // 60 bits
-    uint64_t result = morton_poscov << 4;
-    result = result & (~0x3FFu);
-    assert (componend_id < 1024);
-    result = result | component_id;
-
-    /// cov 3, second
-    // layout:
-    // here we use 27 bits of position morton code, 27 bits for cov_diag morton code and 10 bits for component_id
-    // in the result:
-    // 28 bits position, then 28 bits cov_diag, and 10 bits component id
-//    uint32_t morton_pos = morton_code(pos);         // 30 bits
-//    uint32_t morton_cov = morton_code(cov_diag);    // 30 bits
-//    uint64_t result = (morton_pos & (~0x1F)) << 34;
-//    assert((result & 0xFFFF'FFE0'0000'0000u) == result);
-//    assert((result >> (64 - 27)) == (morton_pos >> 3));
-
-//    result |= (morton_cov & (~0x1F)) << 9;
-//    assert((result & 0xFFFF'FFFF'FFFF'FC00u) == result);
-//    assert((((result << 27) >> 27) >> (64 - 27)) == (morton_cov >> 3));
-//    assert (componend_id < 1024);
-//    result = result | (component_id & 0x3FF);
-
-
-    /// cov 4, first
-    // layout:
-    // here we use 27 bits of position morton code, 27 bits for cov_diag morton code and 10 bits for component_id
-    // in the result:
-    // 28 bits position, then 28 bits cov_diag, and 10 bits component id
-//    uint32_t morton_pos = morton_code(pos);         // 30 bits
-//    uint32_t morton_cov = morton_code(cov_diag);    // 30 bits
-//    uint64_t result = (morton_cov & (~0x1F)) << 34;
-//    assert((result & 0xFFFF'FFE0'0000'0000u) == result);
-//    assert((result >> (64 - 27)) == (morton_cov >> 3));
-
-//    result |= (morton_pos & (~0x1F)) << 9;
-//    assert((result & 0xFFFF'FFFF'FFFF'FC00u) == result);
-//    assert((((result << 27) >> 27) >> (64 - 27)) == (morton_pos >> 3));
-//    assert (componend_id < 1024);
-//    result = result | (component_id & 0x3FF);
-
-    return result;
+        result |= (morton_pos & (~0x1F)) << 9;
+        assert((result & 0xFFFF'FFFF'FFFF'FC00u) == result);
+        assert((((result << 27) >> 27) >> (64 - 27)) == (morton_pos >> 3));
+        assert (componend_id < 1024);
+        result = result | (component_id & 0x3FF);
+        return result;
+    }
+    else {
+        assert(false);
+        return 0;
+    }
 }
 
 __host__ __device__ __forceinline__

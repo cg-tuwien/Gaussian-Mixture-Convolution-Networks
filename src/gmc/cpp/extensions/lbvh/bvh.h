@@ -6,6 +6,7 @@
 #include "common.h"
 #include "mixture.h"
 #include "lbvh/aabb.h"
+#include "lbvh/Config.h"
 
 namespace lbvh
 {
@@ -106,8 +107,8 @@ public:
     using morton_cuda_t = std::make_unsigned<morton_torch_t>::type;
 
 public:
-    Bvh(const torch::Tensor& inversed_mixture)
-        : m_mixture(inversed_mixture), m_n(gpe::get_ns(inversed_mixture))
+    Bvh(const torch::Tensor& inversed_mixture, const Config& config)
+        : m_mixture(inversed_mixture), m_n(gpe::get_ns(inversed_mixture)), m_config(config)
     {
         m_n_leaf_nodes = m_n.components;
         m_n_internal_nodes = m_n_leaf_nodes - 1;
@@ -126,6 +127,7 @@ public:
 //protected:    // cuda extended lambdas cannot be inside protected methods.
     void construct();
     torch::Tensor compute_aabbs();
+    template<int MORTON_CODE_ALGORITHM = 0>
     torch::Tensor compute_morton_codes(const torch::Tensor& aabbs, const torch::Tensor& aabb_whole) const;
     std::tuple<torch::Tensor, torch::Tensor> sort_morton_codes(const torch::Tensor& morton_codes, const torch::Tensor& object_aabbs) const;
     torch::Tensor create_leaf_nodes(const torch::Tensor& morton_codes);
@@ -140,6 +142,7 @@ public:
     torch::Tensor m_nodes;
     torch::Tensor m_aabbs;
     gpe::MixtureNs m_n;
+    Config m_config;
 };
 
 

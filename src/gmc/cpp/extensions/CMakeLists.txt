@@ -90,6 +90,7 @@ set(COMMON_SOURCES
 set(LBVH_SOURCES
     lbvh/aabb.h
     lbvh/bvh.h
+    lbvh/Config.h
     lbvh/bvh.cu
     lbvh/morton_code.h
     lbvh/predicator.h
@@ -119,6 +120,7 @@ set(EVALUATE_SOURCES
 )
 
 set(BVH_MHEM_FIT_SOURCES
+    bvh_mhem_fit/BvhMhemFitConfig.h
     bvh_mhem_fit/implementation.h
     bvh_mhem_fit/implementation_forward.cpp
     bvh_mhem_fit/implementation_backward.cu

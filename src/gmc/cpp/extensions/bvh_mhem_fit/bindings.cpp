@@ -7,13 +7,13 @@
 #include "bindings.h"
 #include "implementation.h"
 
-std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> bvh_mhem_fit_forward(const torch::Tensor& mixture, unsigned n_components_target) {
+std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> bvh_mhem_fit_forward(const torch::Tensor& mixture, const BvhMhemFitConfig& config, unsigned n_components_target) {
     at::cuda::OptionalCUDAGuard device_guard;
     if (mixture.is_cuda()) {
         assert (device_of(mixture).has_value());
         device_guard.set_device(device_of(mixture).value());
     }
-    return bvh_mhem_fit::forward_impl(mixture, n_components_target);
+    return bvh_mhem_fit::forward_impl(mixture, config, n_components_target);
 }
 
 
