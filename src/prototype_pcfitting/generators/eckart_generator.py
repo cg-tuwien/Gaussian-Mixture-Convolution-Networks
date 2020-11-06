@@ -62,8 +62,14 @@ class EckartGenerator(GMMGenerator):
 
                 # Relevant point count might be zero
                 if relevant_point_count == 0:
-                    gm_data = self._initialize_gm_on_unit_cube(batch_size)
+                    # this breaks hierarchy... shouldn't do it like this..
+                    gm_data = self._initialize_invalid_gm(batch_size)
                     gm_data.multiply_weights(0)
+                    hierarchy.append(gm_data)
+                    continue
+
+                if relevant_point_count == 1:
+                    gm_data = self._initialize_gm_on_single_point(relevant_points)
                     hierarchy.append(gm_data)
                     continue
 
@@ -83,7 +89,7 @@ class EckartGenerator(GMMGenerator):
                 while True:
                     iteration += 1
 
-                    points_rep = relevant_points.unsqueeze(1).unsqueeze(3).expand(batch_size, 1, relevant_point_count, self._n_gaussians_per_node, 3)
+                    points_rep = relevant_points_scaled.unsqueeze(1).unsqueeze(3).expand(batch_size, 1, relevant_point_count, self._n_gaussians_per_node, 3)
 
                     responsibilities, losses = self._expectation(points_rep, gm_data)
 
@@ -112,6 +118,7 @@ class EckartGenerator(GMMGenerator):
         gm = torch.zeros(1, 1, n, 13).to(self._dtype).cuda()
         gmm = torch.zeros(1, 1, n, 13).to(self._dtype).cuda()
         for j in range(last_h_n):  # this should also be possible in parallel
+        # for j in [1]:
             gm_index = len(hierarchy) - 1 - j
             gm_data = hierarchy[gm_index]
             for l in range(self._n_levels - 1):
@@ -246,6 +253,26 @@ class EckartGenerator(GMMGenerator):
         gmdata.set_positions(gmpositions)
         gmdata.set_covariances(gmcovs)
         gmdata.set_priors(gmweights)
+        return gmdata
+
+    def _initialize_gm_on_single_point(self, pcbatch: torch.Tensor):
+        gmpositions = pcbatch.clone().view(1, 1, 1, 3)
+        gmcovs = self._eps[0:1, 0:1, 0:1, :, :].clone()
+        gmpriors = torch.tensor([[[1]]], dtype=self._dtype).cuda()
+        gmdata = self.GMTrainingData()
+        gmdata.set_positions(gmpositions)
+        gmdata.set_covariances(gmcovs)
+        gmdata.set_priors(gmpriors)
+        return gmdata
+
+    def _initialize_invalid_gm(self, batch_size):
+        gmpositions = torch.tensor([[[0, 0, 0]]], dtype=self._dtype).cuda().view(1, 1, 1, 3).repeat(batch_size, 1, self._n_gaussians_per_node, 1)
+        gmcovariances = self._eps.clone()
+        gmpriors = torch.tensor([[[0]]], dtype=self._dtype).cuda().repeat(batch_size, 1, self._n_gaussians_per_node)
+        gmdata = self.GMTrainingData()
+        gmdata.set_positions(gmpositions)
+        gmdata.set_covariances(gmcovariances)
+        gmdata.set_priors(gmpriors)
         return gmdata
 
     class GMTrainingData:
