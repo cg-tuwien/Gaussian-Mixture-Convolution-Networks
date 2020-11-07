@@ -15,7 +15,7 @@ class Scaler:
     # These extracted scalings can then be used to scale pointclouds and GMs.
 
     def __init__(self, scaling_method: ScalingMethod = ScalingMethod.SMALLEST_TO_ONE):
-        self.scaleP = self.scaleA = self.scaleC = None
+        self.scaleP = self.scaleA = self.scaleC = self.offsetP = None
         self._scalingMethod = scaling_method
 
     def set_pointcloud_batch(self, pcbatch: torch.Tensor):
@@ -31,6 +31,7 @@ class Scaler:
         else:
             self.scaleP = torch.max(extends, dim=1)[0]  # shape: (m)
         self.scaleP = self.scaleP.view(-1, 1, 1)  # shape: (m,1,1)
+        self.offsetP = bbmin.view(-1, 1, 3)
         self.scaleA = torch.pow(self.scaleP, 3)  # shape: (m,1,1)
         self.scaleC = (self.scaleP ** 2).view(-1, 1, 1, 1, 1)  # shape: (m,1,1)
 
@@ -39,8 +40,7 @@ class Scaler:
         # The scaled pointclouds are returned.
         if len(self.scaleP.shape) != 3:
             self.scaleP = self.scaleP.view(-1, 1, 1)
-        scaleddown = pcbatch / self.scaleP
-        scaleddown += 0.5
+        scaleddown = (pcbatch - self.offsetP) / self.scaleP
         return scaleddown
 
     def scale_up_pc(self, pcbatch: torch.Tensor) -> torch.Tensor:
@@ -48,8 +48,7 @@ class Scaler:
         # The scaled pointclouds are returned.
         if len(self.scaleP.shape) != 3:
             self.scaleP = self.scaleP.view(-1, 1, 1)
-        scaledup = pcbatch - 0.5
-        scaledup *= self.scaleP
+        scaledup = (pcbatch * self.scaleP) + self.offsetP
         return scaledup
 
     def scale_down_gm(self, gmbatch: torch.Tensor) -> torch.Tensor:
@@ -58,8 +57,8 @@ class Scaler:
         if len(self.scaleP.shape) != 4:
             self.scaleP = self.scaleP.view(-1, 1, 1, 1)
         positions = gm.positions(gmbatch).clone()
+        positions -= self.offsetP
         positions /= self.scaleP
-        positions += 0.5
         covariances = gm.covariances(gmbatch).clone()
         amplitudes = gm.weights(gmbatch).clone()
         amplitudes *= self.scaleA
@@ -72,8 +71,8 @@ class Scaler:
         if len(self.scaleP.shape) != 4:
             self.scaleP = self.scaleP.view(-1, 1, 1, 1)
         positions = gm.positions(gmmbatch).clone()
+        positions -= self.offsetP
         positions /= self.scaleP
-        positions += 0.5
         covariances = gm.covariances(gmmbatch).clone()
         covariances /= self.scaleC
         return gm.pack_mixture(gm.weights(gmmbatch).clone(), positions, covariances)
@@ -84,8 +83,8 @@ class Scaler:
         if len(self.scaleP.shape) != 4:
             self.scaleP = self.scaleP.view(-1, 1, 1, 1)
         positions = gm.positions(gmbatch).clone()
-        positions -= 0.5
         positions *= self.scaleP
+        positions += self.offsetP
         covariances = gm.covariances(gmbatch).clone()
         amplitudes = gm.weights(gmbatch).clone()
         amplitudes /= self.scaleA
@@ -98,8 +97,8 @@ class Scaler:
         if len(self.scaleP.shape) != 4:
             self.scaleP = self.scaleP.view(-1, 1, 1, 1)
         positions = gm.positions(gmmbatch).clone()
-        positions -= 0.5
         positions *= self.scaleP
+        positions += self.offsetP
         covariances = gm.covariances(gmmbatch).clone()
         covariances *= self.scaleC
         return gm.pack_mixture(gm.weights(gmmbatch).clone(), positions, covariances)
@@ -110,8 +109,8 @@ class Scaler:
         if len(self.scaleP.shape) != 4:
             self.scaleP = self.scaleP.view(-1, 1, 1, 1)
         positions = positions.clone()
-        positions -= 0.5
         positions *= self.scaleP
+        positions += self.offsetP
         covariances = covariances.clone()
         covariances *= self.scaleC
         return weights.clone(), positions, covariances
