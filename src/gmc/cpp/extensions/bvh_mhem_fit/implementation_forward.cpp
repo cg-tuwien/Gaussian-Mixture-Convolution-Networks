@@ -336,18 +336,42 @@ gpe::Gaussian<N_DIMS, scalar_t> averageCluster_corrected(const gpe::Vector<gpe::
 
 template <typename scalar_t, int N_DIMS, uint32_t N_GAUSSIANS_CAPACITY, uint32_t N_MAX_CLUSTER_ELEMENTS>
 EXECUTION_DEVICES
-gpe::Gaussian<N_DIMS, scalar_t> maxOfCluster(const gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_GAUSSIANS_CAPACITY>& mixture,
+gpe::Gaussian<N_DIMS, scalar_t> maxWeight(const gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_GAUSSIANS_CAPACITY>& mixture,
                                              const gpe::Vector<gaussian_index_t, N_MAX_CLUSTER_ELEMENTS>& cluster_indices) {
     using G = gpe::Gaussian<N_DIMS, scalar_t>;
     G new_gaussian = {scalar_t(0), typename G::pos_t(0), typename G::cov_t(0)};
-    scalar_t max_abs_weight = 0;
+    scalar_t max_abs = 0;
     assert(cluster_indices.size() > 0);
 
     for (unsigned i = 0; i < cluster_indices.size(); ++i) {
         auto gaussian_id = cluster_indices[i];
         const auto& gaussian = mixture[gaussian_id];
-        if (gpe::abs(gaussian.weight) > max_abs_weight) {
-            max_abs_weight = gpe::abs(gaussian.weight);
+        if (gpe::abs(gaussian.weight) > max_abs) {
+            max_abs = gpe::abs(gaussian.weight);
+            new_gaussian = gaussian;
+        }
+    }
+    assert(std::isnan(new_gaussian.weight) == false);
+    assert(std::isnan(glm::dot(new_gaussian.position, new_gaussian.position)) == false);
+    assert(std::isnan(glm::determinant(new_gaussian.covariance)) == false);
+
+    return new_gaussian;
+};
+
+template <typename scalar_t, int N_DIMS, uint32_t N_GAUSSIANS_CAPACITY, uint32_t N_MAX_CLUSTER_ELEMENTS>
+EXECUTION_DEVICES
+gpe::Gaussian<N_DIMS, scalar_t> maxIntegral(const gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_GAUSSIANS_CAPACITY>& mixture,
+                                             const gpe::Vector<gaussian_index_t, N_MAX_CLUSTER_ELEMENTS>& cluster_indices) {
+    using G = gpe::Gaussian<N_DIMS, scalar_t>;
+    G new_gaussian = {scalar_t(0), typename G::pos_t(0), typename G::cov_t(0)};
+    scalar_t max_abs  = 0;
+    assert(cluster_indices.size() > 0);
+
+    for (unsigned i = 0; i < cluster_indices.size(); ++i) {
+        auto gaussian_id = cluster_indices[i];
+        const auto& gaussian = mixture[gaussian_id];
+        if (gpe::abs(gpe::integrate(gaussian)) > max_abs ) {
+            max_abs = gpe::abs(gpe::integrate(gaussian));
             new_gaussian = gaussian;
         }
     }
@@ -386,7 +410,7 @@ EXECUTION_DEVICES
 #define GPE_DISPARITY_METHOD 2
 template <unsigned N_FITTING, typename scalar_t, int N_DIMS, unsigned N_TARGET>
 EXECUTION_DEVICES
-    gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_initial(const gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_TARGET>& target_double_gmm) {
+gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_initial(const gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_TARGET>& target_double_gmm, const BvhMhemFitConfig& config) {
     using G = gpe::Gaussian<N_DIMS, scalar_t>;
 
 //    // enable for testing the tree walking without em
@@ -394,30 +418,48 @@ EXECUTION_DEVICES
 //    scalar_t abs_integral;
 //    const gpe::Vector<G, N_TARGET> target_double_gmm = normalise_mixture(target, &abs_integral);
 
-#if GPE_DISPARITY_METHOD == 0
-    auto disparity_matrix = gpe::outer_product(target_double_gmm, target_double_gmm, centroid_distance<scalar_t, N_DIMS>);   // returns gpe::Vector<gpe::Vector>
-#elif GPE_DISPARITY_METHOD == 1
-    auto disparity_matrix = gpe::outer_product(target_double_gmm, target_double_gmm, likelihood<scalar_t, N_DIMS>);   // returns gpe::Vector<gpe::Vector>
-    for (unsigned i = 0; i < disparity_matrix.size(); ++i) {
-        for (unsigned j = i + 1; j < disparity_matrix[i].size(); ++j) {
-            disparity_matrix[i][j] = gpe::min(-disparity_matrix[i][j], -disparity_matrix[j][i]);
+    gpe::Vector2d<scalar_t, N_TARGET, N_TARGET> disparity_matrix;
+    switch (config.fit_initial_disparity_method) {
+    case BvhMhemFitConfig::FitInitialDisparityMethod::CentroidDistance:
+        disparity_matrix = gpe::outer_product(target_double_gmm, target_double_gmm, centroid_distance<scalar_t, N_DIMS>);   // returns gpe::Vector<gpe::Vector>
+        break;
+    case BvhMhemFitConfig::FitInitialDisparityMethod::Likelihood:
+        disparity_matrix = gpe::outer_product(target_double_gmm, target_double_gmm, likelihood<scalar_t, N_DIMS>);   // returns gpe::Vector<gpe::Vector>
+        for (unsigned i = 0; i < disparity_matrix.size(); ++i) {
+            for (unsigned j = i + 1; j < disparity_matrix[i].size(); ++j) {
+                disparity_matrix[i][j] = gpe::min(-disparity_matrix[i][j], -disparity_matrix[j][i]);
+            }
         }
-    }
-#else
-    auto disparity_matrix = gpe::outer_product(target_double_gmm, target_double_gmm, kl_divergence<scalar_t, N_DIMS>);   // returns gpe::Vector<gpe::Vector>
-    for (unsigned i = 0; i < disparity_matrix.size(); ++i) {
-        for (unsigned j = i + 1; j < disparity_matrix[i].size(); ++j) {
-            disparity_matrix[i][j] = gpe::min(disparity_matrix[i][j], disparity_matrix[j][i]);
+        break;
+    case BvhMhemFitConfig::FitInitialDisparityMethod::KLDivergence:
+        disparity_matrix = gpe::outer_product(target_double_gmm, target_double_gmm, kl_divergence<scalar_t, N_DIMS>);   // returns gpe::Vector<gpe::Vector>
+        for (unsigned i = 0; i < disparity_matrix.size(); ++i) {
+            for (unsigned j = i + 1; j < disparity_matrix[i].size(); ++j) {
+                disparity_matrix[i][j] = gpe::min(disparity_matrix[i][j], disparity_matrix[j][i]);
+            }
         }
+        break;
     }
-#endif
 
     const auto clustering = clusterise<N_FITTING>(disparity_matrix);                             // returns gpe::Array<gpe::Vector>
     assert(clustering.size() == N_FITTING);
 
     gpe::Vector<G, N_FITTING> result;
     for (unsigned i = 0; i < N_FITTING; ++i) {
-        result.push_back(averageCluster(target_double_gmm, clustering[i]));
+        switch (config.fit_initial_cluster_merge_method) {
+        case BvhMhemFitConfig::FitInitialClusterMergeMethod::Average:
+            result.push_back(averageCluster(target_double_gmm, clustering[i]));
+            break;
+        case BvhMhemFitConfig::FitInitialClusterMergeMethod::AverageCorrected:
+            result.push_back(averageCluster(target_double_gmm, clustering[i]));
+            break;
+        case BvhMhemFitConfig::FitInitialClusterMergeMethod::MaxIntegral:
+            result.push_back(averageCluster(target_double_gmm, clustering[i]));
+            break;
+        case BvhMhemFitConfig::FitInitialClusterMergeMethod::MaxWeight:
+            result.push_back(averageCluster(target_double_gmm, clustering[i]));
+            break;
+        }
     }
     scalar_t result_integral = integrate_abs_mixture(result);
     // result_integral should be approx 1, since we shouldn't fit on zero mixtures anymore and incoming target_double_gmm is normalised;
@@ -431,7 +473,7 @@ EXECUTION_DEVICES
 
 template <unsigned N_FITTING, typename scalar_t, int N_DIMS, unsigned N_TARGET>
 EXECUTION_DEVICES
-gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_em(gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_TARGET> target, const scalar_t kl_div_threshold = scalar_t(2.0)) {
+gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_em(gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_TARGET> target, const BvhMhemFitConfig& config) {
     using G = gpe::Gaussian<N_DIMS, scalar_t>;
     using pos_t = typename G::pos_t;
     using cov_t = typename G::cov_t;
@@ -444,7 +486,7 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_em(gpe::Vector<gpe::
 
     scalar_t abs_integral;
     const auto target_double_gmm = normalise_mixture(target, &abs_integral);
-    const auto fitting_double_gmm = fit_initial<N_FITTING>(target_double_gmm);
+    const auto fitting_double_gmm = fit_initial<N_FITTING>(target_double_gmm, config);
 
     const auto likelihood_matrix = gpe::outer_product(target_double_gmm, fitting_double_gmm, likelihood<scalar_t, N_DIMS>);
     // todo: test modification of clamp matrix: at least one row element or x percent row elements should be 1.
@@ -455,6 +497,7 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_em(gpe::Vector<gpe::
         return (gpe::sign(fitting.weight) == gpe::sign(target.weight)) ? kl_divergence<scalar_t, N_DIMS>(target, fitting) : scalar_t(0);
     });
 
+    scalar_t kl_div_threshold = scalar_t(config.em_kl_div_threshold);
     auto clamp_matrix = gpe::transform(kldiv_sign_matrix, [kl_div_threshold](scalar_t v) { return v < kl_div_threshold ? scalar_t(1) : scalar_t(0); });
     for (unsigned target_id = 0; target_id < clamp_matrix.size(); ++target_id) {
         auto& row = kldiv_sign_matrix[target_id];
@@ -516,6 +559,7 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_em(gpe::Vector<gpe::
     }
 
 //    if (gpe::abs(abs_integral - integrate_abs_mixture(result)) > scalar_t(0.0001)) {
+//        auto intabsmixres = integrate_abs_mixture(result);
 //        printf("target:\n");
 //        for (const auto& g : target_double_gmm) {
 //            gpe::printGaussian(g);
@@ -542,7 +586,8 @@ EXECUTION_DEVICES void iterate_over_nodes(const dim3& gpe_gridDim, const dim3& g
                                           const gpe::PackedTensorAccessor32<scalar_t, 3> aabbs,
                                           gpe::PackedTensorAccessor32<int, 2> flags,
                                           gpe::PackedTensorAccessor32<scalar_t, 3> node_attributes,
-                                          const gpe::MixtureNs n, const int n_mixtures, const unsigned n_internal_nodes, const unsigned n_nodes, unsigned n_components_target)
+                                          const gpe::MixtureNs n, const int n_mixtures, const unsigned n_internal_nodes, const unsigned n_nodes, unsigned n_components_target,
+                                          const BvhMhemFitConfig& config)
 {
     GPE_UNUSED(gpe_gridDim)
     GPE_UNUSED(n_components_target)
@@ -585,7 +630,7 @@ EXECUTION_DEVICES void iterate_over_nodes(const dim3& gpe_gridDim, const dim3& g
 
         auto child_gaussians = bvh.collect_child_gaussians(node, Epsilon<scalar_t>::large);
         if (child_gaussians.size() > REDUCTION_N) {
-            bvh.per_node_attributes[node_id].gaussians = fit_em<REDUCTION_N>(child_gaussians);
+            bvh.per_node_attributes[node_id].gaussians = fit_em<REDUCTION_N>(child_gaussians, config);
         }
         else {
             bvh.per_node_attributes[node_id].gaussians.push_back(child_gaussians);
@@ -603,7 +648,8 @@ EXECUTION_DEVICES void collect_result(const dim3& gpe_gridDim, const dim3& gpe_b
                                       const gpe::PackedTensorAccessor32<scalar_t, 3> aabbs,
                                       gpe::PackedTensorAccessor32<int, 2> flags,
                                       gpe::PackedTensorAccessor32<scalar_t, 3> node_attributes,
-                                      const gpe::MixtureNs n, const int n_mixtures, const unsigned n_internal_nodes, const unsigned n_nodes, unsigned n_components_target)
+                                      const gpe::MixtureNs n, const int n_mixtures, const unsigned n_internal_nodes, const unsigned n_nodes, unsigned n_components_target,
+                                      const BvhMhemFitConfig& config)
 {
     GPE_UNUSED(gpe_gridDim)
     GPE_UNUSED(flags)
@@ -729,11 +775,12 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> forward_impl_t(at::Tenso
                                    auto aabbs_a = gpe::accessor<scalar_t, 3>(flat_bvh_aabbs);
                                    auto node_attributes_a = gpe::accessor<scalar_t, 3>(node_attributes);
 
-                                   auto fun = [mixture_a, nodes_a, aabbs_a, flags_a, node_attributes_a, n, n_mixtures, n_internal_nodes, n_nodes, n_components_target] EXECUTION_DEVICES
+                                   auto fun = [mixture_a, nodes_a, aabbs_a, flags_a, node_attributes_a, n, n_mixtures, n_internal_nodes, n_nodes, n_components_target, config] EXECUTION_DEVICES
                                        (const dim3& gpe_gridDim, const dim3& gpe_blockDim, const dim3& gpe_blockIdx, const dim3& gpe_threadIdx) {
                                            iterate_over_nodes<scalar_t, N_DIMS, REDUCTION_N>(gpe_gridDim, gpe_blockDim, gpe_blockIdx, gpe_threadIdx,
-                                                                                   mixture_a, nodes_a, aabbs_a, flags_a, node_attributes_a,
-                                                                                   n, n_mixtures, n_internal_nodes, n_nodes, n_components_target);
+                                                                                             mixture_a, nodes_a, aabbs_a, flags_a, node_attributes_a,
+                                                                                             n, n_mixtures, n_internal_nodes, n_nodes, n_components_target,
+                                                                                             config);
                                        };
                                    gpe::start_parallel<gpe::ComputeDevice::CPU>(gpe::device(mixture), dimGrid, dimBlock, fun);
                                }));
@@ -751,12 +798,13 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> forward_impl_t(at::Tenso
                                             auto aabbs_a = gpe::accessor<scalar_t, 3>(flat_bvh_aabbs);
                                             auto node_attributes_a = gpe::accessor<scalar_t, 3>(node_attributes);
 
-                                            auto fun = [mixture_a, out_mixture_a, nodes_a, aabbs_a, flags_a, node_attributes_a, n, n_mixtures, n_internal_nodes, n_nodes, n_components_target]
+                                            auto fun = [mixture_a, out_mixture_a, nodes_a, aabbs_a, flags_a, node_attributes_a, n, n_mixtures, n_internal_nodes, n_nodes, n_components_target, config]
                                                 EXECUTION_DEVICES
                                                 (const dim3& gpe_gridDim, const dim3& gpe_blockDim, const dim3& gpe_blockIdx, const dim3& gpe_threadIdx) {
                                                     collect_result<scalar_t, N_DIMS, REDUCTION_N>(gpe_gridDim, gpe_blockDim, gpe_blockIdx, gpe_threadIdx,
-                                                                                        mixture_a, out_mixture_a, nodes_a, aabbs_a, flags_a, node_attributes_a,
-                                                                                        n, n_mixtures, n_internal_nodes, n_nodes, n_components_target);
+                                                                                                  mixture_a, out_mixture_a, nodes_a, aabbs_a, flags_a, node_attributes_a,
+                                                                                                  n, n_mixtures, n_internal_nodes, n_nodes, n_components_target,
+                                                                                                  config);
                                                 };
                                             gpe::start_parallel<gpe::ComputeDevice::CPU>(gpe::device(mixture), dimGrid, dimBlock, fun);
                                         }));

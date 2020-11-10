@@ -76,12 +76,48 @@ int main(int argc, char *argv[]) {
     QApplication a(argc, argv);
 
     std::array<std::vector<torch::Tensor>, CONVOLUTION_LAYER_END - CONVOLUTION_LAYER_START> error_data;
-    std::vector<std::pair<std::string, BvhMhemFitConfig>> configs;
-    configs.emplace_back("c1", BvhMhemFitConfig{2, lbvh::Config{lbvh::Config::MortonCodeAlgorithm::Old}});
-    configs.emplace_back("c2", BvhMhemFitConfig{4, lbvh::Config{lbvh::Config::MortonCodeAlgorithm::Old}});
-    configs.emplace_back("c3", BvhMhemFitConfig{8, lbvh::Config{lbvh::Config::MortonCodeAlgorithm::Old}});
-    configs.emplace_back("c4", BvhMhemFitConfig{16, lbvh::Config{lbvh::Config::MortonCodeAlgorithm::Old}});
+    std::vector<int> reduction_n_options = {2, 4, 8, 16};
+    std::vector<lbvh::Config::MortonCodeAlgorithm> morton_code_options = {
+        lbvh::Config::MortonCodeAlgorithm::Old,
+        lbvh::Config::MortonCodeAlgorithm::Cov1_12p36pc16i,
+        lbvh::Config::MortonCodeAlgorithm::Cov2_54pc10i,
+        lbvh::Config::MortonCodeAlgorithm::Cov3_27p27c10i,
+        lbvh::Config::MortonCodeAlgorithm::Cov4_27c27p10i
+    };
+    std::vector<BvhMhemFitConfig::FitInitialDisparityMethod> fit_initial_disparity_options = {
+        BvhMhemFitConfig::FitInitialDisparityMethod::CentroidDistance,
+        BvhMhemFitConfig::FitInitialDisparityMethod::Likelihood,
+        BvhMhemFitConfig::FitInitialDisparityMethod::KLDivergence
+    };
+    std::vector<BvhMhemFitConfig::FitInitialClusterMergeMethod> fit_initial_cluster_merge_options = {
+        BvhMhemFitConfig::FitInitialClusterMergeMethod::Average,
+        BvhMhemFitConfig::FitInitialClusterMergeMethod::AverageCorrected,
+        BvhMhemFitConfig::FitInitialClusterMergeMethod::MaxIntegral,
+        BvhMhemFitConfig::FitInitialClusterMergeMethod::MaxWeight
+    };
+    std::vector<float> em_kl_div_threshold_options {1.5f, 2.0f, 2.5f};
 
+//    std::vector<lbvh::Config::MortonCodeAlgorithm> morton_code_options = {lbvh::Config::MortonCodeAlgorithm::Cov1_12p36pc16i};
+//    std::vector<int> reduction_n_options = {16};
+    std::vector<std::pair<std::string, BvhMhemFitConfig>> configs;
+    for (auto reduction_n : reduction_n_options) {
+        for (auto morton_code_algorithm : morton_code_options) {
+            for (auto fit_initial_disparity_method : fit_initial_disparity_options) {
+                for (auto fit_initial_cluster_merge_method : fit_initial_cluster_merge_options) {
+                    for (auto em_kl_div_threshold : em_kl_div_threshold_options) {
+                        configs.emplace_back("red_" + std::to_string(reduction_n) +
+                                             "_morton_" + std::to_string(int(morton_code_algorithm)) +
+                                             "_fidispr_" + std::to_string(int(fit_initial_disparity_method)) +
+                                             "_ficlstrm_" + std::to_string(int(fit_initial_cluster_merge_method)) +
+                                             "_emkldivth_" + std::to_string(em_kl_div_threshold),
+                                             BvhMhemFitConfig{reduction_n, lbvh::Config{morton_code_algorithm}, fit_initial_disparity_method, fit_initial_cluster_merge_method, em_kl_div_threshold});
+
+                    }
+                }
+            }
+
+        }
+    }
 
     for (const auto& named_config : configs) {
         for (uint i = 0; i < N_BATCHES; ++i) {
@@ -125,15 +161,16 @@ int main(int argc, char *argv[]) {
         }
 
         if (DO_STATS) {
-            std::cout << std::endl << "totals " << named_config.first << ":" << std::endl;
+            std::cout << std::fixed << std::setw(5) << std::setprecision(4) << named_config.first << "; ";
             for (uint i = CONVOLUTION_LAYER_START; i < CONVOLUTION_LAYER_END; i++) {
-                std::cout << "layer " << i << ": ";
+                std::cout << "layer " << i << "; ";
                 torch::Tensor d = torch::cat(error_data[i], 0);
-                std::cout << "RMSE=" << torch::sqrt(torch::mean(d * d)).item<float>() * 1000 << "e-3";
+                std::cout << "RMSE=" << torch::sqrt(torch::mean(d * d)).item<float>() * 1000 << "e-3; ";
                 d = d.view({-1, RESOLUTION * RESOLUTION});
-                std::cout << " std(RMSE)=" << torch::sqrt(torch::sqrt(torch::mean(d * d, 1)).var() / d.size(0)).item<float>() * 1000 << "e-3";
-                std::cout << std::endl;
+                std::cout << "std(RMSE)=" << torch::sqrt(torch::sqrt(torch::mean(d * d, 1)).var() / d.size(0)).item<float>() * 1000 << "e-3; ";
+                error_data[i].clear();
             }
+            std::cout << std::endl;
         }
     }
 
