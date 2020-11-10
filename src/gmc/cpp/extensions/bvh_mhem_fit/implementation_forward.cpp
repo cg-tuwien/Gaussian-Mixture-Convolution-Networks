@@ -47,15 +47,15 @@ using Node  = lbvh::detail::Node;
 
 template <typename scalar_t = float>
 struct Epsilon {
-    static constexpr scalar_t small = scalar_t(0.0000000000000000000000001);
+    static constexpr scalar_t small = scalar_t(0.00000000000000000000000000000000001);
     static constexpr scalar_t large = scalar_t(0.0000000000000001);
     static EXECUTION_DEVICES scalar_t clip(scalar_t v) { return gpe::max(v, small); }
 };
 
 template<>
 struct Epsilon<double> {
-    static constexpr double small = 0.0000000000000000000000000000001;
-    static constexpr double large = 0.00000000000000000000000000000000000000000000000001;
+    static constexpr double small = 0.0000000000000000000000000000000000000000000000000000000000000000000001;
+    static constexpr double large = 0.00000000000000000000000000001;
     static EXECUTION_DEVICES double clip(double v) { return gpe::max(v, small); }
 };
 
@@ -470,13 +470,11 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_em(gpe::Vector<gpe::
         clamp_matrix[target_id][best_fitting_id] = scalar_t(1);  // no change if largest value was > kl_div_threshold.
     }
 
-    const auto clamped_likelihood_matrix = gpe::cwise_fun(likelihood_matrix, clamp_matrix, fun::times<scalar_t>);
-
     const auto pure_fitting_weights = gpe::transform(fitting_double_gmm, [](const G& g) { return gpe::abs(g.weight) / gpe::gaussian_amplitude(g.covariance); });
-    const auto weighted_likelihood_matrix = gpe::cwise_fun(pure_fitting_weights, clamped_likelihood_matrix, fun::times<scalar_t>);
-    const auto weighted_likelihood_sum = gpe::reduce_rows(weighted_likelihood_matrix, scalar_t(0), fun::plus<scalar_t>);
-    const auto weighted_likelihood_sum_clamped = gpe::transform(weighted_likelihood_sum, Epsilon<scalar_t>::clip);
-    const auto responsibilities_1 = gpe::cwise_fun(weighted_likelihood_matrix, weighted_likelihood_sum_clamped, fun::divided_AbyB<scalar_t>);
+    const auto weighted_likelihood_matrix = gpe::cwise_fun(pure_fitting_weights, likelihood_matrix, fun::times<scalar_t>);
+    const auto weighted_likelihood_clamped_matrix = gpe::cwise_fun(gpe::transform(weighted_likelihood_matrix, Epsilon<scalar_t>::clip), clamp_matrix, fun::times<scalar_t>);
+    const auto weighted_likelihood_sum = gpe::reduce_rows(weighted_likelihood_clamped_matrix, scalar_t(0), fun::plus<scalar_t>);
+    const auto responsibilities_1 = gpe::cwise_fun(weighted_likelihood_clamped_matrix, weighted_likelihood_sum, fun::divided_AbyB<scalar_t>);
     assert(!has_nan(responsibilities_1));
 
     const auto pure_target_weights = gpe::transform(target_double_gmm, [](const G& g) { return gpe::abs(g.weight) / gpe::gaussian_amplitude(g.covariance); });
