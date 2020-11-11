@@ -588,10 +588,10 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_em(gpe::Vector<gpe::
                             const gpe::PackedTensorAccessor32<scalar_t, 3> aabbs,
                             gpe::PackedTensorAccessor32<int, 2> flags,
                             gpe::PackedTensorAccessor32<scalar_t, 3> node_attributes,
-                            const gpe::MixtureNs n, const int n_mixtures, const unsigned n_internal_nodes, const unsigned n_nodes, unsigned n_components_target,
+                            const gpe::MixtureNs n, const int n_mixtures, const unsigned n_internal_nodes, const unsigned n_nodes, unsigned n_components_fitting,
                             const BvhMhemFitConfig& config) {
         GPE_UNUSED(gpe_gridDim)
-        GPE_UNUSED(n_components_target)
+        GPE_UNUSED(n_components_fitting)
         using G = gpe::Gaussian<N_DIMS, scalar_t>;
         using Bvh = AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>;
 
@@ -605,28 +605,34 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_em(gpe::Vector<gpe::
 
         auto gaussians_head = node_index_t(0);
 
-        // collect Gs in per_node_gaussians
-        // todo: node_id can be invalid
+        // go bottom up through all nodes
         const Node* node = nullptr;
+        bool done = false;
         while(true)
         {
-            bool need_new_node = (node == nullptr);
-            auto vote = gpe::ballot_sync(0xFFFFFFFF, need_new_node, gpe_threadIdx.x);
-            auto old_gaussians_head = gaussians_head;
-            gaussians_head += gpe::popc(vote);                      // gaussian head must be in sync between all threads.
-            assert(gaussians_head < n_components_target * 2 + 1);   // it will become larger than n_components, but
-            if(need_new_node) {
-                auto next_gaussian_location = gpe::popc(((1 << gpe_threadIdx.x) - 1) & vote) + old_gaussians_head;
+            auto stop_vote = gpe::ballot_sync(0xFFFFFFFF, done, gpe_threadIdx.x, 0);
+            assert(gpe::popc(stop_vote) <= 1);
+            if (stop_vote) {
+                break;
+            }
 
-                if (next_gaussian_location < n_components_target) {
-                    auto node_id = node_index_t(next_gaussian_location + n_internal_nodes);
+            const bool need_new_node = (node == nullptr);
+            const auto vote = gpe::ballot_sync(0xFFFFFFFF, need_new_node, gpe_threadIdx.x, 1);
+            assert(vote >= unsigned(need_new_node));
+            const auto old_gaussians_head = gaussians_head;
+            gaussians_head += gpe::popc(vote);                      // gaussian head must be in sync between all threads.
+            assert(gaussians_head < n.components * 10);   // it will become larger than n_components, but it should stay within a reasonable value
+            if(need_new_node) {
+                const auto next_gaussian_location = gpe::popc(((1 << gpe_threadIdx.x) - 1) & vote) + old_gaussians_head;
+
+                if (next_gaussian_location < unsigned(n.components)) {
+                    const auto node_id = node_index_t(next_gaussian_location + n_internal_nodes);
                     node = &bvh.nodes[node_id];
 
                     const G& leaf_gaussian = bvh.gaussians[next_gaussian_location];
                     bvh.per_node_attributes[node_id].gaussians.push_back(leaf_gaussian);
                     bvh.per_node_attributes[node_id].n_child_leaves = 1;
                     bvh.per_node_attributes[node_id].gm_integral = gpe::integrate(leaf_gaussian);
-
                 }
                 else {
                     // no leaf nodes left
@@ -659,11 +665,8 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_em(gpe::Vector<gpe::
             }
 
             bool is_root_node = node->parent_idx == node_index_t(0xFFFFFFFF);
-            vote = gpe::ballot_sync(0xFFFFFFFF, is_root_node, gpe_threadIdx.x);
-            assert(gpe::popc(vote) <= 1);
-            if (vote) {
-                break;
-            }
+            if (is_root_node)
+                done = true;
         }
     }
 
