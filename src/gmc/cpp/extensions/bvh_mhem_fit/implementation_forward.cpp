@@ -676,7 +676,7 @@ EXECUTION_DEVICES void collect_result(const dim3& gpe_gridDim, const dim3& gpe_b
                                       const gpe::PackedTensorAccessor32<scalar_t, 3> aabbs,
                                       gpe::PackedTensorAccessor32<int, 2> flags,
                                       gpe::PackedTensorAccessor32<scalar_t, 3> node_attributes,
-                                      const gpe::MixtureNs n, const int n_mixtures, const unsigned n_internal_nodes, const unsigned n_nodes, unsigned n_components_target,
+                                      const gpe::MixtureNs n, const int n_mixtures, const unsigned n_internal_nodes, const unsigned n_nodes, unsigned n_components_fitting,
                                       const BvhMhemFitConfig& config)
 {
     GPE_UNUSED(gpe_gridDim)
@@ -684,8 +684,8 @@ EXECUTION_DEVICES void collect_result(const dim3& gpe_gridDim, const dim3& gpe_b
     using G = gpe::Gaussian<N_DIMS, scalar_t>;
     using Bvh = AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>;
 
-    assert(n_components_target % REDUCTION_N == 0);
-    assert(n_components_target <= N_MAX_TARGET_COMPS);
+    assert(n_components_fitting % REDUCTION_N == 0);
+    assert(n_components_fitting <= N_MAX_TARGET_COMPS);
     static_assert (N_MAX_TARGET_COMPS % REDUCTION_N == 0, "N_MAX_TARGET_COMPS must be divisible by REDUCTION_N");
 
     const auto mixture_id = int(gpe_blockIdx.x * gpe_blockDim.x + gpe_threadIdx.x);
@@ -722,7 +722,7 @@ EXECUTION_DEVICES void collect_result(const dim3& gpe_gridDim, const dim3& gpe_b
     selectedNodesRating.push_back(compute_rating(0));
     n_selected_components = bvh.per_node_attributes[0].gaussians.size();
 
-    while (n_selected_components < n_components_target - REDUCTION_N)  {
+    while (n_selected_components < n_components_fitting - REDUCTION_N)  {
         auto best_node_cache_id = cach_id_with_highest_rating();
         if (best_node_cache_id >= selectedNodes.size())
             break;  // ran out of nodes
@@ -750,7 +750,7 @@ EXECUTION_DEVICES void collect_result(const dim3& gpe_gridDim, const dim3& gpe_b
         typename Bvh::NodeAttributes& destination_attribute = bvh.per_node_attributes[node_id];
 
         for (unsigned j = 0; j < destination_attribute.gaussians.size(); ++j) {
-            assert(write_position < n_components_target);
+            assert(write_position < n_components_fitting);
             gpe::gaussian<N_DIMS>(out_mixture[mixture_id][int(write_position++)]) = destination_attribute.gaussians[j];
         }
     }
