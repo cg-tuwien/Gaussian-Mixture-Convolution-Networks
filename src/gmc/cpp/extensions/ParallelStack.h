@@ -6,22 +6,22 @@
 
 namespace gpe {
 
-template <typename T, size_t SIZE>
+template <typename T, size_t SIZE, unsigned SYNC_ID>
 struct ParallelStack {
     T stack[SIZE];
     int32_t head = 0;
 
     /// must be called from every thread
     __host__ __device__ void push(const T& element, bool is_valid, unsigned thread_id) {
-        auto vote = gpe::ballot_sync(0xFFFFFFFF, is_valid, thread_id);
+        auto vote = gpe::ballot_sync(0xFFFFFFFF, is_valid, thread_id, SYNC_ID + 1000 + 0);
         auto write_location = gpe::popc(((1 << thread_id) - 1) & vote);
         assert(head + write_location < SIZE);
         if (is_valid)
             stack[head + write_location] = element;
-        gpe::syncthreads();
+        gpe::syncthreads(SYNC_ID + 1000 + 1);
         if (thread_id == 0)
             head += gpe::popc(vote);
-        gpe::syncthreads();
+        gpe::syncthreads(SYNC_ID + 1000 + 2);
     }
 
     /// must be called from every thread
@@ -31,10 +31,10 @@ struct ParallelStack {
         if (is_valid) {
             *element = stack[location];
         }
-        gpe::syncthreads();
+        gpe::syncthreads(SYNC_ID + 1000 + 3);
         if (thread_id == 0)
             head = gpe::max(int32_t(0), head - 32);
-        gpe::syncthreads();
+        gpe::syncthreads(SYNC_ID + 1000 + 4);
         return is_valid;
     }
 };

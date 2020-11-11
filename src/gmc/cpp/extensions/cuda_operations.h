@@ -74,11 +74,12 @@ __host__ __device__ __forceinline__ uint32_t popc(uint32_t v) {
 #endif
 }
 
-__host__ __device__ __forceinline__ void syncthreads() {
+/// sync_id is used only on cpu side, required to deal with spurious wakeups. every syncthreads needs a unique sync_id.
+__host__ __device__ __forceinline__ void syncthreads(unsigned sync_id) {
 #ifdef __CUDA_ARCH__
     __syncthreads();
 #else
-    gpe::detail::CpuSynchronisationPoint::synchronise();
+    gpe::detail::CpuSynchronisationPoint::synchronise(sync_id);
 #endif
 }
 
@@ -106,16 +107,36 @@ __host__ __device__ __forceinline__ void atomicAdd(T *ptr, T val) {
 #endif
 }
 
-__host__ __device__ __forceinline__ uint32_t ballot_sync(uint32_t mask, bool predicate, uint32_t thread_id) {
+/// sync_id is used only on cpu side, required to deal with spurious wakeups. every ballot_sync needs a unique sync_id (and mustn't be shared with other calls to syncthreads).
+__host__ __device__ __forceinline__ uint32_t ballot_sync(uint32_t mask, bool predicate, uint32_t thread_id, unsigned sync_id) {
 #ifdef __CUDA_ARCH__
     return __ballot_sync(mask, predicate);
 #else
+    assert(thread_id < 32);
+    assert(sync_id < 100000);
     static std::atomic_uint32_t ballot;
     ballot.store(0);
-    syncthreads();
-    ballot.fetch_or(mask & uint32_t(predicate) & (1 << thread_id));
-    syncthreads();
-    return ballot.load();
+
+    syncthreads(sync_id);
+
+//    printf("thread_id=%d; sync_id=%d; ballot.load() = %x\n", thread_id, sync_id, ballot.load());
+    uint32_t thread_mask = (uint32_t(predicate) << thread_id);
+    uint32_t or_mask = mask & thread_mask;
+
+//    syncthreads(sync_id + 100000);
+
+//    printf("thread_id=%d; sync_id=%d; or_mask = %x\n", thread_id, sync_id, or_mask);
+    ballot.fetch_or(or_mask);
+
+    syncthreads(sync_id + 200000);
+
+    auto result = ballot.load();
+//    printf("thread_id=%d; sync_id=%d; result = %x\n", thread_id, sync_id, result);
+
+    // this sync must stay, otherwise there can be a race via ballot.store(0);
+    syncthreads(sync_id + 300000);
+
+    return result;
 #endif
 }
 
