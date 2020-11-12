@@ -577,11 +577,73 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_em(gpe::Vector<gpe::
     return result;
 }
 
+template <typename scalar_t, int N_DIMS, int REDUCTION_N>
+EXECUTION_DEVICES
+void iterate_over_nodes_sync_free(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
+                        const dim3& gpe_blockIdx, const dim3& gpe_threadIdx,
+                        gpe::PackedTensorAccessor32<scalar_t, 3> mixture,
+                        const gpe::PackedTensorAccessor32<node_index_torch_t, 3> nodes,
+                        const gpe::PackedTensorAccessor32<scalar_t, 3> aabbs,
+                        gpe::PackedTensorAccessor32<int, 2> flags,
+                        gpe::PackedTensorAccessor32<scalar_t, 3> node_attributes,
+                        const gpe::MixtureNs n, const int n_mixtures, const unsigned n_internal_nodes, const unsigned n_nodes, unsigned n_components_fitting,
+                        const BvhMhemFitConfig& config) {
+    GPE_UNUSED(gpe_gridDim)
+    GPE_UNUSED(n_components_fitting)
+    using G = gpe::Gaussian<N_DIMS, scalar_t>;
+    using Bvh = AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>;
 
+    assert(gpe_blockDim.y == 1);
+    assert(gpe_blockDim.z == 1);
+    const auto mixture_id = int(gpe_blockIdx.y);
+    assert(mixture_id < n_mixtures);
+
+    Bvh bvh = AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>(mixture_id, nodes, aabbs, mixture, node_attributes, n, n_internal_nodes, n_nodes);
+
+    const unsigned leaves_per_thread = (unsigned(n.components) + gpe_blockDim.x - 1) / gpe_blockDim.x;
+    const unsigned begin_leaf = leaves_per_thread * gpe_threadIdx.x;
+    const unsigned end_leaf = gpe::min(begin_leaf + leaves_per_thread, unsigned(n.components));
+    unsigned current_leaf = begin_leaf;
+
+    auto is_second_thread = [&flags, mixture_id](node_index_t index) {
+        auto* flag = &reinterpret_cast<int&>(flags[mixture_id][index]);
+        auto old = gpe::atomicCAS(flag, 0, 1);
+        return bool(old);
+    };
+
+    // go bottom up through all nodes
+    while(current_leaf < end_leaf)
+    {
+        const auto leaf_node_id = node_index_t(current_leaf + n_internal_nodes);
+        assert(leaf_node_id < n_nodes);
+        const Node* node = &bvh.nodes[leaf_node_id];
+
+        const G& leaf_gaussian = bvh.gaussians[current_leaf];
+        bvh.per_node_attributes[leaf_node_id].gaussians.push_back(leaf_gaussian);
+        bvh.per_node_attributes[leaf_node_id].n_child_leaves = 1;
+        bvh.per_node_attributes[leaf_node_id].gm_integral = gpe::integrate(leaf_gaussian);
+        current_leaf++;
+
+        while (node->parent_idx != node_index_t(0xFFFFFFFF) && is_second_thread(node->parent_idx)) {
+            auto node_id = node->parent_idx;
+            node = &bvh.nodes[node_id];
+            bvh.per_node_attributes[node_id].n_child_leaves = bvh.per_node_attributes[node->left_idx].n_child_leaves + bvh.per_node_attributes[node->right_idx].n_child_leaves;
+            bvh.per_node_attributes[node_id].gm_integral = bvh.per_node_attributes[node->left_idx].gm_integral + bvh.per_node_attributes[node->right_idx].gm_integral;
+
+            auto child_gaussians = bvh.collect_child_gaussians(node, Epsilon<scalar_t>::large);
+            if (child_gaussians.size() > REDUCTION_N) {
+                bvh.per_node_attributes[node_id].gaussians = fit_em<REDUCTION_N>(child_gaussians, config);
+            }
+            else {
+                bvh.per_node_attributes[node_id].gaussians.push_back(child_gaussians);
+            }
+        }
+    }
+}
 
 template <typename scalar_t, int N_DIMS, int REDUCTION_N>
 EXECUTION_DEVICES
-void iterate_over_nodes(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
+void iterate_over_nodes_sync(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
                         const dim3& gpe_blockIdx, const dim3& gpe_threadIdx,
                         gpe::PackedTensorAccessor32<scalar_t, 3> mixture,
                         const gpe::PackedTensorAccessor32<node_index_torch_t, 3> nodes,
@@ -808,7 +870,7 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> forward_impl_t(at::Tenso
 
                                    auto fun = [mixture_a, nodes_a, aabbs_a, flags_a, node_attributes_a, n, n_mixtures, n_internal_nodes, n_nodes, n_components_target, config] EXECUTION_DEVICES
                                        (const dim3& gpe_gridDim, const dim3& gpe_blockDim, const dim3& gpe_blockIdx, const dim3& gpe_threadIdx) {
-                                           iterate_over_nodes<scalar_t, N_DIMS, REDUCTION_N>(gpe_gridDim, gpe_blockDim, gpe_blockIdx, gpe_threadIdx,
+                                           iterate_over_nodes_sync_free<scalar_t, N_DIMS, REDUCTION_N>(gpe_gridDim, gpe_blockDim, gpe_blockIdx, gpe_threadIdx,
                                                                                              mixture_a, nodes_a, aabbs_a, flags_a, node_attributes_a,
                                                                                              n, n_mixtures, n_internal_nodes, n_nodes, n_components_target,
                                                                                              config);
