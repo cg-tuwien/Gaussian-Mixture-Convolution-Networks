@@ -903,28 +903,5 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> forward_impl_t(at::Tenso
     return std::make_tuple(out_mixture.view({n.batch, n.layers, n_components_target, -1}), bvh.m_nodes, bvh.m_aabbs);
 }
 
-
-std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> forward_impl(at::Tensor mixture, const BvhMhemFitConfig& config, unsigned n_components_target) {
-    switch (config.reduction_n) {
-    case 2:
-        return forward_impl_t<2>(mixture, config, n_components_target);
-        break;
-    case 4:
-        return forward_impl_t<4>(mixture, config, n_components_target);
-        break;
-    case 8:
-        return forward_impl_t<8>(mixture, config, n_components_target);
-        break;
-    case 16:
-        return forward_impl_t<16>(mixture, config, n_components_target);
-        break;
-    default:
-        std::cout << "invalid BvhMhemFitConfig::reduction_n" << std::endl;
-        exit(1);
-        break;
-
-    }
-}
-
 } // namespace bvh_mhem_fit
 
