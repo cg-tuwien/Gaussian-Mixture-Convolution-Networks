@@ -14,16 +14,14 @@ set(CMAKE_CUDA_ARCHITECTURES 60)
 #     "-D_GLIBCXX_USE_CXX11_ABI=0 -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --expt-relaxed-constexpr --compiler-options '-fPIC' -O3 --use_fast_math -std=c++14"
 #     )
 string(APPEND CMAKE_CUDA_FLAGS " -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --expt-extended-lambda --expt-relaxed-constexpr")
-string(APPEND CMAKE_CUDA_FLAGS " -Xcompiler -fPIC,-fopenmp  --use_fast_math")
-string(APPEND CMAKE_CUDA_FLAGS " --generate-line-info -DNDEBUG")
-string(APPEND CMAKE_CUDA_FLAGS " -Xcompiler '-ffast-math'")
-string(APPEND CMAKE_CUDA_FLAGS_RELEASE " -Xcompiler '-O4,-march=native'")
+string(APPEND CMAKE_CUDA_FLAGS " -Xcompiler '-fPIC,-fopenmp,-ffast-math'  --use_fast_math")
+string(APPEND CMAKE_CUDA_FLAGS_RELEASE " --generate-line-info -Xcompiler '-O4,-march=native'")
 string(APPEND CMAKE_CUDA_FLAGS_DEBUG " -g -G")
 
 # ASan:
-#string(APPEND CMAKE_CUDA_FLAGS_DEBUG " -Xcompiler -fsanitize=address -Xcompiler -fno-omit-frame-pointer")
-#string(APPEND CMAKE_CXX_FLAGS_DEBUG " -fno-omit-frame-pointer -fsanitize=address")
-#string(APPEND CMAKE_LINKER_FLAGS_DEBUG " -fno-omit-frame-pointer -fsanitize=address")
+#string(APPEND CMAKE_CUDA_FLAGS " -Xcompiler -fsanitize=address -Xcompiler -fno-omit-frame-pointer")
+#string(APPEND CMAKE_CXX_FLAGS " -fno-omit-frame-pointer -fsanitize=address")
+#string(APPEND CMAKE_LINKER_FLAGS" -fno-omit-frame-pointer -fsanitize=address")
 
 #target_compile_options(kre -Wall -Wextra -Wpedantic -Werror)
 string(APPEND CMAKE_CXX_FLAGS " -ffast-math")
