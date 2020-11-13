@@ -32,9 +32,6 @@
 // todo:
 // - when fitting 1024 components (more than input), mse doesn't go to 0, although the rendering looks good.
 // - in collect_result, run a new fitting with the most important node to fill up the remaining gaussian slots
-// - kl-divergenece filter: at least one should pass (select from clustering), otherwise we loose mass
-// - check integration mass again (after kl-div filter)
-// - debug 2nd and 3rd layer: why are we lossing these important gaussians, especially when N_REDUCE is larger (8)?
 
 namespace bvh_mhem_fit {
 
