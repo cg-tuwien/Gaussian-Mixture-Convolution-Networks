@@ -27,7 +27,7 @@
 #include "parallel_start.h"
 #include "ParallelStack.h"
 
-#define EXECUTION_DEVICES __host__ __device__
+#define EXECUTION_DEVICES __host__ __device__ __forceinline__
 
 // todo:
 // - when fitting 1024 components (more than input), mse doesn't go to 0, although the rendering looks good.
@@ -865,7 +865,7 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> forward_impl_t(at::Tenso
                                    auto aabbs_a = gpe::accessor<scalar_t, 3>(flat_bvh_aabbs);
                                    auto node_attributes_a = gpe::accessor<scalar_t, 3>(node_attributes);
 
-                                   auto fun = [mixture_a, nodes_a, aabbs_a, flags_a, node_attributes_a, n, n_mixtures, n_internal_nodes, n_nodes, n_components_target, config] EXECUTION_DEVICES
+                                   auto fun = [mixture_a, nodes_a, aabbs_a, flags_a, node_attributes_a, n, n_mixtures, n_internal_nodes, n_nodes, n_components_target, config] __host__ __device__
                                        (const dim3& gpe_gridDim, const dim3& gpe_blockDim, const dim3& gpe_blockIdx, const dim3& gpe_threadIdx) {
                                            iterate_over_nodes_sync_free<scalar_t, N_DIMS, REDUCTION_N>(gpe_gridDim, gpe_blockDim, gpe_blockIdx, gpe_threadIdx,
                                                                                              mixture_a, nodes_a, aabbs_a, flags_a, node_attributes_a,
@@ -889,7 +889,7 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> forward_impl_t(at::Tenso
                                             auto node_attributes_a = gpe::accessor<scalar_t, 3>(node_attributes);
 
                                             auto fun = [mixture_a, out_mixture_a, nodes_a, aabbs_a, flags_a, node_attributes_a, n, n_mixtures, n_internal_nodes, n_nodes, n_components_target, config]
-                                                EXECUTION_DEVICES
+                                                __host__ __device__
                                                 (const dim3& gpe_gridDim, const dim3& gpe_blockDim, const dim3& gpe_blockIdx, const dim3& gpe_threadIdx) {
                                                     collect_result<scalar_t, N_DIMS, REDUCTION_N>(gpe_gridDim, gpe_blockDim, gpe_blockIdx, gpe_threadIdx,
                                                                                                   mixture_a, out_mixture_a, nodes_a, aabbs_a, flags_a, node_attributes_a,
