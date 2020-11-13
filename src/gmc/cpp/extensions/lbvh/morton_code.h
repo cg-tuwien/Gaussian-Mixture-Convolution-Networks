@@ -12,8 +12,8 @@
 namespace lbvh
 {
 
-__device__ __host__
-inline std::uint32_t expand_bits3(std::uint32_t v) noexcept
+__device__ __host__ __forceinline__
+std::uint32_t expand_bits3(std::uint32_t v) noexcept
 {
     v = (v * 0x00010001u) & 0xFF0000FFu;
     v = (v * 0x00000101u) & 0x0F00F00Fu;
@@ -23,10 +23,12 @@ inline std::uint32_t expand_bits3(std::uint32_t v) noexcept
 }
 
 template <typename T>
-inline T copy_or(T v, unsigned shift) noexcept {
+__device__ __host__ __forceinline__
+T copy_or(T v, unsigned shift) noexcept {
     return (v << shift) | v;
 }
 
+__device__ __host__ __forceinline__
 std::uint64_t expand_bits2(std::uint32_t v) noexcept
 {
     uint64_t t = v;
@@ -38,6 +40,7 @@ std::uint64_t expand_bits2(std::uint32_t v) noexcept
     return t;
 }
 
+__device__ __host__ __forceinline__
 std::uint32_t expand_bits2(std::uint16_t v) noexcept
 {
     uint32_t t = v;
@@ -50,8 +53,8 @@ std::uint32_t expand_bits2(std::uint16_t v) noexcept
 
 // Calculates a 30-bit Morton code for the
 // given 3D point located within the unit cube [0,1].
-__device__ __host__
-inline std::uint32_t morton_code(float4 xyz, float resolution = 1024.0f) noexcept
+__device__ __host__ __forceinline__
+std::uint32_t morton_code(float4 xyz, float resolution = 1024.0f) noexcept
 {
     xyz.x = gpe::min(gpe::max(xyz.x * resolution, 0.0f), resolution - 1.0f);
     xyz.y = gpe::min(gpe::max(xyz.y * resolution, 0.0f), resolution - 1.0f);
@@ -62,8 +65,8 @@ inline std::uint32_t morton_code(float4 xyz, float resolution = 1024.0f) noexcep
     return xx * 4 + yy * 2 + zz;
 }
 
-__device__ __host__
-inline std::uint32_t morton_code(double4 xyz, double resolution = 1024.0) noexcept
+__device__ __host__ __forceinline__
+std::uint32_t morton_code(double4 xyz, double resolution = 1024.0) noexcept
 {
     xyz.x = gpe::min(gpe::max(xyz.x * resolution, 0.0), resolution - 1.0);
     xyz.y = gpe::min(gpe::max(xyz.y * resolution, 0.0), resolution - 1.0);
@@ -75,9 +78,9 @@ inline std::uint32_t morton_code(double4 xyz, double resolution = 1024.0) noexce
 }
 
 template<typename scalar_t>
-__device__ __host__
+__device__ __host__ __forceinline__
 // 2 left most bits are 0
-inline std::uint32_t morton_code(const glm::vec<3, scalar_t>& vec, uint32_t resolution = 1024) {
+std::uint32_t morton_code(const glm::vec<3, scalar_t>& vec, uint32_t resolution = 1024) {
     uint32_t x = gpe::min(gpe::max(uint32_t(vec.x * resolution), 0u), resolution - 1);
     uint32_t y = gpe::min(gpe::max(uint32_t(vec.y * resolution), 0u), resolution - 1);
     uint32_t z = gpe::min(gpe::max(uint32_t(vec.z * resolution), 0u), resolution - 1);
@@ -89,8 +92,8 @@ inline std::uint32_t morton_code(const glm::vec<3, scalar_t>& vec, uint32_t reso
 
 
 template<int MORTON_CODE_ALGORITHM, typename scalar_t>
-__device__ __host__
-inline std::uint64_t morton_code(uint16_t component_id, const glm::vec<3, scalar_t>& pos, const glm::vec<3, scalar_t>& cov_diag, scalar_t resolution = 1024.0) {
+__device__ __host__ __forceinline__
+std::uint64_t morton_code(uint16_t component_id, const glm::vec<3, scalar_t>& pos, const glm::vec<3, scalar_t>& cov_diag, scalar_t resolution = 1024.0) {
     if (MORTON_CODE_ALGORITHM == 0) {
         /// old
         uint32_t morton_pos = morton_code(pos, resolution);         // 30 bits

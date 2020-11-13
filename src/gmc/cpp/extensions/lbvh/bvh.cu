@@ -167,6 +167,7 @@ void Bvh<N_DIMS, scalar_t>::construct()
 
     //        auto timepoint = std::chrono::high_resolution_clock::now();
     auto watch_stop = [/*&timepoint*/](const std::string& name = "") {
+//            std::cout << ".. " << name << std::endl;
         //            cudaDeviceSynchronize();
         //            if (name.length() > 0)
         //                std::cout << name << ": " << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now()-timepoint).count() << "ms\n";
