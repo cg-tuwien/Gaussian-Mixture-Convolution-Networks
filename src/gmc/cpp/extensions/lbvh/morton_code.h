@@ -111,13 +111,14 @@ std::uint64_t morton_code(uint16_t component_id, const glm::vec<3, scalar_t>& po
         uint32_t morton_cov = morton_code(cov_diag, resolution);    // 30 bits
         uint64_t result = 0;
         result |= morton_pos >> 18;
-        morton_pos = morton_pos & 0xFFFu;               // 12 bits
-        morton_cov = morton_cov >> 18;                  // 12 most significant bits
-        morton_pos = expand_bits2(uint16_t(morton_pos));
-        morton_cov = expand_bits2(uint16_t(morton_cov));
-        uint32_t morton_poscov = (morton_pos << 1) | morton_cov;    // 24 bits
-        assert((morton_poscov & 0xFF'FFFF) == morton_poscov);
-        result = (result << 24) | morton_poscov;
+        morton_pos = morton_pos & 0x3'FFFFu;               // 18 bits
+        morton_cov = morton_cov >> 12;                  // 18 most significant bits
+        uint64_t morton_pos_expanded = expand_bits2(morton_pos);
+        uint64_t morton_cov_expanded = expand_bits2(morton_cov);
+        uint64_t morton_poscov = (morton_pos_expanded << 1) | morton_cov_expanded;    // 36 bits
+        assert((morton_poscov & 0xF'FFFF'FFFF) == morton_poscov);
+        result = (result << 36) | morton_poscov;
+        assert((result & 0xFFFF'FFFF'FFFF) == result);
         result = (result << 16) | component_id;
         return result;
     }
@@ -129,12 +130,12 @@ std::uint64_t morton_code(uint16_t component_id, const glm::vec<3, scalar_t>& po
         // 27 + 27 bits interleaved position with cov_diag, and 10 bits component id
         uint32_t morton_pos = morton_code(pos, resolution);         // 30 bits
         uint32_t morton_cov = morton_code(cov_diag, resolution);    // 30 bits
-        morton_pos = expand_bits2(uint16_t(morton_pos));
-        morton_cov = expand_bits2(uint16_t(morton_cov));
-        auto morton_poscov = (morton_pos << 1) | morton_cov;    // 60 bits
+        uint64_t morton_pos_expanded = expand_bits2(morton_pos);
+        uint64_t morton_cov_expanded = expand_bits2(morton_cov);
+        auto morton_poscov = (morton_pos_expanded << 1) | morton_cov_expanded;    // 60 bits
         uint64_t result = morton_poscov << 4;
         result = result & (~0x3FFu);
-        assert (componend_id < 1024);
+        assert (component_id < 1024);
         result = result | component_id;
         return result;
     }
@@ -153,7 +154,7 @@ std::uint64_t morton_code(uint16_t component_id, const glm::vec<3, scalar_t>& po
         result |= (morton_cov & (~0x1F)) << 9;
         assert((result & 0xFFFF'FFFF'FFFF'FC00u) == result);
         assert((((result << 27) >> 27) >> (64 - 27)) == (morton_cov >> 3));
-        assert (componend_id < 1024);
+        assert (component_id < 1024);
         result = result | (component_id & 0x3FF);
         return result;
 
@@ -173,7 +174,7 @@ std::uint64_t morton_code(uint16_t component_id, const glm::vec<3, scalar_t>& po
         result |= (morton_pos & (~0x1F)) << 9;
         assert((result & 0xFFFF'FFFF'FFFF'FC00u) == result);
         assert((((result << 27) >> 27) >> (64 - 27)) == (morton_pos >> 3));
-        assert (componend_id < 1024);
+        assert (component_id < 1024);
         result = result | (component_id & 0x3FF);
         return result;
     }
