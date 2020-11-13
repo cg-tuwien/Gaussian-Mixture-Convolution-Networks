@@ -20,7 +20,7 @@ constexpr uint N_BATCHES = 10;
 constexpr uint CONVOLUTION_LAYER_START = 0;
 constexpr uint CONVOLUTION_LAYER_END = 3;
 constexpr uint LIMIT_N_BATCH = 100;
-constexpr bool USE_CUDA = false;
+constexpr bool USE_CUDA = true;
 //constexpr bool BACKWARD = false;
 constexpr bool RENDER = false;
 constexpr uint RESOLUTION = 128;
@@ -76,6 +76,8 @@ int main(int argc, char *argv[]) {
     QApplication a(argc, argv);
 
     std::array<std::vector<torch::Tensor>, CONVOLUTION_LAYER_END - CONVOLUTION_LAYER_START> error_data;
+
+    // test all configurations:
     std::vector<int> reduction_n_options = {2, 4, 8, 16};
     std::vector<lbvh::Config::MortonCodeAlgorithm> morton_code_options = {
         lbvh::Config::MortonCodeAlgorithm::Old,
@@ -92,13 +94,25 @@ int main(int argc, char *argv[]) {
     std::vector<BvhMhemFitConfig::FitInitialClusterMergeMethod> fit_initial_cluster_merge_options = {
         BvhMhemFitConfig::FitInitialClusterMergeMethod::Average,
         BvhMhemFitConfig::FitInitialClusterMergeMethod::AverageCorrected,
-        BvhMhemFitConfig::FitInitialClusterMergeMethod::MaxIntegral,
-        BvhMhemFitConfig::FitInitialClusterMergeMethod::MaxWeight
+        BvhMhemFitConfig::FitInitialClusterMergeMethod::MaxWeight,
+        BvhMhemFitConfig::FitInitialClusterMergeMethod::MaxIntegral
     };
     std::vector<float> em_kl_div_threshold_options {1.5f, 2.0f, 2.5f};
 
-//    std::vector<lbvh::Config::MortonCodeAlgorithm> morton_code_options = {lbvh::Config::MortonCodeAlgorithm::Cov1_12p36pc16i};
-//    std::vector<int> reduction_n_options = {16};
+    // test specific configuration:
+//    std::vector<int> reduction_n_options = {2};
+//    std::vector<lbvh::Config::MortonCodeAlgorithm> morton_code_options = {
+//        lbvh::Config::MortonCodeAlgorithm::Cov3_27p27c10i
+//    };
+//    std::vector<BvhMhemFitConfig::FitInitialDisparityMethod> fit_initial_disparity_options = {
+//        BvhMhemFitConfig::FitInitialDisparityMethod::CentroidDistance
+//    };
+//    std::vector<BvhMhemFitConfig::FitInitialClusterMergeMethod> fit_initial_cluster_merge_options = {
+//        BvhMhemFitConfig::FitInitialClusterMergeMethod::Average
+//    };
+//    std::vector<float> em_kl_div_threshold_options {1.5f};
+
+
     std::vector<std::pair<std::string, BvhMhemFitConfig>> configs;
     for (auto reduction_n : reduction_n_options) {
         for (auto morton_code_algorithm : morton_code_options) {
@@ -136,18 +150,23 @@ int main(int argc, char *argv[]) {
                 if (USE_CUDA)
                     mixture = mixture.cuda();
     //            std::cout << "layer " << i << ": " << mixture.sizes() << " device: " << mixture.device() << std::endl;
+//                auto t0 = std::chrono::high_resolution_clock::now();
                 auto gt_rendering = render(gpe::mixture_with_inversed_covariances(mixture), RESOLUTION, LIMIT_N_BATCH);
+//                cudaDeviceSynchronize();
+//                auto t1 = std::chrono::high_resolution_clock::now();
                 if (RENDER)
                     show(gt_rendering, RESOLUTION, LIMIT_N_BATCH);
 
-                cudaDeviceSynchronize();
+//                cudaDeviceSynchronize();
 
-//                auto start = std::chrono::high_resolution_clock::now();
+//                auto t2 = std::chrono::high_resolution_clock::now();
                 torch::Tensor fitted_mixture, nodes, aabbs;
                 std::tie(fitted_mixture, nodes, aabbs) = bvh_mhem_fit_forward(mixture, named_config.second, 32);
-                cudaDeviceSynchronize();
-//                auto end = std::chrono::high_resolution_clock::now();
+//                cudaDeviceSynchronize();
+//                auto t3 = std::chrono::high_resolution_clock::now();
                 auto fitted_rendering = render(gpe::mixture_with_inversed_covariances(fitted_mixture), RESOLUTION, LIMIT_N_BATCH);
+//                cudaDeviceSynchronize();
+//                auto t4 = std::chrono::high_resolution_clock::now();
                 if (RENDER) {
                     show(fitted_rendering, RESOLUTION, LIMIT_N_BATCH);
                 }
@@ -156,7 +175,9 @@ int main(int argc, char *argv[]) {
                     error_data[i].push_back(diff.cpu().view({1, -1, RESOLUTION * RESOLUTION}));
                 }
 //                auto rmse = torch::sqrt(torch::mean(diff * diff)).item<float>();
-    //            std::cout << "elapsed time: " << std::chrono::duration_cast<std::chrono::milliseconds>(end-start).count() << "ms, RMSE: " << rmse * 1000 << "e-3" << std::endl;
+//                std::cout << "elapsed time gt rendering=" << std::chrono::duration_cast<std::chrono::milliseconds>(t1-t0).count() << "ms, "
+//                             "fit=" << std::chrono::duration_cast<std::chrono::milliseconds>(t3-t2).count() << "ms,"
+//                             "fitted rendering=" << std::chrono::duration_cast<std::chrono::milliseconds>(t4-t3).count() << "ms" << std::endl;
             }
         }
 

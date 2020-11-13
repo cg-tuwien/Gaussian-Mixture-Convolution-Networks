@@ -18,8 +18,8 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> forward_impl(at::Tensor 
         return forward_impl_t<4>(mixture, config, n_components_target);
     case 8:
         return forward_impl_t<8>(mixture, config, n_components_target);
-//    case 16:
-//        return forward_impl_t<16>(mixture, config, n_components_target);
+    case 16:
+        return forward_impl_t<16>(mixture, config, n_components_target);
     default:
         std::cout << "invalid BvhMhemFitConfig::reduction_n" << std::endl;
         exit(1);
