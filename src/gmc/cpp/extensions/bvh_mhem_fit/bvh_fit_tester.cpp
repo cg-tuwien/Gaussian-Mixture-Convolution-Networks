@@ -64,7 +64,9 @@ void show(torch::Tensor rendering, const int resolution, const int n_batch_limit
     rendering = rendering.transpose(2, 3).transpose(1, 2).contiguous();
     QImage qRendering(reinterpret_cast<uchar*>(rendering.data_ptr()), resolution * n_layers, resolution * n_batch, QImage::Format_Grayscale8);
     QLabel* myLabel = new QLabel();
-    myLabel->setPixmap(QPixmap::fromImage(qRendering));
+    QPixmap pixmap = QPixmap::fromImage(qRendering);
+    pixmap.setDevicePixelRatio(myLabel->devicePixelRatioF());
+    myLabel->setPixmap(pixmap);
 
     QScrollArea* scrollarea = new QScrollArea();
     scrollarea->setWidget(myLabel);
