@@ -1,4 +1,5 @@
 from prototype_pcfitting.generators.level_scaler import LevelScaler
+from prototype_pcfitting.generators.level_scaler2 import LevelScaler2
 import torch
 
 pcbatch = torch.tensor([[
@@ -6,13 +7,34 @@ pcbatch = torch.tensor([[
     [2.1, 2.8, 3.4],
     [0.9, 1.8, 3.0],
     [1.9, 2.9, 3.0],
-    [0.9, 2.4, 2.5]
+    [0.9, 2.4, 2.5],
+    [9.9, 9.8, 9.7]
 ]]).cuda()
-parent_per_point = torch.tensor([[0, 0, 0, 1, 1]])
+parent_per_point = torch.tensor([[0, 0, 0, 1, 1, 2]])
 relevant_parents = torch.tensor([[0, 1]])
 
-scaler = LevelScaler()
-scaler.set_pointcloud(pcbatch, parent_per_point, relevant_parents)
+# scaler = LevelScaler()
+# scaler.set_pointcloud(pcbatch, parent_per_point, relevant_parents)
+# scaled_down_pc = scaler.scale_down_pc(pcbatch)
+#
+# gmpositions = torch.tensor([[[
+#     [0.0, 0.0, 0.0],
+#     [1.0, 0.0, 0.0],
+#     [1.0, 1.0, 0.0],
+#     [0.0, 0.0, 1.0],
+#     [0.0, 0.0, 0.0],
+#     [1.0, 0.0, 0.0],
+#     [1.0, 1.0, 0.0],
+#     [0.0, 0.0, 1.0]
+# ]]]).cuda()
+# gmcovariances = torch.eye(3, 3).view(1, 1, 1, 3, 3).expand(1, 1, 8, 3, 3).cuda()
+# gmweights = torch.zeros(1, 1, 8).cuda()
+# gmweights[:, :, :] = 1 / 4.0
+#
+# gmwn, gmpn, gmcn = scaler.scale_up_gmm_wpc(gmweights, gmpositions, gmcovariances)
+
+scaler = LevelScaler2()
+scaler.set_pointcloud(pcbatch, parent_per_point, 4)
 scaled_down_pc = scaler.scale_down_pc(pcbatch)
 
 gmpositions = torch.tensor([[[
@@ -23,10 +45,18 @@ gmpositions = torch.tensor([[[
     [0.0, 0.0, 0.0],
     [1.0, 0.0, 0.0],
     [1.0, 1.0, 0.0],
+    [0.0, 0.0, 1.0],
+    [0.0, 0.0, 0.0],
+    [1.0, 0.0, 0.0],
+    [1.0, 1.0, 0.0],
+    [0.0, 0.0, 1.0],
+    [0.0, 0.0, 0.0],
+    [1.0, 0.0, 0.0],
+    [1.0, 1.0, 0.0],
     [0.0, 0.0, 1.0]
 ]]]).cuda()
-gmcovariances = torch.eye(3, 3).view(1, 1, 1, 3, 3).expand(1, 1, 8, 3, 3).cuda()
-gmweights = torch.zeros(1, 1, 8).cuda()
+gmcovariances = torch.eye(3, 3).view(1, 1, 1, 3, 3).expand(1, 1, 16, 3, 3).cuda()
+gmweights = torch.zeros(1, 1, 16).cuda()
 gmweights[:, :, :] = 1 / 4.0
 
 gmwn, gmpn, gmcn = scaler.scale_up_gmm_wpc(gmweights, gmpositions, gmcovariances)
