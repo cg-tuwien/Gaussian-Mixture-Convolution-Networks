@@ -153,7 +153,9 @@ int main(int argc, char *argv[]) {
                     mixture = mixture.cuda();
     //            std::cout << "layer " << i << ": " << mixture.sizes() << " device: " << mixture.device() << std::endl;
 //                auto t0 = std::chrono::high_resolution_clock::now();
-                auto gt_rendering = render(gpe::mixture_with_inversed_covariances(mixture), RESOLUTION, LIMIT_N_BATCH);
+                torch::Tensor gt_rendering;
+                if (DO_STATS || RENDER)
+                    gt_rendering = render(gpe::mixture_with_inversed_covariances(mixture), RESOLUTION, LIMIT_N_BATCH);
 //                cudaDeviceSynchronize();
 //                auto t1 = std::chrono::high_resolution_clock::now();
                 if (RENDER)
@@ -166,15 +168,20 @@ int main(int argc, char *argv[]) {
                 std::tie(fitted_mixture, nodes, aabbs) = bvh_mhem_fit_forward(mixture, named_config.second, 32);
 //                cudaDeviceSynchronize();
 //                auto t3 = std::chrono::high_resolution_clock::now();
-                auto fitted_rendering = render(gpe::mixture_with_inversed_covariances(fitted_mixture), RESOLUTION, LIMIT_N_BATCH);
+                torch::Tensor fitted_rendering;
+                if (DO_STATS || RENDER)
+                        fitted_rendering = render(gpe::mixture_with_inversed_covariances(fitted_mixture), RESOLUTION, LIMIT_N_BATCH);
 //                cudaDeviceSynchronize();
 //                auto t4 = std::chrono::high_resolution_clock::now();
                 if (RENDER) {
                     show(fitted_rendering, RESOLUTION, LIMIT_N_BATCH);
                 }
-                auto diff = gt_rendering - fitted_rendering;
                 if (DO_STATS) {
+                    auto diff = gt_rendering - fitted_rendering;
                     error_data[i].push_back(diff.cpu().view({1, -1, RESOLUTION * RESOLUTION}));
+                }
+                else {
+                    std::cout << "fitted_mixture.sizes()" << fitted_mixture.sizes() << "  something: " << fitted_mixture.sum() << std::endl;
                 }
 //                auto rmse = torch::sqrt(torch::mean(diff * diff)).item<float>();
 //                std::cout << "elapsed time gt rendering=" << std::chrono::duration_cast<std::chrono::milliseconds>(t1-t0).count() << "ms, "
