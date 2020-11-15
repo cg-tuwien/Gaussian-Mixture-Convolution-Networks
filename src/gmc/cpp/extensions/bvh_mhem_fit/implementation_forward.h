@@ -449,13 +449,13 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_initial(const gpe::V
             result.push_back(averageCluster(target_double_gmm, clustering[i]));
             break;
         case BvhMhemFitConfig::FitInitialClusterMergeMethod::AverageCorrected:
-            result.push_back(averageCluster(target_double_gmm, clustering[i]));
+            result.push_back(averageCluster_corrected(target_double_gmm, clustering[i]));
             break;
         case BvhMhemFitConfig::FitInitialClusterMergeMethod::MaxIntegral:
-            result.push_back(averageCluster(target_double_gmm, clustering[i]));
+            result.push_back(maxIntegral(target_double_gmm, clustering[i]));
             break;
         case BvhMhemFitConfig::FitInitialClusterMergeMethod::MaxWeight:
-            result.push_back(averageCluster(target_double_gmm, clustering[i]));
+            result.push_back(maxWeight(target_double_gmm, clustering[i]));
             break;
         }
     }
@@ -487,11 +487,7 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_em(gpe::Vector<gpe::
     const auto fitting_double_gmm = fit_initial<N_FITTING>(target_double_gmm, config);
 
     const auto likelihood_matrix = gpe::outer_product(target_double_gmm, fitting_double_gmm, likelihood<scalar_t, N_DIMS>);
-    // todo: test modification of clamp matrix: at least one row element or x percent row elements should be 1.
-    //       rational: otherwise certain target gaussians are not covered at all and resulting fitting is missing mass.
-    //       could assign gaussian from the cluster; modulo zero weight gaussians
     const auto kldiv_sign_matrix = gpe::outer_product(target_double_gmm, fitting_double_gmm, [](auto target, auto fitting) {
-//        return int(1);
         return (gpe::sign(fitting.weight) == gpe::sign(target.weight)) ? kl_divergence<scalar_t, N_DIMS>(target, fitting) : scalar_t(0);
     });
 
