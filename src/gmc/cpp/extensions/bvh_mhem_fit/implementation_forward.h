@@ -807,10 +807,10 @@ EXECUTION_DEVICES void collect_result(const dim3& gpe_gridDim, const dim3& gpe_b
 } // anonymous namespace
 
 
-template<int REDUCTION_N = 4>
+template<int REDUCTION_N = 4, typename scalar_t, unsigned N_DIMS>
 std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> forward_impl_t(at::Tensor mixture, const BvhMhemFitConfig& config, unsigned n_components_target = 32) {
     using namespace torch::indexing;
-    using LBVH = lbvh::Bvh<2, float>;
+    using LBVH = lbvh::Bvh<N_DIMS, scalar_t>;
 
     // todo: flatten mixture for kernel, i.g. nbatch/nlayers/ncomponents/7 => nmixture/ncomponents/7
 
@@ -818,8 +818,9 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> forward_impl_t(at::Tenso
     TORCH_CHECK(n.batch * n.layers < 65535, "n_batch x n_layers must be smaller than 65535 for CUDA")
     TORCH_CHECK(n.components > 1, "number of components must be greater 1 for this implementation")
     TORCH_CHECK(n.components < 65535, "number of components must be smaller than 65535 for morton code computation")
-    TORCH_CHECK(n.dims == 2, "atm only 2d gaussians")
-    TORCH_CHECK(mixture.dtype() == caffe2::TypeMeta::Make<float>(), "atm only float")
+    TORCH_CHECK(n.dims == N_DIMS, "something wrong with dispatch")
+    TORCH_CHECK(n.dims == 2, "atm only 2d gaussians (because of eigenvector decomposition)")
+    TORCH_CHECK(mixture.dtype() == caffe2::TypeMeta::Make<scalar_t>(), "something wrong with dispatch, or maybe this float type is not supported.")
 
     const auto n_mixtures = n.batch * n.layers;
     const auto bvh = LBVH(gpe::mixture_with_inversed_covariances(mixture).contiguous(), config.bvh_config);
@@ -837,53 +838,51 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> forward_impl_t(at::Tenso
     auto flags_a = gpe::accessor<int, 2>(flag_container);
     auto node_attributes = torch::zeros({n_mixtures, n_nodes, REDUCTION_N * mixture.size(-1) + 3}, torch::TensorOptions(mixture.device()).dtype(mixture.scalar_type()));
 
+    {
+        dim3 dimBlock = dim3(32, 1, 1);
+        dim3 dimGrid = dim3(uint(1),
+                            (uint(n_mixtures) + dimBlock.y - 1) / dimBlock.y,
+                            (uint(1) + dimBlock.z - 1) / dimBlock.z);
 
-    GPE_DISPATCH_FLOATING_TYPES_AND_DIM(mixture.scalar_type(), n.dims, ([&] {
-                                   dim3 dimBlock = dim3(32, 1, 1);
-                                   dim3 dimGrid = dim3(uint(1),
-                                                       (uint(n_mixtures) + dimBlock.y - 1) / dimBlock.y,
-                                                       (uint(1) + dimBlock.z - 1) / dimBlock.z);
 
+        auto mixture_a = gpe::accessor<scalar_t, 3>(mixture);
+        auto nodes_a = gpe::accessor<lbvh::detail::Node::index_type_torch, 3>(flat_bvh_nodes);
+        auto aabbs_a = gpe::accessor<scalar_t, 3>(flat_bvh_aabbs);
+        auto node_attributes_a = gpe::accessor<scalar_t, 3>(node_attributes);
 
-                                   auto mixture_a = gpe::accessor<scalar_t, 3>(mixture);
-                                   auto nodes_a = gpe::accessor<lbvh::detail::Node::index_type_torch, 3>(flat_bvh_nodes);
-                                   auto aabbs_a = gpe::accessor<scalar_t, 3>(flat_bvh_aabbs);
-                                   auto node_attributes_a = gpe::accessor<scalar_t, 3>(node_attributes);
-
-                                   auto fun = [mixture_a, nodes_a, aabbs_a, flags_a, node_attributes_a, n, n_mixtures, n_internal_nodes, n_nodes, n_components_target, config] __host__ __device__
-                                       (const dim3& gpe_gridDim, const dim3& gpe_blockDim, const dim3& gpe_blockIdx, const dim3& gpe_threadIdx) {
-                                           iterate_over_nodes_sync_free<scalar_t, N_DIMS, REDUCTION_N>(gpe_gridDim, gpe_blockDim, gpe_blockIdx, gpe_threadIdx,
-                                                                                             mixture_a, nodes_a, aabbs_a, flags_a, node_attributes_a,
-                                                                                             n, n_mixtures, n_internal_nodes, n_nodes, n_components_target,
-                                                                                             config);
-                                       };
-                                   gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(mixture), dimGrid, dimBlock, fun);
-                               }));
+        auto fun = [mixture_a, nodes_a, aabbs_a, flags_a, node_attributes_a, n, n_mixtures, n_internal_nodes, n_nodes, n_components_target, config] __host__ __device__
+                (const dim3& gpe_gridDim, const dim3& gpe_blockDim, const dim3& gpe_blockIdx, const dim3& gpe_threadIdx) {
+            iterate_over_nodes_sync_free<scalar_t, N_DIMS, REDUCTION_N>(gpe_gridDim, gpe_blockDim, gpe_blockIdx, gpe_threadIdx,
+                                                                        mixture_a, nodes_a, aabbs_a, flags_a, node_attributes_a,
+                                                                        n, n_mixtures, n_internal_nodes, n_nodes, n_components_target,
+                                                                        config);
+        };
+        gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(mixture), dimGrid, dimBlock, fun);
+    }
 
     auto out_mixture = torch::zeros({n_mixtures, n_components_target, mixture.size(-1)}, torch::TensorOptions(mixture.device()).dtype(mixture.dtype()));
     // make it valid, in case something doesn't get filled (due to an inbalance of the tree or just not enough elements)
     gpe::covariances(out_mixture) = torch::eye(n.dims, torch::TensorOptions(mixture.device()).dtype(mixture.dtype()));
-    GPE_DISPATCH_FLOATING_TYPES_AND_DIM(mixture.scalar_type(), n.dims, ([&] {
-                                            dim3 dimBlock = dim3(32, 1, 1);
-                                            dim3 dimGrid = dim3((uint(n_mixtures) + dimBlock.x - 1) / dimBlock.x, 1, 1);
+    {
+        dim3 dimBlock = dim3(32, 1, 1);
+        dim3 dimGrid = dim3((uint(n_mixtures) + dimBlock.x - 1) / dimBlock.x, 1, 1);
 
-                                            auto mixture_a = gpe::accessor<scalar_t, 3>(mixture);
-                                            auto out_mixture_a = gpe::accessor<scalar_t, 3>(out_mixture);
-                                            auto nodes_a = gpe::accessor<lbvh::detail::Node::index_type_torch, 3>(flat_bvh_nodes);
-                                            auto aabbs_a = gpe::accessor<scalar_t, 3>(flat_bvh_aabbs);
-                                            auto node_attributes_a = gpe::accessor<scalar_t, 3>(node_attributes);
+        auto mixture_a = gpe::accessor<scalar_t, 3>(mixture);
+        auto out_mixture_a = gpe::accessor<scalar_t, 3>(out_mixture);
+        auto nodes_a = gpe::accessor<lbvh::detail::Node::index_type_torch, 3>(flat_bvh_nodes);
+        auto aabbs_a = gpe::accessor<scalar_t, 3>(flat_bvh_aabbs);
+        auto node_attributes_a = gpe::accessor<scalar_t, 3>(node_attributes);
 
-                                            auto fun = [mixture_a, out_mixture_a, nodes_a, aabbs_a, flags_a, node_attributes_a, n, n_mixtures, n_internal_nodes, n_nodes, n_components_target, config]
-                                                __host__ __device__
-                                                (const dim3& gpe_gridDim, const dim3& gpe_blockDim, const dim3& gpe_blockIdx, const dim3& gpe_threadIdx) {
-                                                    collect_result<scalar_t, N_DIMS, REDUCTION_N>(gpe_gridDim, gpe_blockDim, gpe_blockIdx, gpe_threadIdx,
-                                                                                                  mixture_a, out_mixture_a, nodes_a, aabbs_a, flags_a, node_attributes_a,
-                                                                                                  n, n_mixtures, n_internal_nodes, n_nodes, n_components_target,
-                                                                                                  config);
-                                                };
-                                            gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(mixture), dimGrid, dimBlock, fun);
-                                        }));
-
+        auto fun = [mixture_a, out_mixture_a, nodes_a, aabbs_a, flags_a, node_attributes_a, n, n_mixtures, n_internal_nodes, n_nodes, n_components_target, config]
+                __host__ __device__
+                (const dim3& gpe_gridDim, const dim3& gpe_blockDim, const dim3& gpe_blockIdx, const dim3& gpe_threadIdx) {
+            collect_result<scalar_t, N_DIMS, REDUCTION_N>(gpe_gridDim, gpe_blockDim, gpe_blockIdx, gpe_threadIdx,
+                                                          mixture_a, out_mixture_a, nodes_a, aabbs_a, flags_a, node_attributes_a,
+                                                          n, n_mixtures, n_internal_nodes, n_nodes, n_components_target,
+                                                          config);
+        };
+        gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(mixture), dimGrid, dimBlock, fun);
+    }
 
     return std::make_tuple(out_mixture.view({n.batch, n.layers, n_components_target, -1}), bvh.m_nodes, bvh.m_aabbs);
 }

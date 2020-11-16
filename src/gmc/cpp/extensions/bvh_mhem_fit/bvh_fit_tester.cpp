@@ -102,7 +102,7 @@ int main(int argc, char *argv[]) {
     std::vector<float> em_kl_div_threshold_options {1.5f, 2.0f, 2.5f};
 
     // test specific configuration:
-//    std::vector<int> reduction_n_options = {2};
+//    std::vector<int> reduction_n_options = {4};
 //    std::vector<lbvh::Config::MortonCodeAlgorithm> morton_code_options = {
 //        lbvh::Config::MortonCodeAlgorithm::Cov3_27p27c10i
 //    };
@@ -110,7 +110,7 @@ int main(int argc, char *argv[]) {
 //        BvhMhemFitConfig::FitInitialDisparityMethod::CentroidDistance
 //    };
 //    std::vector<BvhMhemFitConfig::FitInitialClusterMergeMethod> fit_initial_cluster_merge_options = {
-//        BvhMhemFitConfig::FitInitialClusterMergeMethod::Average
+//        BvhMhemFitConfig::FitInitialClusterMergeMethod::MaxWeight
 //    };
 //    std::vector<float> em_kl_div_threshold_options {1.5f};
 
@@ -127,13 +127,14 @@ int main(int argc, char *argv[]) {
                                              "_ficlstrm_" + std::to_string(int(fit_initial_cluster_merge_method)) +
                                              "_emkldivth_" + std::to_string(em_kl_div_threshold),
                                              BvhMhemFitConfig{reduction_n, lbvh::Config{morton_code_algorithm}, fit_initial_disparity_method, fit_initial_cluster_merge_method, em_kl_div_threshold});
-
+//                        goto outoutoutoutout;
                     }
                 }
             }
 
         }
     }
+//    outoutoutoutout:
 
     for (const auto& named_config : configs) {
         for (uint i = 0; i < N_BATCHES; ++i) {
@@ -153,17 +154,20 @@ int main(int argc, char *argv[]) {
                     mixture = mixture.cuda();
     //            std::cout << "layer " << i << ": " << mixture.sizes() << " device: " << mixture.device() << std::endl;
 //                auto t0 = std::chrono::high_resolution_clock::now();
+
                 torch::Tensor gt_rendering;
                 if (DO_STATS || RENDER)
                     gt_rendering = render(gpe::mixture_with_inversed_covariances(mixture), RESOLUTION, LIMIT_N_BATCH);
+
 //                cudaDeviceSynchronize();
 //                auto t1 = std::chrono::high_resolution_clock::now();
+
                 if (RENDER)
                     show(gt_rendering, RESOLUTION, LIMIT_N_BATCH);
 
 //                cudaDeviceSynchronize();
-
 //                auto t2 = std::chrono::high_resolution_clock::now();
+
                 torch::Tensor fitted_mixture, nodes, aabbs;
                 std::tie(fitted_mixture, nodes, aabbs) = bvh_mhem_fit_forward(mixture, named_config.second, 32);
 //                cudaDeviceSynchronize();
