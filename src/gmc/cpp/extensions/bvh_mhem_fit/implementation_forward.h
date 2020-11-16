@@ -448,7 +448,7 @@ gpe::Array<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_initial(const gpe::Ve
     }
     scalar_t result_integral = gpe::reduce(result, scalar_t(0), [](scalar_t i, const G& g) { return i + gpe::abs(gpe::integrate(g)); });
     // result_integral should be approx 1, since we shouldn't fit on zero mixtures anymore and incoming target_double_gmm is normalised;
-    assert(result_integral >= scalar_t(0.1));
+    assert(result_integral >= scalar_t(0.001));
     auto factor = scalar_t(1.0) / result_integral;
     for (unsigned i = 0; i < N_FITTING; ++i) {
         result[i].weight *= factor;
