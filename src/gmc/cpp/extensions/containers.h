@@ -1,7 +1,6 @@
-#ifndef CONTAINERS_H
-#define CONTAINERS_H
+#ifndef GPE_CONTAINERS_H
+#define GPE_CONTAINERS_H
 
-#include <bitset>
 #include <cassert>
 #include <cinttypes>
 #include <initializer_list>
@@ -18,6 +17,8 @@ namespace gpe {
 template<typename T, uint32_t N>
 struct Array {
     T data[N];
+    static_assert (N > 0, "an array of size 0 doesn't appear usefull and would break front and back functions.");
+
     __host__ __device__ GPE_CONTAINER_INLINE
     T& operator[](uint32_t i) {
         assert(i < N);
@@ -32,6 +33,25 @@ struct Array {
     constexpr uint32_t size() const {
         return N;
     }
+
+    __host__ __device__ GPE_CONTAINER_INLINE
+    T& front() {
+        return data[0];
+    }
+    __host__ __device__ GPE_CONTAINER_INLINE
+    const T& front() const {
+        return data[0];
+    }
+
+    __host__ __device__ GPE_CONTAINER_INLINE
+    T& back() {
+        return data[N - 1];
+    }
+    __host__ __device__ GPE_CONTAINER_INLINE
+    const T& back() const {
+        return data[N - 1];
+    }
+
     __host__ __device__ GPE_CONTAINER_INLINE
     T* begin() {
         return data;
@@ -42,68 +62,23 @@ struct Array {
     }
     __host__ __device__ GPE_CONTAINER_INLINE
     T* end() {
-        return data + size();
+        return data + N;
     }
     __host__ __device__ GPE_CONTAINER_INLINE
     const T* end() const {
-        return data + size();
+        return data + N;
     }
 
 };
-
-template<size_t N>
-class BitSet {
-    static constexpr uint32_t N_INT_BITS = CHAR_BIT * sizeof(uint32_t);
-    uint32_t m_data[(N + N_INT_BITS - 1) / N_INT_BITS];
-
-    __host__ __device__ GPE_CONTAINER_INLINE
-    uint32_t& wordOf(unsigned p) {
-        return m_data[p / N_INT_BITS];
-    }
-    __host__ __device__ GPE_CONTAINER_INLINE
-    const uint32_t& wordOf(unsigned p) const {
-        return m_data[p / N_INT_BITS];
-    }
-    __host__ __device__ GPE_CONTAINER_INLINE
-    uint32_t bitOf(unsigned p) const {
-        return 1u << (p % N_INT_BITS);
-    }
-
-public:
-    __host__ __device__ GPE_CONTAINER_INLINE
-    BitSet() : m_data() {}
-
-    __host__ __device__ GPE_CONTAINER_INLINE
-    void set0(unsigned p) {
-        assert(p < N);
-        wordOf(p) &= ~bitOf(p);
-    }
-    __host__ __device__ GPE_CONTAINER_INLINE
-        void set1(unsigned p) {
-        assert(p < N);
-        wordOf(p) |= bitOf(p);
-    }
-    __host__ __device__ GPE_CONTAINER_INLINE
-    void set(unsigned p, bool val) {
-        assert(p < N);
-        if (val) set1(p);
-        else set0(p);
-    }
-    __host__ __device__ GPE_CONTAINER_INLINE
-    bool isSet(unsigned p) const {
-        assert(p < N);
-        return bool(wordOf(p) & bitOf(p));
-    }
-};
-
 
 template<typename T, uint32_t N_ROWS, uint32_t N_COLS = N_ROWS>
 using Array2d = Array<Array<T, N_COLS>, N_ROWS>;
 
+
 // configurable size_t just to fix padding warnings.
 template<typename T, uint32_t N, typename size_type = uint32_t>
 struct Vector {
-    T data[N];
+    Array<T, N> data;
     size_type m_size = 0;
     static_assert (N < (1u << 31), "N is too large; size will be incorrect due to uint32_t cast.");
 
@@ -237,252 +212,66 @@ struct Vector {
     void clear() {
         m_size = 0;
     }
-
-
 };
+
+template<typename T, uint32_t N, typename VectorSizeType>
+__host__ __device__ GPE_CONTAINER_INLINE
+Array<T, N> to_array(const Vector<T, N, VectorSizeType>& vector, const T& default_element) {
+    Array<T, N> retval = { vector.data };
+    for (uint32_t i = vector.size(); i < N; ++i) {
+        retval[i] = default_element;
+    }
+    return retval;
+}
 
 template<typename T, uint32_t N_ROWS, uint32_t N_COLS = N_ROWS, typename size_type = uint32_t>
 using Vector2d = Vector<Vector<T, N_COLS, size_type>, N_ROWS, size_type>;
 
-namespace functors {
-template<typename T>
-__host__ __device__ GPE_CONTAINER_INLINE
-T plus(const T& a, const T& b) {
-    return a + b;
-}
-template<typename T>
-__host__ __device__ GPE_CONTAINER_INLINE
-T minus(const T& a, const T& b) {
-    return a - b;
-}
-template<typename T>
-__host__ __device__ GPE_CONTAINER_INLINE
-T times(const T& a, const T& b) {
-    return a * b;
-}
-template<typename T>
-__host__ __device__ GPE_CONTAINER_INLINE
-T divided_AbyB(const T& a, const T& b) {
-    return a / b;
-}
-template<typename T>
-__host__ __device__ GPE_CONTAINER_INLINE
-T divided_BbyA(const T& a, const T& b) {
-    return b / a;
-}
-template<typename T>
-__host__ __device__ GPE_CONTAINER_INLINE
-bool logical_and(const T& a, const T& b) {
-    return a && b;
-}
-template<typename T>
-__host__ __device__ GPE_CONTAINER_INLINE
-bool logical_or(const T& a, const T& b) {
-    return a || b;
-}
-template<typename T>
-__host__ __device__ GPE_CONTAINER_INLINE
-bool bit_or(const T& a, const T& b) {
-    return a | b;
-}
-template<typename T>
-__host__ __device__ GPE_CONTAINER_INLINE
-bool bit_and(const T& a, const T& b) {
-    return a & b;
-}
+template<size_t N>
+class BitSet {
+    static constexpr uint32_t N_INT_BITS = CHAR_BIT * sizeof(uint32_t);
+    uint32_t m_data[(N + N_INT_BITS - 1) / N_INT_BITS];
 
-}
-
-template<typename T1, typename T2, uint32_t N1, uint32_t N2, typename Function>
-__host__ __device__ GPE_CONTAINER_INLINE
-auto outer_product(const gpe::Vector<T1, N1>& m1,
-                   const gpe::Vector<T2, N2>& m2,
-                   Function fun) -> Vector2d<decltype (fun(m1.front(), m2.front())), N1, N2> {
-    using ProductType = decltype (fun(m1.front(), m2.front()));
-    gpe::Vector2d<ProductType, N1, N2> matrix;
-    matrix.resize(m1.size());
-    for (unsigned i = 0; i < m1.size(); ++i) {
-        matrix[i].resize(m2.size());
-        const T1& c_i = m1[i];
-        for (unsigned j = 0; j < m2.size(); ++j) {
-            const T2& c_j = m2[j];
-            ProductType v = fun(c_i, c_j);
-            matrix[i][j] = v;
-        }
+    __host__ __device__ GPE_CONTAINER_INLINE
+    uint32_t& wordOf(unsigned p) {
+        return m_data[p / N_INT_BITS];
     }
-    return matrix;
-}
-
-template<typename T, uint32_t N, typename Function>
-__host__ __device__ GPE_CONTAINER_INLINE
-auto transform(const gpe::Vector<T, N>& vec, Function fun) -> Vector<decltype (fun(vec.front())), N> {
-    using ProductType = decltype (fun(vec.front()));
-    gpe::Vector<ProductType, N> retvec;
-    retvec.resize(vec.size());
-    for (unsigned i = 0; i < vec.size(); ++i) {
-        retvec[i] = fun(vec[i]);
+    __host__ __device__ GPE_CONTAINER_INLINE
+    const uint32_t& wordOf(unsigned p) const {
+        return m_data[p / N_INT_BITS];
     }
-    return retvec;
-}
-
-template<typename T, uint32_t N1, uint32_t N2, typename Function>
-__host__ __device__ GPE_CONTAINER_INLINE
-auto transform(const gpe::Vector2d<T, N1, N2>& mat, Function fun) -> Vector2d<decltype (fun(mat.front().front())), N1, N2> {
-    using ProductType = decltype (fun(mat.front().front()));
-    gpe::Vector2d<ProductType, N1, N2> retmat;
-    retmat.resize(mat.size());
-    for (unsigned i = 0; i < mat.size(); ++i) {
-        assert(mat[0].size() == mat[i].size());
-        assert(mat[i].size() == mat[i].size());
-        retmat[i].resize(mat[i].size());
-        for (unsigned j = 0; j < mat[i].size(); ++j) {
-            retmat[i][j] = fun(mat[i][j]);
-        }
+    __host__ __device__ GPE_CONTAINER_INLINE
+    uint32_t bitOf(unsigned p) const {
+        return 1u << (p % N_INT_BITS);
     }
-    return retmat;
-}
 
-template<typename T1, typename T2, uint32_t N, typename Function>
-__host__ __device__ GPE_CONTAINER_INLINE
-auto cwise_fun(const gpe::Vector<T1, N>& m1,
-               const gpe::Vector<T2, N>& m2,
-               Function fun) -> Vector<decltype (fun(m1.front(), m2.front())), N> {
-    using ProductType = decltype (fun(m1.front(), m2.front()));
-    assert(m1.size() == m2.size());
-    gpe::Vector<ProductType, N> vec;
-    vec.resize(m1.size());
-    for (unsigned i = 0; i < m1.size(); ++i) {
-        const T1& a = m1[i];
-        const T2& b = m2[i];
-        vec[i] = fun(a, b);
+public:
+    __host__ __device__ GPE_CONTAINER_INLINE
+    BitSet() : m_data() {}
+
+    __host__ __device__ GPE_CONTAINER_INLINE
+    void set0(unsigned p) {
+        assert(p < N);
+        wordOf(p) &= ~bitOf(p);
     }
-    return vec;
-}
-
-template<typename T1, typename T2, uint32_t N1, uint32_t N2, typename Function>
-__host__ __device__ GPE_CONTAINER_INLINE
-auto cwise_fun(const Vector2d<T1, N1, N2>& m1,
-               const Vector2d<T2, N1, N2>& m2,
-               Function fun) -> Vector2d<decltype (fun(m1.front().front(), m2.front().front())), N1, N2> {
-    using ProductType = decltype (fun(m1.front().front(), m2.front().front()));
-    assert(m1.size() == m2.size());
-    gpe::Vector2d<ProductType, N1, N2> matrix;
-    matrix.resize(m1.size());
-    for (unsigned i = 0; i < m1.size(); ++i) {
-        assert(m1[0].size() == m1[i].size());
-        assert(m1[i].size() == m2[i].size());
-        matrix[i].resize(m1[i].size());
-        for (unsigned j = 0; j < m1[i].size(); ++j) {
-            const T1& a = m1[i][j];
-            const T2& b = m2[i][j];
-            ProductType v = fun(a, b);
-            matrix[i][j] = v;
-        }
+    __host__ __device__ GPE_CONTAINER_INLINE
+        void set1(unsigned p) {
+        assert(p < N);
+        wordOf(p) |= bitOf(p);
     }
-    return matrix;
-}
-
-/// multiplies every row in m with the corresponding element in v (column vector)
-template<typename T1, typename T2, uint32_t N1, uint32_t N2, typename Function>
-__host__ __device__ GPE_CONTAINER_INLINE
-auto cwise_fun(const Vector2d<T1, N1, N2>& m,
-               const Vector<T2, N1>& v,
-               Function fun) -> Vector2d<decltype (fun(m.front().front(), v.front())), N1, N2> {
-    using ProductType = decltype (fun(m.front().front(), v.front()));
-    gpe::Vector2d<ProductType, N1, N2> matrix;
-    assert(m.size() == v.size());
-    matrix.resize(m.size());
-    for (unsigned i = 0; i < m.size(); ++i) {
-        assert(m[0].size() == m[i].size());
-        matrix[i].resize(m[i].size());
-        for (unsigned j = 0; j < m[i].size(); ++j) {
-            const T1& a = m[i][j];
-            const T2& b = v[i];
-            ProductType v = fun(a, b);
-            matrix[i][j] = v;
-        }
+    __host__ __device__ GPE_CONTAINER_INLINE
+    void set(unsigned p, bool val) {
+        assert(p < N);
+        if (val) set1(p);
+        else set0(p);
     }
-    return matrix;
-}
-
-/// multiplies every column in m with the corresponding element in v (row vector)
-template<typename T1, typename T2, uint32_t N1, uint32_t N2, typename Function>
-__host__ __device__ GPE_CONTAINER_INLINE
-auto cwise_fun(const Vector<T1, N2>& v,
-               const Vector2d<T2, N1, N2>& m,
-               Function fun) -> Vector2d<decltype (fun(v.front(), m.front().front())), N1, N2> {
-    using ProductType = decltype (fun(v.front(), m.front().front()));
-    gpe::Vector2d<ProductType, N1, N2> matrix;
-    matrix.resize(m.size());
-    for (unsigned i = 0; i < m.size(); ++i) {
-        assert(m[0].size() == v.size());
-        assert(m[0].size() == m[i].size());
-        matrix[i].resize(m[i].size());
-        for (unsigned j = 0; j < m[i].size(); ++j) {
-            const T2& a = v[j];
-            const T1& b = m[i][j];
-            ProductType v = fun(a, b);
-            matrix[i][j] = v;
-        }
+    __host__ __device__ GPE_CONTAINER_INLINE
+    bool isSet(unsigned p) const {
+        assert(p < N);
+        return bool(wordOf(p) & bitOf(p));
     }
-    return matrix;
-}
-
-template<typename T1, typename T2, uint32_t N, typename Function, typename VectorSizeType>
-__host__ __device__ GPE_CONTAINER_INLINE
-T2 reduce(const gpe::Vector<T1, N, VectorSizeType>& m1, T2 initial, Function fun) {
-    for (unsigned i = 0; i < m1.size(); ++i) {
-        const T1& a = m1[i];
-        initial = fun(initial, a);
-    }
-    return initial;
-}
-
-template<typename T1, typename T2, uint32_t N1, uint32_t N2, typename Function, typename VectorSizeType>
-__host__ __device__ GPE_CONTAINER_INLINE
-T2 reduce(const gpe::Vector2d<T1, N1, N2, VectorSizeType>& matrix, T2 initial, Function fun) {
-    for (unsigned i = 0; i < matrix.size(); ++i) {
-        for (unsigned j = 0; j < matrix[i].size(); ++j) {
-            initial = fun(initial, matrix[i][j]);
-        }
-    }
-    return initial;
-}
-
-template<typename T1, typename T2, uint32_t N1, uint32_t N2, typename Function>
-__host__ __device__ GPE_CONTAINER_INLINE
-gpe::Vector<T2, N1> reduce_rows(const gpe::Vector2d<T1, N1, N2>& matrix, T2 initial, Function fun) {
-    gpe::Vector<T2, N1> retvec;
-    retvec.resize(matrix.size());
-    for (unsigned i = 0; i < matrix.size(); ++i) {
-        assert(matrix[0].size() == matrix[i].size());
-        retvec[i] = initial;
-        for (unsigned j = 0; j < matrix[i].size(); ++j) {
-            retvec[i] = fun(retvec[i], matrix[i][j]);
-        }
-    }
-    return retvec;
-}
-
-template<typename T1, typename T2, uint32_t N1, uint32_t N2, typename Function>
-__host__ __device__ GPE_CONTAINER_INLINE
-    gpe::Vector<T2, N2> reduce_cols(const gpe::Vector2d<T1, N1, N2>& matrix, T2 initial, Function fun) {
-    gpe::Vector<T2, N2> retvec;
-    if (matrix[0].size()) {
-        retvec.resize(matrix[0].size());
-        for (unsigned j = 0; j < retvec.size(); ++j) {
-            retvec[j] = initial;
-        }
-    }
-    for (unsigned i = 0; i < matrix.size(); ++i) {
-        assert(matrix[0].size() == matrix[i].size());
-        for (unsigned j = 0; j < matrix[i].size(); ++j) {
-            retvec[j] = fun(retvec[j], matrix[i][j]);
-        }
-    }
-    return retvec;
-}
+};
 
 }
 
-#endif // CONTAINERS_H
+#endif // GPE_CONTAINERS_H

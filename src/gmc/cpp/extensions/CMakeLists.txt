@@ -74,6 +74,7 @@ include_directories(SYSTEM ${MY_INCLUDE_PATHS} SYSTEM ${TORCH_INCLUDE_DIRS})
 set(COMMON_SOURCES
     common.h
     containers.h
+    algorithms.h
     mixture.h
     parallel_start.h
     hacked_accessor.h
