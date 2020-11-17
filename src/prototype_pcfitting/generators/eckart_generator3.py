@@ -60,7 +60,7 @@ class EckartGenerator3(GMMGenerator):
                 points = points_scaled.unsqueeze(1).unsqueeze(3) # (1, 1, np, 1, 3)
 
                 responsibilities, losses = self._expectation(points, gm_data, parent_per_point, relevant_parents)
-                loss = losses.sum()
+                loss = -torch.log(losses.sum())
                 print("Iteration ", iteration, ". Summed Loss (NOT RELIEABLE): ", loss)
 
                 if iteration == 20:
@@ -82,19 +82,53 @@ class EckartGenerator3(GMMGenerator):
         return res_gm, res_gmm
 
     def _construct_gm_from_hierarchy(self, hierarchy) -> (torch.Tensor, torch.Tensor):
-        last_gm = hierarchy[-1]
-        for g in range(len(last_gm)):
-            multpl = 1
-            gidx = last_gm.get_parents()[0, 0, g]
-            for l in range(self._n_levels-2, -1, -1):
-                gm_priors = hierarchy[l].get_priors()
-                multpl *= gm_priors[0, 0, gidx]
-                gm_parents = hierarchy[l].get_parents()
-                gidx = gm_parents[0, 0, gidx]
-            last_gm.get_priors()[0, 0, g] *= multpl
-            last_gm.get_amplitudes()[0, 0, g] *= multpl
-        last_gm.remove_invalids()
-        return last_gm.pack_mixture(), last_gm.pack_mixture_model()
+        priors, covariances, positions = self._expand_subgm_from_level(hierarchy, -1, 0)
+        resgmm = gm.pack_mixture(priors, positions, covariances)
+        resgm = gm.convert_priors_to_amplitudes(resgmm)
+        return resgm, resgmm
+
+    def _expand_subgm_from_level(self, hierarchy, level, index) -> (torch.Tensor, torch.Tensor, torch.Tensor):
+        if level == self._n_levels - 1:
+            gmdata = hierarchy[-1]
+            return gmdata.get_priors()[:, :, index:index+1], gmdata.get_covariances()[:, :, index:index+1], \
+                   gmdata.get_positions()[:, :, index:index+1]
+        else:
+            gmdata_upper = hierarchy[level]
+            myweight = 1
+            if level != -1:
+                myweight = gmdata_upper.get_priors()[:, :, index]
+            if myweight == 0:
+                return gmdata_upper.get_priors()[:, :, index:index + 1], \
+                       gmdata_upper.get_covariances()[:, :, index:index + 1], \
+                       gmdata_upper.get_positions()[:, :, index:index + 1]
+            restlevels = len(hierarchy) - level - 1
+            maxgaussians = self._n_gaussians_per_node ** restlevels
+            subgm_priors = torch.zeros(1, 1, maxgaussians, dtype=self._dtype).cuda()
+            subgm_covariances = torch.zeros(1, 1, maxgaussians, 3, 3, dtype=self._dtype).cuda()
+            subgm_positions = torch.zeros(1, 1, maxgaussians, 3, dtype=self._dtype).cuda()
+            currentindex = 0
+            endindex = -1
+            for relchildindex in range(self._n_gaussians_per_node):
+                abschildindex = index * self._n_gaussians_per_node + relchildindex
+                priors, covariances, positions = self._expand_subgm_from_level(hierarchy, level + 1, abschildindex)
+                num = priors.shape[2]
+                endindex = currentindex+num
+                subgm_priors[:, :, currentindex:endindex], subgm_covariances[:, :, currentindex:endindex], \
+                    subgm_positions[:, :, currentindex:endindex] = priors, covariances, positions
+                currentindex = endindex
+            if subgm_priors.sum() != 0:
+                subgm_priors *= myweight
+                return subgm_priors[:, :, 0:endindex], \
+                       subgm_covariances[:, :, 0:endindex], \
+                       subgm_positions[:, :, 0:endindex]
+            else:
+                if level == -1:
+                    empty = torch.zeros(1, 1, 0, dtype=self._dtype).cuda()
+                    return empty, empty.unsqueeze(3).unsqueeze(4).repeat(1, 1, 0, 3, 3), empty.unsqueeze(3).repeat(1, 1, 0, 3)
+                return gmdata_upper.get_priors()[:, :, index:index + 1], \
+                       gmdata_upper.get_covariances()[:, :, index:index + 1], \
+                       gmdata_upper.get_positions()[:, :, index:index + 1]
+
 
     def _initialize_gms_on_unit_cube(self, relevant_parents):
         gmcount = relevant_parents.shape[0]
@@ -234,7 +268,10 @@ class EckartGenerator3(GMMGenerator):
         new_covariances = T_2 / T_0.unsqueeze(3).unsqueeze(4) - \
                           (new_positions.unsqueeze(4) * new_positions.unsqueeze(4).transpose(-1, -2)) \
                           + self._eps.expand_as(T_2)
-        new_priors = T_0 / T_0.sum()
+
+        relevant_point_count = T_0.view(1, -1, self._n_gaussians_per_node).sum(dim=2)\
+            .repeat(1, self._n_gaussians_per_node, 1).transpose(-1, -2).reshape(1, -1)
+        new_priors = T_0 / relevant_point_count
 
         # Handling of invalid Gaussians! If all responsibilities of a Gaussian are zero, the previous code will
         # set the prior of it to zero and the covariances and positions to NaN
@@ -263,6 +300,16 @@ class EckartGenerator3(GMMGenerator):
             self._covariances = None
             self._inversed_covariances = None
             self._parents = None  # (1, 1, g) Indizes of parent Gaussians on parent Level
+
+        def clone(self):
+            data = EckartGenerator3.GMTrainingData()
+            data._positions = self._positions.clone()
+            data._amplitudes = self._amplitudes.clone()
+            data._priors = self._priors.clone()
+            data._covariances = self._covariances.clone()
+            data._inversed_covariances = self._inversed_covariances.clone()
+            data._parents = self._parents.clone()
+            return data
 
         def set_positions(self, positions):
             self._positions = positions
