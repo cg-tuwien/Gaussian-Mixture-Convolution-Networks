@@ -9,7 +9,7 @@ if(NOT DEFINED CMAKE_CUDA_STANDARD)
     set(CMAKE_CUDA_STANDARD 14)
     set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 endif()
-set(CMAKE_CUDA_ARCHITECTURES 60)
+set(CMAKE_CUDA_ARCHITECTURES 75)
 # set(CMAKE_CUDA_FLAGS
 #     "-D_GLIBCXX_USE_CXX11_ABI=0 -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --expt-relaxed-constexpr --compiler-options '-fPIC' -O3 --use_fast_math -std=c++14"
 #     )
@@ -62,7 +62,7 @@ endif()
 set(MY_INCLUDE_PATHS
     ${MY_ANACONDA_PATH}/include/python3.7m/
     ../glm
-    ../cub
+#    ../cub
     ../yamc/include
     ../gcem/include
     .
