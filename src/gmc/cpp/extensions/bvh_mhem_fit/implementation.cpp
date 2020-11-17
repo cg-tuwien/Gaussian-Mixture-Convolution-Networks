@@ -16,9 +16,9 @@ template<int REDUCTION_N, typename scalar_t>
 std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> dispatch_dim(at::Tensor mixture, const BvhMhemFitConfig& config, unsigned n_components_target, int n_dims) {
     switch (n_dims) {
     case 2:
-        return forward_impl_t<2, float, 2>(mixture, config, n_components_target);
+        return forward_impl_t<REDUCTION_N, scalar_t, 2>(mixture, config, n_components_target);
     case 3:
-        return forward_impl_t<2, float, 3>(mixture, config, n_components_target);
+        return forward_impl_t<REDUCTION_N, scalar_t, 3>(mixture, config, n_components_target);
     default:
         std::cout << "unsupported mixture.scalar_type()" << std::endl;
         exit(1);
@@ -29,9 +29,9 @@ template<int REDUCTION_N>
 std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> dispatch_dim_and_scalar_type(at::Tensor mixture, const BvhMhemFitConfig& config, unsigned n_components_target, int n_dims, torch::ScalarType scalar_type) {
     switch (scalar_type) {
     case torch::ScalarType::Float:
-        return dispatch_dim<2, float>(mixture, config, n_components_target, n_dims);
+        return dispatch_dim<REDUCTION_N, float>(mixture, config, n_components_target, n_dims);
     case torch::ScalarType::Double:
-        return dispatch_dim<2, double>(mixture, config, n_components_target, n_dims);
+        return dispatch_dim<REDUCTION_N, double>(mixture, config, n_components_target, n_dims);
     default:
         std::cout << "unsupported mixture.scalar_type()" << std::endl;
         exit(1);
