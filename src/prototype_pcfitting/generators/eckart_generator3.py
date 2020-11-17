@@ -1,10 +1,11 @@
 from prototype_pcfitting import GMMGenerator, GMLogger, data_loading, Scaler, ScalingMethod
 from prototype_pcfitting import TerminationCriterion, MaxIterationTerminationCriterion
 from gmc.cpp.extensions.furthest_point_sampling import furthest_point_sampling
+from prototype_pcfitting.error_functions import LikelihoodLoss
 from .level_scaler2 import LevelScaler2
 import torch
 import gmc.mixture as gm
-import math
+import math, gc
 
 
 class EckartGenerator3(GMMGenerator):
@@ -36,12 +37,14 @@ class EckartGenerator3(GMMGenerator):
         pcbatch = pcbatch.to(self._dtype).cuda()
 
         self._eps = (torch.eye(3, 3, dtype=self._dtype) * 1e-6).view(1, 1, 1, 3, 3).cuda()
+        lossfunction = LikelihoodLoss()
 
         parent_per_point = torch.zeros(1, point_count).to(torch.long).cuda()
         parent_per_point[:, :] = 0
 
         hierarchy = []
 
+        absiteration = 0
         for l in range(self._n_levels):
             parentcount_for_level = self._n_gaussians_per_node ** l
             gausscount_for_level = self._n_gaussians_per_node ** (l+1)
@@ -56,12 +59,24 @@ class EckartGenerator3(GMMGenerator):
             iteration = 0
             while True:
                 iteration += 1
+                absiteration += 1
 
                 points = points_scaled.unsqueeze(1).unsqueeze(3) # (1, 1, np, 1, 3)
 
                 responsibilities, losses = self._expectation(points, gm_data, parent_per_point, relevant_parents)
                 loss = -torch.log(losses.sum())
-                print("Iteration ", iteration, ". Summed Loss (NOT RELIEABLE): ", loss)
+                # print("Iteration ", iteration, ". Summed Loss (NOT RELIEABLE): ", loss)
+
+                if self._logger:
+                    tempgmdata = gm_data.clone()
+                    tempgmdata.scale_up(scaler)
+                    newhierarchy = hierarchy.copy()
+                    newhierarchy.append(tempgmdata)
+                    mixture, _ = self._construct_gm_from_hierarchy(newhierarchy)
+                    closs = lossfunction.calculate_score_packed(pcbatch, mixture)
+                    self._logger.log(absiteration - 1, closs, mixture)
+                    del closs, mixture, _, newhierarchy, tempgmdata
+                    gc.collect()
 
                 if iteration == 20:
                     # update parent_per_point for next level from responsibilities
@@ -88,7 +103,7 @@ class EckartGenerator3(GMMGenerator):
         return resgm, resgmm
 
     def _expand_subgm_from_level(self, hierarchy, level, index) -> (torch.Tensor, torch.Tensor, torch.Tensor):
-        if level == self._n_levels - 1:
+        if level == len(hierarchy) - 1:
             gmdata = hierarchy[-1]
             return gmdata.get_priors()[:, :, index:index+1], gmdata.get_covariances()[:, :, index:index+1], \
                    gmdata.get_positions()[:, :, index:index+1]
@@ -150,7 +165,7 @@ class EckartGenerator3(GMMGenerator):
             gmpositions = position_templates.unsqueeze(0).unsqueeze(0). \
                 repeat(1, 1, math.ceil(self._n_gaussians_per_node / 8), 1)
             gmpositions = gmpositions[:, :, 0:self._n_gaussians_per_node, :].repeat(1, 1, gmcount, 1)
-        gmcovs = torch.eye(3).to(self._dtype).cuda().unsqueeze(0).unsqueeze(0).unsqueeze(0). \
+        gmcovs = 0.1 * torch.eye(3).to(self._dtype).cuda().unsqueeze(0).unsqueeze(0).unsqueeze(0). \
             repeat(1, 1, self._n_gaussians_per_node * gmcount, 1, 1)
         gmweights = torch.zeros(1, 1, self._n_gaussians_per_node * gmcount).to(self._dtype).cuda()
         gmweights[:, :, :] = 1 / self._n_gaussians_per_node
@@ -193,8 +208,6 @@ class EckartGenerator3(GMMGenerator):
         mask_indizes[:, :, 1::2] *= self._n_gaussians_per_node # torch.ones(self._n_gaussians_per_node, dtype=torch.long).cuda()
         mask_indizes[:, :, 1::2] += torch.arange(0, self._n_gaussians_per_node, dtype=torch.long).cuda()
         mask_indizes = mask_indizes.view(n_sample_points * self._n_gaussians_per_node, 2)
-        # TODO: maybe its much better if we initially work with the indicator matrix. it should be easy to
-        # calcualte mask_indizes from that using nonzero. we might even be able to use it in initialization
 
         # This uses the fact that
         # log(a * exp(-0.5 * M(x))) = log(a) + log(exp(-0.5 * M(x))) = log(a) - 0.5 * M(x)
@@ -257,10 +270,10 @@ class EckartGenerator3(GMMGenerator):
 
         # ToDo: Out of Memory. Optimize or Sample! For now we will reduce the point count
 
-        T_0 = responsibilities.sum(dim=2)   # shape: (1, 1, J) J = G_GLOBAL
-        T_1 = (points_rep * responsibilities.unsqueeze(4)).sum(dim=2)    # shape: (1, 1, J, 3)
         T_2 = ((points_rep.unsqueeze(5) * points_rep.unsqueeze(5).transpose(-1, -2))
                * responsibilities.unsqueeze(4).unsqueeze(5)).sum(dim = 2)       # shape: (1, 1, J, 3, 3)
+        T_0 = responsibilities.sum(dim=2)   # shape: (1, 1, J) J = G_GLOBAL
+        T_1 = (points_rep * responsibilities.unsqueeze(4)).sum(dim=2)    # shape: (1, 1, J, 3)
 
         # ToDo: This more simple calculation can also be used for normal EM
 
