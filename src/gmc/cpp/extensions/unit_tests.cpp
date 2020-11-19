@@ -9,6 +9,7 @@ namespace  {
 static struct UnitTests {
     UnitTests() {
         testBitSet();
+        testHeap();
 
         testArrayVectorConversion();
 
@@ -77,6 +78,71 @@ static struct UnitTests {
 
         for (unsigned i = 0; i < 32; i++)
             assert(bs.isSet(i) == false);
+    }
+
+    template<typename T, uint32_t N>
+    bool isValidHeap(const ArrayHeap<T, N>& heap) {
+        for (unsigned i = 1; i < heap.m_data.size(); ++i) {
+            if (heap.m_data[i] < heap.m_data[heap.parentIndex(i)])
+                return false;
+        }
+        return true;
+    }
+
+    void testHeap() {
+
+        {
+            ArrayHeap<int, 2> h = Array<int, 2>{10, 5};
+            assert(isValidHeap(h));
+            assert(h.m_data[0] == 5);
+            assert(h.m_data[1] == 10);
+            assert(h.replaceRoot(8) == 5);
+            assert(isValidHeap(h));
+            assert(h.replaceRoot(12) == 8);
+            assert(isValidHeap(h));
+            assert(h.m_data[0] = 10);
+            assert(h.m_data[1] = 12);
+        }
+        {
+            ArrayHeap<int, 3> h({10, 2, 5});
+            assert(h.m_data[0] == 2);
+            assert(isValidHeap(h));
+            assert(h.replaceRoot(8) == 2);
+            assert(isValidHeap(h));
+            assert(h.replaceRoot(12) == 5);
+            assert(isValidHeap(h));
+            assert(h.replaceRoot(12) == 8);
+            assert(isValidHeap(h));
+            assert(h.replaceRoot(12) == 10);
+            assert(isValidHeap(h));
+            assert(h.replaceRoot(12) == 12);
+            assert(isValidHeap(h));
+        }
+        {
+            ArrayHeap<int, 8> h({10, 2, 5, 18, 12, 9, 4, 2});
+            assert(h.m_data[0] == 2);
+            assert(isValidHeap(h));
+            assert(h.replaceRoot(100) == 2);
+            assert(isValidHeap(h));
+            assert(h.replaceRoot(100) == 2);
+            assert(isValidHeap(h));
+            assert(h.replaceRoot(100) == 4);
+            assert(isValidHeap(h));
+            assert(h.replaceRoot(100) == 5);
+            assert(isValidHeap(h));
+            assert(h.replaceRoot(100) == 9);
+            assert(isValidHeap(h));
+            assert(h.replaceRoot(100) == 10);
+            assert(isValidHeap(h));
+            assert(h.replaceRoot(100) == 12);
+            assert(isValidHeap(h));
+            assert(h.replaceRoot(100) == 18);
+            assert(isValidHeap(h));
+            assert(h.replaceRoot(100) == 100);
+            assert(isValidHeap(h));
+            assert(h.replaceRoot(100) == 100);
+            assert(isValidHeap(h));
+        }
     }
 
     void testArrayVectorConversion() {

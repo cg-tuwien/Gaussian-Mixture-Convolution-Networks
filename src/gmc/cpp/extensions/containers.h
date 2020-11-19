@@ -74,6 +74,94 @@ struct Array {
 template<typename T, uint32_t N_ROWS, uint32_t N_COLS = N_ROWS>
 using Array2d = Array<Array<T, N_COLS>, N_ROWS>;
 
+// min heap
+template<typename T, uint32_t N>
+struct ArrayHeap {
+    static_assert (N > 1, "N must be greater 1 (it might work with 1, but it's not tested)");
+    Array<T, N> m_data;
+
+    ArrayHeap (const Array<T, N>& data) : m_data(data) {
+        // build heap using Floyd's algorithm
+        for (unsigned i = parentIndex(N-1); i < N; --i) {   // mind the overflow. it'll stop at 0
+            const auto copy = m_data[i];
+            replaceElement(copy, i);
+        }
+//        for (unsigned i = N-1; i > 0; --i) {
+//            const auto parent_idx = parentIndex(i);
+//            const auto parent_val = m_data[parent_idx];
+//            if (m_data[i] < parent_val) {
+//                m_data[parent_idx] = m_data[i];
+//                m_data[i] = parent_val;
+//            }
+//        }
+    }
+
+    T replaceRoot(const T& value) {
+        return replaceElement(value, 0);
+    }
+
+    T replaceElement(const T& value, const uint32_t index) {
+        assert(&value < m_data.begin() || &value >= m_data.end()); // pass by value if you want to relax this condition.
+        const T retval = m_data[index];
+        uint32_t current_idx = index;
+        while (hasTwoChildren(current_idx)) {
+            const auto left_idx = leftChildIndex(current_idx);
+            const auto right_idx = rightChildIndex(current_idx);
+            const auto left_val = m_data[left_idx];
+            const auto right_val = m_data[right_idx];
+
+            if (value <= left_val && value <= right_val) {
+                break;
+            }
+            if (left_val <= right_val) {
+                m_data[current_idx] = left_val;
+                current_idx = left_idx;
+            }
+            else {
+                // right_val < left_val
+                m_data[current_idx] = right_val;
+                current_idx = right_idx;
+            }
+        }
+        if (!isLeafIndex(current_idx)) {
+            // only left child left or inserting in the middle (in which case we won't enter the if)
+            const auto left_idx = leftChildIndex(current_idx);
+            const auto left_val = m_data[left_idx];
+            if (left_val < value) {
+                m_data[current_idx] = left_val;
+                current_idx = left_idx;
+            }
+        }
+        m_data[current_idx] = value;
+        return retval;
+    }
+
+    uint32_t leftChildIndex(uint32_t index) const {
+        assert(index * 2 + 1 < N);
+        return index * 2 + 1;
+    }
+
+    uint32_t rightChildIndex(uint32_t index) const {
+        assert(index * 2 + 2 < N);
+        return index * 2 + 2;
+    }
+
+    uint32_t parentIndex(uint32_t index) const {
+        assert(index > 0);
+        assert(index < N);
+        return (index - 1) / 2;
+    }
+
+    bool isLeafIndex(uint32_t index) const {
+        assert(index < N);
+        return index >= N/2;
+    }
+
+    bool hasTwoChildren(uint32_t index) const {
+        assert(index < N);
+        return index < (N - 1) / 2;
+    }
+};
 
 // configurable size_t just to fix padding warnings.
 template<typename T, uint32_t N, typename size_type = uint32_t>
