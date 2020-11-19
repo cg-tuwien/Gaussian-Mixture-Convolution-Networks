@@ -15,6 +15,7 @@
 #include "mixture.h"
 #include "evaluate_inversed/parallel_binding.h"
 #include "bvh_mhem_fit/bindings.h"
+#include "integrate/binding.h"
 
 constexpr uint N_BATCHES = 1;
 constexpr uint CONVOLUTION_LAYER_START = 0;

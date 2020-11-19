@@ -1,4 +1,4 @@
-#include "parallel_implementation.h"
+#include "integrate/implementation.h"
 
 //#include <torch/extension.h>
 #include <torch/script.h>
@@ -16,9 +16,10 @@
 #include "math/scalar.h"
 #include "cuda_qt_creator_definitinos.h"
 
+namespace integrate {
 namespace {
 
-template <typename scalar_t, int N_DIMS>
+template <typename scalar_t, int N_DIMS, bool INVERSED>
 __host__ __device__
 void forward(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
              const dim3& gpe_blockIdx, const dim3& gpe_threadIdx,
@@ -34,7 +35,10 @@ void forward(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
         return;
     
     const auto& g = gpe::gaussian<N_DIMS>(mixture_a[batch_index][layer_index][component_index]);
-    integrands_a[batch_index][layer_index][component_index] = gpe::integrate_inversed(g);
+    if (INVERSED)
+        integrands_a[batch_index][layer_index][component_index] = gpe::integrate_inversed(g);
+    else
+        integrands_a[batch_index][layer_index][component_index] = gpe::integrate(g);
 }
 
 
@@ -104,15 +108,16 @@ void backward(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
 }
 */
 
-}
+} // anonymous namespace
 
-at::Tensor parallel_forward_impl(const torch::Tensor& mixture) {
+template <bool INVERSED>
+at::Tensor forward_impl(const torch::Tensor& mixture) {
     using namespace torch::indexing;
     auto n = gpe::get_ns(mixture);
 
     torch::Tensor integrands = torch::zeros({n.batch, n.layers, n.components}, torch::dtype(mixture.dtype()).device(mixture.device()));
 
-    TORCH_CHECK(n.batch * n.layers < 65535, "n_batch x n_layers must be smaller than 65535 for CUDA");
+    TORCH_CHECK(n.batch * n.layers < 65535, "n_batch x n_layers must be smaller than 65535 for CUDA")
 
 
     dim3 dimBlock = dim3(128, 1, 1);
@@ -128,13 +133,16 @@ at::Tensor parallel_forward_impl(const torch::Tensor& mixture) {
 
                                    auto fun = [mixture_a, integrands_a, n] __host__ __device__
                                         (const dim3& gpe_gridDim, const dim3& gpe_blockDim, const dim3& gpe_blockIdx, const dim3& gpe_threadIdx) {
-                                            forward<scalar_t, N_DIMS>(gpe_gridDim, gpe_blockDim, gpe_blockIdx, gpe_threadIdx, mixture_a, integrands_a, n);
+                                            forward<scalar_t, N_DIMS, INVERSED>(gpe_gridDim, gpe_blockDim, gpe_blockIdx, gpe_threadIdx, mixture_a, integrands_a, n);
                                         };
                                    gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(mixture), dimGrid, dimBlock, fun);
                                }));
     
     return integrands.sum(-1);
 }
+
+template at::Tensor forward_impl<true>(const torch::Tensor& mixture);
+template at::Tensor forward_impl<false>(const torch::Tensor& mixture);
 
 /*
 std::tuple<torch::Tensor, torch::Tensor> parallel_backward_impl(const torch::Tensor& grad_output, const torch::Tensor& mixture, const torch::Tensor& xes, bool requires_grad_mixture, bool requires_grad_xes) {
@@ -190,3 +198,5 @@ std::tuple<torch::Tensor, torch::Tensor> parallel_backward_impl(const torch::Ten
     return std::make_tuple(grad_mixture, grad_xes);
 }
 */
+
+} // namespace integrate

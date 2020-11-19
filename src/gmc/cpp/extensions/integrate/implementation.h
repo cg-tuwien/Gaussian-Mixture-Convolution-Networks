@@ -1,9 +1,15 @@
-#ifndef EVALUATE_INVERSED_PARALLEL_IMPLEMENTATION_H
-#define EVALUATE_INVERSED_PARALLEL_IMPLEMENTATION_H
+#ifndef INTEGRATE_IMPLEMENTATION_H
+#define INTEGRATE_IMPLEMENTATION_H
 
 #include <torch/script.h>
 
-at::Tensor parallel_forward_impl(const torch::Tensor& mixture);
+namespace integrate {
+
+template <bool INVERSED>
+at::Tensor forward_impl(const torch::Tensor& mixture);
+
+extern template at::Tensor forward_impl<true>(const torch::Tensor& mixture);
+extern template at::Tensor forward_impl<false>(const torch::Tensor& mixture);
 
 /*
 std::tuple<torch::Tensor, torch::Tensor> parallel_backward_impl(const torch::Tensor& grad_output,
@@ -11,5 +17,6 @@ std::tuple<torch::Tensor, torch::Tensor> parallel_backward_impl(const torch::Ten
                                                                 const torch::Tensor& xes,
                                                                 bool requires_grad_mixture, bool requires_grad_xes);
 */
+} // namespace integrate
 
-#endif // EVALUATE_INVERSED_PARALLEL_IMPLEMENTATION_H
+#endif // INTEGRATE_IMPLEMENTATION_H
