@@ -157,19 +157,19 @@ struct Vector {
 
     __host__ __device__ GPE_CONTAINER_INLINE
     T* begin() {
-        return data;
+        return data.begin();
     }
     __host__ __device__ GPE_CONTAINER_INLINE
     const T* begin() const {
-        return data;
+        return data.begin();
     }
     __host__ __device__ GPE_CONTAINER_INLINE
     T* end() {
-        return data + size();
+        return data.begin() + size();
     }
     __host__ __device__ GPE_CONTAINER_INLINE
     const T* end() const {
-        return data + size();
+        return data.begin() + size();
     }
 
     __host__ __device__ GPE_CONTAINER_INLINE

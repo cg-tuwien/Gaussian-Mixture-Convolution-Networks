@@ -180,6 +180,29 @@ gpe::Array<gpe::Vector<gaussian_index_t, N_INPUT - N_CLUSTERS + 1>, N_CLUSTERS> 
         subgraphs.push_back({i});
     }
     unsigned n_subgraphs = subgraphs.size();
+    // make disparities into an array
+    // first put all the overflow gaussians into cluster 0 (they are zero weight, so it doesn't matter which
+    for (unsigned i = disparities.size(); i < N_INPUT; ++i) {
+        subgraphs[0].push_back({i});
+    }
+    // then copy the disparities, filling up with infty (so they won't get selected)
+    gpe::Array2d<scalar_t, N_INPUT> disparity_array;
+    for (unsigned i = 0; i < disparities.size(); ++i) {
+        for (unsigned j = 0; j < disparities[0].size(); ++j) {
+            disparity_array[i][j] = disparities[i][j];
+        }
+        for (unsigned j = disparities[0].size(); j < N_INPUT; ++j) {
+            // set remaining edges to infinity, so they won't be selected.
+            disparity_array[i][j] = std::numeric_limits<scalar_t>::infinity();
+        }
+    }
+    // set remaining edges to infinity, so they won't be selected.
+    for (unsigned i = disparities.size(); i < N_INPUT; ++i) {
+        for (unsigned j = 0; j < N_INPUT; ++j) {
+            disparity_array[i][j] = std::numeric_limits<scalar_t>::infinity();
+        }
+    }
+
 
     auto merge_subgraphs = [&](unsigned a, unsigned b) {
         assert (a != b);
@@ -203,16 +226,16 @@ gpe::Array<gpe::Vector<gaussian_index_t, N_INPUT - N_CLUSTERS + 1>, N_CLUSTERS> 
 
     gpe::BitSet<N_INPUT * N_INPUT> invalid_edges;
 
-    auto shortest_edge = [&disparities](gaussian_index_t* a, gaussian_index_t* b, gpe::BitSet<N_INPUT * N_INPUT>* invalid_edges) {
+    auto shortest_edge = [&disparity_array](gaussian_index_t* a, gaussian_index_t* b, gpe::BitSet<N_INPUT * N_INPUT>* invalid_edges) {
         *a = gaussian_index_t(-1);
         *b = gaussian_index_t(-1);
         scalar_t shortest_length = std::numeric_limits<scalar_t>::infinity();
-        for (gaussian_index_t i = 0; i < disparities.size(); ++i) {
-            for (gaussian_index_t j = i + 1; j < disparities.size(); ++j) {
-                if (!invalid_edges->isSet(i * disparities.size() + j) && disparities[i][j] < shortest_length) {
+        for (gaussian_index_t i = 0; i < N_INPUT; ++i) {
+            for (gaussian_index_t j = i + 1; j < N_INPUT; ++j) {
+                if (!invalid_edges->isSet(i * N_INPUT + j) && disparity_array[i][j] < shortest_length) {
                     *a = i;
                     *b = j;
-                    shortest_length = disparities[i][j];
+                    shortest_length = disparity_array[i][j];
                 }
             }
         }
@@ -226,7 +249,7 @@ gpe::Array<gpe::Vector<gaussian_index_t, N_INPUT - N_CLUSTERS + 1>, N_CLUSTERS> 
         gaussian_index_t b;
         shortest_edge(&a, &b, &invalid_edges);
         assert(a < b);
-        invalid_edges.set1(a * disparities.size() + b);
+        invalid_edges.set1(a * N_INPUT + b);
         auto subgraph_a = subgraph_of(a);
         auto subgraph_b = subgraph_of(b);
         if (subgraph_a != subgraph_b) {
@@ -367,6 +390,8 @@ gpe::Gaussian<N_DIMS, scalar_t> maxIntegral(const gpe::Vector<gpe::Gaussian<N_DI
 
     for (unsigned i = 0; i < cluster_indices.size(); ++i) {
         auto gaussian_id = cluster_indices[i];
+        if (gaussian_id >= mixture.size())
+            continue;   // new clustering using arrays results in some cluster indices being invalid. todo: streamline.
         const auto& gaussian = mixture[gaussian_id];
         if (gpe::abs(gpe::integrate(gaussian)) > max_abs ) {
             max_abs = gpe::abs(gpe::integrate(gaussian));
@@ -541,8 +566,8 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_em(gpe::Vector<gpe::
                            newCovariances[i]});
     }
 
-//    if (gpe::abs(abs_integral - integrate_abs_mixture(result)) > scalar_t(0.0001)) {
-//        auto intabsmixres = integrate_abs_mixture(result);
+//    if (gpe::abs(abs_integral - gpe::reduce(result, scalar_t(0), [](scalar_t i, const G& g) { return i + gpe::abs(gpe::integrate(g)); })) >= scalar_t(0.0001)) {
+//        auto intabsmixres = gpe::reduce(result, scalar_t(0), [](scalar_t i, const G& g) { return i + gpe::abs(gpe::integrate(g)); });
 //        printf("target:\n");
 //        for (const auto& g : target_double_gmm) {
 //            gpe::printGaussian(g);
@@ -551,9 +576,14 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_em(gpe::Vector<gpe::
 //        for (const auto& g : fitting_double_gmm) {
 //            gpe::printGaussian(g);
 //        }
+//        printf("result:\n");
+//        for (const auto& g : result) {
+//            gpe::printGaussian(g);
+//        }
 //#ifndef __CUDA_ARCH__
 //        fflush(stdout);
 //#endif
+//        assert(false);
 //    }
     assert(gpe::abs(abs_integral - gpe::reduce(result, scalar_t(0), [](scalar_t i, const G& g) { return i + gpe::abs(gpe::integrate(g)); })) < scalar_t(0.0001));
     return result;
