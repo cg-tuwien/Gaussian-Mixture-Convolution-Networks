@@ -16,7 +16,7 @@
 #include "evaluate_inversed/parallel_binding.h"
 #include "bvh_mhem_fit/bindings.h"
 
-constexpr uint N_BATCHES = 10;
+constexpr uint N_BATCHES = 1;
 constexpr uint CONVOLUTION_LAYER_START = 0;
 constexpr uint CONVOLUTION_LAYER_END = 3;
 constexpr uint LIMIT_N_BATCH = 100;
@@ -78,41 +78,42 @@ int main(int argc, char *argv[]) {
     QApplication a(argc, argv);
 
     std::array<std::vector<torch::Tensor>, CONVOLUTION_LAYER_END - CONVOLUTION_LAYER_START> error_data;
+    std::array<std::vector<std::chrono::milliseconds>, CONVOLUTION_LAYER_END - CONVOLUTION_LAYER_START> time_data;
 
     // test all configurations:
-    std::vector<int> reduction_n_options = {2, 4, 8, 16};
-    std::vector<lbvh::Config::MortonCodeAlgorithm> morton_code_options = {
-        lbvh::Config::MortonCodeAlgorithm::Old,
-        lbvh::Config::MortonCodeAlgorithm::Cov1_12p36pc16i,
-        lbvh::Config::MortonCodeAlgorithm::Cov2_54pc10i,
-        lbvh::Config::MortonCodeAlgorithm::Cov3_27p27c10i,
-        lbvh::Config::MortonCodeAlgorithm::Cov4_27c27p10i
-    };
-    std::vector<BvhMhemFitConfig::FitInitialDisparityMethod> fit_initial_disparity_options = {
-        BvhMhemFitConfig::FitInitialDisparityMethod::CentroidDistance,
-        BvhMhemFitConfig::FitInitialDisparityMethod::Likelihood,
-        BvhMhemFitConfig::FitInitialDisparityMethod::KLDivergence
-    };
-    std::vector<BvhMhemFitConfig::FitInitialClusterMergeMethod> fit_initial_cluster_merge_options = {
-        BvhMhemFitConfig::FitInitialClusterMergeMethod::Average,
-        BvhMhemFitConfig::FitInitialClusterMergeMethod::AverageCorrected,
-        BvhMhemFitConfig::FitInitialClusterMergeMethod::MaxWeight,
-        BvhMhemFitConfig::FitInitialClusterMergeMethod::MaxIntegral
-    };
-    std::vector<float> em_kl_div_threshold_options {1.5f, 2.0f, 2.5f};
-
-    // test specific configuration:
-//    std::vector<int> reduction_n_options = {4};
+//    std::vector<int> reduction_n_options = {2, 4, 8, 16};
 //    std::vector<lbvh::Config::MortonCodeAlgorithm> morton_code_options = {
-//        lbvh::Config::MortonCodeAlgorithm::Cov3_27p27c10i
+//        lbvh::Config::MortonCodeAlgorithm::Old,
+//        lbvh::Config::MortonCodeAlgorithm::Cov1_12p36pc16i,
+//        lbvh::Config::MortonCodeAlgorithm::Cov2_54pc10i,
+//        lbvh::Config::MortonCodeAlgorithm::Cov3_27p27c10i,
+//        lbvh::Config::MortonCodeAlgorithm::Cov4_27c27p10i
 //    };
 //    std::vector<BvhMhemFitConfig::FitInitialDisparityMethod> fit_initial_disparity_options = {
-//        BvhMhemFitConfig::FitInitialDisparityMethod::CentroidDistance
+//        BvhMhemFitConfig::FitInitialDisparityMethod::CentroidDistance,
+//        BvhMhemFitConfig::FitInitialDisparityMethod::Likelihood,
+//        BvhMhemFitConfig::FitInitialDisparityMethod::KLDivergence
 //    };
 //    std::vector<BvhMhemFitConfig::FitInitialClusterMergeMethod> fit_initial_cluster_merge_options = {
-//        BvhMhemFitConfig::FitInitialClusterMergeMethod::MaxWeight
+//        BvhMhemFitConfig::FitInitialClusterMergeMethod::Average,
+//        BvhMhemFitConfig::FitInitialClusterMergeMethod::AverageCorrected,
+//        BvhMhemFitConfig::FitInitialClusterMergeMethod::MaxWeight,
+//        BvhMhemFitConfig::FitInitialClusterMergeMethod::MaxIntegral
 //    };
-//    std::vector<float> em_kl_div_threshold_options {1.5f};
+//    std::vector<float> em_kl_div_threshold_options {0.5, 1.0f, 1.5f, 2.0f, 2.5f};
+
+    // test specific configuration:
+    std::vector<int> reduction_n_options = {16};
+    std::vector<lbvh::Config::MortonCodeAlgorithm> morton_code_options = {
+        lbvh::Config::MortonCodeAlgorithm::Old
+    };
+    std::vector<BvhMhemFitConfig::FitInitialDisparityMethod> fit_initial_disparity_options = {
+        BvhMhemFitConfig::FitInitialDisparityMethod::CentroidDistance
+    };
+    std::vector<BvhMhemFitConfig::FitInitialClusterMergeMethod> fit_initial_cluster_merge_options = {
+        BvhMhemFitConfig::FitInitialClusterMergeMethod::MaxIntegral
+    };
+    std::vector<float> em_kl_div_threshold_options {0.5f};
 
 
     std::vector<std::pair<std::string, BvhMhemFitConfig>> configs;
@@ -121,11 +122,17 @@ int main(int argc, char *argv[]) {
             for (auto fit_initial_disparity_method : fit_initial_disparity_options) {
                 for (auto fit_initial_cluster_merge_method : fit_initial_cluster_merge_options) {
                     for (auto em_kl_div_threshold : em_kl_div_threshold_options) {
-                        configs.emplace_back("red_" + std::to_string(reduction_n) +
-                                             "_morton_" + std::to_string(int(morton_code_algorithm)) +
-                                             "_fidispr_" + std::to_string(int(fit_initial_disparity_method)) +
-                                             "_ficlstrm_" + std::to_string(int(fit_initial_cluster_merge_method)) +
-                                             "_emkldivth_" + std::to_string(em_kl_div_threshold),
+//                        configs.emplace_back("red_" + std::to_string(reduction_n) +
+//                                             "_morton_" + std::to_string(int(morton_code_algorithm)) +
+//                                             "_fidispr_" + std::to_string(int(fit_initial_disparity_method)) +
+//                                             "_ficlstrm_" + std::to_string(int(fit_initial_cluster_merge_method)) +
+//                                             "_emkldivth_" + std::to_string(em_kl_div_threshold),
+//                                             BvhMhemFitConfig{reduction_n, lbvh::Config{morton_code_algorithm}, fit_initial_disparity_method, fit_initial_cluster_merge_method, em_kl_div_threshold});
+                        configs.emplace_back(std::to_string(reduction_n) +
+                                             ", " + std::to_string(int(morton_code_algorithm)) +
+                                             ", " + std::to_string(int(fit_initial_disparity_method)) +
+                                             ", " + std::to_string(int(fit_initial_cluster_merge_method)) +
+                                             ", " + std::to_string(int(em_kl_div_threshold * 10)),
                                              BvhMhemFitConfig{reduction_n, lbvh::Config{morton_code_algorithm}, fit_initial_disparity_method, fit_initial_cluster_merge_method, em_kl_div_threshold});
 //                        goto outoutoutoutout;
                     }
@@ -135,6 +142,7 @@ int main(int argc, char *argv[]) {
         }
     }
 //    outoutoutoutout:
+    std::cout << "n_red, morton, fi_dispr, fi_clstrm, em_kldiv, layer_0, time_0, layer_1, time_1, layer_2, time_2" << std::endl;
 
     for (const auto& named_config : configs) {
         for (uint i = 0; i < N_BATCHES; ++i) {
@@ -165,13 +173,13 @@ int main(int argc, char *argv[]) {
                 if (RENDER)
                     show(gt_rendering, RESOLUTION, LIMIT_N_BATCH);
 
-//                cudaDeviceSynchronize();
-//                auto t2 = std::chrono::high_resolution_clock::now();
+                cudaDeviceSynchronize();
+                auto t2 = std::chrono::high_resolution_clock::now();
 
                 torch::Tensor fitted_mixture, nodes, aabbs;
                 std::tie(fitted_mixture, nodes, aabbs) = bvh_mhem_fit_forward(mixture, named_config.second, 32);
-//                cudaDeviceSynchronize();
-//                auto t3 = std::chrono::high_resolution_clock::now();
+                cudaDeviceSynchronize();
+                auto t3 = std::chrono::high_resolution_clock::now();
                 torch::Tensor fitted_rendering;
                 if (DO_STATS || RENDER)
                         fitted_rendering = render(gpe::mixture_with_inversed_covariances(fitted_mixture), RESOLUTION, LIMIT_N_BATCH);
@@ -183,9 +191,12 @@ int main(int argc, char *argv[]) {
                 if (DO_STATS) {
                     auto diff = gt_rendering - fitted_rendering;
                     error_data[i].push_back(diff.cpu().view({1, -1, RESOLUTION * RESOLUTION}));
+                    time_data[i].push_back(std::chrono::duration_cast<std::chrono::milliseconds>(t3 - t2));
                 }
                 else {
-                    std::cout << "fitted_mixture.sizes()" << fitted_mixture.sizes() << "  something: " << fitted_mixture.sum() << std::endl;
+                    std::cout << std::fixed << std::setw( 14 ) << std::setprecision( 12 );
+                    std::cout << "target mixture.sizes()" << mixture.sizes() << "  integral: " << integrate::forward(mixture).sum().item<float>() << std::endl;
+                    std::cout << "fitted_mixture.sizes()" << fitted_mixture.sizes() << "  integral: " << integrate::forward(fitted_mixture).sum().item<float>() << std::endl;
                 }
 //                auto rmse = torch::sqrt(torch::mean(diff * diff)).item<float>();
 //                std::cout << "elapsed time gt rendering=" << std::chrono::duration_cast<std::chrono::milliseconds>(t1-t0).count() << "ms, "
@@ -195,14 +206,19 @@ int main(int argc, char *argv[]) {
         }
 
         if (DO_STATS) {
-            std::cout << std::fixed << std::setw(5) << std::setprecision(4) << named_config.first << "; ";
+//            std::cout << std::fixed << std::setw(5) << std::setprecision(4) << named_config.first << "; ";
+            std::cout << std::fixed << std::setw( 11 ) << std::setprecision( 9 );
+            std::cout << named_config.first;
             for (uint i = CONVOLUTION_LAYER_START; i < CONVOLUTION_LAYER_END; i++) {
-                std::cout << "layer " << i << "; ";
+//                std::cout << "layer " << i << "; ";
                 torch::Tensor d = torch::cat(error_data[i], 0);
-                std::cout << "RMSE=" << torch::sqrt(torch::mean(d * d)).item<float>() * 1000 << "e-3; ";
+//                std::cout << "RMSE=" << torch::sqrt(torch::mean(d * d)).item<float>() * 1000 << "e-3; ";
+                std::cout << ", " << torch::sqrt(torch::mean(d * d)).item<float>();
+                std::cout << ", " << float(std::accumulate(time_data[i].begin(), time_data[i].end(), std::chrono::milliseconds(0)).count()) / float(time_data[i].size());
                 d = d.view({-1, RESOLUTION * RESOLUTION});
-                std::cout << "std(RMSE)=" << torch::sqrt(torch::sqrt(torch::mean(d * d, 1)).var() / d.size(0)).item<float>() * 1000 << "e-3; ";
+//                std::cout << "std(RMSE)=" << torch::sqrt(torch::sqrt(torch::mean(d * d, 1)).var() / d.size(0)).item<float>() * 1000 << "e-3; ";
                 error_data[i].clear();
+                time_data[i].clear();
             }
             std::cout << std::endl;
         }
