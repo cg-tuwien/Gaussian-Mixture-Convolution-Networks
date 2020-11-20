@@ -30,7 +30,6 @@
 #define EXECUTION_DEVICES __host__ __device__ __forceinline__
 
 // todo:
-// - when fitting 1024 components (more than input), mse doesn't go to 0, although the rendering looks good.
 // - in collect_result, run a new fitting with the most important node to fill up the remaining gaussian slots
 
 namespace bvh_mhem_fit {
@@ -134,7 +133,7 @@ EXECUTION_DEVICES scalar_t centroid_distance(const gpe::Gaussian<N_DIMS, scalar_
     return gpe::squared_norm(a.position - b.position);
 }
 
-// numerical problems when N_VIRTUAL_POINTS is large: a*b for instance 0.001, wi_bar becomes 5.6 -> bad things
+// todo: numerical problems when N_VIRTUAL_POINTS is large: a*b for instance 0.001, wi_bar becomes 5.6 -> bad things
 // that depends on cov magnitude => better normalise mixture to have covs in the magnitude of the identity
 template <typename scalar_t, int N_DIMS, int N_VIRTUAL_POINTS = 4>
 EXECUTION_DEVICES scalar_t likelihood(const gpe::Gaussian<N_DIMS, scalar_t>& target, const gpe::Gaussian<N_DIMS, scalar_t>& fitting) {
