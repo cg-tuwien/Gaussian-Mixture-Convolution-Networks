@@ -165,8 +165,6 @@ EXECUTION_DEVICES scalar_t kl_divergence(const gpe::Gaussian<N_DIMS, scalar_t>& 
     return scalar_t(0.5) * (mahalanobis_factor + trace - N_DIMS - logarithm);
 }
 
-
-// todo: gaussian is not necessary in the parameter list. only used for size and size can we get from disparities as well;
 template <uint32_t N_CLUSTERS, typename scalar_t, uint32_t N_INPUT>
 EXECUTION_DEVICES
 gpe::Array<gpe::Vector<gaussian_index_t, N_INPUT - N_CLUSTERS + 1>, N_CLUSTERS> clusterise(const gpe::Vector2d<scalar_t, N_INPUT>& disparities) {
@@ -685,7 +683,7 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_em(gpe::Vector<gpe::
 
 template <typename scalar_t, int N_DIMS, int REDUCTION_N>
 EXECUTION_DEVICES
-void iterate_over_nodes_sync_free(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
+void iterate_over_nodes(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
                         const dim3& gpe_blockIdx, const dim3& gpe_threadIdx,
                         gpe::PackedTensorAccessor32<scalar_t, 3> mixture,
                         const gpe::PackedTensorAccessor32<node_index_torch_t, 3> nodes,
@@ -744,97 +742,6 @@ void iterate_over_nodes_sync_free(const dim3& gpe_gridDim, const dim3& gpe_block
                 bvh.per_node_attributes[node_id].gaussians.push_back(child_gaussians);
             }
         }
-    }
-}
-
-template <typename scalar_t, int N_DIMS, int REDUCTION_N>
-EXECUTION_DEVICES
-void iterate_over_nodes_sync(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
-                        const dim3& gpe_blockIdx, const dim3& gpe_threadIdx,
-                        gpe::PackedTensorAccessor32<scalar_t, 3> mixture,
-                        const gpe::PackedTensorAccessor32<node_index_torch_t, 3> nodes,
-                        const gpe::PackedTensorAccessor32<scalar_t, 3> aabbs,
-                        gpe::PackedTensorAccessor32<int, 2> flags,
-                        gpe::PackedTensorAccessor32<scalar_t, 3> node_attributes,
-                        const gpe::MixtureNs n, const int n_mixtures, const unsigned n_internal_nodes, const unsigned n_nodes, unsigned n_components_fitting,
-                        const BvhMhemFitConfig& config) {
-    GPE_UNUSED(gpe_gridDim)
-    GPE_UNUSED(n_components_fitting)
-    using G = gpe::Gaussian<N_DIMS, scalar_t>;
-    using Bvh = AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>;
-
-    assert(gpe_blockDim.x == 32);   // only one warp, due to warp voting
-    assert(gpe_blockDim.y == 1);
-    assert(gpe_blockDim.z == 1);
-    const auto mixture_id = int(gpe_blockIdx.y);
-    assert(mixture_id < n_mixtures);
-
-    Bvh bvh = AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>(mixture_id, nodes, aabbs, mixture, node_attributes, n, n_internal_nodes, n_nodes);
-
-    auto gaussians_head = node_index_t(0);
-
-    // go bottom up through all nodes
-    const Node* node = nullptr;
-    bool done = false;
-    while(true)
-    {
-        auto stop_vote = gpe::ballot_sync(0xFFFFFFFF, done, gpe_threadIdx.x, 0);
-        assert(gpe::popc(stop_vote) <= 1);
-        if (stop_vote) {
-            break;
-        }
-
-        const bool need_new_node = (node == nullptr);
-        const auto vote = gpe::ballot_sync(0xFFFFFFFF, need_new_node, gpe_threadIdx.x, 1);
-        assert(vote >= unsigned(need_new_node));
-        const auto old_gaussians_head = gaussians_head;
-        gaussians_head += gpe::popc(vote);                      // gaussian head must be in sync between all threads.
-        assert(gaussians_head < n.components * 10);   // it will become larger than n_components, but it should stay within a reasonable value
-        if(need_new_node) {
-            const auto next_gaussian_location = gpe::popc(((1 << gpe_threadIdx.x) - 1) & vote) + old_gaussians_head;
-
-            if (next_gaussian_location < unsigned(n.components)) {
-                const auto node_id = node_index_t(next_gaussian_location + n_internal_nodes);
-                node = &bvh.nodes[node_id];
-
-                const G& leaf_gaussian = bvh.gaussians[next_gaussian_location];
-                bvh.per_node_attributes[node_id].gaussians.push_back(leaf_gaussian);
-                bvh.per_node_attributes[node_id].n_child_leaves = 1;
-                bvh.per_node_attributes[node_id].gm_integral = gpe::integrate(leaf_gaussian);
-            }
-            else {
-                // no leaf nodes left
-                continue;
-            }
-        }
-
-        auto* flag = &reinterpret_cast<int&>(flags[mixture_id][node->parent_idx]);
-        const int old = gpe::atomicCAS(flag, 0, 1);
-        if(old == 0) {
-            // this is the first thread entered here.
-            // wait the other thread from the other child node.
-            node = nullptr;
-            continue;
-        }
-        assert(old == 1);
-        // here, the flag has already been 1. it means that this thread is the 2nd thread.
-
-        auto node_id = node->parent_idx;
-        node = &bvh.nodes[node_id];
-        bvh.per_node_attributes[node_id].n_child_leaves = bvh.per_node_attributes[node->left_idx].n_child_leaves + bvh.per_node_attributes[node->right_idx].n_child_leaves;
-        bvh.per_node_attributes[node_id].gm_integral = bvh.per_node_attributes[node->left_idx].gm_integral + bvh.per_node_attributes[node->right_idx].gm_integral;
-
-        auto child_gaussians = bvh.collect_child_gaussians(node, Epsilon<scalar_t>::large);
-        if (child_gaussians.size() > REDUCTION_N) {
-            bvh.per_node_attributes[node_id].gaussians = fit_em<REDUCTION_N>(child_gaussians, config);
-        }
-        else {
-            bvh.per_node_attributes[node_id].gaussians.push_back(child_gaussians);
-        }
-
-        bool is_root_node = node->parent_idx == node_index_t(0xFFFFFFFF);
-        if (is_root_node)
-            done = true;
     }
 }
 
@@ -976,7 +883,7 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> forward_impl_t(at::Tenso
 
         auto fun = [mixture_a, nodes_a, aabbs_a, flags_a, node_attributes_a, n, n_mixtures, n_internal_nodes, n_nodes, n_components_target, config] __host__ __device__
                 (const dim3& gpe_gridDim, const dim3& gpe_blockDim, const dim3& gpe_blockIdx, const dim3& gpe_threadIdx) {
-            iterate_over_nodes_sync_free<scalar_t, N_DIMS, REDUCTION_N>(gpe_gridDim, gpe_blockDim, gpe_blockIdx, gpe_threadIdx,
+            iterate_over_nodes<scalar_t, N_DIMS, REDUCTION_N>(gpe_gridDim, gpe_blockDim, gpe_blockIdx, gpe_threadIdx,
                                                                         mixture_a, nodes_a, aabbs_a, flags_a, node_attributes_a,
                                                                         n, n_mixtures, n_internal_nodes, n_nodes, n_components_target,
                                                                         config);
