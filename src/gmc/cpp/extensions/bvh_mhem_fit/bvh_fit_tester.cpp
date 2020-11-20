@@ -116,7 +116,7 @@ int main(int argc, char *argv[]) {
         BvhMhemFitConfig::FitInitialDisparityMethod::CentroidDistance
     };
     std::vector<BvhMhemFitConfig::FitInitialClusterMergeMethod> fit_initial_cluster_merge_options = {
-        BvhMhemFitConfig::FitInitialClusterMergeMethod::MaxIntegral
+        BvhMhemFitConfig::FitInitialClusterMergeMethod::MaxWeight
     };
     std::vector<float> em_kl_div_threshold_options {0.5f};
 

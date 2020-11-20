@@ -166,120 +166,12 @@ EXECUTION_DEVICES scalar_t kl_divergence(const gpe::Gaussian<N_DIMS, scalar_t>& 
 
 template <uint32_t N_CLUSTERS, typename scalar_t, uint32_t N_INPUT>
 EXECUTION_DEVICES
-gpe::Array<gpe::Vector<gaussian_index_t, N_INPUT - N_CLUSTERS + 1>, N_CLUSTERS> clusterise(const gpe::Vector2d<scalar_t, N_INPUT>& disparities) {
-    // this is a greedy smallest spanning subtrees algorithm
-    static_assert (N_CLUSTERS <= N_INPUT, "N output clusters must be larger than n input");
-    assert(N_CLUSTERS <= disparities.size());
-    assert(!gpe::reduce(disparities, false, [](bool o, scalar_t v) { return o || gpe::isnan(v); }));
-
-    gpe::Vector2d<gaussian_index_t, N_INPUT> subgraphs;
-    for (unsigned i = 0; i < disparities.size(); ++i) {
-        subgraphs.push_back({i});
-    }
-    unsigned n_subgraphs = subgraphs.size();
-    // make disparities into an array
-    // first put all the overflow gaussians into cluster 0 (they are zero weight, so it doesn't matter which
-    for (unsigned i = disparities.size(); i < N_INPUT; ++i) {
-        subgraphs[0].push_back({i});
-    }
-    // then copy the disparities, filling up with infty (so they won't get selected)
-    gpe::Array2d<scalar_t, N_INPUT> disparity_array;
-    for (unsigned i = 0; i < disparities.size(); ++i) {
-        for (unsigned j = 0; j < disparities[0].size(); ++j) {
-            disparity_array[i][j] = disparities[i][j];
-        }
-        for (unsigned j = disparities[0].size(); j < N_INPUT; ++j) {
-            // set remaining edges to infinity, so they won't be selected.
-            disparity_array[i][j] = std::numeric_limits<scalar_t>::infinity();
-        }
-    }
-    // set remaining edges to infinity, so they won't be selected.
-    for (unsigned i = disparities.size(); i < N_INPUT; ++i) {
-        for (unsigned j = 0; j < N_INPUT; ++j) {
-            disparity_array[i][j] = std::numeric_limits<scalar_t>::infinity();
-        }
-    }
-
-
-    auto merge_subgraphs = [&](unsigned a, unsigned b) {
-        assert (a != b);
-        auto a_ = gpe::min(a, b);
-        auto b_ = gpe::max(a, b);
-
-        subgraphs[a_].push_back(subgraphs[b_]);
-        subgraphs[b_].clear();
-        --n_subgraphs;
-    };
-    auto subgraph_of = [&](gaussian_index_t id) {
-        for (unsigned i = 0; i < subgraphs.size(); ++i) {
-            for (unsigned j = 0; j < subgraphs[i].size(); ++j) {
-                if (subgraphs[i][j] == id)
-                    return i;
-            }
-        }
-        assert(false);
-        return unsigned(-1);
-    };
-
-    gpe::BitSet<N_INPUT * N_INPUT> invalid_edges;
-
-    auto shortest_edge = [&disparity_array](gaussian_index_t* a, gaussian_index_t* b, gpe::BitSet<N_INPUT * N_INPUT>* invalid_edges) {
-        *a = gaussian_index_t(-1);
-        *b = gaussian_index_t(-1);
-        scalar_t shortest_length = std::numeric_limits<scalar_t>::infinity();
-        for (gaussian_index_t i = 0; i < N_INPUT; ++i) {
-            for (gaussian_index_t j = i + 1; j < N_INPUT; ++j) {
-                if (!invalid_edges->isSet(i * N_INPUT + j) && disparity_array[i][j] < shortest_length) {
-                    *a = i;
-                    *b = j;
-                    shortest_length = disparity_array[i][j];
-                }
-            }
-        }
-        assert(*a != gaussian_index_t(-1));
-        assert(*b != gaussian_index_t(-1));
-        assert(shortest_length != std::numeric_limits<scalar_t>::infinity());
-    };
-
-    while (n_subgraphs > N_CLUSTERS) {
-        gaussian_index_t a;
-        gaussian_index_t b;
-        shortest_edge(&a, &b, &invalid_edges);
-        assert(a < b);
-        invalid_edges.set1(a * N_INPUT + b);
-        auto subgraph_a = subgraph_of(a);
-        auto subgraph_b = subgraph_of(b);
-        if (subgraph_a != subgraph_b) {
-            merge_subgraphs(subgraph_a, subgraph_b);
-        }
-    }
-
-    auto find_next_subgraph = [&](unsigned subgraph_id) {
-        while(subgraphs[++subgraph_id].size() == 0) {
-            assert(subgraph_id < N_INPUT);
-        }
-        assert(subgraph_id < N_INPUT);
-        return subgraph_id;
-    };
-
-    unsigned subgraph_id = unsigned(-1);
-    assert(n_subgraphs == N_CLUSTERS);
-    gpe::Array<gpe::Vector<gaussian_index_t, N_INPUT - N_CLUSTERS + 1>, N_CLUSTERS> retval;
-    for (unsigned i = 0; i < N_CLUSTERS; ++i) {
-        subgraph_id = find_next_subgraph(subgraph_id);
-        retval[i].push_back(subgraphs[subgraph_id]);
-    }
-
-    return retval;
-}
-
-template <uint32_t N_CLUSTERS, typename scalar_t, uint32_t N_INPUT>
-EXECUTION_DEVICES
 gpe::Array<gpe::Vector<gaussian_index_t, N_INPUT - N_CLUSTERS + 1>, N_CLUSTERS> clusterise_using_heap(const gpe::Vector2d<scalar_t, N_INPUT>& disparities) {
     // this is a greedy smallest spanning subtrees algorithm
     static_assert (N_CLUSTERS <= N_INPUT, "N output clusters must be larger than n input");
     assert(N_CLUSTERS <= disparities.size());
     assert(!gpe::reduce(disparities, false, [](bool o, scalar_t v) { return o || gpe::isnan(v); }));
+    const auto n_gaussians = disparities.size();
 
     gpe::Vector2d<gaussian_index_t, N_INPUT> subgraphs;
     for (unsigned i = 0; i < disparities.size(); ++i) {
@@ -288,7 +180,7 @@ gpe::Array<gpe::Vector<gaussian_index_t, N_INPUT - N_CLUSTERS + 1>, N_CLUSTERS> 
     unsigned n_subgraphs = subgraphs.size();
     // make disparities into an array
     // first put all the overflow gaussians into cluster 0 (they are zero weight, so it doesn't matter which
-    for (unsigned i = disparities.size(); i < N_INPUT; ++i) {
+    for (unsigned i = n_gaussians; i < N_INPUT; ++i) {
         subgraphs[0].push_back({i});
     }
     // then copy the disparities, filling up with infty (so they won't get selected)
@@ -302,9 +194,9 @@ gpe::Array<gpe::Vector<gaussian_index_t, N_INPUT - N_CLUSTERS + 1>, N_CLUSTERS> 
     gpe::ArrayHeap<DisparityData, (N_INPUT * N_INPUT - N_INPUT) / 2> disparity_heap;
     const auto invalid_disparity = DisparityData{std::numeric_limits<scalar_t>::infinity(), -1, -1};
     unsigned n_disparities = 0;
-    for (unsigned i = 0; i < disparities.size(); ++i) {
-        assert(disparities.size() == disparities[i].size());
-        for (unsigned j = i + 1; j < disparities.size(); ++j) {
+    for (unsigned i = 0; i < n_gaussians; ++i) {
+        assert(n_gaussians == disparities[i].size());
+        for (unsigned j = i + 1; j < n_gaussians; ++j) {
             disparity_heap.m_data[n_disparities] = DisparityData{disparities[i][j], i, j};
             ++n_disparities;
         }
@@ -317,8 +209,8 @@ gpe::Array<gpe::Vector<gaussian_index_t, N_INPUT - N_CLUSTERS + 1>, N_CLUSTERS> 
 
     auto merge_subgraphs = [&](unsigned a, unsigned b) {
         assert (a != b);
-        assert(a < disparities.size());
-        assert(b < disparities.size()); // smaller than n_gaussians in target
+        assert(a < n_gaussians);
+        assert(b < n_gaussians); // smaller than n_gaussians in target
 
         auto a_ = gpe::min(a, b);
         auto b_ = gpe::max(a, b);
@@ -361,7 +253,7 @@ gpe::Array<gpe::Vector<gaussian_index_t, N_INPUT - N_CLUSTERS + 1>, N_CLUSTERS> 
     gpe::Array<gpe::Vector<gaussian_index_t, N_INPUT - N_CLUSTERS + 1>, N_CLUSTERS> retval;
     for (unsigned i = 0; i < N_CLUSTERS; ++i) {
         subgraph_id = find_next_subgraph(subgraph_id);
-        retval[i].push_back(subgraphs[subgraph_id]);
+        retval[i].push_back_if(subgraphs[subgraph_id], [=](gaussian_index_t idx) { return idx < n_gaussians; });
     }
 
     return retval;
@@ -481,8 +373,6 @@ gpe::Gaussian<N_DIMS, scalar_t> maxIntegral(const gpe::Vector<gpe::Gaussian<N_DI
 
     for (unsigned i = 0; i < cluster_indices.size(); ++i) {
         auto gaussian_id = cluster_indices[i];
-        if (gaussian_id >= mixture.size())
-            continue;   // new clustering using arrays results in some cluster indices being invalid. todo: streamline.
         const auto& gaussian = mixture[gaussian_id];
         if (gpe::abs(gpe::integrate(gaussian)) > max_abs ) {
             max_abs = gpe::abs(gpe::integrate(gaussian));
