@@ -154,10 +154,10 @@ int main(int argc, char *argv[]) {
             torch::jit::script::Module container = torch::jit::load("/home/madam/Documents/work/tuw/gmc_net/data/fitting_input/fitting_input_batch" + std::to_string(i) + ".pt");
             auto list = container.attributes();
 
-            for (uint i = CONVOLUTION_LAYER_START; i < CONVOLUTION_LAYER_END; i++) {
-                assert(i < 3);
-                auto mixture = container.attr(std::to_string(i)).toTensor();
-    //            mixture = mixture.index({Slice(7, 8), Slice(0,1), Slice(), Slice()});
+            for (uint i = 0; i < CONVOLUTION_LAYER_END - CONVOLUTION_LAYER_START; i++) {
+                assert(i + CONVOLUTION_LAYER_START < 3);
+                auto mixture = container.attr(std::to_string(i + CONVOLUTION_LAYER_START)).toTensor();
+//                mixture = mixture.index({Slice(0, 5), Slice(0,5), Slice(), Slice()});
     //            auto mixture = torch::tensor({{0.5f,  5.0f,  5.0f,  4.0f, -0.5f, -0.5f,  4.0f},
     //                                          {0.5f,  8.0f,  8.0f,  4.0f, -2.5f, -2.5f,  4.0f},
     //                                          {0.5f, 20.0f, 10.0f,  5.0f,  0.0f,  0.0f,  7.0f},
@@ -165,7 +165,7 @@ int main(int argc, char *argv[]) {
                 mixture = gpe::pack_mixture(torch::abs(gpe::weights(mixture)), gpe::positions(mixture), gpe::covariances(mixture));
                 if (USE_CUDA)
                     mixture = mixture.cuda();
-    //            std::cout << "layer " << i << ": " << mixture.sizes() << " device: " << mixture.device() << std::endl;
+//                std::cout << "layer " << i + CONVOLUTION_LAYER_START << ": " << mixture.sizes() << " device: " << mixture.device() << std::endl;
 //                auto t0 = std::chrono::high_resolution_clock::now();
 
                 torch::Tensor gt_rendering;
@@ -214,7 +214,7 @@ int main(int argc, char *argv[]) {
 //            std::cout << std::fixed << std::setw(5) << std::setprecision(4) << named_config.first << "; ";
             std::cout << std::fixed << std::setw( 11 ) << std::setprecision( 9 );
             std::cout << named_config.first;
-            for (uint i = CONVOLUTION_LAYER_START; i < CONVOLUTION_LAYER_END; i++) {
+            for (uint i = 0; i < CONVOLUTION_LAYER_END - CONVOLUTION_LAYER_START; i++) {
 //                std::cout << "layer " << i << "; ";
                 torch::Tensor d = torch::cat(error_data[i], 0);
 //                std::cout << "RMSE=" << torch::sqrt(torch::mean(d * d)).item<float>() * 1000 << "e-3; ";
