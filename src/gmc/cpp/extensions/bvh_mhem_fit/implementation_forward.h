@@ -276,6 +276,100 @@ gpe::Array<gpe::Vector<gaussian_index_t, N_INPUT - N_CLUSTERS + 1>, N_CLUSTERS> 
     return retval;
 }
 
+template <uint32_t N_CLUSTERS, typename scalar_t, uint32_t N_INPUT>
+EXECUTION_DEVICES
+gpe::Array<gpe::Vector<gaussian_index_t, N_INPUT - N_CLUSTERS + 1>, N_CLUSTERS> clusterise_using_heap(const gpe::Vector2d<scalar_t, N_INPUT>& disparities) {
+    // this is a greedy smallest spanning subtrees algorithm
+    static_assert (N_CLUSTERS <= N_INPUT, "N output clusters must be larger than n input");
+    assert(N_CLUSTERS <= disparities.size());
+    assert(!gpe::reduce(disparities, false, [](bool o, scalar_t v) { return o || gpe::isnan(v); }));
+
+    gpe::Vector2d<gaussian_index_t, N_INPUT> subgraphs;
+    for (unsigned i = 0; i < disparities.size(); ++i) {
+        subgraphs.push_back({i});
+    }
+    unsigned n_subgraphs = subgraphs.size();
+    // make disparities into an array
+    // first put all the overflow gaussians into cluster 0 (they are zero weight, so it doesn't matter which
+    for (unsigned i = disparities.size(); i < N_INPUT; ++i) {
+        subgraphs[0].push_back({i});
+    }
+    // then copy the disparities, filling up with infty (so they won't get selected)
+    struct DisparityData {
+        scalar_t disparity;
+        gaussian_index_t idx_a;
+        gaussian_index_t idx_b;
+        bool operator <= (const DisparityData& other) const { return disparity < other.disparity; }
+    };
+
+    gpe::ArrayHeap<DisparityData, (N_INPUT * N_INPUT - N_INPUT) / 2> disparity_heap;
+    const auto invalid_disparity = DisparityData{std::numeric_limits<scalar_t>::infinity(), -1, -1};
+    unsigned n_disparities = 0;
+    for (unsigned i = 0; i < disparities.size(); ++i) {
+        assert(disparities.size() == disparities[i].size());
+        for (unsigned j = i + 1; j < disparities.size(); ++j) {
+            disparity_heap.m_data[n_disparities] = DisparityData{disparities[i][j], i, j};
+            ++n_disparities;
+        }
+    }
+    // set remaining disparities to infinity, so they won't be selected.
+    for (unsigned i = n_disparities; i < (N_INPUT * N_INPUT - N_INPUT) / 2; ++i) {
+        disparity_heap.m_data[i] = invalid_disparity;
+    }
+    disparity_heap.build();
+
+    auto merge_subgraphs = [&](unsigned a, unsigned b) {
+        assert (a != b);
+        assert(a < disparities.size());
+        assert(b < disparities.size()); // smaller than n_gaussians in target
+
+        auto a_ = gpe::min(a, b);
+        auto b_ = gpe::max(a, b);
+
+        subgraphs[a_].push_back(subgraphs[b_]);
+        subgraphs[b_].clear();
+        --n_subgraphs;
+    };
+
+    auto subgraph_of = [&](gaussian_index_t id) {
+        for (unsigned i = 0; i < subgraphs.size(); ++i) {
+            for (unsigned j = 0; j < subgraphs[i].size(); ++j) {
+                if (subgraphs[i][j] == id)
+                    return i;
+            }
+        }
+        assert(false);
+        return unsigned(-1);
+    };
+
+    while (n_subgraphs > N_CLUSTERS) {
+        auto current_dispairty = disparity_heap.replaceRoot(invalid_disparity);
+        auto subgraph_a = subgraph_of(current_dispairty.idx_a);
+        auto subgraph_b = subgraph_of(current_dispairty.idx_b);
+        if (subgraph_a != subgraph_b) {
+            merge_subgraphs(subgraph_a, subgraph_b);
+        }
+    }
+
+    auto find_next_subgraph = [&](unsigned subgraph_id) {
+        while(subgraphs[++subgraph_id].size() == 0) {
+            assert(subgraph_id < N_INPUT);
+        }
+        assert(subgraph_id < N_INPUT);
+        return subgraph_id;
+    };
+
+    unsigned subgraph_id = unsigned(-1);
+    assert(n_subgraphs == N_CLUSTERS);
+    gpe::Array<gpe::Vector<gaussian_index_t, N_INPUT - N_CLUSTERS + 1>, N_CLUSTERS> retval;
+    for (unsigned i = 0; i < N_CLUSTERS; ++i) {
+        subgraph_id = find_next_subgraph(subgraph_id);
+        retval[i].push_back(subgraphs[subgraph_id]);
+    }
+
+    return retval;
+}
+
 template <typename scalar_t, int N_DIMS, uint32_t N_GAUSSIANS_CAPACITY, uint32_t N_MAX_CLUSTER_ELEMENTS>
 EXECUTION_DEVICES
 gpe::Gaussian<N_DIMS, scalar_t> averageCluster(const gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_GAUSSIANS_CAPACITY>& mixture,
@@ -451,7 +545,7 @@ gpe::Array<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_initial(const gpe::Ve
         break;
     }
 
-    const auto clustering = clusterise<N_FITTING>(disparity_matrix);                             // returns gpe::Array<gpe::Vector>
+    const auto clustering = clusterise_using_heap<N_FITTING>(disparity_matrix);                             // returns gpe::Array<gpe::Vector>
     assert(clustering.size() == N_FITTING);
 
     gpe::Array<G, N_FITTING> result;

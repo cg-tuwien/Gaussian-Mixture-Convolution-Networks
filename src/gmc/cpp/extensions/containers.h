@@ -80,26 +80,28 @@ struct ArrayHeap {
     static_assert (N > 1, "N must be greater 1 (it might work with 1, but it's not tested)");
     Array<T, N> m_data;
 
+    __host__ __device__ GPE_CONTAINER_INLINE
+    ArrayHeap() = default;
+    __host__ __device__ GPE_CONTAINER_INLINE
     ArrayHeap (const Array<T, N>& data) : m_data(data) {
+        build();
+    }
+
+    __host__ __device__ GPE_CONTAINER_INLINE
+    T replaceRoot(const T& value) {
+        return replaceElement(value, 0);
+    }
+
+    __host__ __device__ GPE_CONTAINER_INLINE
+    void build() {
         // build heap using Floyd's algorithm
         for (unsigned i = parentIndex(N-1); i < N; --i) {   // mind the overflow. it'll stop at 0
             const auto copy = m_data[i];
             replaceElement(copy, i);
         }
-//        for (unsigned i = N-1; i > 0; --i) {
-//            const auto parent_idx = parentIndex(i);
-//            const auto parent_val = m_data[parent_idx];
-//            if (m_data[i] < parent_val) {
-//                m_data[parent_idx] = m_data[i];
-//                m_data[i] = parent_val;
-//            }
-//        }
     }
 
-    T replaceRoot(const T& value) {
-        return replaceElement(value, 0);
-    }
-
+    __host__ __device__ GPE_CONTAINER_INLINE
     T replaceElement(const T& value, const uint32_t index) {
         assert(&value < m_data.begin() || &value >= m_data.end()); // pass by value if you want to relax this condition.
         const T retval = m_data[index];
@@ -127,7 +129,7 @@ struct ArrayHeap {
             // only left child left or inserting in the middle (in which case we won't enter the if)
             const auto left_idx = leftChildIndex(current_idx);
             const auto left_val = m_data[left_idx];
-            if (left_val < value) {
+            if (left_val <= value) {
                 m_data[current_idx] = left_val;
                 current_idx = left_idx;
             }
@@ -136,27 +138,32 @@ struct ArrayHeap {
         return retval;
     }
 
+    __host__ __device__ GPE_CONTAINER_INLINE
     uint32_t leftChildIndex(uint32_t index) const {
         assert(index * 2 + 1 < N);
         return index * 2 + 1;
     }
 
+    __host__ __device__ GPE_CONTAINER_INLINE
     uint32_t rightChildIndex(uint32_t index) const {
         assert(index * 2 + 2 < N);
         return index * 2 + 2;
     }
 
+    __host__ __device__ GPE_CONTAINER_INLINE
     uint32_t parentIndex(uint32_t index) const {
         assert(index > 0);
         assert(index < N);
         return (index - 1) / 2;
     }
 
+    __host__ __device__ GPE_CONTAINER_INLINE
     bool isLeafIndex(uint32_t index) const {
         assert(index < N);
         return index >= N/2;
     }
 
+    __host__ __device__ GPE_CONTAINER_INLINE
     bool hasTwoChildren(uint32_t index) const {
         assert(index < N);
         return index < (N - 1) / 2;
