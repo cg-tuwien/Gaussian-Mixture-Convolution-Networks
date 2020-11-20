@@ -51,10 +51,12 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> forward_impl(at::Tensor 
         return dispatch_dim_and_scalar_type<2>(mixture, config, n_components_target, n_dims, scalar_type);
     case 4:
         return dispatch_dim_and_scalar_type<4>(mixture, config, n_components_target, n_dims, scalar_type);
+#ifndef GPE_LIMIT_N_REDUCTION
     case 8:
         return dispatch_dim_and_scalar_type<8>(mixture, config, n_components_target, n_dims, scalar_type);
     case 16:
         return dispatch_dim_and_scalar_type<16>(mixture, config, n_components_target, n_dims, scalar_type);
+#endif
     default:
         std::cout << "invalid BvhMhemFitConfig::reduction_n" << std::endl;
         exit(1);

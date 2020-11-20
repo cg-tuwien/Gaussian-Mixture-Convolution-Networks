@@ -104,7 +104,11 @@ int main(int argc, char *argv[]) {
 //    std::vector<float> em_kl_div_threshold_options {0.5, 1.0f, 1.5f, 2.0f, 2.5f};
 
     // test specific configuration:
+#ifndef GPE_LIMIT_N_REDUCTION
     std::vector<int> reduction_n_options = {16};
+#else
+    std::vector<int> reduction_n_options = {4};
+#endif
     std::vector<lbvh::Config::MortonCodeAlgorithm> morton_code_options = {
         lbvh::Config::MortonCodeAlgorithm::Old
     };
