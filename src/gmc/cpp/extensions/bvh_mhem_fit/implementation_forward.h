@@ -696,7 +696,9 @@ ForwardOutput forward_impl_t(at::Tensor mixture, const BvhMhemFitConfig& config)
         gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(mixture), dimGrid, dimBlock, fun);
     }
 
-    return ForwardOutput{out_mixture.view({n.batch, n.layers, config.n_components_fitting, -1}), mixture, bvh.m_mixture, bvh.m_nodes, bvh.m_aabbs, node_attributes};
+    return ForwardOutput{out_mixture.view({n.batch, n.layers, config.n_components_fitting, -1}),
+                         mixture.view({n.batch, n.layers, n.components, -1}),
+                         bvh.m_mixture, bvh.m_nodes, bvh.m_aabbs, node_attributes};
 }
 
 } // namespace bvh_mhem_fit

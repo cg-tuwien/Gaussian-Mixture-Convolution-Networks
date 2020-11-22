@@ -19,13 +19,13 @@
 
 constexpr uint N_BATCHES = 1;
 constexpr uint CONVOLUTION_LAYER_START = 0;
-constexpr uint CONVOLUTION_LAYER_END = 3;
+constexpr uint CONVOLUTION_LAYER_END = 1;
 constexpr uint LIMIT_N_BATCH = 100;
-constexpr bool USE_CUDA = true;
-//constexpr bool BACKWARD = false;
+constexpr bool USE_CUDA = false;
+constexpr bool BACKWARD = true;
 constexpr bool RENDER = false;
 constexpr uint RESOLUTION = 128;
-constexpr bool DO_STATS = true;
+constexpr bool DO_STATS = false;
 
 torch::Tensor render(torch::Tensor mixture, const int resolution, const int n_batch_limit) {
     using namespace torch::indexing;
@@ -157,7 +157,7 @@ int main(int argc, char *argv[]) {
             for (uint i = 0; i < CONVOLUTION_LAYER_END - CONVOLUTION_LAYER_START; i++) {
                 assert(i + CONVOLUTION_LAYER_START < 3);
                 auto mixture = container.attr(std::to_string(i + CONVOLUTION_LAYER_START)).toTensor();
-//                mixture = mixture.index({Slice(0, 5), Slice(0,5), Slice(), Slice()});
+                mixture = mixture.index({Slice(0, 1), Slice(0,1), Slice(), Slice()});
     //            auto mixture = torch::tensor({{0.5f,  5.0f,  5.0f,  4.0f, -0.5f, -0.5f,  4.0f},
     //                                          {0.5f,  8.0f,  8.0f,  4.0f, -2.5f, -2.5f,  4.0f},
     //                                          {0.5f, 20.0f, 10.0f,  5.0f,  0.0f,  0.0f,  7.0f},
@@ -181,9 +181,19 @@ int main(int argc, char *argv[]) {
                 cudaDeviceSynchronize();
                 auto t2 = std::chrono::high_resolution_clock::now();
 
-                torch::Tensor fitted_mixture = bvh_mhem_fit::forward_impl(mixture, named_config.second).fitting;
+                auto forward_out = bvh_mhem_fit::forward_impl(mixture, named_config.second);
                 cudaDeviceSynchronize();
                 auto t3 = std::chrono::high_resolution_clock::now();
+                torch::Tensor fitted_mixture = forward_out.fitting;
+                if (BACKWARD) {
+                    auto gradient_fitting = torch::zeros_like(forward_out.fitting);
+                    auto weight_gradient = gpe::weights(gradient_fitting);
+                    weight_gradient = -torch::ones_like(weight_gradient);
+                    auto gradient_target = bvh_mhem_fit::backward_impl(gradient_fitting, forward_out, named_config.second);
+                    assert(gpe::positions(gradient_target).abs().sum().item<float>() < 0.000000001f);
+                    assert(gpe::covariances(gradient_target).abs().sum().item<float>() < 0.000000001f);
+                    assert((gpe::weights(gradient_target) <= 0).all().item<bool>());
+                }
                 torch::Tensor fitted_rendering;
                 if (DO_STATS || RENDER)
                         fitted_rendering = render(gpe::mixture_with_inversed_covariances(fitted_mixture), RESOLUTION, LIMIT_N_BATCH);
