@@ -2,6 +2,6 @@
 
 namespace bvh_mhem_fit {
 #ifndef GPE_LIMIT_N_REDUCTION
-template std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> forward_impl_t<16, double, 3>(at::Tensor mixture, const BvhMhemFitConfig& config, unsigned n_components_target);
+template ForwardOutput forward_impl_t<16, double, 3>(torch::Tensor mixture, const BvhMhemFitConfig& config);
 #endif
 } // namespace bvh_mhem_fit

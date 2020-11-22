@@ -20,6 +20,7 @@
 #include "mixture.h"
 #include "parallel_start.h"
 
+
 // todo:
 // - in collect_result, run a new fitting with the most important node to fill up the remaining gaussian slots
 
@@ -472,182 +473,182 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_em(gpe::Vector<gpe::
     return result;
 }
 
-template <typename scalar_t, int N_DIMS, int REDUCTION_N>
-EXECUTION_DEVICES
-void iterate_over_nodes(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
-                        const dim3& gpe_blockIdx, const dim3& gpe_threadIdx,
-                        gpe::PackedTensorAccessor32<scalar_t, 3> mixture,
-                        const gpe::PackedTensorAccessor32<node_index_torch_t, 3> nodes,
-                        const gpe::PackedTensorAccessor32<scalar_t, 3> aabbs,
-                        gpe::PackedTensorAccessor32<int, 2> flags,
-                        gpe::PackedTensorAccessor32<scalar_t, 3> node_attributes,
-                        const gpe::MixtureNs n, const int n_mixtures, const unsigned n_internal_nodes, const unsigned n_nodes,
-                        const BvhMhemFitConfig& config) {
-    GPE_UNUSED(gpe_gridDim)
-    using G = gpe::Gaussian<N_DIMS, scalar_t>;
-    using Bvh = AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>;
+    template <typename scalar_t, int N_DIMS, int REDUCTION_N>
+    EXECUTION_DEVICES
+    void iterate_over_nodes(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
+                            const dim3& gpe_blockIdx, const dim3& gpe_threadIdx,
+                            gpe::PackedTensorAccessor32<scalar_t, 3> mixture,
+                            const gpe::PackedTensorAccessor32<node_index_torch_t, 3> nodes,
+                            const gpe::PackedTensorAccessor32<scalar_t, 3> aabbs,
+                            gpe::PackedTensorAccessor32<int, 2> flags,
+                            gpe::PackedTensorAccessor32<scalar_t, 3> node_attributes,
+                            const gpe::MixtureNs n, const int n_mixtures, const unsigned n_internal_nodes, const unsigned n_nodes,
+                            const BvhMhemFitConfig& config) {
+        GPE_UNUSED(gpe_gridDim)
+        using G = gpe::Gaussian<N_DIMS, scalar_t>;
+        using Bvh = AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>;
 
-    assert(gpe_blockDim.y == 1);
-    assert(gpe_blockDim.z == 1);
-    const auto mixture_id = int(gpe_blockIdx.y);
-    assert(mixture_id < n_mixtures);
+        assert(gpe_blockDim.y == 1);
+        assert(gpe_blockDim.z == 1);
+        const auto mixture_id = int(gpe_blockIdx.y);
+        assert(mixture_id < n_mixtures);
 
-    Bvh bvh = AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>(mixture_id, nodes, aabbs, mixture, node_attributes, n, n_internal_nodes, n_nodes);
+        Bvh bvh = AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>(mixture_id, nodes, aabbs, mixture, node_attributes, n, n_internal_nodes, n_nodes);
 
-    const unsigned leaves_per_thread = (unsigned(n.components) + gpe_blockDim.x - 1) / gpe_blockDim.x;
-    const unsigned begin_leaf = leaves_per_thread * gpe_threadIdx.x;
-    const unsigned end_leaf = gpe::min(begin_leaf + leaves_per_thread, unsigned(n.components));
-    unsigned current_leaf = begin_leaf;
+        const unsigned leaves_per_thread = (unsigned(n.components) + gpe_blockDim.x - 1) / gpe_blockDim.x;
+        const unsigned begin_leaf = leaves_per_thread * gpe_threadIdx.x;
+        const unsigned end_leaf = gpe::min(begin_leaf + leaves_per_thread, unsigned(n.components));
+        unsigned current_leaf = begin_leaf;
 
-    auto is_second_thread = [&flags, mixture_id](node_index_t index) {
-        auto* flag = &reinterpret_cast<int&>(flags[mixture_id][index]);
-        auto old = gpe::atomicCAS(flag, 0, 1);
-        return bool(old);
-    };
+        auto is_second_thread = [&flags, mixture_id](node_index_t index) {
+            auto* flag = &reinterpret_cast<int&>(flags[mixture_id][index]);
+            auto old = gpe::atomicCAS(flag, 0, 1);
+            return bool(old);
+        };
 
-    // go bottom up through all nodes
-    while(current_leaf < end_leaf)
+        // go bottom up through all nodes
+        while(current_leaf < end_leaf)
+        {
+            const auto leaf_node_id = node_index_t(current_leaf + n_internal_nodes);
+            assert(leaf_node_id < n_nodes);
+            const Node* node = &bvh.nodes[leaf_node_id];
+
+            const G& leaf_gaussian = bvh.gaussians[current_leaf];
+            bvh.per_node_attributes[leaf_node_id].gaussians.push_back(leaf_gaussian);
+            bvh.per_node_attributes[leaf_node_id].n_child_leaves = 1;
+            bvh.per_node_attributes[leaf_node_id].gm_integral = gpe::integrate(leaf_gaussian);
+            current_leaf++;
+
+            while (node->parent_idx != node_index_t(0xFFFFFFFF) && is_second_thread(node->parent_idx)) {
+                auto node_id = node->parent_idx;
+                node = &bvh.nodes[node_id];
+                bvh.per_node_attributes[node_id].n_child_leaves = bvh.per_node_attributes[node->left_idx].n_child_leaves + bvh.per_node_attributes[node->right_idx].n_child_leaves;
+                bvh.per_node_attributes[node_id].gm_integral = bvh.per_node_attributes[node->left_idx].gm_integral + bvh.per_node_attributes[node->right_idx].gm_integral;
+
+                auto child_gaussians = bvh.collect_child_gaussians(node, Epsilon<scalar_t>::large);
+                if (child_gaussians.size() > REDUCTION_N) {
+                    bvh.per_node_attributes[node_id].gaussians = fit_em<REDUCTION_N>(child_gaussians, config);
+                }
+                else {
+                    bvh.per_node_attributes[node_id].gaussians.push_back(child_gaussians);
+                }
+            }
+        }
+    }
+
+    template <typename scalar_t, int N_DIMS, int REDUCTION_N, int N_MAX_TARGET_COMPS = 1024>
+    EXECUTION_DEVICES void collect_result(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
+                                          const dim3& gpe_blockIdx, const dim3& gpe_threadIdx,
+                                          const gpe::PackedTensorAccessor32<scalar_t, 3> mixture,
+                                          gpe::PackedTensorAccessor32<scalar_t, 3> out_mixture,
+                                          const gpe::PackedTensorAccessor32<node_index_torch_t, 3> nodes,
+                                          const gpe::PackedTensorAccessor32<scalar_t, 3> aabbs,
+                                          gpe::PackedTensorAccessor32<int, 2> flags,
+                                          gpe::PackedTensorAccessor32<scalar_t, 3> node_attributes,
+                                          const gpe::MixtureNs n, const int n_mixtures, const unsigned n_internal_nodes, const unsigned n_nodes,
+                                          const BvhMhemFitConfig& config)
     {
-        const auto leaf_node_id = node_index_t(current_leaf + n_internal_nodes);
-        assert(leaf_node_id < n_nodes);
-        const Node* node = &bvh.nodes[leaf_node_id];
+        GPE_UNUSED(gpe_gridDim)
+        GPE_UNUSED(flags)
+        using G = gpe::Gaussian<N_DIMS, scalar_t>;
+        using Bvh = AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>;
 
-        const G& leaf_gaussian = bvh.gaussians[current_leaf];
-        bvh.per_node_attributes[leaf_node_id].gaussians.push_back(leaf_gaussian);
-        bvh.per_node_attributes[leaf_node_id].n_child_leaves = 1;
-        bvh.per_node_attributes[leaf_node_id].gm_integral = gpe::integrate(leaf_gaussian);
-        current_leaf++;
+        assert(config.n_components_fitting % REDUCTION_N == 0);
+        assert(config.n_components_fitting <= N_MAX_TARGET_COMPS);
+        static_assert (N_MAX_TARGET_COMPS % REDUCTION_N == 0, "N_MAX_TARGET_COMPS must be divisible by REDUCTION_N");
 
-        while (node->parent_idx != node_index_t(0xFFFFFFFF) && is_second_thread(node->parent_idx)) {
-            auto node_id = node->parent_idx;
-            node = &bvh.nodes[node_id];
-            bvh.per_node_attributes[node_id].n_child_leaves = bvh.per_node_attributes[node->left_idx].n_child_leaves + bvh.per_node_attributes[node->right_idx].n_child_leaves;
-            bvh.per_node_attributes[node_id].gm_integral = bvh.per_node_attributes[node->left_idx].gm_integral + bvh.per_node_attributes[node->right_idx].gm_integral;
+        const auto mixture_id = int(gpe_blockIdx.x * gpe_blockDim.x + gpe_threadIdx.x);
+        if (mixture_id >= n_mixtures)
+            return;
 
-            auto child_gaussians = bvh.collect_child_gaussians(node, Epsilon<scalar_t>::large);
-            if (child_gaussians.size() > REDUCTION_N) {
-                bvh.per_node_attributes[node_id].gaussians = fit_em<REDUCTION_N>(child_gaussians, config);
+        Bvh bvh = AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>(mixture_id, nodes, aabbs, mixture, node_attributes, n, n_internal_nodes, n_nodes);
+
+        gpe::Vector<scalar_t, N_MAX_TARGET_COMPS> selectedNodesRating;
+        gpe::Vector<node_index_t, N_MAX_TARGET_COMPS> selectedNodes;
+
+        unsigned n_selected_components = 0;
+        auto compute_rating = [&](node_index_t node_id) {
+            assert(node_id < n_nodes);
+            // todo: will break with negative weights, should compute sum of abs integrals / seperately positive and negative integrals
+            if (bvh.per_node_attributes[node_id].gaussians.size() < REDUCTION_N)
+                return scalar_t(-2); // -2 so it's safely below -1 from cach_id_with_highest_rating
+            else
+                return std::abs(bvh.per_node_attributes[node_id].gm_integral);
+        };
+        auto cach_id_with_highest_rating = [&]() {
+            scalar_t rating = -1;
+            unsigned best_node_id = unsigned(-1);
+            for (unsigned i = 0; i < selectedNodes.size(); ++i) {
+                if (selectedNodesRating[i] > rating) {
+                    rating = selectedNodesRating[i];
+                    best_node_id = i;
+                }
             }
-            else {
-                bvh.per_node_attributes[node_id].gaussians.push_back(child_gaussians);
-            }
+            // can become unsigned(-1) when no selectable node remains
+            return best_node_id;
+        };
+        selectedNodes.push_back(0); // root node
+        selectedNodesRating.push_back(compute_rating(0));
+        n_selected_components = bvh.per_node_attributes[0].gaussians.size();
+
+        while (n_selected_components < config.n_components_fitting - REDUCTION_N)  {
+            auto best_node_cache_id = cach_id_with_highest_rating();
+            if (best_node_cache_id >= selectedNodes.size())
+                break;  // ran out of nodes
+            auto best_node_id = selectedNodes[best_node_cache_id];
+            assert(best_node_id < n_nodes);
+            const auto& best_descend_node = bvh.nodes[best_node_id];
+            assert(best_node_id < n_internal_nodes); // we should have only internal nodes at this point as cach_id_with_highest_rating() returns 0xffff.. if the node is not full.
+
+            selectedNodes[best_node_cache_id] = best_descend_node.left_idx;
+            selectedNodesRating[best_node_cache_id] = compute_rating(best_descend_node.left_idx);
+
+            selectedNodes.push_back(best_descend_node.right_idx);
+            selectedNodesRating.push_back(compute_rating(best_descend_node.right_idx));
+            n_selected_components = n_selected_components - REDUCTION_N + bvh.per_node_attributes[best_descend_node.left_idx].gaussians.size() + bvh.per_node_attributes[best_descend_node.right_idx].gaussians.size();
         }
-    }
-}
 
-template <typename scalar_t, int N_DIMS, int REDUCTION_N, int N_MAX_TARGET_COMPS = 1024>
-EXECUTION_DEVICES void collect_result(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
-                                      const dim3& gpe_blockIdx, const dim3& gpe_threadIdx,
-                                      const gpe::PackedTensorAccessor32<scalar_t, 3> mixture,
-                                      gpe::PackedTensorAccessor32<scalar_t, 3> out_mixture,
-                                      const gpe::PackedTensorAccessor32<node_index_torch_t, 3> nodes,
-                                      const gpe::PackedTensorAccessor32<scalar_t, 3> aabbs,
-                                      gpe::PackedTensorAccessor32<int, 2> flags,
-                                      gpe::PackedTensorAccessor32<scalar_t, 3> node_attributes,
-                                      const gpe::MixtureNs n, const int n_mixtures, const unsigned n_internal_nodes, const unsigned n_nodes,
-                                      const BvhMhemFitConfig& config)
-{
-    GPE_UNUSED(gpe_gridDim)
-    GPE_UNUSED(flags)
-    using G = gpe::Gaussian<N_DIMS, scalar_t>;
-    using Bvh = AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>;
+    //    if (n_selected_components < n_components_target) {
+    //        printf("n_selected_components = %d / %d\n", n_selected_components, n_components_target);
+    //    }
 
-    assert(config.n_components_fitting % REDUCTION_N == 0);
-    assert(config.n_components_fitting <= N_MAX_TARGET_COMPS);
-    static_assert (N_MAX_TARGET_COMPS % REDUCTION_N == 0, "N_MAX_TARGET_COMPS must be divisible by REDUCTION_N");
-
-    const auto mixture_id = int(gpe_blockIdx.x * gpe_blockDim.x + gpe_threadIdx.x);
-    if (mixture_id >= n_mixtures)
-        return;
-
-    Bvh bvh = AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>(mixture_id, nodes, aabbs, mixture, node_attributes, n, n_internal_nodes, n_nodes);
-
-    gpe::Vector<scalar_t, N_MAX_TARGET_COMPS> selectedNodesRating;
-    gpe::Vector<node_index_t, N_MAX_TARGET_COMPS> selectedNodes;
-
-    unsigned n_selected_components = 0;
-    auto compute_rating = [&](node_index_t node_id) {
-        assert(node_id < n_nodes);
-        // todo: will break with negative weights, should compute sum of abs integrals / seperately positive and negative integrals
-        if (bvh.per_node_attributes[node_id].gaussians.size() < REDUCTION_N)
-            return scalar_t(-2); // -2 so it's safely below -1 from cach_id_with_highest_rating
-        else
-            return std::abs(bvh.per_node_attributes[node_id].gm_integral);
-    };
-    auto cach_id_with_highest_rating = [&]() {
-        scalar_t rating = -1;
-        unsigned best_node_id = unsigned(-1);
+        // copy gaussians to their final location in out_mixture
+        unsigned write_position = 0;
         for (unsigned i = 0; i < selectedNodes.size(); ++i) {
-            if (selectedNodesRating[i] > rating) {
-                rating = selectedNodesRating[i];
-                best_node_id = i;
+            auto node_id = selectedNodes[i];
+            typename Bvh::NodeAttributes& destination_attribute = bvh.per_node_attributes[node_id];
+
+            for (unsigned j = 0; j < destination_attribute.gaussians.size(); ++j) {
+                assert(write_position < config.n_components_fitting);
+                gpe::gaussian<N_DIMS>(out_mixture[mixture_id][int(write_position++)]) = destination_attribute.gaussians[j];
             }
         }
-        // can become unsigned(-1) when no selectable node remains
-        return best_node_id;
-    };
-    selectedNodes.push_back(0); // root node
-    selectedNodesRating.push_back(compute_rating(0));
-    n_selected_components = bvh.per_node_attributes[0].gaussians.size();
-
-    while (n_selected_components < config.n_components_fitting - REDUCTION_N)  {
-        auto best_node_cache_id = cach_id_with_highest_rating();
-        if (best_node_cache_id >= selectedNodes.size())
-            break;  // ran out of nodes
-        auto best_node_id = selectedNodes[best_node_cache_id];
-        assert(best_node_id < n_nodes);
-        const auto& best_descend_node = bvh.nodes[best_node_id];
-        assert(best_node_id < n_internal_nodes); // we should have only internal nodes at this point as cach_id_with_highest_rating() returns 0xffff.. if the node is not full.
-
-        selectedNodes[best_node_cache_id] = best_descend_node.left_idx;
-        selectedNodesRating[best_node_cache_id] = compute_rating(best_descend_node.left_idx);
-
-        selectedNodes.push_back(best_descend_node.right_idx);
-        selectedNodesRating.push_back(compute_rating(best_descend_node.right_idx));
-        n_selected_components = n_selected_components - REDUCTION_N + bvh.per_node_attributes[best_descend_node.left_idx].gaussians.size() + bvh.per_node_attributes[best_descend_node.right_idx].gaussians.size();
     }
-
-//    if (n_selected_components < n_components_target) {
-//        printf("n_selected_components = %d / %d\n", n_selected_components, n_components_target);
-//    }
-
-    // copy gaussians to their final location in out_mixture
-    unsigned write_position = 0;
-    for (unsigned i = 0; i < selectedNodes.size(); ++i) {
-        auto node_id = selectedNodes[i];
-        typename Bvh::NodeAttributes& destination_attribute = bvh.per_node_attributes[node_id];
-
-        for (unsigned j = 0; j < destination_attribute.gaussians.size(); ++j) {
-            assert(write_position < config.n_components_fitting);
-            gpe::gaussian<N_DIMS>(out_mixture[mixture_id][int(write_position++)]) = destination_attribute.gaussians[j];
-        }
-    }
-}
 
 
 } // anonymous namespace
 
 
 template<int REDUCTION_N = 4, typename scalar_t, unsigned N_DIMS>
-ForwardOutput forward_impl_t(at::Tensor mixture, const BvhMhemFitConfig& config) {
+at::Tensor backward_impl_t(at::Tensor grad, const ForwardOutput& forward_out, const BvhMhemFitConfig& config) {
     using namespace torch::indexing;
     using LBVH = lbvh::Bvh<N_DIMS, scalar_t>;
 
     // todo: flatten mixture for kernel, i.g. nbatch/nlayers/ncomponents/7 => nmixture/ncomponents/7
 
-    auto n = gpe::get_ns(mixture);
+    auto n = gpe::get_ns(forward_out.target);
     TORCH_CHECK(n.batch * n.layers < 65535, "n_batch x n_layers must be smaller than 65535 for CUDA")
     TORCH_CHECK(n.components > 1, "number of components must be greater 1 for this implementation")
     TORCH_CHECK(n.components < 65535, "number of components must be smaller than 65535 for morton code computation")
     TORCH_CHECK(n.dims == N_DIMS, "something wrong with dispatch")
     TORCH_CHECK(n.dims == 2, "atm only 2d gaussians (because of eigenvector decomposition)")
-    TORCH_CHECK(mixture.dtype() == caffe2::TypeMeta::Make<scalar_t>(), "something wrong with dispatch, or maybe this float type is not supported.")
+    TORCH_CHECK(grad.dtype() == caffe2::TypeMeta::Make<scalar_t>(), "something wrong with dispatch, or maybe this float type is not supported.")
 
     const auto n_mixtures = n.batch * n.layers;
-    const LBVH bvh = LBVH(gpe::mixture_with_inversed_covariances(mixture).contiguous(), config.bvh_config);
+    const auto bvh = LBVH(gpe::mixture_with_inversed_covariances(forward_out.bvh_mixture).contiguous(), forward_out.bvh_nodes, forward_out.bvh_aabbs);
     const auto n_internal_nodes = bvh.m_n_internal_nodes;
     const auto n_nodes = bvh.m_n_nodes;
-    mixture = mixture.view({n_mixtures, n.components, -1}).contiguous();
+    const auto mixture = forward_out.target.view({n_mixtures, n.components, -1}).contiguous();
     auto flat_bvh_nodes = bvh.m_nodes.view({n_mixtures, n_nodes, -1});
     auto flat_bvh_aabbs = bvh.m_aabbs.view({n_mixtures, n_nodes, -1});
     auto flag_container = torch::zeros({n_mixtures, n_internal_nodes}, torch::TensorOptions(mixture.device()).dtype(torch::ScalarType::Int));
@@ -676,8 +677,8 @@ ForwardOutput forward_impl_t(at::Tensor mixture, const BvhMhemFitConfig& config)
         gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(mixture), dimGrid, dimBlock, fun);
     }
 
-    auto out_mixture = torch::zeros({n_mixtures, config.n_components_fitting, mixture.size(-1)}, torch::TensorOptions(mixture.device()).dtype(mixture.dtype()));
-    gpe::covariances(out_mixture) = torch::eye(n.dims, torch::TensorOptions(mixture.device()).dtype(mixture.dtype()));
+    auto out_mixture = torch::zeros({n_mixtures, config.n_components_fitting, grad.size(-1)}, torch::TensorOptions(grad.device()).dtype(grad.dtype()));
+    gpe::covariances(out_mixture) = torch::eye(n.dims, torch::TensorOptions(grad.device()).dtype(grad.dtype()));
     auto out_mixture_a = gpe::accessor<scalar_t, 3>(out_mixture);
 
     // make it valid, in case something doesn't get filled (due to an inbalance of the tree or just not enough elements)
@@ -696,7 +697,9 @@ ForwardOutput forward_impl_t(at::Tensor mixture, const BvhMhemFitConfig& config)
         gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(mixture), dimGrid, dimBlock, fun);
     }
 
-    return ForwardOutput{out_mixture.view({n.batch, n.layers, config.n_components_fitting, -1}), mixture, bvh.m_mixture, bvh.m_nodes, bvh.m_aabbs, node_attributes};
+    auto out_gradient = torch::zeros_like(forward_out.target);
+
+    return out_gradient;
 }
 
 } // namespace bvh_mhem_fit

@@ -2,18 +2,18 @@
 #define BVH_MHEM_FIT_BINDINGS
 
 #include <vector>
-#include <algorithm>
 
-#include <torch/extension.h>
+#include <torch/types.h>
 
 #include "BvhMhemFitConfig.h"
 
 
-std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> bvh_mhem_fit_forward(const torch::Tensor& mixture, const BvhMhemFitConfig& config, unsigned n_components_target);
+std::vector<torch::Tensor> bvh_mhem_fit_forward(const torch::Tensor& mixture, const BvhMhemFitConfig& config);
 
-std::tuple<torch::Tensor, torch::Tensor> bvh_mhem_fit_backward(const torch::Tensor& grad_output,
-                                                               const torch::Tensor& mixture, const torch::Tensor& bvh_nodes, const torch::Tensor& aabbs,
-                                                               const torch::Tensor& xes,
-                                                               bool requires_grad_mixture, bool requires_grad_xes);
+torch::Tensor bvh_mhem_fit_backward(const torch::Tensor& grad,
+                                    const torch::Tensor& fitting_mixture,
+                                    const torch::Tensor& target_mixture,
+                                    const torch::Tensor& bvh_mixture_inversed, const torch::Tensor& bvh_nodes, const torch::Tensor& bvh_aabbs, const torch::Tensor& bvh_attribs,
+                                    const BvhMhemFitConfig& config);
 
 #endif

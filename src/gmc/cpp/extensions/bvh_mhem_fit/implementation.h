@@ -7,13 +7,19 @@
 
 
 namespace bvh_mhem_fit {
+struct ForwardOutput {
+    torch::Tensor fitting;
+    torch::Tensor target;
+    torch::Tensor bvh_mixture;
+    torch::Tensor bvh_nodes;
+    torch::Tensor bvh_aabbs;
+    torch::Tensor bvh_attributes;
+};
 
-std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> forward_impl(at::Tensor mixture, const BvhMhemFitConfig& config, unsigned n_components_target = 32);
 
-std::tuple<torch::Tensor, torch::Tensor> backward_impl(const torch::Tensor& grad_output,
-                                                       const torch::Tensor& mixture, const torch::Tensor& bvh_nodes, const torch::Tensor& aabbs,
-                                                       const torch::Tensor& xes,
-                                                       bool requires_grad_mixture, bool requires_grad_xes);
+ForwardOutput forward_impl(at::Tensor mixture, const BvhMhemFitConfig& config);
+
+torch::Tensor backward_impl(torch::Tensor grad, const ForwardOutput& forward_out, const BvhMhemFitConfig& config);
 
 }
 #endif

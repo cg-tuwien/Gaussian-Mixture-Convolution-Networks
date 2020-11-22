@@ -10,6 +10,8 @@ struct BvhMhemFitConfig {
     enum class FitInitialDisparityMethod { CentroidDistance, Likelihood, KLDivergence } fit_initial_disparity_method = FitInitialDisparityMethod::KLDivergence;
     enum class FitInitialClusterMergeMethod { Average, AverageCorrected, MaxWeight, MaxIntegral } fit_initial_cluster_merge_method = FitInitialClusterMergeMethod::Average;
     float em_kl_div_threshold = 2.0f;
+
+    unsigned n_components_fitting = 32;
 };
 
 #endif // BVHMHEMFITCONFIG_H

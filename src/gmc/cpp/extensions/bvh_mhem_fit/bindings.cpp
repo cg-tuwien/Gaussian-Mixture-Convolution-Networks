@@ -7,26 +7,27 @@
 #include "bindings.h"
 #include "implementation.h"
 
-std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> bvh_mhem_fit_forward(const torch::Tensor& mixture, const BvhMhemFitConfig& config, unsigned n_components_target) {
+std::vector<torch::Tensor> bvh_mhem_fit_forward(const torch::Tensor& mixture, const BvhMhemFitConfig& config) {
     at::cuda::OptionalCUDAGuard device_guard;
     if (mixture.is_cuda()) {
         assert (device_of(mixture).has_value());
         device_guard.set_device(device_of(mixture).value());
     }
-    return bvh_mhem_fit::forward_impl(mixture, config, n_components_target);
+    auto result = bvh_mhem_fit::forward_impl(mixture, config);
+    return {result.fitting, result.bvh_mixture, result.bvh_nodes, result.bvh_aabbs, result.bvh_attributes};
 }
 
-
-std::tuple<torch::Tensor, torch::Tensor> bvh_mhem_fit_backward(const torch::Tensor& grad_output,
-                                                           const torch::Tensor& mixture, const torch::Tensor& bvh_nodes, const torch::Tensor& aabbs,
-                                                           const torch::Tensor& xes,
-                                                           bool requires_grad_mixture, bool requires_grad_xes) {
+torch::Tensor bvh_mhem_fit_backward(const torch::Tensor& grad,
+                                    const torch::Tensor& fitting_mixture,
+                                    const torch::Tensor& target_mixture,
+                                    const torch::Tensor& bvh_mixture_inversed, const torch::Tensor& bvh_nodes, const torch::Tensor& bvh_aabbs, const torch::Tensor& bvh_attribs,
+                                    const BvhMhemFitConfig& config) {
     at::cuda::OptionalCUDAGuard device_guard;
-    if (mixture.is_cuda()) {
-        assert (device_of(mixture).has_value());
-        device_guard.set_device(device_of(mixture).value());
+    if (grad.is_cuda()) {
+        assert (device_of(grad).has_value());
+        device_guard.set_device(device_of(grad).value());
     }
-    return bvh_mhem_fit::backward_impl(grad_output, mixture, bvh_nodes, aabbs, xes, requires_grad_mixture, requires_grad_xes);
+    return bvh_mhem_fit::backward_impl(grad, bvh_mhem_fit::ForwardOutput{fitting_mixture, target_mixture, bvh_mixture_inversed, bvh_nodes, bvh_aabbs, bvh_attribs}, config);
 }
 
 #ifndef GMC_CMAKE_TEST_BUILD

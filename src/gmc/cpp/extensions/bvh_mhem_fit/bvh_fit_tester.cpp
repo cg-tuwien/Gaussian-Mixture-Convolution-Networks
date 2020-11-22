@@ -14,7 +14,7 @@
 #include "common.h"
 #include "mixture.h"
 #include "evaluate_inversed/parallel_binding.h"
-#include "bvh_mhem_fit/bindings.h"
+#include "bvh_mhem_fit/implementation.h"
 #include "integrate/binding.h"
 
 constexpr uint N_BATCHES = 1;
@@ -181,8 +181,7 @@ int main(int argc, char *argv[]) {
                 cudaDeviceSynchronize();
                 auto t2 = std::chrono::high_resolution_clock::now();
 
-                torch::Tensor fitted_mixture, nodes, aabbs;
-                std::tie(fitted_mixture, nodes, aabbs) = bvh_mhem_fit_forward(mixture, named_config.second, 32);
+                torch::Tensor fitted_mixture = bvh_mhem_fit::forward_impl(mixture, named_config.second).fitting;
                 cudaDeviceSynchronize();
                 auto t3 = std::chrono::high_resolution_clock::now();
                 torch::Tensor fitted_rendering;
