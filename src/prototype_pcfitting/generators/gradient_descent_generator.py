@@ -107,23 +107,28 @@ class GradientDescentGenerator(GMMGenerator):
         iteration = 0
 
         if self._logger:
-            self._logger.log(iteration, losses, gm_data.pack_mixture())
+            self._logger.log(iteration, losses, gm_data.pack_mixture(), torch.ones(batch_size, dtype=torch.bool).cuda())
 
         # Check termination criteria
-        while self._termination_criterion.may_continue(iteration, loss.item()):
+        current_losses = losses.clone().detach()
+        running = self._termination_criterion.may_continue(iteration, losses)
+        while running.any():
             iteration += 1
             optimiser_pos.zero_grad()
             optimiser_cov.zero_grad()
             optimiser_pi.zero_grad()
 
             # Calculate Loss
-            sample_points = data_loading.sample(pcbatch, self._n_sample_points)
-            losses = self._loss.calculate_score(sample_points, gm_data.get_positions(), gm_data.get_covariances(),
-                                                gm_data.get_inversed_covariances(), gm_data.get_amplitudes())
+            sample_points = data_loading.sample(pcbatch[running], self._n_sample_points)
+            losses = self._loss.calculate_score(sample_points, gm_data.get_positions()[running],
+                                                gm_data.get_covariances()[running],
+                                                gm_data.get_inversed_covariances()[running],
+                                                gm_data.get_amplitudes()[running])
+            current_losses[running] = losses
 
             # Log
             if self._logger:
-                self._logger.log(iteration, losses, gm_data.pack_mixture())
+                self._logger.log(iteration, current_losses, gm_data.pack_mixture(), running)
 
             # Training Step
             loss = losses.sum()
@@ -133,6 +138,7 @@ class GradientDescentGenerator(GMMGenerator):
             optimiser_pi.step()
             gm_data.update_covariances()
             gm_data.update_amplitudes()
+            running = self._termination_criterion.may_continue(iteration, current_losses)
 
         # Return final mixture
         final_gm = gm.pack_mixture(gm_data.get_amplitudes(), gm_data.get_positions(), gm_data.get_covariances())

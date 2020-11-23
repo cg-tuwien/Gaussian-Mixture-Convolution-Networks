@@ -118,21 +118,27 @@ class GMLogger:
 
         self._scaler = scaler
 
-    def log(self, iteration: int, losses: torch.Tensor, gmbatch: torch.Tensor):
+    def log(self, iteration: int, losses: torch.Tensor, gmbatch: torch.Tensor, running: torch.Tensor = None):
         # Performs logging.
         # Parameters:
         #   iteration: int
         #       Current iteration number (important, as some logging might only happen every nth iteration)
         #   losses: torch.Tensor
-        #       List of losses (necessary if loss logging is active)
+        #       List of all losses (necessary if loss logging is active)
         #   gmbatch: torch.Tensor
         #       Current Gaussians (necessary for everything except loss logging)
+
+        if running is None:
+            running_idcs = range(len(self._names))
+        else:
+            running_idcs = torch.nonzero(running, as_tuple=False)
+
         if self._log_loss_console:
-            for b in range(len(self._names)):
-                print(f"Iteration {iteration}. Loss of GM {self._names[b]}: {losses[b]}")
+            for b in running_idcs:
+                print(f"Iteration {iteration}. Loss of GM {self._names[b]}: {losses[b].item()}")
 
         if self._log_loss_tb > 0 and iteration & self._log_loss_tb == 0:
-            for i in range(len(self._tbwriters)):
+            for i in running_idcs:
                 self._tbwriters[i].add_scalar("Loss", losses[i].item(), iteration)
                 self._tbwriters[i].flush()
 
@@ -149,7 +155,7 @@ class GMLogger:
         if log_rendering:
             self._visualizer.set_gaussian_mixtures(gm_upscaled.detach().cpu(), isgmm=False)
             res = self._visualizer.render(iteration)
-            for i in range(res.shape[0]):
+            for i in running_idcs:
                 self._tbwriters[i].add_image(f"Ellipsoids", res[i, 0, :, :, :], iteration, dataformats="HWC")
                 self._tbwriters[i].add_image(f"Density", res[i, 1, :, :, :], iteration, dataformats="HWC")
                 self._tbwriters[i].flush()
@@ -158,7 +164,7 @@ class GMLogger:
             gmw = gm.weights(gm_upscaled)
             gmp = gm.positions(gm_upscaled)
             gmc = gm.covariances(gm_upscaled)
-            for i in range(gm_upscaled.shape[0]):
+            for i in running_idcs:
                 data_loading.write_gm_to_ply(gmw, gmp, gmc, i,
                                             f"{self._gm_paths[i]}/gmm-{str(iteration).zfill(5)}.gma.ply")
 
@@ -167,7 +173,7 @@ class GMLogger:
                 gm.positions(gm_upscaled).view(-1, self._gm_n_components, 3)
 
             if (iteration+1) % self._log_positions == 0:
-                for i in range(len(self._gm_paths)):
+                for i in running_idcs:
                     for g in range(self._gm_n_components):
                         f = open(f"{self._gm_paths[i]}/pos-g{g}.bin", "a+b")
                         pdata = self._position_buffer[i, g, :, :].view(-1)

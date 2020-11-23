@@ -8,9 +8,10 @@ import numpy as np
 class LevelScaler2:
 
     def __init__(self):
-        self.scaleP = None
+        self.scaleP = self.offsetP = None
+        self.scaleL = None
 
-    def set_pointcloud(self, pcbatch: torch.Tensor, parent_per_point: torch.Tensor, parent_count: int):
+    def set_pointcloud(self, pcbatch: torch.Tensor, parent_per_point: torch.Tensor, parent_count: int, child_count_per_parent: int):
         # Has to be called before scaling!
         # This extracts the scalings from the pointcloud (1, n, 3)
         # parent_per_point: (1, n)
@@ -40,6 +41,7 @@ class LevelScaler2:
                 self.scaleP[i] = torch.tensor(1.0)
                 self.offsetP[i] = torch.tensor([0.0, 0.0, 0.0])
 
+        self.scaleL = (-3 * torch.log(self.scaleP)).view(-1)
         self.scaleP = self.scaleP.view(m, 1)
 
     def scale_down_pc(self, pcbatch: torch.Tensor) -> torch.Tensor:
@@ -65,3 +67,6 @@ class LevelScaler2:
         covariances = covariances.clone()
         covariances[0, 0, :, :, :] *= scaleCovariances
         return weights.clone(), positions, covariances
+
+    def scale_up_losses(self, loss_per_child: torch.Tensor) -> torch.Tensor:
+        return loss_per_child + self.scaleL

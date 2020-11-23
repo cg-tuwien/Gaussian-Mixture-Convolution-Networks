@@ -40,6 +40,7 @@ class Scaler:
         # The scaled pointclouds are returned.
         if len(self.scaleP.shape) != 3:
             self.scaleP = self.scaleP.view(-1, 1, 1)
+            self.offsetP = self.offsetP.view(-1, 1, 3)
         scaleddown = (pcbatch - self.offsetP) / self.scaleP
         return scaleddown
 
@@ -48,6 +49,7 @@ class Scaler:
         # The scaled pointclouds are returned.
         if len(self.scaleP.shape) != 3:
             self.scaleP = self.scaleP.view(-1, 1, 1)
+            self.offsetP = self.offsetP.view(-1, 1, 3)
         scaledup = (pcbatch * self.scaleP) + self.offsetP
         return scaledup
 
@@ -56,6 +58,7 @@ class Scaler:
         # The scaled GMs are returned.
         if len(self.scaleP.shape) != 4:
             self.scaleP = self.scaleP.view(-1, 1, 1, 1)
+            self.offsetP = self.offsetP.view(-1, 1, 1, 3)
         positions = gm.positions(gmbatch).clone()
         positions -= self.offsetP
         positions /= self.scaleP
@@ -70,6 +73,7 @@ class Scaler:
         # The scaled GMs are returned.
         if len(self.scaleP.shape) != 4:
             self.scaleP = self.scaleP.view(-1, 1, 1, 1)
+            self.offsetP = self.offsetP.view(-1, 1, 1, 3)
         positions = gm.positions(gmmbatch).clone()
         positions -= self.offsetP
         positions /= self.scaleP
@@ -82,6 +86,7 @@ class Scaler:
         # The scaled GMs are returned.
         if len(self.scaleP.shape) != 4:
             self.scaleP = self.scaleP.view(-1, 1, 1, 1)
+            self.offsetP = self.offsetP.view(-1, 1, 1, 3)
         positions = gm.positions(gmbatch).clone()
         positions *= self.scaleP
         positions += self.offsetP
@@ -96,6 +101,7 @@ class Scaler:
         # The scaled GMs are returned.
         if len(self.scaleP.shape) != 4:
             self.scaleP = self.scaleP.view(-1, 1, 1, 1)
+            self.offsetP = self.offsetP.view(-1, 1, 1, 3)
         positions = gm.positions(gmmbatch).clone()
         positions *= self.scaleP
         positions += self.offsetP
@@ -108,6 +114,7 @@ class Scaler:
         # The scaled GMs are returned.
         if len(self.scaleP.shape) != 4:
             self.scaleP = self.scaleP.view(-1, 1, 1, 1)
+            self.offsetP = self.offsetP.view(-1, 1, 1, 3)
         positions = positions.clone()
         positions *= self.scaleP
         positions += self.offsetP

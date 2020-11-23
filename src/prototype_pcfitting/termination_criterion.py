@@ -7,7 +7,7 @@ import torch
 class TerminationCriterion(ABC):
 
     @abstractmethod
-    def may_continue(self, iteration: int, loss: float) -> bool:
+    def may_continue(self, iteration: int, losses: torch.Tensor) -> torch.Tensor:
         pass
 
     @abstractmethod
@@ -20,8 +20,8 @@ class MaxIterationTerminationCriterion(TerminationCriterion):
     def __init__(self, maxiter: int):
         self.maxiter = maxiter
 
-    def may_continue(self, iteration: int, loss: float) -> bool:
-        return iteration < self.maxiter
+    def may_continue(self, iteration: int, losses: torch.Tensor) -> torch.Tensor:
+        return torch.tensor([iteration < self.maxiter]).repeat(losses.shape[0])
 
     def reset(self):
         pass
@@ -34,12 +34,18 @@ class RelChangeTerminationCriterion(TerminationCriterion):
     def __init__(self, relchange: float, itercount: int):
         self.relchange = relchange
         self.itercount = itercount
-        self.last_losses = torch.zeros(itercount)
+        self.last_losses = torch.zeros(1, itercount).cuda()
         self.current_loss_index = -1
         self.current_loss_iteration = -1
+        self.running = False
+        self.continuing = torch.ones(1, dtype=torch.bool).cuda()
 
-    def may_continue(self, iteration: int, loss: float) -> bool:
+    def may_continue(self, iteration: int, losses: torch.Tensor) -> bool:
         # has to be called every iteration!
+        if not self.running:
+            self.last_losses = self.last_losses.repeat(losses.shape[0], 1)
+            self.continuing = self.continuing.repeat(losses.shape[0])
+            self.running = True
 
         # get last loss
         self.current_loss_index += 1
@@ -49,23 +55,23 @@ class RelChangeTerminationCriterion(TerminationCriterion):
         # before itercount iterations happened
         if self.current_loss_iteration < self.itercount:
             self.current_loss_iteration = iteration
-            self.last_losses[self.current_loss_index] = loss
-            return True
+            self.last_losses[:, self.current_loss_index] = losses
+            return self.continuing
 
         # check change
         self.current_loss_iteration = iteration
-        if self.last_losses[self.current_loss_index] - loss < self.relchange:
-            # change too small!
-            self.last_losses[self.current_loss_index] = loss
-            return False
+        neg = (self.last_losses[self.continuing, self.current_loss_index] - losses[self.continuing]) < self.relchange
+        self.continuing[self.continuing] &= ~neg
 
-        self.last_losses[self.current_loss_index] = loss
-        return True
+        self.last_losses[:, self.current_loss_index] = losses
+        return self.continuing
 
     def reset(self):
-        self.last_losses = torch.zeros(self.itercount)
+        self.last_losses = torch.zeros(1, self.itercount).cuda()
+        self.continuing = torch.ones(1, dtype=torch.bool).cuda()
         self.current_loss_index = -1
         self.current_loss_iteration = -1
+        self.running = False
 
 
 class AndCombinedTerminationCriterion(TerminationCriterion):
@@ -73,8 +79,11 @@ class AndCombinedTerminationCriterion(TerminationCriterion):
     def __init__(self, criteria: List[TerminationCriterion]):
         self.criteria = criteria
 
-    def may_continue(self, iteration: int, loss: float) -> bool:
-        return all([x.may_continue(iteration, loss) for x in self.criteria])
+    def may_continue(self, iteration: int, losses: torch.Tensor) -> torch.Tensor:
+        result = torch.ones(losses.shape[0], dtype=torch.bool)
+        for x in self.criteria:
+            result &= x.may_continue(iteration, losses)
+        return result
 
     def reset(self):
         for c in self.criteria:
