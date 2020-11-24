@@ -70,9 +70,9 @@ ForwardOutput forward_impl(at::Tensor mixture, const BvhMhemFitConfig& config) {
         return dispatch_forward_dim_and_scalar_type<4>(mixture, config, n_dims, scalar_type);
 #ifndef GPE_LIMIT_N_REDUCTION
     case 8:
-        return dispatch_forward_dim_and_scalar_type<8>(mixture, config, n_components_target, n_dims, scalar_type);
+        return dispatch_forward_dim_and_scalar_type<8>(mixture, config, n_dims, scalar_type);
     case 16:
-        return dispatch_forward_dim_and_scalar_type<16>(mixture, config, n_components_target, n_dims, scalar_type);
+        return dispatch_forward_dim_and_scalar_type<16>(mixture, config, n_dims, scalar_type);
 #endif
     default:
         std::cout << "invalid BvhMhemFitConfig::reduction_n" << std::endl;
@@ -91,9 +91,9 @@ torch::Tensor backward_impl(at::Tensor grad, const ForwardOutput& forward_out, c
         return dispatch_backward_dim_and_scalar_type<4>(grad, forward_out, config, n_dims, scalar_type);
 #ifndef GPE_LIMIT_N_REDUCTION
     case 8:
-        return dispatch_backward_dim_and_scalar_type<8>(mixture, config, n_components_target, n_dims, scalar_type);
+        return dispatch_backward_dim_and_scalar_type<8>(grad, forward_out, config, n_dims, scalar_type);
     case 16:
-        return dispatch_backward_dim_and_scalar_type<16>(mixture, config, n_components_target, n_dims, scalar_type);
+        return dispatch_backward_dim_and_scalar_type<16>(grad, forward_out, config, n_dims, scalar_type);
 #endif
     default:
         std::cout << "invalid BvhMhemFitConfig::reduction_n" << std::endl;

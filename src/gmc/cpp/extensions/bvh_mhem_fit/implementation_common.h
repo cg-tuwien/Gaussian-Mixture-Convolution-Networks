@@ -43,29 +43,37 @@ struct UIntOfSize<double> {
     using type = uint64_t;
 };
 
+template <typename scalar_t, int N_FITTING, int N_TARGET>
+struct GradientCacheData {
+    gpe::Array2d<scalar_t, N_TARGET, N_FITTING> responsibilities_1;
+};
+
 template<typename scalar_t, int N_DIMS, int REDUCTION_N>
 struct AugmentedBvh
 {
     using aabb_type  = lbvh::Aabb<scalar_t>;
     using Gaussian_type = gpe::Gaussian<N_DIMS, scalar_t>;
+
     struct NodeAttributes {
         using UIntType = typename UIntOfSize<scalar_t>::type;
         gpe::Vector<Gaussian_type, REDUCTION_N, UIntType> gaussians;
+        gpe::Vector<Gaussian_type, REDUCTION_N, UIntType> grad; // maybe we can reuse the same field as gaussians in the future.
+        GradientCacheData<scalar_t, REDUCTION_N, REDUCTION_N * 2> gradient_cache_data;
         scalar_t gm_integral;
         UIntType n_child_leaves;
         // when adding an attribute, remember to update the line
         // auto node_attributes = torch::zeros({n_mixtures, n_nodes, REDUCTION_N * mixture.size(-1) + 3}, torch::TensorOptions(mixture.device()).dtype(mixture.scalar_type()));
     };
 //    static_assert (alignof (Gaussian_type) == 4, "adsf");
-    static_assert (sizeof (NodeAttributes) <= sizeof(scalar_t) * (REDUCTION_N * (1 + N_DIMS + N_DIMS * N_DIMS) + 3), "NodeAttribute is too large and won't fit into the torch::Tensor");
-    static_assert (sizeof (NodeAttributes) == sizeof(scalar_t) * (REDUCTION_N * (1 + N_DIMS + N_DIMS * N_DIMS) + 3), "NodeAttribute has unexpected size (it could be smaller, no problem, just unexpected)");
+    static_assert (sizeof (NodeAttributes) <= sizeof(scalar_t) * (REDUCTION_N * (1 + N_DIMS + N_DIMS * N_DIMS) * 2 + 4 + REDUCTION_N * REDUCTION_N * 2), "NodeAttribute is too large and won't fit into the torch::Tensor");
+    static_assert (sizeof (NodeAttributes) == sizeof(scalar_t) * (REDUCTION_N * (1 + N_DIMS + N_DIMS * N_DIMS) * 2 + 4 + REDUCTION_N * REDUCTION_N * 2), "NodeAttribute has unexpected size (it could be smaller, no problem, just unexpected)");
 
     const unsigned n_internal_nodes;
     const unsigned n_leaves;
     const unsigned n_nodes;
     const int32_t _padding = 0;
 
-    const Node* nodes;                         // size = n_nodes
+    const Node* nodes;                              // size = n_nodes
     const aabb_type* aabbs;                         // size = n_nodes
     Gaussian_type* gaussians;                       // size = n_leaves
     NodeAttributes* per_node_attributes;            // size = n_nodes
@@ -75,14 +83,16 @@ struct AugmentedBvh
                  const gpe::PackedTensorAccessor32<node_index_torch_t, 3> nodes,
                  const gpe::PackedTensorAccessor32<scalar_t, 3> aabbs,
                  gpe::PackedTensorAccessor32<scalar_t, 3> mixture,
-                 gpe::PackedTensorAccessor32<scalar_t, 3> node_attributes,
+                 gpe::PackedTensorAccessor32<u_int8_t, 3> node_attributes,
                  const gpe::MixtureNs n, const unsigned n_internal_nodes, const unsigned n_nodes)
         : n_internal_nodes(n_internal_nodes), n_leaves(unsigned(n.components)), n_nodes(n_nodes),
           nodes(reinterpret_cast<const Node*>(&nodes[mixture_id][0][0])),
           aabbs(reinterpret_cast<const aabb_type*>(&aabbs[mixture_id][0][0])),
           gaussians(reinterpret_cast<Gaussian_type*>(&mixture[mixture_id][0][0])),
           per_node_attributes(reinterpret_cast<NodeAttributes*>(&node_attributes[mixture_id][0][0]))
-    {}
+    {
+        assert(node_attributes.size(2) == sizeof (NodeAttributes));
+    }
 
     EXECUTION_DEVICES gpe::Vector<Gaussian_type, REDUCTION_N * 2> collect_child_gaussians(const lbvh::detail::Node* node, scalar_t weight_threshold) const {
         assert(node->left_idx != node_index_t(-1));
@@ -92,6 +102,23 @@ struct AugmentedBvh
         retval.push_back_if(per_node_attributes[node->left_idx].gaussians, condition);
         retval.push_back_if(per_node_attributes[node->right_idx].gaussians, condition);
         return retval;
+    }
+
+    template<uint32_t N_GRADS, typename size_type>
+    EXECUTION_DEVICES void distribute_gradient_on_children(const lbvh::detail::Node* node, const gpe::Vector<Gaussian_type, N_GRADS, size_type>& grad, scalar_t weight_threshold) const {
+        assert(node->left_idx != node_index_t(-1));
+        assert(node->right_idx != node_index_t(-1));
+
+        unsigned grad_index = 0;
+        for (unsigned i = 0; i < per_node_attributes[node->left_idx].gaussians.size(); ++i) {
+            if (per_node_attributes[node->left_idx].gaussians[i].weight >= weight_threshold)
+                per_node_attributes[node->left_idx].grad.push_back(grad[grad_index++]);
+        }
+        for (unsigned i = 0; i < per_node_attributes[node->right_idx].gaussians.size(); ++i) {
+            if (per_node_attributes[node->right_idx].gaussians[i].weight >= weight_threshold)
+                per_node_attributes[node->right_idx].grad.push_back(grad[grad_index++]);
+        }
+        assert(grad_index == grad.size());
     }
 
     EXECUTION_DEVICES node_index_t node_id(const lbvh::detail::Node* node) {

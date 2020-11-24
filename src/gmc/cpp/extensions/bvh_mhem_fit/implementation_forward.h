@@ -367,7 +367,10 @@ gpe::Array<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_initial(const gpe::Ve
 
 template <unsigned N_FITTING, typename scalar_t, int N_DIMS, unsigned N_TARGET>
 EXECUTION_DEVICES
-gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_em(gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_TARGET> target, const BvhMhemFitConfig& config) {
+gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_em(const gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_TARGET>& target,
+                                                               GradientCacheData<scalar_t, N_FITTING, N_FITTING * 2>* gradient_cache_data,
+                                                               const BvhMhemFitConfig& config) {
+    static_assert (N_FITTING * 2 == N_TARGET, "UNEXPECTED N_TARGET or N_FITTING");
     using G = gpe::Gaussian<N_DIMS, scalar_t>;
     using pos_t = typename G::pos_t;
     using cov_t = typename G::cov_t;
@@ -411,6 +414,7 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_em(gpe::Vector<gpe::
     const auto weighted_likelihood_sum = gpe::reduce_rows(weighted_likelihood_clamped_matrix, scalar_t(0), fun::plus<scalar_t>);
     const auto responsibilities_1 = gpe::cwise_fun(weighted_likelihood_clamped_matrix, weighted_likelihood_sum, fun::divided_AbyB<scalar_t>);
     assert(!has_nan(responsibilities_1));
+    gradient_cache_data->responsibilities_1 = responsibilities_1;
 
     const auto pure_target_weights = gpe::transform(target_double_gmm, [](const G& g) { return gpe::abs(g.weight) / gpe::gaussian_amplitude(g.covariance); });
     const auto responsibilities_2 = gpe::cwise_fun(responsibilities_1, pure_target_weights, fun::times<scalar_t>);
@@ -481,7 +485,7 @@ void iterate_over_nodes(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
                         const gpe::PackedTensorAccessor32<node_index_torch_t, 3> nodes,
                         const gpe::PackedTensorAccessor32<scalar_t, 3> aabbs,
                         gpe::PackedTensorAccessor32<int, 2> flags,
-                        gpe::PackedTensorAccessor32<scalar_t, 3> node_attributes,
+                        gpe::PackedTensorAccessor32<u_int8_t, 3> node_attributes,
                         const gpe::MixtureNs n, const int n_mixtures, const unsigned n_internal_nodes, const unsigned n_nodes,
                         const BvhMhemFitConfig& config) {
     GPE_UNUSED(gpe_gridDim)
@@ -527,7 +531,7 @@ void iterate_over_nodes(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
 
             auto child_gaussians = bvh.collect_child_gaussians(node, Epsilon<scalar_t>::large);
             if (child_gaussians.size() > REDUCTION_N) {
-                bvh.per_node_attributes[node_id].gaussians = fit_em<REDUCTION_N>(child_gaussians, config);
+                bvh.per_node_attributes[node_id].gaussians = fit_em<REDUCTION_N>(child_gaussians, &(bvh.per_node_attributes[node_id].gradient_cache_data), config);
             }
             else {
                 bvh.per_node_attributes[node_id].gaussians.push_back(child_gaussians);
@@ -544,7 +548,7 @@ EXECUTION_DEVICES void collect_result(const dim3& gpe_gridDim, const dim3& gpe_b
                                       const gpe::PackedTensorAccessor32<node_index_torch_t, 3> nodes,
                                       const gpe::PackedTensorAccessor32<scalar_t, 3> aabbs,
                                       gpe::PackedTensorAccessor32<int, 2> flags,
-                                      gpe::PackedTensorAccessor32<scalar_t, 3> node_attributes,
+                                      gpe::PackedTensorAccessor32<u_int8_t, 3> node_attributes,
                                       const gpe::MixtureNs n, const int n_mixtures, const unsigned n_internal_nodes, const unsigned n_nodes,
                                       const BvhMhemFitConfig& config)
 {
@@ -654,12 +658,12 @@ ForwardOutput forward_impl_t(at::Tensor mixture, const BvhMhemFitConfig& config)
     auto flag_container = torch::zeros({n_mixtures, n_internal_nodes}, torch::TensorOptions(mixture.device()).dtype(torch::ScalarType::Int));
 
     auto flags_a = gpe::accessor<int, 2>(flag_container);
-    auto node_attributes = torch::zeros({n_mixtures, n_nodes, REDUCTION_N * mixture.size(-1) + 3}, torch::TensorOptions(mixture.device()).dtype(mixture.scalar_type()));
+    auto node_attributes = torch::zeros({n_mixtures, n_nodes, sizeof(typename AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>::NodeAttributes)}, torch::TensorOptions(mixture.device()).dtype(torch::ScalarType::Byte));
 
     auto mixture_a = gpe::accessor<scalar_t, 3>(mixture);
     auto nodes_a = gpe::accessor<lbvh::detail::Node::index_type_torch, 3>(flat_bvh_nodes);
     auto aabbs_a = gpe::accessor<scalar_t, 3>(flat_bvh_aabbs);
-    auto node_attributes_a = gpe::accessor<scalar_t, 3>(node_attributes);
+    auto node_attributes_a = gpe::accessor<u_int8_t, 3>(node_attributes);
 
     {
         dim3 dimBlock = dim3(32, 1, 1);
@@ -670,11 +674,11 @@ ForwardOutput forward_impl_t(at::Tensor mixture, const BvhMhemFitConfig& config)
         auto fun = [mixture_a, nodes_a, aabbs_a, flags_a, node_attributes_a, n, n_mixtures, n_internal_nodes, n_nodes, config] __host__ __device__
                 (const dim3& gpe_gridDim, const dim3& gpe_blockDim, const dim3& gpe_blockIdx, const dim3& gpe_threadIdx) {
             iterate_over_nodes<scalar_t, N_DIMS, REDUCTION_N>(gpe_gridDim, gpe_blockDim, gpe_blockIdx, gpe_threadIdx,
-                                                                        mixture_a, nodes_a, aabbs_a, flags_a, node_attributes_a,
-                                                                        n, n_mixtures, n_internal_nodes, n_nodes,
-                                                                        config);
+                                                              mixture_a, nodes_a, aabbs_a, flags_a, node_attributes_a,
+                                                              n, n_mixtures, n_internal_nodes, n_nodes,
+                                                              config);
         };
-        gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(mixture), dimGrid, dimBlock, fun);
+        gpe::start_parallel<gpe::ComputeDevice::CPU>(gpe::device(mixture), dimGrid, dimBlock, fun);
     }
 
     auto out_mixture = torch::zeros({n_mixtures, config.n_components_fitting, mixture.size(-1)}, torch::TensorOptions(mixture.device()).dtype(mixture.dtype()));
@@ -694,7 +698,7 @@ ForwardOutput forward_impl_t(at::Tensor mixture, const BvhMhemFitConfig& config)
                                                           n, n_mixtures, n_internal_nodes, n_nodes,
                                                           config);
         };
-        gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(mixture), dimGrid, dimBlock, fun);
+        gpe::start_parallel<gpe::ComputeDevice::CPU>(gpe::device(mixture), dimGrid, dimBlock, fun);
     }
 
     return ForwardOutput{out_mixture.view({n.batch, n.layers, config.n_components_fitting, -1}),
