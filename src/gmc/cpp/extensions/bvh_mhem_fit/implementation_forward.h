@@ -90,7 +90,8 @@ gpe::Array<gpe::Vector<gaussian_index_t, N_INPUT - N_CLUSTERS + 1>, N_CLUSTERS> 
         scalar_t disparity;
         gaussian_index_t idx_a;
         gaussian_index_t idx_b;
-        bool operator <= (const DisparityData& other) const { return disparity < other.disparity; }
+        EXECUTION_DEVICES
+        bool operator <= (const DisparityData& other) const { return disparity <= other.disparity; }
     };
 
     gpe::ArrayHeap<DisparityData, (N_INPUT * N_INPUT - N_INPUT) / 2> disparity_heap;
@@ -251,6 +252,7 @@ gpe::Gaussian<N_DIMS, scalar_t> maxWeight(const gpe::Vector<gpe::Gaussian<N_DIMS
 
     for (unsigned i = 0; i < cluster_indices.size(); ++i) {
         auto gaussian_id = cluster_indices[i];
+        assert(gaussian_id < mixture.size());
         const auto& gaussian = mixture[gaussian_id];
         if (gpe::abs(gaussian.weight) > max_abs) {
             max_abs = gpe::abs(gaussian.weight);
@@ -300,7 +302,6 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_GAUSSIANS> normalise_mixture(cons
     return gpe::transform(mixture, [abs_integral](const G& g) { return G{g.weight / abs_integral, g.position, g.covariance}; });
 }
 
-#define GPE_DISPARITY_METHOD 2
 template <unsigned N_FITTING, typename scalar_t, int N_DIMS, unsigned N_TARGET>
 EXECUTION_DEVICES
 gpe::Array<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_initial(const gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_TARGET>& target_double_gmm, const BvhMhemFitConfig& config) {
