@@ -83,15 +83,14 @@ struct AugmentedBvh
                  const gpe::PackedTensorAccessor32<node_index_torch_t, 3> nodes,
                  const gpe::PackedTensorAccessor32<scalar_t, 3> aabbs,
                  gpe::PackedTensorAccessor32<scalar_t, 3> mixture,
-                 gpe::PackedTensorAccessor32<u_int8_t, 3> node_attributes,
+                 gpe::PackedTensorAccessor32<NodeAttributes, 2> node_attributes,
                  const gpe::MixtureNs n, const unsigned n_internal_nodes, const unsigned n_nodes)
         : n_internal_nodes(n_internal_nodes), n_leaves(unsigned(n.components)), n_nodes(n_nodes),
           nodes(reinterpret_cast<const Node*>(&nodes[mixture_id][0][0])),
           aabbs(reinterpret_cast<const aabb_type*>(&aabbs[mixture_id][0][0])),
           gaussians(reinterpret_cast<Gaussian_type*>(&mixture[mixture_id][0][0])),
-          per_node_attributes(reinterpret_cast<NodeAttributes*>(&node_attributes[mixture_id][0][0]))
+          per_node_attributes(&node_attributes[mixture_id][0])
     {
-        assert(node_attributes.size(2) == sizeof (NodeAttributes));
     }
 
     EXECUTION_DEVICES gpe::Vector<Gaussian_type, REDUCTION_N * 2> collect_child_gaussians(const lbvh::detail::Node* node, scalar_t weight_threshold) const {

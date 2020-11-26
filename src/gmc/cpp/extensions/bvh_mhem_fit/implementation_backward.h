@@ -101,7 +101,7 @@ void trickle_down_grad(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
                        const gpe::PackedTensorAccessor32<node_index_torch_t, 3> nodes,
                        const gpe::PackedTensorAccessor32<scalar_t, 3> aabbs,
                        gpe::PackedTensorAccessor32<int, 2> flags,
-                       gpe::PackedTensorAccessor32<u_int8_t, 3> node_attributes,
+                       gpe::PackedTensorAccessor32<typename AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>::NodeAttributes, 2> node_attributes,
                        const gpe::MixtureNs n, const int n_mixtures, const unsigned n_internal_nodes, const unsigned n_nodes,
                        const BvhMhemFitConfig& config) {
     GPE_UNUSED(gpe_gridDim)
@@ -177,7 +177,7 @@ EXECUTION_DEVICES void distribute_grad(const dim3& gpe_gridDim, const dim3& gpe_
                                       const gpe::PackedTensorAccessor32<node_index_torch_t, 3> nodes,
                                       const gpe::PackedTensorAccessor32<scalar_t, 3> aabbs,
                                       gpe::PackedTensorAccessor32<int, 2> flags,
-                                      gpe::PackedTensorAccessor32<u_int8_t, 3> node_attributes,
+                                      gpe::PackedTensorAccessor32<typename AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>::NodeAttributes, 2> node_attributes,
                                       const gpe::MixtureNs n, const int n_mixtures, const unsigned n_internal_nodes, const unsigned n_nodes,
                                       const BvhMhemFitConfig& config)
 {
@@ -194,7 +194,7 @@ EXECUTION_DEVICES void distribute_grad(const dim3& gpe_gridDim, const dim3& gpe_
     if (mixture_id >= n_mixtures)
         return;
 
-    Bvh bvh = AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>(mixture_id, nodes, aabbs, mixture, node_attributes, n, n_internal_nodes, n_nodes);
+    Bvh bvh = Bvh(mixture_id, nodes, aabbs, mixture, node_attributes, n, n_internal_nodes, n_nodes);
 
     gpe::Vector<scalar_t, N_MAX_TARGET_COMPS> selectedNodesRating;
     gpe::Vector<node_index_t, N_MAX_TARGET_COMPS> selectedNodes;
@@ -290,7 +290,7 @@ at::Tensor backward_impl_t(at::Tensor grad, const ForwardOutput& forward_out, co
     auto grad_a = gpe::accessor<scalar_t, 3>(grad_view);
     auto nodes_a = gpe::accessor<lbvh::detail::Node::index_type_torch, 3>(flat_bvh_nodes);
     auto aabbs_a = gpe::accessor<scalar_t, 3>(flat_bvh_aabbs);
-    auto node_attributes_a = gpe::accessor<u_int8_t, 3>(node_attributes);
+    auto node_attributes_a = gpe::struct_accessor<typename AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>::NodeAttributes, 2>(node_attributes);
 
     {
         // distribute the fitting gradient using the same algorithm amoung the nodes.

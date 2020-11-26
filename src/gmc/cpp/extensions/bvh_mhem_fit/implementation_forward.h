@@ -76,13 +76,13 @@ gpe::Array<gpe::Vector<gaussian_index_t, N_INPUT - N_CLUSTERS + 1>, N_CLUSTERS> 
     const auto n_gaussians = disparities.size();
 
     gpe::Vector2d<gaussian_index_t, N_INPUT> subgraphs;
-    for (unsigned i = 0; i < disparities.size(); ++i) {
+    for (gaussian_index_t i = 0; i < disparities.size(); ++i) {
         subgraphs.push_back({i});
     }
     unsigned n_subgraphs = subgraphs.size();
     // make disparities into an array
     // first put all the overflow gaussians into cluster 0 (they are zero weight, so it doesn't matter which
-    for (unsigned i = n_gaussians; i < N_INPUT; ++i) {
+    for (gaussian_index_t i = n_gaussians; i < N_INPUT; ++i) {
         subgraphs[0].push_back({i});
     }
     // then copy the disparities, filling up with infty (so they won't get selected)
@@ -95,11 +95,11 @@ gpe::Array<gpe::Vector<gaussian_index_t, N_INPUT - N_CLUSTERS + 1>, N_CLUSTERS> 
     };
 
     gpe::ArrayHeap<DisparityData, (N_INPUT * N_INPUT - N_INPUT) / 2> disparity_heap;
-    const auto invalid_disparity = DisparityData{std::numeric_limits<scalar_t>::infinity(), -1, -1};
+    const auto invalid_disparity = DisparityData{std::numeric_limits<scalar_t>::infinity(), gaussian_index_t(-1), gaussian_index_t(-1)};
     unsigned n_disparities = 0;
-    for (unsigned i = 0; i < n_gaussians; ++i) {
+    for (gaussian_index_t i = 0; i < n_gaussians; ++i) {
         assert(n_gaussians == disparities[i].size());
-        for (unsigned j = i + 1; j < n_gaussians; ++j) {
+        for (gaussian_index_t j = i + 1; j < n_gaussians; ++j) {
             disparity_heap.m_data[n_disparities] = DisparityData{disparities[i][j], i, j};
             ++n_disparities;
         }
@@ -485,7 +485,7 @@ void iterate_over_nodes(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
                         const gpe::PackedTensorAccessor32<node_index_torch_t, 3> nodes,
                         const gpe::PackedTensorAccessor32<scalar_t, 3> aabbs,
                         gpe::PackedTensorAccessor32<int, 2> flags,
-                        gpe::PackedTensorAccessor32<u_int8_t, 3> node_attributes,
+                        gpe::PackedTensorAccessor32<typename AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>::NodeAttributes, 2> node_attributes,
                         const gpe::MixtureNs n, const int n_mixtures, const unsigned n_internal_nodes, const unsigned n_nodes,
                         const BvhMhemFitConfig& config) {
     GPE_UNUSED(gpe_gridDim)
@@ -497,7 +497,7 @@ void iterate_over_nodes(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
     const auto mixture_id = int(gpe_blockIdx.y);
     assert(mixture_id < n_mixtures);
 
-    Bvh bvh = AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>(mixture_id, nodes, aabbs, mixture, node_attributes, n, n_internal_nodes, n_nodes);
+    Bvh bvh = Bvh(mixture_id, nodes, aabbs, mixture, node_attributes, n, n_internal_nodes, n_nodes);
 
     const unsigned leaves_per_thread = (unsigned(n.components) + gpe_blockDim.x - 1) / gpe_blockDim.x;
     const unsigned begin_leaf = leaves_per_thread * gpe_threadIdx.x;
@@ -548,7 +548,7 @@ EXECUTION_DEVICES void collect_result(const dim3& gpe_gridDim, const dim3& gpe_b
                                       const gpe::PackedTensorAccessor32<node_index_torch_t, 3> nodes,
                                       const gpe::PackedTensorAccessor32<scalar_t, 3> aabbs,
                                       gpe::PackedTensorAccessor32<int, 2> flags,
-                                      gpe::PackedTensorAccessor32<u_int8_t, 3> node_attributes,
+                                      gpe::PackedTensorAccessor32<typename AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>::NodeAttributes, 2> node_attributes,
                                       const gpe::MixtureNs n, const int n_mixtures, const unsigned n_internal_nodes, const unsigned n_nodes,
                                       const BvhMhemFitConfig& config)
 {
@@ -663,7 +663,7 @@ ForwardOutput forward_impl_t(at::Tensor mixture, const BvhMhemFitConfig& config)
     auto mixture_a = gpe::accessor<scalar_t, 3>(mixture);
     auto nodes_a = gpe::accessor<lbvh::detail::Node::index_type_torch, 3>(flat_bvh_nodes);
     auto aabbs_a = gpe::accessor<scalar_t, 3>(flat_bvh_aabbs);
-    auto node_attributes_a = gpe::accessor<u_int8_t, 3>(node_attributes);
+    auto node_attributes_a = gpe::struct_accessor<typename AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>::NodeAttributes, 2>(node_attributes);
 
     {
         dim3 dimBlock = dim3(32, 1, 1);
@@ -705,6 +705,7 @@ ForwardOutput forward_impl_t(at::Tensor mixture, const BvhMhemFitConfig& config)
                          mixture.view({n.batch, n.layers, n.components, -1}),
                          bvh.m_mixture, bvh.m_nodes, bvh.m_aabbs, node_attributes};
 }
+
 
 } // namespace bvh_mhem_fit
 
