@@ -180,8 +180,8 @@ class EMGenerator(GMMGenerator):
         expvalues = 0.5 * \
             torch.matmul(grelpos.transpose(-2, -1), torch.matmul(gmicovs_rep, grelpos)).squeeze(5).squeeze(4)
         # Logarithmized GM-Priors, expanded for each PC point. shape: (bs, 1, np, ng)
-        gmpriors_log_rep = torch.log(gm_data.get_amplitudes()[running].unsqueeze(2)
-                                     .expand(running_batch_size, 1, n_sample_points, self._n_gaussians))
+        gmpriors_log_rep = gm_data.get_logarithmized_amplitudes()[running].unsqueeze(2) \
+            .expand(running_batch_size, 1, n_sample_points, self._n_gaussians)
         # The logarithmized likelihoods of each point for each gaussian. shape: (bs, 1, np, ng)
         likelihood_log = gmpriors_log_rep - expvalues
         # Logarithmized Likelihood for each point given the GM. shape: (bs, 1, np, ng)
@@ -233,7 +233,7 @@ class EMGenerator(GMMGenerator):
         gm_data.set_covariances(new_covariances, running)
         gm_data.set_priors(new_priors, running)
 
-        assert not torch.isnan(gm_data.get_amplitudes()).any(), "Numerical Issues! Consider increasing precision."
+        assert not torch.isnan(gm_data.get_logarithmized_amplitudes()).any(), "Numerical Issues! Consider increasing precision."
 
     def initialize_rand1(self, pcbatch: torch.Tensor) -> torch.Tensor:
         # Creates a new initial Gaussian Mixture (batch) for a given point cloud (batch).
@@ -375,7 +375,7 @@ class EMGenerator(GMMGenerator):
 
         def __init__(self, batch_size, n_gaussians, dtype):
             self._positions = torch.zeros(batch_size, 1, n_gaussians, 3, dtype=dtype).cuda()
-            self._amplitudes = torch.zeros(batch_size, 1, n_gaussians, dtype=dtype).cuda()
+            self._logamplitudes = torch.zeros(batch_size, 1, n_gaussians, dtype=dtype).cuda()
             self._priors = torch.zeros(batch_size, 1, n_gaussians, dtype=dtype).cuda()
             self._covariances = torch.zeros(batch_size, 1, n_gaussians, 3, 3, dtype=dtype).cuda()
             self._inversed_covariances = torch.zeros(batch_size, 1, n_gaussians, 3, 3, dtype=dtype).cuda()
@@ -391,13 +391,14 @@ class EMGenerator(GMMGenerator):
 
         def set_amplitudes(self, amplitudes, running):
             # running indicates which batch entries should be replaced
-            self._amplitudes[running] = amplitudes
+            self._logamplitudes[running] = torch.log(amplitudes)
             self._priors[running] = amplitudes * (self._covariances[running].det().sqrt() * 15.74960995)
 
         def set_priors(self, priors, running):
             # running indicates which batch entries should be replaced
             self._priors[running] = priors
-            self._amplitudes[running] = priors / (self._covariances[running].det().sqrt() * 15.74960995)
+            # self._amplitudes[running] = priors / (self._covariances[running].det().sqrt() * 15.74960995)
+            self._logamplitudes[running] = torch.log(priors) - 0.5*torch.log(self._covariances[running].det()) - 2.7568156719207764
 
         def get_positions(self):
             return self._positions
@@ -412,10 +413,13 @@ class EMGenerator(GMMGenerator):
             return self._priors
 
         def get_amplitudes(self):
-            return self._amplitudes
+            return torch.exp(self._logamplitudes)
+
+        def get_logarithmized_amplitudes(self):
+            return self._logamplitudes
 
         def pack_mixture(self):
-            return gm.pack_mixture(self._amplitudes, self._positions, self._covariances)
+            return gm.pack_mixture(torch.exp(self._logamplitudes), self._positions, self._covariances)
 
         def pack_mixture_model(self):
             return gm.pack_mixture(self._priors, self._positions, self._covariances)
