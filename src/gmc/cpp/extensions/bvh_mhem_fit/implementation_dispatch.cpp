@@ -23,8 +23,10 @@ ForwardOutput dispatch_forward_dim_and_scalar_type(at::Tensor mixture, const Bvh
     switch (scalar_type) {
     case torch::ScalarType::Float:
         return dispatch_forward_dim<REDUCTION_N, float>(mixture, config, n_dims);
+#ifndef GPE_ONLY_FLOAT
     case torch::ScalarType::Double:
         return dispatch_forward_dim<REDUCTION_N, double>(mixture, config, n_dims);
+#endif // GPE_ONLY_FLOAT
     default:
         std::cout << "unsupported mixture.scalar_type()" << std::endl;
         exit(1);
@@ -49,8 +51,10 @@ torch::Tensor dispatch_backward_dim_and_scalar_type(at::Tensor grad, const Forwa
     switch (scalar_type) {
     case torch::ScalarType::Float:
         return dispatch_backward_dim<REDUCTION_N, float>(grad, forward_out, config, n_dims);
+#ifndef GPE_ONLY_FLOAT
     case torch::ScalarType::Double:
         return dispatch_backward_dim<REDUCTION_N, double>(grad, forward_out, config, n_dims);
+#endif // GPE_ONLY_FLOAT
     default:
         std::cout << "unsupported mixture.scalar_type()" << std::endl;
         exit(1);

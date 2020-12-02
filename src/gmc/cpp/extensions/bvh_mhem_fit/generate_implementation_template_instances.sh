@@ -27,13 +27,21 @@ for direction in $direction_list; do
                     if [ "$n_reduction" == "8" ] || [ "$n_reduction" == "16" ]; then
                         echo "#ifndef GPE_LIMIT_N_REDUCTION" >> $filename
                     fi
+                    if [ "$floating_type" == "double" ]; then
+                        echo "#ifndef GPE_ONLY_FLOAT" >> $filename
+                    fi
                     if [ "${direction}" == "forward" ]; then
                         echo "template ForwardOutput forward_impl_t<$n_reduction, $floating_type, $dimension>(torch::Tensor mixture, const BvhMhemFitConfig& config);" >> $filename
                     else
                         echo "template torch::Tensor backward_impl_t<$n_reduction, $floating_type, $dimension>(torch::Tensor grad, const ForwardOutput& forward_out, const BvhMhemFitConfig& config);" >> $filename
                     fi
+                    
+                    if [ "$floating_type" == "double" ]; then
+                        echo "#endif // GPE_ONLY_FLOAT" >> $filename
+                    fi
+                    
                     if [ "$n_reduction" == "8" ] || [ "$n_reduction" == "16" ]; then
-                        echo "#endif" >> $filename
+                        echo "#endif // GPE_LIMIT_N_REDUCTION" >> $filename
                     fi
                     echo '} // namespace bvh_mhem_fit' >> $filename
                 fi

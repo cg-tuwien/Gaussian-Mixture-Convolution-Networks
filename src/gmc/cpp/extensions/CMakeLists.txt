@@ -31,7 +31,6 @@ string(APPEND CMAKE_CXX_FLAGS_RELEASE " -O4 -march=native")
 # if it's not installed, you'll get errors, that openmp or other stuff is not installed (hard to track down)
 #string(APPEND CMAKE_EXE_LINKER_FLAGS " -fuse-ld=lld")
 
-add_compile_definitions(GMC_CMAKE_TEST_BUILD)
 
 set (MY_ANACONDA_PATH "/home/madam/bin/anaconda3")
 
@@ -45,9 +44,11 @@ find_package(OpenMP REQUIRED)
 find_package(Torch REQUIRED)
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
-ADD_DEFINITIONS(-DQT_NO_KEYWORDS)
-ADD_DEFINITIONS(-DGLM_FORCE_XYZW_ONLY)
-#ADD_DEFINITIONS(-DGPE_LIMIT_N_REDUCTION)
+add_compile_definitions(GMC_CMAKE_TEST_BUILD)
+add_compile_definitions(QT_NO_KEYWORDS)
+add_compile_definitions(GLM_FORCE_XYZW_ONLY)
+add_compile_definitions(GPE_LIMIT_N_REDUCTION)
+add_compile_definitions(GPE_ONLY_FLOAT)
 find_package(QT NAMES Qt5 COMPONENTS Core Widgets REQUIRED)
 find_package(Qt5 COMPONENTS Core Widgets REQUIRED)
 
@@ -64,7 +65,6 @@ endif()
 set(MY_INCLUDE_PATHS
     ${MY_ANACONDA_PATH}/include/python3.7m/
     ../glm
-#    ../cub
     ../yamc/include
     ../gcem/include
     ../autodiff
@@ -180,19 +180,12 @@ set(BVH_MHEM_FIT_SOURCES
     bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_16_double_3.cu
 )
 
-add_executable(evaluate_inversed_tester ${COMMON_SOURCES} ${MATH_SOURCES} ${LBVH_SOURCES} ${EVALUATE_SOURCES} evaluate_inversed/test_runner.cpp)
-target_link_libraries(evaluate_inversed_tester PUBLIC OpenMP::OpenMP_CXX torch Qt5::Widgets)
+add_executable(test_evaluate_inversed ${COMMON_SOURCES} ${MATH_SOURCES} ${LBVH_SOURCES} ${EVALUATE_SOURCES} evaluate_inversed/test_evaluate_inversed.cpp)
+target_link_libraries(test_evaluate_inversed PUBLIC OpenMP::OpenMP_CXX torch Qt5::Widgets)
 
-add_executable(bvh_mhem_fit_tester ${COMMON_SOURCES} ${MATH_SOURCES} ${UTIL_SOURCES} ${LBVH_SOURCES} ${INTEGRATE_SOURCES} ${BVH_MHEM_FIT_SOURCES} ${EVALUATE_SOURCES} bvh_mhem_fit/bvh_fit_tester.cpp)
-target_link_libraries(bvh_mhem_fit_tester PUBLIC OpenMP::OpenMP_CXX torch Qt5::Widgets)
+add_executable(test_bvh_fit ${COMMON_SOURCES} ${MATH_SOURCES} ${UTIL_SOURCES} ${LBVH_SOURCES} ${INTEGRATE_SOURCES} ${BVH_MHEM_FIT_SOURCES} ${EVALUATE_SOURCES} bvh_mhem_fit/test_bvh_fit.cpp)
+target_link_libraries(test_bvh_fit PUBLIC OpenMP::OpenMP_CXX torch Qt5::Widgets)
 
-#set(EM_FITTING_SOURCES
-#    em_fitting/em_fitting_common.h
-#    em_fitting/em_fitting_cpu.cpp
-#    em_fitting/em_fitting_cuda.cpp
-#    em_fitting/em_fitting_cuda.cu
-#)
-
-#add_executable(em_fitting ${COMMON_SOURCES} ${EM_FITTING_SOURCES})
-#target_link_libraries(em_fitting PUBLIC OpenMP::OpenMP_CXX ${PYTORCH_LIBS})
+add_executable(unittest_bvh_fit_backward ${COMMON_SOURCES} ${MATH_SOURCES} ${UTIL_SOURCES} ${LBVH_SOURCES} ${INTEGRATE_SOURCES} ${BVH_MHEM_FIT_SOURCES} ${EVALUATE_SOURCES} bvh_mhem_fit/unittest_bvh_fit_backward.cpp)
+target_link_libraries(unittest_bvh_fit_backward PUBLIC OpenMP::OpenMP_CXX torch Qt5::Widgets)
 

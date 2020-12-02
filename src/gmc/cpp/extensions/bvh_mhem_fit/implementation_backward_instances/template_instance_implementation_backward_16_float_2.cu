@@ -3,5 +3,5 @@
 namespace bvh_mhem_fit {
 #ifndef GPE_LIMIT_N_REDUCTION
 template torch::Tensor backward_impl_t<16, float, 2>(torch::Tensor grad, const ForwardOutput& forward_out, const BvhMhemFitConfig& config);
-#endif
+#endif // GPE_LIMIT_N_REDUCTION
 } // namespace bvh_mhem_fit
