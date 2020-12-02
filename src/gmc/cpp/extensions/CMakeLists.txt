@@ -119,7 +119,7 @@ set(EVALUATE_INVERSED_SOURCES
     evaluate_inversed/cuda_bvh.cpp
     evaluate_inversed/cuda_bvh.cu
 )
-add_library(evaluate_inversed ${UTIL_HEADERS} ${EVALUATE_INVERSED_HEADERS} ${EVALUATE_INVERSED_SOURCES})
+add_library(evaluate_inversed ${EVALUATE_INVERSED_HEADERS} ${EVALUATE_INVERSED_SOURCES})
 target_link_libraries(evaluate_inversed PUBLIC OpenMP::OpenMP_CXX torch math lbvh common)
 
 set(INTEGRATE_HEADERS
@@ -180,7 +180,7 @@ set(BVH_MHEM_FIT_SOURCES
     bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_16_double_2.cu
     bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_16_double_3.cu
 )
-add_library(bvh_mhem_fit ${UTIL_HEADERS} ${BVH_MHEM_FIT_HEADERS} ${BVH_MHEM_FIT_SOURCES})
+add_library(bvh_mhem_fit ${BVH_MHEM_FIT_HEADERS} ${BVH_MHEM_FIT_SOURCES})
 target_link_libraries(bvh_mhem_fit PUBLIC OpenMP::OpenMP_CXX torch math lbvh common)
 
 
