@@ -4,7 +4,7 @@
 #include <vector_types.h>
 #include <math_constants.h>
 
-#include <glm/matrix.hpp>
+#include "math/gpe_glm.h"
 
 namespace lbvh
 {

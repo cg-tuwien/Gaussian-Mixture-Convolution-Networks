@@ -3,7 +3,6 @@
 
 #include <cuda.h>
 #include <cuda_runtime.h>
-#include <glm/matrix.hpp>
 #include <torch/types.h>
 
 #include "algorithms.h"
@@ -15,11 +14,13 @@
 #include "hacked_accessor.h"
 #include "lbvh/aabb.h"
 #include "lbvh/bvh.h"
+#include "math/gpe_glm.h"
 #include "math/matrix.h"
 #include "math/scalar.h"
 #include "mixture.h"
 #include "parallel_start.h"
 #include "ParallelStack.h"
+#include "util/cuda.h"
 
 
 // todo:
@@ -51,16 +52,18 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_TARGET> grad_em(const gpe::Vector
     auto fitting_array = gpe::to_array(fitting, G{0, pos_t(0), cov_t(1)});
     auto fitting_grad_array = gpe::to_array(fitting_grad, G{0, pos_t(0), cov_t(0)});
 
-    const auto& fitting_grad_weight_1 = gpe::cwise_fun(fitting_grad_array, fitting_array, [](const G& fitting_grad, const G& fitting_gaussian) {
-        return fitting_grad.weight * gpe::gaussian_amplitude(fitting_gaussian.covariance);
+    const scalar_t abs_integral = gpe::Epsilon<scalar_t>::clip(gpe::reduce(target_array, scalar_t(0), [](scalar_t i, const G& g) { return i + gpe::abs(gpe::integrate(g)); }));
+
+    const auto& fitting_grad_weight_1 = gpe::cwise_fun(fitting_grad_array, fitting_array, [abs_integral](const G& fitting_grad, const G& fitting_gaussian) {
+        return abs_integral * fitting_grad.weight * gpe::gaussian_amplitude(fitting_gaussian.covariance);
     });
     const auto& responsibilities_1 = gradient_cache_data.responsibilities_1; // N_TARGET x N_FITTING
     const auto target_grad_weight_2 = gpe::cwise_fun(fitting_grad_weight_1, responsibilities_1, fun::times<scalar_t>);
     assert(!has_nan(target_grad_weight_2));
 
     const gpe::Array<scalar_t, N_TARGET> target_grad_weight_3 = gpe::reduce_rows(target_grad_weight_2, scalar_t(0), fun::plus<scalar_t>);
-    const auto target_grad_weight_4 = gpe::cwise_fun(target_grad_weight_3, target_array, [](scalar_t weight_grad, const G& target_gaussian) {
-        return weight_grad / gpe::gaussian_amplitude(target_gaussian.covariance);
+    const auto target_grad_weight_4 = gpe::cwise_fun(target_grad_weight_3, target_array, [abs_integral](scalar_t weight_grad, const G& target_gaussian) {
+        return weight_grad / (gpe::gaussian_amplitude(target_gaussian.covariance) * abs_integral);
     });
 
     gpe::Vector<G, N_TARGET> target_grad;
@@ -97,7 +100,7 @@ EXECUTION_DEVICES
 void trickle_down_grad(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
                        const dim3& gpe_blockIdx, const dim3& gpe_threadIdx,
                        gpe::PackedTensorAccessor32<scalar_t, 3> target_grad,
-                       gpe::PackedTensorAccessor32<scalar_t, 3> mixture,
+                       gpe::PackedTensorAccessor32<gpe::Gaussian<N_DIMS, scalar_t>, 2> mixture,
                        const gpe::PackedTensorAccessor32<node_index_torch_t, 3> nodes,
                        const gpe::PackedTensorAccessor32<scalar_t, 3> aabbs,
                        gpe::PackedTensorAccessor32<int, 2> flags,
@@ -114,6 +117,10 @@ void trickle_down_grad(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
     assert(mixture_id < n_mixtures);
 
     Bvh bvh = AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>(mixture_id, nodes, aabbs, mixture, node_attributes, n, n_internal_nodes, n_nodes);
+    #ifndef __CUDA_ARCH__
+    std::vector<typename AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>::NodeAttributes> node_attributes_debug;
+    std::copy(bvh.per_node_attributes, bvh.per_node_attributes + n_nodes, std::back_inserter(node_attributes_debug));
+    #endif
 
     gpe::ParallelStack<node_index_t, 32 * 32, 0> stack;
     {
@@ -149,17 +156,17 @@ void trickle_down_grad(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
             continue;
         }
 
-        auto child_gaussians = bvh.collect_child_gaussians(node, Epsilon<scalar_t>::large);
+        auto child_gaussians = bvh.collect_child_gaussians(node, gpe::Epsilon<scalar_t>::large);
         if (child_gaussians.size() > REDUCTION_N) {
             auto child_grads = grad_em<REDUCTION_N>(child_gaussians,
                                                     bvh.per_node_attributes[current_index].gaussians,
                                                     bvh.per_node_attributes[current_index].grad,
                                                     bvh.per_node_attributes[current_index].gradient_cache_data,
                                                     config);
-            bvh.distribute_gradient_on_children(node, child_grads, Epsilon<scalar_t>::large);
+            bvh.distribute_gradient_on_children(node, child_grads, gpe::Epsilon<scalar_t>::large);
         }
         else {
-            bvh.distribute_gradient_on_children(node, bvh.per_node_attributes[current_index].grad, Epsilon<scalar_t>::large);
+            bvh.distribute_gradient_on_children(node, bvh.per_node_attributes[current_index].grad, gpe::Epsilon<scalar_t>::large);
         }
 
         stack.push(bvh.nodes[current_index].left_idx, true, gpe_threadIdx.x);
@@ -172,7 +179,7 @@ void trickle_down_grad(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
 template <typename scalar_t, int N_DIMS, int REDUCTION_N, int N_MAX_TARGET_COMPS = 1024>
 EXECUTION_DEVICES void distribute_grad(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
                                       const dim3& gpe_blockIdx, const dim3& gpe_threadIdx,
-                                      const gpe::PackedTensorAccessor32<scalar_t, 3> mixture,
+                                      const gpe::PackedTensorAccessor32<gpe::Gaussian<N_DIMS, scalar_t>, 2> mixture,
                                       gpe::PackedTensorAccessor32<scalar_t, 3> grad_fitting,
                                       const gpe::PackedTensorAccessor32<node_index_torch_t, 3> nodes,
                                       const gpe::PackedTensorAccessor32<scalar_t, 3> aabbs,
@@ -206,7 +213,7 @@ EXECUTION_DEVICES void distribute_grad(const dim3& gpe_gridDim, const dim3& gpe_
         if (bvh.per_node_attributes[node_id].gaussians.size() < REDUCTION_N)
             return scalar_t(-2); // -2 so it's safely below -1 from cach_id_with_highest_rating
         else
-            return std::abs(bvh.per_node_attributes[node_id].gm_integral);
+            return gpe::abs(bvh.per_node_attributes[node_id].gm_integral);
     };
     auto cach_id_with_highest_rating = [&]() {
         scalar_t rating = -1;
@@ -249,7 +256,7 @@ EXECUTION_DEVICES void distribute_grad(const dim3& gpe_gridDim, const dim3& gpe_
 
         for (unsigned j = 0; j < destination_attribute.gaussians.size(); ++j) {
             assert(read_position < config.n_components_fitting);
-            destination_attribute.grad[j] = gpe::gaussian<N_DIMS>(grad_fitting[mixture_id][int(read_position++)]);
+            destination_attribute.grad.push_back(gpe::gaussian<N_DIMS>(grad_fitting[mixture_id][int(read_position++)]));
         }
     }
 }
@@ -284,13 +291,13 @@ at::Tensor backward_impl_t(at::Tensor grad, const ForwardOutput& forward_out, co
     auto flag_container = torch::zeros({n_mixtures, n_internal_nodes}, torch::TensorOptions(mixture_view.device()).dtype(torch::ScalarType::Int));
 
     auto flags_a = gpe::accessor<int, 2>(flag_container);
-    auto node_attributes = torch::zeros({n_mixtures, n_nodes, sizeof(typename AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>::NodeAttributes)}, torch::TensorOptions(mixture_view.device()).dtype(mixture_view.scalar_type()));
+    auto node_attributes = forward_out.bvh_attributes.view({n_mixtures, n_nodes, -1});
 
-    auto mixture_a = gpe::accessor<scalar_t, 3>(mixture_view);
+    auto mixture_a = gpe::struct_accessor<gpe::Gaussian<N_DIMS, scalar_t>, 2, scalar_t>(mixture_view);
     auto grad_a = gpe::accessor<scalar_t, 3>(grad_view);
     auto nodes_a = gpe::accessor<lbvh::detail::Node::index_type_torch, 3>(flat_bvh_nodes);
     auto aabbs_a = gpe::accessor<scalar_t, 3>(flat_bvh_aabbs);
-    auto node_attributes_a = gpe::struct_accessor<typename AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>::NodeAttributes, 2>(node_attributes);
+    auto node_attributes_a = gpe::struct_accessor<typename AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>::NodeAttributes, 2, uint8_t>(node_attributes);
 
     {
         // distribute the fitting gradient using the same algorithm amoung the nodes.
@@ -305,7 +312,7 @@ at::Tensor backward_impl_t(at::Tensor grad, const ForwardOutput& forward_out, co
                                                           n, n_mixtures, n_internal_nodes, n_nodes,
                                                           config);
         };
-        gpe::start_parallel<gpe::ComputeDevice::CPU>(gpe::device(mixture_view), dimGrid, dimBlock, fun);
+        gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(mixture_view), dimGrid, dimBlock, fun);
     }
 
     auto target_gradient = torch::zeros_like(mixture_view);
@@ -324,7 +331,7 @@ at::Tensor backward_impl_t(at::Tensor grad, const ForwardOutput& forward_out, co
                                                              n, n_mixtures, n_internal_nodes, n_nodes,
                                                              config);
         };
-        gpe::start_parallel<gpe::ComputeDevice::CPU>(gpe::device(mixture_view), dimGrid, dimBlock, fun);
+        gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(mixture_view), dimGrid, dimBlock, fun);
     }
 
 

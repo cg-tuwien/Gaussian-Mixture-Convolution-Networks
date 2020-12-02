@@ -4,7 +4,7 @@
 #include <cuda_runtime.h>
 #include <cstdint>
 
-#include <glm/glm.hpp>
+#include "math/gpe_glm.h"
 
 #include "math/scalar.h"
 #include "cuda_operations.h"

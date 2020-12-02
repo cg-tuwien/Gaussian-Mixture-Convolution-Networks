@@ -170,8 +170,8 @@ auto cwise_fun(const Array<T1, N2>& v,
     gpe::Array2d<ProductType, N1, N2> matrix;
     for (unsigned i = 0; i < N1; ++i) {
         for (unsigned j = 0; j < N2; ++j) {
-            const T2& a = v[j];
-            const T1& b = m[i][j];
+            const T1& a = v[j];
+            const T2& b = m[i][j];
             ProductType v = fun(a, b);
             matrix[i][j] = v;
         }

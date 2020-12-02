@@ -46,6 +46,7 @@ find_package(Torch REQUIRED)
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 ADD_DEFINITIONS(-DQT_NO_KEYWORDS)
+ADD_DEFINITIONS(-DGLM_FORCE_XYZW_ONLY)
 #ADD_DEFINITIONS(-DGPE_LIMIT_N_REDUCTION)
 find_package(QT NAMES Qt5 COMPONENTS Core Widgets REQUIRED)
 find_package(Qt5 COMPONENTS Core Widgets REQUIRED)
@@ -66,6 +67,7 @@ set(MY_INCLUDE_PATHS
 #    ../cub
     ../yamc/include
     ../gcem/include
+    ../autodiff
     .
 )
 
@@ -98,6 +100,7 @@ set(LBVH_SOURCES
     lbvh/utility.h)
 
 set(MATH_SOURCES
+    math/gpe_glm.h
     math/symeig.h
     math/symeig_cuda.h
     math/symeig_cpu.h
@@ -107,6 +110,11 @@ set(MATH_SOURCES
     math/symeig_cpu.cpp
     math/symeig_cuda.cpp
     math/symeig_cuda.cu)
+
+set(UTIL_SOURCES
+    util/autodiff.h
+    util/epsilon.h
+    util/cuda.h)
 
 set(EVALUATE_SOURCES
     evaluate_inversed/parallel_implementation.h
@@ -134,23 +142,9 @@ set(BVH_MHEM_FIT_SOURCES
     bvh_mhem_fit/implementation_common.h
     bvh_mhem_fit/implementation_dispatch.cpp
     bvh_mhem_fit/implementation_template_externs.h
+    bvh_mhem_fit/implementation_autodiff_backward.h
+    bvh_mhem_fit/implementation_autodiff_backward.cpp
     bvh_mhem_fit/implementation_backward.h
-    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_2_float_2.cu
-    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_2_float_3.cu
-    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_2_double_2.cu
-    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_2_double_3.cu
-    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_4_float_2.cu
-    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_4_float_3.cu
-    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_4_double_2.cu
-    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_4_double_3.cu
-    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_8_float_2.cu
-    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_8_float_3.cu
-    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_8_double_2.cu
-    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_8_double_3.cu
-    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_16_float_2.cu
-    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_16_float_3.cu
-    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_16_double_2.cu
-    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_16_double_3.cu
     bvh_mhem_fit/implementation_forward.h
     bvh_mhem_fit/implementation_forward_instances/template_instance_implementation_forward_2_float_2.cu
     bvh_mhem_fit/implementation_forward_instances/template_instance_implementation_forward_2_float_3.cu
@@ -168,12 +162,28 @@ set(BVH_MHEM_FIT_SOURCES
     bvh_mhem_fit/implementation_forward_instances/template_instance_implementation_forward_16_float_3.cu
     bvh_mhem_fit/implementation_forward_instances/template_instance_implementation_forward_16_double_2.cu
     bvh_mhem_fit/implementation_forward_instances/template_instance_implementation_forward_16_double_3.cu
+    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_2_float_2.cu
+    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_2_float_3.cu
+    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_2_double_2.cu
+    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_2_double_3.cu
+    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_4_float_2.cu
+    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_4_float_3.cu
+    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_4_double_2.cu
+    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_4_double_3.cu
+    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_8_float_2.cu
+    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_8_float_3.cu
+    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_8_double_2.cu
+    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_8_double_3.cu
+    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_16_float_2.cu
+    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_16_float_3.cu
+    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_16_double_2.cu
+    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_16_double_3.cu
 )
 
 add_executable(evaluate_inversed_tester ${COMMON_SOURCES} ${MATH_SOURCES} ${LBVH_SOURCES} ${EVALUATE_SOURCES} evaluate_inversed/test_runner.cpp)
 target_link_libraries(evaluate_inversed_tester PUBLIC OpenMP::OpenMP_CXX torch Qt5::Widgets)
 
-add_executable(bvh_mhem_fit_tester ${COMMON_SOURCES} ${MATH_SOURCES} ${LBVH_SOURCES} ${INTEGRATE_SOURCES} ${BVH_MHEM_FIT_SOURCES} ${EVALUATE_SOURCES} bvh_mhem_fit/bvh_fit_tester.cpp)
+add_executable(bvh_mhem_fit_tester ${COMMON_SOURCES} ${MATH_SOURCES} ${UTIL_SOURCES} ${LBVH_SOURCES} ${INTEGRATE_SOURCES} ${BVH_MHEM_FIT_SOURCES} ${EVALUATE_SOURCES} bvh_mhem_fit/bvh_fit_tester.cpp)
 target_link_libraries(bvh_mhem_fit_tester PUBLIC OpenMP::OpenMP_CXX torch Qt5::Widgets)
 
 #set(EM_FITTING_SOURCES

@@ -8,6 +8,8 @@
 
 #include <cuda_runtime.h>
 
+#include "util/autodiff.h"
+
 namespace gpe {
 
 namespace detail {
@@ -114,7 +116,7 @@ __forceinline__ __device__ bool isnan(T x) {
     return ::isnan(x);
 }
 
-#else
+#else // __CUDA_ARCH__
 
 template <typename scalar_t>
 inline scalar_t max(scalar_t a, scalar_t b) {
@@ -125,7 +127,6 @@ template <typename scalar_t>
 inline scalar_t min(scalar_t a, scalar_t b) {
     return std::min(a, b);
 }
-
 
 template <typename scalar_t>
 inline scalar_t exp(scalar_t x) {
@@ -157,8 +158,65 @@ inline bool isnan(T x) {
     return std::isnan(x);
 }
 
+#ifndef __CUDACC__
+using AutoDiffExpr = autodiff::reverse::ExprPtr<float>;
+using AutoDiffVariable = autodiff::Variable<float>;
 
-#endif
+inline AutoDiffVariable exp(AutoDiffExpr x) {
+    return autodiff::reverse::exp(x);
+}
+
+inline AutoDiffVariable pow(AutoDiffExpr x, AutoDiffExpr y) {
+    return autodiff::reverse::pow(x, y);
+}
+
+inline AutoDiffVariable log(AutoDiffExpr x) {
+    return autodiff::reverse::log(x);
+}
+
+inline AutoDiffVariable sqrt(AutoDiffExpr x) {
+    return autodiff::reverse::sqrt(x);
+}
+
+inline AutoDiffVariable abs(AutoDiffExpr x) {
+    return autodiff::reverse::abs(x);
+}
+
+inline bool isnan(AutoDiffExpr x) {
+    return std::isnan(x->val);
+}
+
+inline AutoDiffVariable exp(AutoDiffVariable x) {
+    return autodiff::reverse::exp(x);
+}
+
+inline AutoDiffVariable pow(AutoDiffVariable x, AutoDiffVariable y) {
+    return autodiff::reverse::pow(x, y);
+}
+inline AutoDiffVariable pow(AutoDiffVariable x, AutoDiffExpr y) {
+    return autodiff::reverse::pow(x.expr, y);
+}
+inline AutoDiffVariable pow(AutoDiffExpr x, AutoDiffVariable y) {
+    return autodiff::reverse::pow(x, y.expr);
+}
+
+inline AutoDiffVariable log(AutoDiffVariable x) {
+    return autodiff::reverse::log(x);
+}
+
+inline AutoDiffVariable sqrt(AutoDiffVariable x) {
+    return autodiff::reverse::sqrt(x);
+}
+
+inline AutoDiffVariable abs(AutoDiffVariable x) {
+    return autodiff::reverse::abs(x);
+}
+
+inline bool isnan(AutoDiffVariable x) {
+    return std::isnan(x.expr->val);
+}
+#endif //__CUDACC__
+#endif //not __CUDA_ARCH__
 
 template <typename scalar_t>
 __host__ __device__ __forceinline__ int sign(scalar_t v) {

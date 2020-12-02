@@ -1,5 +1,9 @@
 #!/bin/bash
 
+file_ending=$1
+if [ -z "$1" ]; then
+    file_ending='cu'
+fi
 
 n_reduction_list="2 4 8 16"
 floating_type_list="float double"
@@ -12,7 +16,7 @@ for direction in $direction_list; do
     for n_reduction in $n_reduction_list; do
         for floating_type in $floating_type_list; do
             for dimension in $dimension_list; do
-                filename="${parent_dir}/template_instance_implementation_${direction}_${n_reduction}_${floating_type}_${dimension}.cu"
+                filename="${parent_dir}/template_instance_implementation_${direction}_${n_reduction}_${floating_type}_${dimension}.${file_ending}"
                 if [[ -f "$filename" ]]; then
                     echo "$filename exists already"
                 else

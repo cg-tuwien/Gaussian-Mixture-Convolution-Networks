@@ -8,7 +8,7 @@
 
 #include <torch/extension.h>
 
-#include <glm/glm.hpp>
+#include "math/gpe_glm.h"
 
 #include "common.h"
 #include "math/symeig_detail.h"

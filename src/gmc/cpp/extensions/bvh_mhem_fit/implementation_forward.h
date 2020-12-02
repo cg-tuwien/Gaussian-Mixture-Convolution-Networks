@@ -1,9 +1,9 @@
 #include "bvh_mhem_fit/implementation.h"
 #include <stdio.h>
+#include <type_traits>
 
 #include <cuda.h>
 #include <cuda_runtime.h>
-#include <glm/matrix.hpp>
 #include <torch/types.h>
 
 #include "algorithms.h"
@@ -15,10 +15,13 @@
 #include "hacked_accessor.h"
 #include "lbvh/aabb.h"
 #include "lbvh/bvh.h"
+#include "math/gpe_glm.h"
 #include "math/matrix.h"
 #include "math/scalar.h"
 #include "mixture.h"
 #include "parallel_start.h"
+#include "util/autodiff.h"
+#include "util/cuda.h"
 
 // todo:
 // - in collect_result, run a new fitting with the most important node to fill up the remaining gaussian slots
@@ -47,7 +50,7 @@ EXECUTION_DEVICES scalar_t likelihood(const gpe::Gaussian<N_DIMS, scalar_t>& tar
     scalar_t target_normal_amplitudes = gpe::gaussian_amplitude(target.covariance);
     scalar_t wi_bar = N_VIRTUAL_POINTS * target.weight / target_normal_amplitudes;
     // pow(0, 0) gives nan in cuda with fast math
-    return gpe::pow(Epsilon<scalar_t>::clip(a * b), wi_bar);
+    return gpe::pow(gpe::Epsilon<scalar_t>::clip(a * b), wi_bar);
 }
 
 template <typename scalar_t, int N_DIMS>
@@ -181,7 +184,7 @@ gpe::Gaussian<N_DIMS, scalar_t> averageCluster(const gpe::Vector<gpe::Gaussian<N
         assert(glm::determinant(gaussian.covariance) > 0);
         new_gaussian.covariance += gaussian.weight * gaussian.covariance;
     }
-    if (gpe::abs(new_gaussian.weight) < Epsilon<scalar_t>::large) {
+    if (gpe::abs(new_gaussian.weight) < gpe::Epsilon<scalar_t>::large) {
         new_gaussian.covariance = typename G::cov_t(1.0);
         assert(glm::determinant(new_gaussian.covariance) > 0);
     }
@@ -193,9 +196,9 @@ gpe::Gaussian<N_DIMS, scalar_t> averageCluster(const gpe::Vector<gpe::Gaussian<N
 //        new_gaussian.weight /= scalar_t(cluster_indices.size());
         assert(glm::determinant(new_gaussian.covariance) > 0);
     }
-    assert(std::isnan(new_gaussian.weight) == false);
-    assert(std::isnan(glm::dot(new_gaussian.position, new_gaussian.position)) == false);
-    assert(std::isnan(glm::determinant(new_gaussian.covariance)) == false);
+    assert(gpe::isnan(new_gaussian.weight) == false);
+    assert(gpe::isnan(glm::dot(new_gaussian.position, new_gaussian.position)) == false);
+    assert(gpe::isnan(glm::determinant(new_gaussian.covariance)) == false);
 
     return new_gaussian;
 };
@@ -221,7 +224,7 @@ gpe::Gaussian<N_DIMS, scalar_t> averageCluster_corrected(const gpe::Vector<gpe::
         assert(glm::determinant(gaussian.covariance) > 0);
         new_gaussian.covariance += weight * gaussian.covariance;
     }
-    if (gpe::abs(new_gaussian.weight) < Epsilon<scalar_t>::large) {
+    if (gpe::abs(new_gaussian.weight) < gpe::Epsilon<scalar_t>::large) {
         new_gaussian.covariance = typename G::cov_t(1.0);
         assert(glm::determinant(new_gaussian.covariance) > 0);
     }
@@ -234,9 +237,9 @@ gpe::Gaussian<N_DIMS, scalar_t> averageCluster_corrected(const gpe::Vector<gpe::
 //        new_gaussian.weight /= scalar_t(cluster_indices.size());
         assert(glm::determinant(new_gaussian.covariance) > 0);
     }
-    assert(std::isnan(new_gaussian.weight) == false);
-    assert(std::isnan(glm::dot(new_gaussian.position, new_gaussian.position)) == false);
-    assert(std::isnan(glm::determinant(new_gaussian.covariance)) == false);
+    assert(gpe::isnan(new_gaussian.weight) == false);
+    assert(gpe::isnan(glm::dot(new_gaussian.position, new_gaussian.position)) == false);
+    assert(gpe::isnan(glm::determinant(new_gaussian.covariance)) == false);
 
     return new_gaussian;
 };
@@ -259,9 +262,9 @@ gpe::Gaussian<N_DIMS, scalar_t> maxWeight(const gpe::Vector<gpe::Gaussian<N_DIMS
             new_gaussian = gaussian;
         }
     }
-    assert(std::isnan(new_gaussian.weight) == false);
-    assert(std::isnan(glm::dot(new_gaussian.position, new_gaussian.position)) == false);
-    assert(std::isnan(glm::determinant(new_gaussian.covariance)) == false);
+    assert(gpe::isnan(new_gaussian.weight) == false);
+    assert(gpe::isnan(glm::dot(new_gaussian.position, new_gaussian.position)) == false);
+    assert(gpe::isnan(glm::determinant(new_gaussian.covariance)) == false);
 
     return new_gaussian;
 };
@@ -283,9 +286,9 @@ gpe::Gaussian<N_DIMS, scalar_t> maxIntegral(const gpe::Vector<gpe::Gaussian<N_DI
             new_gaussian = gaussian;
         }
     }
-    assert(std::isnan(new_gaussian.weight) == false);
-    assert(std::isnan(glm::dot(new_gaussian.position, new_gaussian.position)) == false);
-    assert(std::isnan(glm::determinant(new_gaussian.covariance)) == false);
+    assert(gpe::isnan(new_gaussian.weight) == false);
+    assert(gpe::isnan(glm::dot(new_gaussian.position, new_gaussian.position)) == false);
+    assert(gpe::isnan(glm::determinant(new_gaussian.covariance)) == false);
 
     return new_gaussian;
 };
@@ -295,7 +298,7 @@ EXECUTION_DEVICES
 gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_GAUSSIANS> normalise_mixture(const gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_GAUSSIANS>& mixture, scalar_t* abs_integral_ptr = nullptr) {
     using G = gpe::Gaussian<N_DIMS, scalar_t>;
     scalar_t abs_integral = gpe::reduce(mixture, scalar_t(0), [](scalar_t i, const G& g) { return i + gpe::abs(gpe::integrate(g)); });
-    abs_integral = Epsilon<scalar_t>::clip(abs_integral);
+    abs_integral = gpe::Epsilon<scalar_t>::clip(abs_integral);
     if (abs_integral_ptr)
         *abs_integral_ptr = abs_integral;
 
@@ -306,19 +309,21 @@ template <unsigned N_FITTING, typename scalar_t, int N_DIMS, unsigned N_TARGET>
 EXECUTION_DEVICES
 gpe::Array<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_initial(const gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_TARGET>& target_double_gmm, const BvhMhemFitConfig& config) {
     using G = gpe::Gaussian<N_DIMS, scalar_t>;
+    using gradless_scalar_t = gpe::remove_grad_t<scalar_t>;
 
 //    // enable for testing the tree walking without em
-//    // change factor computation below to "auto factor = abs_integral / Epsilon<scalar_t>::clip(result_integral);"
+//    // change factor computation below to "auto factor = abs_integral / gpe::Epsilon<scalar_t>::clip(result_integral);"
 //    scalar_t abs_integral;
 //    const gpe::Vector<G, N_TARGET> target_double_gmm = normalise_mixture(target, &abs_integral);
 
-    gpe::Vector2d<scalar_t, N_TARGET, N_TARGET> disparity_matrix;
+    gpe::Vector2d<gradless_scalar_t, N_TARGET, N_TARGET> disparity_matrix;
+    gpe::Vector<gpe::Gaussian<N_DIMS, gradless_scalar_t>, N_TARGET> target_double_gmm_without_grad = gpe::removeGrad(target_double_gmm);
     switch (config.fit_initial_disparity_method) {
     case BvhMhemFitConfig::FitInitialDisparityMethod::CentroidDistance:
-        disparity_matrix = gpe::outer_product(target_double_gmm, target_double_gmm, centroid_distance<scalar_t, N_DIMS>);   // returns gpe::Vector<gpe::Vector>
+        disparity_matrix = gpe::outer_product(target_double_gmm_without_grad, target_double_gmm_without_grad, centroid_distance<gradless_scalar_t, N_DIMS>);   // returns gpe::Vector<gpe::Vector>
         break;
     case BvhMhemFitConfig::FitInitialDisparityMethod::Likelihood:
-        disparity_matrix = gpe::outer_product(target_double_gmm, target_double_gmm, likelihood<scalar_t, N_DIMS>);   // returns gpe::Vector<gpe::Vector>
+        disparity_matrix = gpe::outer_product(target_double_gmm_without_grad, target_double_gmm_without_grad, likelihood<gradless_scalar_t, N_DIMS>);   // returns gpe::Vector<gpe::Vector>
         for (unsigned i = 0; i < disparity_matrix.size(); ++i) {
             for (unsigned j = i + 1; j < disparity_matrix[i].size(); ++j) {
                 disparity_matrix[i][j] = gpe::min(-disparity_matrix[i][j], -disparity_matrix[j][i]);
@@ -326,7 +331,7 @@ gpe::Array<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_initial(const gpe::Ve
         }
         break;
     case BvhMhemFitConfig::FitInitialDisparityMethod::KLDivergence:
-        disparity_matrix = gpe::outer_product(target_double_gmm, target_double_gmm, kl_divergence<scalar_t, N_DIMS>);   // returns gpe::Vector<gpe::Vector>
+        disparity_matrix = gpe::outer_product(target_double_gmm_without_grad, target_double_gmm_without_grad, kl_divergence<gradless_scalar_t, N_DIMS>);   // returns gpe::Vector<gpe::Vector>
         for (unsigned i = 0; i < disparity_matrix.size(); ++i) {
             for (unsigned j = i + 1; j < disparity_matrix[i].size(); ++j) {
                 disparity_matrix[i][j] = gpe::min(disparity_matrix[i][j], disparity_matrix[j][i]);
@@ -374,6 +379,10 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_em(const gpe::Vector
     using G = gpe::Gaussian<N_DIMS, scalar_t>;
     using pos_t = typename G::pos_t;
     using cov_t = typename G::cov_t;
+    using gradless_scalar_t = gpe::remove_grad_t<scalar_t>;
+    #ifndef __CUDACC__
+    static_assert (std::is_same_v<gradless_scalar_t, float> || std::is_same_v<gradless_scalar_t, double>, "gradless should be either float or double");
+    #endif
 
     namespace fun = gpe::functors;
 
@@ -386,18 +395,17 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_em(const gpe::Vector
     const auto fitting_double_gmm = fit_initial<N_FITTING>(target_double_gmm_vector, config);
     const auto target_double_gmm = gpe::to_array(target_double_gmm_vector, G{0, pos_t(0), cov_t(1)});
 
-
-    const auto likelihood_matrix = gpe::outer_product(target_double_gmm, fitting_double_gmm, likelihood<scalar_t, N_DIMS>);
-    const auto kldiv_sign_matrix = gpe::outer_product(target_double_gmm, fitting_double_gmm, [](auto target, auto fitting) {
-        return (gpe::sign(fitting.weight) == gpe::sign(target.weight)) ? kl_divergence<scalar_t, N_DIMS>(target, fitting) : scalar_t(0);
+    const auto likelihood_matrix = gpe::outer_product(gpe::removeGrad(target_double_gmm), gpe::removeGrad(fitting_double_gmm), likelihood<gradless_scalar_t, N_DIMS>);
+    const auto kldiv_sign_matrix = gpe::outer_product(gpe::removeGrad(target_double_gmm), gpe::removeGrad(fitting_double_gmm), [](auto target, auto fitting) {
+        return (gpe::sign(fitting.weight) == gpe::sign(target.weight)) ? kl_divergence<gradless_scalar_t, N_DIMS>(target, fitting) : gradless_scalar_t(0);
     });
 
-    scalar_t kl_div_threshold = scalar_t(config.em_kl_div_threshold);
-    auto clamp_matrix = gpe::transform(kldiv_sign_matrix, [kl_div_threshold](scalar_t v) { return v < kl_div_threshold ? scalar_t(1) : scalar_t(0); });
+    auto kl_div_threshold = gradless_scalar_t(config.em_kl_div_threshold);
+    auto clamp_matrix = gpe::transform(kldiv_sign_matrix, [kl_div_threshold](gradless_scalar_t v) { return v < kl_div_threshold ? gradless_scalar_t(1) : gradless_scalar_t(0); });
     for (unsigned target_id = 0; target_id < clamp_matrix.size(); ++target_id) {
         auto& row = kldiv_sign_matrix[target_id];
         unsigned best_fitting_id = unsigned(-1);
-        scalar_t smallest_value = std::numeric_limits<scalar_t>::infinity();
+        auto smallest_value = std::numeric_limits<gradless_scalar_t>::infinity();
         for (unsigned fitting_id = 0; fitting_id < row.size(); ++fitting_id) {
             if (row[fitting_id] < smallest_value) {
                 smallest_value = row[fitting_id];
@@ -405,16 +413,16 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_em(const gpe::Vector
             }
         }
         assert(best_fitting_id < N_FITTING);
-        clamp_matrix[target_id][best_fitting_id] = scalar_t(1);  // no change if largest value was > kl_div_threshold.
+        clamp_matrix[target_id][best_fitting_id] = gradless_scalar_t(1);  // no change if largest value was > kl_div_threshold.
     }
 
     const auto pure_fitting_weights = gpe::transform(fitting_double_gmm, [](const G& g) { return gpe::abs(g.weight) / gpe::gaussian_amplitude(g.covariance); });
-    const auto weighted_likelihood_matrix = gpe::cwise_fun(pure_fitting_weights, likelihood_matrix, fun::times<scalar_t>);
-    const auto weighted_likelihood_clamped_matrix = gpe::cwise_fun(gpe::transform(weighted_likelihood_matrix, Epsilon<scalar_t>::clip), clamp_matrix, fun::times<scalar_t>);
+    const auto weighted_likelihood_matrix = gpe::cwise_fun(pure_fitting_weights, likelihood_matrix, fun::times<scalar_t, gradless_scalar_t>);
+    const auto weighted_likelihood_clamped_matrix = gpe::cwise_fun(gpe::transform(weighted_likelihood_matrix, gpe::Epsilon<scalar_t>::clip), clamp_matrix, fun::times<scalar_t, gradless_scalar_t>);
     const auto weighted_likelihood_sum = gpe::reduce_rows(weighted_likelihood_clamped_matrix, scalar_t(0), fun::plus<scalar_t>);
     const auto responsibilities_1 = gpe::cwise_fun(weighted_likelihood_clamped_matrix, weighted_likelihood_sum, fun::divided_AbyB<scalar_t>);
     assert(!has_nan(responsibilities_1));
-    gradient_cache_data->responsibilities_1 = responsibilities_1;
+    gradient_cache_data->responsibilities_1 = gpe::removeGrad(responsibilities_1);
 
     const auto pure_target_weights = gpe::transform(target_double_gmm, [](const G& g) { return gpe::abs(g.weight) / gpe::gaussian_amplitude(g.covariance); });
     const auto responsibilities_2 = gpe::cwise_fun(responsibilities_1, pure_target_weights, fun::times<scalar_t>);
@@ -422,7 +430,7 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_em(const gpe::Vector
 
     const auto newWeights = gpe::reduce_cols(responsibilities_2, scalar_t(0), fun::plus<scalar_t>);
 
-    const auto responsibilities_3 = gpe::cwise_fun(gpe::transform(newWeights, Epsilon<scalar_t>::clip), responsibilities_2, fun::divided_BbyA<scalar_t>);
+    const auto responsibilities_3 = gpe::cwise_fun(gpe::transform(newWeights, gpe::Epsilon<scalar_t>::clip), responsibilities_2, fun::divided_BbyA<scalar_t>);
     assert(!has_nan(responsibilities_3));
     assert(!gpe::reduce(responsibilities_3, false, [](bool o, scalar_t v) { return o || v < 0; }));
 
@@ -438,8 +446,8 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_em(const gpe::Vector
     const auto weightedCovs = gpe::cwise_fun(responsibilities_3, unweightedCovs, [](scalar_t r, const cov_t& cov) { return r * cov; });
     auto newCovariances = gpe::reduce_cols(weightedCovs, cov_t(0), fun::plus<cov_t>);
     newCovariances = gpe::cwise_fun(newCovariances, newWeights, [](cov_t cov, scalar_t w) {
-        if (w < Epsilon<scalar_t>::large)
-            cov += cov_t(1) * Epsilon<scalar_t>::large;
+        if (w < gpe::Epsilon<scalar_t>::large)
+            cov += cov_t(1) * scalar_t(gpe::Epsilon<scalar_t>::large);
         return cov;
     });
     assert(!has_nan(newCovariances));
@@ -481,7 +489,7 @@ template <typename scalar_t, int N_DIMS, int REDUCTION_N>
 EXECUTION_DEVICES
 void iterate_over_nodes(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
                         const dim3& gpe_blockIdx, const dim3& gpe_threadIdx,
-                        gpe::PackedTensorAccessor32<scalar_t, 3> mixture,
+                        const gpe::PackedTensorAccessor32<gpe::Gaussian<N_DIMS, scalar_t>, 2> mixture,
                         const gpe::PackedTensorAccessor32<node_index_torch_t, 3> nodes,
                         const gpe::PackedTensorAccessor32<scalar_t, 3> aabbs,
                         gpe::PackedTensorAccessor32<int, 2> flags,
@@ -529,7 +537,7 @@ void iterate_over_nodes(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
             bvh.per_node_attributes[node_id].n_child_leaves = bvh.per_node_attributes[node->left_idx].n_child_leaves + bvh.per_node_attributes[node->right_idx].n_child_leaves;
             bvh.per_node_attributes[node_id].gm_integral = bvh.per_node_attributes[node->left_idx].gm_integral + bvh.per_node_attributes[node->right_idx].gm_integral;
 
-            auto child_gaussians = bvh.collect_child_gaussians(node, Epsilon<scalar_t>::large);
+            auto child_gaussians = bvh.collect_child_gaussians(node, gpe::Epsilon<scalar_t>::large);
             if (child_gaussians.size() > REDUCTION_N) {
                 bvh.per_node_attributes[node_id].gaussians = fit_em<REDUCTION_N>(child_gaussians, &(bvh.per_node_attributes[node_id].gradient_cache_data), config);
             }
@@ -543,8 +551,8 @@ void iterate_over_nodes(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
 template <typename scalar_t, int N_DIMS, int REDUCTION_N, int N_MAX_TARGET_COMPS = 1024>
 EXECUTION_DEVICES void collect_result(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
                                       const dim3& gpe_blockIdx, const dim3& gpe_threadIdx,
-                                      const gpe::PackedTensorAccessor32<scalar_t, 3> mixture,
-                                      gpe::PackedTensorAccessor32<scalar_t, 3> out_mixture,
+                                      const gpe::PackedTensorAccessor32<gpe::Gaussian<N_DIMS, scalar_t>, 2> mixture,
+                                      gpe::PackedTensorAccessor32<gpe::Gaussian<N_DIMS, scalar_t>, 2> out_mixture,
                                       const gpe::PackedTensorAccessor32<node_index_torch_t, 3> nodes,
                                       const gpe::PackedTensorAccessor32<scalar_t, 3> aabbs,
                                       gpe::PackedTensorAccessor32<int, 2> flags,
@@ -571,13 +579,13 @@ EXECUTION_DEVICES void collect_result(const dim3& gpe_gridDim, const dim3& gpe_b
     gpe::Vector<node_index_t, N_MAX_TARGET_COMPS> selectedNodes;
 
     unsigned n_selected_components = 0;
-    auto compute_rating = [&](node_index_t node_id) {
+    auto compute_rating = [&](node_index_t node_id) -> scalar_t {
         assert(node_id < n_nodes);
         // todo: will break with negative weights, should compute sum of abs integrals / seperately positive and negative integrals
         if (bvh.per_node_attributes[node_id].gaussians.size() < REDUCTION_N)
-            return scalar_t(-2); // -2 so it's safely below -1 from cach_id_with_highest_rating
+            return -2; // -2 so it's safely below -1 from cach_id_with_highest_rating
         else
-            return std::abs(bvh.per_node_attributes[node_id].gm_integral);
+            return gpe::abs(bvh.per_node_attributes[node_id].gm_integral);
     };
     auto cach_id_with_highest_rating = [&]() {
         scalar_t rating = -1;
@@ -624,7 +632,7 @@ EXECUTION_DEVICES void collect_result(const dim3& gpe_gridDim, const dim3& gpe_b
 
         for (unsigned j = 0; j < destination_attribute.gaussians.size(); ++j) {
             assert(write_position < config.n_components_fitting);
-            gpe::gaussian<N_DIMS>(out_mixture[mixture_id][int(write_position++)]) = destination_attribute.gaussians[j];
+            out_mixture[mixture_id][int(write_position++)] = destination_attribute.gaussians[j];
         }
     }
 }
@@ -660,10 +668,10 @@ ForwardOutput forward_impl_t(at::Tensor mixture, const BvhMhemFitConfig& config)
     auto flags_a = gpe::accessor<int, 2>(flag_container);
     auto node_attributes = torch::zeros({n_mixtures, n_nodes, sizeof(typename AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>::NodeAttributes)}, torch::TensorOptions(mixture.device()).dtype(torch::ScalarType::Byte));
 
-    auto mixture_a = gpe::accessor<scalar_t, 3>(mixture);
+    auto mixture_a = gpe::struct_accessor<typename gpe::Gaussian<N_DIMS, scalar_t>, 2, scalar_t>(mixture);
     auto nodes_a = gpe::accessor<lbvh::detail::Node::index_type_torch, 3>(flat_bvh_nodes);
     auto aabbs_a = gpe::accessor<scalar_t, 3>(flat_bvh_aabbs);
-    auto node_attributes_a = gpe::struct_accessor<typename AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>::NodeAttributes, 2>(node_attributes);
+    auto node_attributes_a = gpe::struct_accessor<typename AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>::NodeAttributes, 2, uint8_t>(node_attributes);
 
     {
         dim3 dimBlock = dim3(32, 1, 1);
@@ -678,12 +686,12 @@ ForwardOutput forward_impl_t(at::Tensor mixture, const BvhMhemFitConfig& config)
                                                               n, n_mixtures, n_internal_nodes, n_nodes,
                                                               config);
         };
-        gpe::start_parallel<gpe::ComputeDevice::CPU>(gpe::device(mixture), dimGrid, dimBlock, fun);
+        gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(mixture), dimGrid, dimBlock, fun);
     }
 
     auto out_mixture = torch::zeros({n_mixtures, config.n_components_fitting, mixture.size(-1)}, torch::TensorOptions(mixture.device()).dtype(mixture.dtype()));
     gpe::covariances(out_mixture) = torch::eye(n.dims, torch::TensorOptions(mixture.device()).dtype(mixture.dtype()));
-    auto out_mixture_a = gpe::accessor<scalar_t, 3>(out_mixture);
+    auto out_mixture_a = gpe::struct_accessor<gpe::Gaussian<N_DIMS, scalar_t>, 2, scalar_t>(out_mixture);
 
     // make it valid, in case something doesn't get filled (due to an inbalance of the tree or just not enough elements)
     {
@@ -698,7 +706,7 @@ ForwardOutput forward_impl_t(at::Tensor mixture, const BvhMhemFitConfig& config)
                                                           n, n_mixtures, n_internal_nodes, n_nodes,
                                                           config);
         };
-        gpe::start_parallel<gpe::ComputeDevice::CPU>(gpe::device(mixture), dimGrid, dimBlock, fun);
+        gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(mixture), dimGrid, dimBlock, fun);
     }
 
     return ForwardOutput{out_mixture.view({n.batch, n.layers, config.n_components_fitting, -1}),

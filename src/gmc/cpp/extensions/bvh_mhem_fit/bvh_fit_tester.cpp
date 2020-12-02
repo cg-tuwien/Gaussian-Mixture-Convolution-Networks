@@ -15,17 +15,19 @@
 #include "mixture.h"
 #include "evaluate_inversed/parallel_binding.h"
 #include "bvh_mhem_fit/implementation.h"
+#include "bvh_mhem_fit/implementation_autodiff_backward.h"
 #include "integrate/binding.h"
 
-constexpr uint N_BATCHES = 10;
+constexpr uint N_BATCHES = 1;
 constexpr uint CONVOLUTION_LAYER_START = 0;
 constexpr uint CONVOLUTION_LAYER_END = 3;
 constexpr uint LIMIT_N_BATCH = 100;
 constexpr bool USE_CUDA = false;
 constexpr bool BACKWARD = true;
-constexpr bool RENDER = false;
+constexpr bool RENDER = true;
 constexpr uint RESOLUTION = 128;
 constexpr bool DO_STATS = false;
+constexpr uint N_FITTING_COMPONENTS = 2;
 
 torch::Tensor render(torch::Tensor mixture, const int resolution, const int n_batch_limit) {
     using namespace torch::indexing;
@@ -138,7 +140,7 @@ int main(int argc, char *argv[]) {
                                              ", " + std::to_string(int(fit_initial_disparity_method)) +
                                              ", " + std::to_string(int(fit_initial_cluster_merge_method)) +
                                              ", " + std::to_string(int(em_kl_div_threshold * 10)),
-                                             BvhMhemFitConfig{reduction_n, lbvh::Config{morton_code_algorithm}, fit_initial_disparity_method, fit_initial_cluster_merge_method, em_kl_div_threshold, 2});
+                                             BvhMhemFitConfig{reduction_n, lbvh::Config{morton_code_algorithm}, fit_initial_disparity_method, fit_initial_cluster_merge_method, em_kl_div_threshold, N_FITTING_COMPONENTS});
 //                        goto outoutoutoutout;
                     }
                 }
@@ -157,7 +159,7 @@ int main(int argc, char *argv[]) {
             for (uint i = 0; i < CONVOLUTION_LAYER_END - CONVOLUTION_LAYER_START; i++) {
                 assert(i + CONVOLUTION_LAYER_START < 3);
 //                auto mixture = container.attr(std::to_string(i + CONVOLUTION_LAYER_START)).toTensor();
-//                mixture = mixture.index({Slice(), Slice(2,3), Slice(), Slice()});
+//                mixture = mixture.index({Slice(0,1), Slice(0,1), Slice(0,8), Slice()});
                 auto mixture = torch::tensor({{0.5f,  5.0f,  5.0f,  4.0f, -0.5f, -0.5f,  4.0f},
                                               {0.5f,  8.0f,  8.0f,  4.0f, -2.5f, -2.5f,  4.0f},
                                               {0.5f, 20.0f, 10.0f,  5.0f,  0.0f,  0.0f,  7.0f},
@@ -184,13 +186,18 @@ int main(int argc, char *argv[]) {
 
                 if (BACKWARD) {
                     auto mixture_copy = mixture.clone();
+                    bvh_mhem_fit::implementation_autodiff_backward<2, float, 2>(mixture_copy.cpu().clone(), named_config.second);
                     for (int i = 0; i < 100; ++i) {
                         std::cout << "step " << i << std::endl;
                         auto forward_out = bvh_mhem_fit::forward_impl(mixture_copy, named_config.second);
                         std::cout << "forward_out.fitting: " << forward_out.fitting << std::endl;
-                        auto target = torch::tensor({{0.5f,  5.0f,  5.0f,  4.0f, -2.5f, -2.5f,  4.0f},
-                                                     {2.5f, 20.0f, 20.0f,  5.0f,  0.5f,  0.5f,  7.0f}}).view({1, 1, 2, 7});
-                        auto gradient_fitting = forward_out.fitting - target;
+//                        auto target = torch::tensor({{0.5f,  5.0f,  5.0f,  4.0f, -2.5f, -2.5f,  4.0f},
+//                                                     {2.5f, 20.0f, 20.0f,  5.0f,  0.5f,  0.5f,  7.0f}}).view({1, 1, 2, 7});
+//                        auto gradient_fitting = forward_out.fitting.cpu() - target;
+                        auto gradient_fitting = torch::tensor({{1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f},
+                                                               {1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f}}).view({1, 1, 2, 7});
+                        if (USE_CUDA)
+                            gradient_fitting = gradient_fitting.cuda();
                         std::cout << "gradient_fitting: " << gradient_fitting << std::endl;
                         auto gradient_target = bvh_mhem_fit::backward_impl(gradient_fitting, forward_out, named_config.second);
                         std::cout << "gradient_target: " << gradient_target << std::endl;

@@ -3,7 +3,7 @@
 
 #include <thrust/tuple.h>
 
-#include <glm/glm.hpp>
+#include "math/gpe_glm.h"
 
 #include "math/scalar.h"
 #include "math/matrix.h"

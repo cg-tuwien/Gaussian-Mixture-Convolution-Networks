@@ -7,7 +7,6 @@
 #include <cuda_runtime.h>
 #include <torch/script.h>
 
-#include <glm/glm.hpp>
 
 #include "common.h"
 #include "mixture.h"
@@ -16,6 +15,7 @@
 #include "lbvh/bvh.h"
 #include "lbvh/query.h"
 #include "lbvh/predicator.h"
+#include "math/gpe_glm.h"
 
 #include "hacked_accessor.h"
 #include "parallel_start.h"
