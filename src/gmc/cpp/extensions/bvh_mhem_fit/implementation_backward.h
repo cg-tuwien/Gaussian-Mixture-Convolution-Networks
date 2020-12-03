@@ -58,10 +58,10 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_TARGET> grad_em(const gpe::Vector
         return abs_integral * fitting_grad.weight * gpe::gaussian_amplitude(fitting_gaussian.covariance);
     });
     const auto& responsibilities_1 = gradient_cache_data.responsibilities_1; // N_TARGET x N_FITTING
-    const auto target_grad_weight_2 = gpe::cwise_fun(fitting_grad_weight_1, responsibilities_1, fun::times<scalar_t>);
-    assert(!has_nan(target_grad_weight_2));
+    const auto grad_weight_2 = gpe::cwise_fun(fitting_grad_weight_1, responsibilities_1, fun::times<scalar_t>);
+    const auto target_grad_weight_3 = gpe::reduce_rows(grad_weight_2, scalar_t(0), fun::plus<scalar_t>);
+    assert(!has_nan(target_grad_weight_3));
 
-    const gpe::Array<scalar_t, N_TARGET> target_grad_weight_3 = gpe::reduce_rows(target_grad_weight_2, scalar_t(0), fun::plus<scalar_t>);
     const auto target_grad_weight_4 = gpe::cwise_fun(target_grad_weight_3, target_array, [abs_integral](scalar_t weight_grad, const G& target_gaussian) {
         return weight_grad / (gpe::gaussian_amplitude(target_gaussian.covariance) * abs_integral);
     });
