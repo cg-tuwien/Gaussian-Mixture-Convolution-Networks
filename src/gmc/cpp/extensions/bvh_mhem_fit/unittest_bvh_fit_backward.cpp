@@ -105,7 +105,9 @@ int main(int argc, char *argv[]) {
             show(gt_rendering, RESOLUTION, 1);
         }
 
-        auto autodiff_out = bvh_mhem_fit::implementation_autodiff_backward<2, float, 2>(mixture, gradient_fitting, config);
+        auto autodiff_out = bvh_mhem_fit::implementation_autodiff_backward<2, float, 2>(mixture/*.to(torch::ScalarType::Double)*/,
+                                                                                         gradient_fitting/*.to(torch::ScalarType::Double)*/,
+                                                                                         config);
         auto forward_out = bvh_mhem_fit::forward_impl(mixture, config);
         auto gradient_target = bvh_mhem_fit::backward_impl(gradient_fitting, forward_out, config);
 

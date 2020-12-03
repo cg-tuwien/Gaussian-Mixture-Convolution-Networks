@@ -134,6 +134,10 @@ gpe::Gaussian<N_DIMS, scalar_t> removeGrad(const gpe::Gaussian<N_DIMS, autodiff:
     r.covariance = removeGrad(g.covariance);
     return r;
 }
+template <int N_DIMS, typename scalar_t>
+gpe::Gaussian<N_DIMS, scalar_t> removeGrad(const gpe::Gaussian<N_DIMS, scalar_t>& g) {
+    return g;
+}
 #endif
 
 template<typename scalar_t>

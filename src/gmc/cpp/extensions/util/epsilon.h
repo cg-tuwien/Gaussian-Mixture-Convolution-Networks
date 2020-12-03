@@ -23,10 +23,18 @@ struct Epsilon<double> {
 #ifndef __CUDACC__
 template<>
 struct Epsilon<autodiff::Variable<float>> {
-    static constexpr float small = 0.00000000000000000000000000000000001;
-    static constexpr float large = 0.0000000000000001;
+    static constexpr float small = 0.00000000000000000000000000000000001f;
+    static constexpr float large = 0.0000000000000001f;
     static EXECUTION_DEVICES autodiff::Variable<float> clip(autodiff::Variable<float> v) {
         return gpe::max(v, autodiff::Variable<float>(small));
+    }
+};
+template<>
+struct Epsilon<autodiff::Variable<double>> {
+    static constexpr double small = 0.00000000000000000000000000000000001;
+    static constexpr double large = 0.0000000000000001;
+    static EXECUTION_DEVICES autodiff::Variable<double> clip(autodiff::Variable<double> v) {
+        return gpe::max(v, autodiff::Variable<double>(small));
     }
 };
 #endif

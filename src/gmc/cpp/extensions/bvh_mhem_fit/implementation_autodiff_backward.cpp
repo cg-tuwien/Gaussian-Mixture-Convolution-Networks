@@ -116,7 +116,7 @@ ForwardBackWardOutput implementation_autodiff_backward(torch::Tensor mixture, co
     // backprop
     {
         auto gradient = gradient_fitting.view({n_mixtures * int(config.n_components_fitting), -1});
-        auto gradient_a = gpe::struct_accessor<gpe::Gaussian<N_DIMS, scalar_t>, 1, float>(gradient);
+        auto gradient_a = gpe::struct_accessor<gpe::Gaussian<N_DIMS, scalar_t>, 1, scalar_t>(gradient);
         int g_index = 0;
         for(AutoDiffGaussian& g : out_mixture) {
             auto& w = g.weight;
@@ -134,7 +134,7 @@ ForwardBackWardOutput implementation_autodiff_backward(torch::Tensor mixture, co
 
     // extract
     ForwardBackWardOutput out;
-    out.output = torch::zeros({n_mixtures * int(config.n_components_fitting), mixture.size(-1)});
+    out.output = torch::zeros({n_mixtures * int(config.n_components_fitting), mixture.size(-1)}, torch::TensorOptions(mixture.dtype()));
     auto output_a = gpe::accessor<scalar_t, 2>(out.output);
     int index = 0;
     for(const AutoDiffGaussian& g : out_mixture) {
@@ -149,7 +149,7 @@ ForwardBackWardOutput implementation_autodiff_backward(torch::Tensor mixture, co
     }
     out.output = out.output.view({n.batch, n.layers, config.n_components_fitting, -1});
 
-    out.mixture_gradient = torch::zeros({n_mixtures * n.components, mixture.size(-1)});
+    out.mixture_gradient = torch::zeros({n_mixtures * n.components, mixture.size(-1)}, torch::TensorOptions(mixture.dtype()));
     auto mixture_gradient_a = gpe::accessor<scalar_t, 2>(out.mixture_gradient);
     index = 0;
     for(const AutoDiffGaussian& g : mixture_autodiff) {

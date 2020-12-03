@@ -36,13 +36,7 @@ using remove_grad_t = typename remove_grad<scalar>::type;
 
 #ifndef __CUDACC__
 template<typename T>
-T& removeGrad(T& v) {
-    static_assert (std::is_floating_point<T>::value, "should be a basic float or double type");
-    return v;
-}
-
-template<typename T>
-const T& removeGrad(const T& v) {
+T removeGrad(const T& v) {
     static_assert (std::is_floating_point<T>::value, "should be a basic float or double type");
     return v;
 }
@@ -65,6 +59,18 @@ glm::vec<N_DIMS, scalar_t> removeGrad(const glm::vec<N_DIMS, autodiff::Variable<
     }
     return r;
 }
+template <int N_DIMS, typename scalar_t>
+glm::vec<N_DIMS, scalar_t> removeGrad(const glm::vec<N_DIMS, autodiff::reverse::ExprPtr<scalar_t>>& v) {
+    glm::vec<N_DIMS, scalar_t> r;
+    for (int i = 0; i < N_DIMS; ++i) {
+        r[i] = removeGrad(v[i]);
+    }
+    return r;
+}
+template <int N_DIMS, typename scalar_t>
+glm::vec<N_DIMS, scalar_t> removeGrad(const glm::vec<N_DIMS, scalar_t>& v) {
+    return v;
+}
 
 template <int N_DIMS, typename scalar_t>
 glm::mat<N_DIMS, N_DIMS, scalar_t> removeGrad(const glm::mat<N_DIMS, N_DIMS, autodiff::Variable<scalar_t>>& v) {
@@ -74,16 +80,6 @@ glm::mat<N_DIMS, N_DIMS, scalar_t> removeGrad(const glm::mat<N_DIMS, N_DIMS, aut
     }
     return r;
 }
-
-template <int N_DIMS, typename scalar_t>
-glm::vec<N_DIMS, scalar_t> removeGrad(const glm::vec<N_DIMS, autodiff::reverse::ExprPtr<scalar_t>>& v) {
-    glm::vec<N_DIMS, scalar_t> r;
-    for (int i = 0; i < N_DIMS; ++i) {
-        r[i] = removeGrad(v[i]);
-    }
-    return r;
-}
-
 template <int N_DIMS, typename scalar_t>
 glm::mat<N_DIMS, N_DIMS, scalar_t> removeGrad(const glm::mat<N_DIMS, N_DIMS, autodiff::reverse::ExprPtr<scalar_t>>& v) {
     glm::mat<N_DIMS, N_DIMS, scalar_t> r;
@@ -92,13 +88,17 @@ glm::mat<N_DIMS, N_DIMS, scalar_t> removeGrad(const glm::mat<N_DIMS, N_DIMS, aut
     }
     return r;
 }
+template <int N_DIMS, typename scalar_t>
+glm::mat<N_DIMS, N_DIMS, scalar_t> removeGrad(const glm::mat<N_DIMS, N_DIMS, scalar_t>& v) {
+    return v;
+}
 
 
 #else // __CUDACC__
 
 template <typename T>
 __host__ __device__ __forceinline__
-T& removeGrad(T& v) {
+T removeGrad(const T& v) {
     return v;
 }
 

@@ -159,60 +159,76 @@ inline bool isnan(T x) {
 }
 
 #ifndef __CUDACC__
-using AutoDiffExpr = autodiff::reverse::ExprPtr<float>;
-using AutoDiffVariable = autodiff::Variable<float>;
+template <typename scalar_t>
+using AutoDiffExpr = autodiff::reverse::ExprPtr<scalar_t>;
+template <typename scalar_t>
+using AutoDiffVariable = autodiff::Variable<scalar_t>;
 
-inline AutoDiffVariable exp(AutoDiffExpr x) {
+template <typename scalar_t>
+inline AutoDiffVariable<scalar_t> exp(AutoDiffExpr<scalar_t> x) {
     return autodiff::reverse::exp(x);
 }
 
-inline AutoDiffVariable pow(AutoDiffExpr x, AutoDiffExpr y) {
+template <typename scalar_t>
+inline AutoDiffVariable<scalar_t> pow(AutoDiffExpr<scalar_t> x, AutoDiffExpr<scalar_t> y) {
     return autodiff::reverse::pow(x, y);
 }
 
-inline AutoDiffVariable log(AutoDiffExpr x) {
+template <typename scalar_t>
+inline AutoDiffVariable<scalar_t> log(AutoDiffExpr<scalar_t> x) {
     return autodiff::reverse::log(x);
 }
 
-inline AutoDiffVariable sqrt(AutoDiffExpr x) {
+template <typename scalar_t>
+inline AutoDiffVariable<scalar_t> sqrt(AutoDiffExpr<scalar_t> x) {
     return autodiff::reverse::sqrt(x);
 }
 
-inline AutoDiffVariable abs(AutoDiffExpr x) {
+template <typename scalar_t>
+inline AutoDiffVariable<scalar_t> abs(AutoDiffExpr<scalar_t> x) {
     return autodiff::reverse::abs(x);
 }
 
-inline bool isnan(AutoDiffExpr x) {
+template <typename scalar_t>
+inline bool isnan(AutoDiffExpr<scalar_t> x) {
     return std::isnan(x->val);
 }
 
-inline AutoDiffVariable exp(AutoDiffVariable x) {
+template <typename scalar_t>
+inline AutoDiffVariable<scalar_t> exp(AutoDiffVariable<scalar_t> x) {
     return autodiff::reverse::exp(x);
 }
 
-inline AutoDiffVariable pow(AutoDiffVariable x, AutoDiffVariable y) {
+template <typename scalar_t>
+inline AutoDiffVariable<scalar_t> pow(AutoDiffVariable<scalar_t> x, AutoDiffVariable<scalar_t> y) {
     return autodiff::reverse::pow(x, y);
 }
-inline AutoDiffVariable pow(AutoDiffVariable x, AutoDiffExpr y) {
+template <typename scalar_t>
+inline AutoDiffVariable<scalar_t> pow(AutoDiffVariable<scalar_t> x, AutoDiffExpr<scalar_t> y) {
     return autodiff::reverse::pow(x.expr, y);
 }
-inline AutoDiffVariable pow(AutoDiffExpr x, AutoDiffVariable y) {
+template <typename scalar_t>
+inline AutoDiffVariable<scalar_t> pow(AutoDiffExpr<scalar_t> x, AutoDiffVariable<scalar_t> y) {
     return autodiff::reverse::pow(x, y.expr);
 }
 
-inline AutoDiffVariable log(AutoDiffVariable x) {
+template <typename scalar_t>
+inline AutoDiffVariable<scalar_t> log(AutoDiffVariable<scalar_t> x) {
     return autodiff::reverse::log(x);
 }
 
-inline AutoDiffVariable sqrt(AutoDiffVariable x) {
+template <typename scalar_t>
+inline AutoDiffVariable<scalar_t> sqrt(AutoDiffVariable<scalar_t> x) {
     return autodiff::reverse::sqrt(x);
 }
 
-inline AutoDiffVariable abs(AutoDiffVariable x) {
+template <typename scalar_t>
+inline AutoDiffVariable<scalar_t> abs(AutoDiffVariable<scalar_t> x) {
     return autodiff::reverse::abs(x);
 }
 
-inline bool isnan(AutoDiffVariable x) {
+template <typename scalar_t>
+inline bool isnan(AutoDiffVariable<scalar_t> x) {
     return std::isnan(x.expr->val);
 }
 #endif //__CUDACC__
