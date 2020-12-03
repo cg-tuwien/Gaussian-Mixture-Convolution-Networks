@@ -44,6 +44,7 @@ add_compile_definitions(QT_NO_KEYWORDS)
 add_compile_definitions(GLM_FORCE_XYZW_ONLY)
 add_compile_definitions(GPE_LIMIT_N_REDUCTION)
 add_compile_definitions(GPE_ONLY_FLOAT)
+add_compile_definitions(GPE_ONLY_2D)
 find_package(QT NAMES Qt5 COMPONENTS Core Widgets REQUIRED)
 find_package(Qt5 COMPONENTS Core Widgets REQUIRED)
 
@@ -193,12 +194,12 @@ if ( TARGET Qt5::Core )
     set( CMAKE_CXX_COMPILE_OPTIONS_PIE "-fPIC" )
 endif()
 
-add_executable(test_evaluate_inversed evaluate_inversed/test_evaluate_inversed.cpp)
-target_link_libraries(test_evaluate_inversed PUBLIC OpenMP::OpenMP_CXX torch Qt5::Widgets evaluate_inversed math lbvh common)
+add_executable(0_test_evaluate_inversed evaluate_inversed/test_evaluate_inversed.cpp)
+target_link_libraries(0_test_evaluate_inversed PUBLIC OpenMP::OpenMP_CXX torch Qt5::Widgets evaluate_inversed math lbvh common)
 
-add_executable(test_bvh_fit bvh_mhem_fit/test_bvh_fit.cpp)
-target_link_libraries(test_bvh_fit PUBLIC OpenMP::OpenMP_CXX torch Qt5::Widgets bvh_mhem_fit integrate evaluate_inversed math lbvh common)
+add_executable(0_test_bvh_fit bvh_mhem_fit/test_bvh_fit.cpp)
+target_link_libraries(0_test_bvh_fit PUBLIC OpenMP::OpenMP_CXX torch Qt5::Widgets bvh_mhem_fit integrate evaluate_inversed math lbvh common)
 
-add_executable(unittest_bvh_fit_backward bvh_mhem_fit/unittest_bvh_fit_backward.cpp)
-target_link_libraries(unittest_bvh_fit_backward PUBLIC OpenMP::OpenMP_CXX torch Qt5::Widgets bvh_mhem_fit integrate evaluate_inversed math lbvh common)
+add_executable(0_unittest_bvh_fit_backward bvh_mhem_fit/unittest_bvh_fit_backward.cpp)
+target_link_libraries(0_unittest_bvh_fit_backward PUBLIC OpenMP::OpenMP_CXX torch Qt5::Widgets bvh_mhem_fit integrate evaluate_inversed math lbvh common)
 

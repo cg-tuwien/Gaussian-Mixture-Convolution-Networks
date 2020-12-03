@@ -21,29 +21,37 @@ for direction in $direction_list; do
                     echo "$filename exists already"
                 else
                     echo "bvh_mhem_fit/$filename"
-                    echo "#include \"bvh_mhem_fit/implementation_${direction}.h\"" >> $filename
-                    echo '' >> $filename
-                    echo 'namespace bvh_mhem_fit {' >> $filename
                     if [ "$n_reduction" == "8" ] || [ "$n_reduction" == "16" ]; then
                         echo "#ifndef GPE_LIMIT_N_REDUCTION" >> $filename
                     fi
                     if [ "$floating_type" == "double" ]; then
                         echo "#ifndef GPE_ONLY_FLOAT" >> $filename
                     fi
+                    if [ "$dimension" == "3" ]; then
+                        echo "#ifndef GPE_ONLY_2D" >> $filename
+                    fi
+                    
+                    echo "#include \"bvh_mhem_fit/implementation_${direction}.h\"" >> $filename
+                    echo '' >> $filename
+                    echo 'namespace bvh_mhem_fit {' >> $filename
+                    
                     if [ "${direction}" == "forward" ]; then
                         echo "template ForwardOutput forward_impl_t<$n_reduction, $floating_type, $dimension>(torch::Tensor mixture, const BvhMhemFitConfig& config);" >> $filename
                     else
                         echo "template torch::Tensor backward_impl_t<$n_reduction, $floating_type, $dimension>(torch::Tensor grad, const ForwardOutput& forward_out, const BvhMhemFitConfig& config);" >> $filename
                     fi
                     
+                    echo '} // namespace bvh_mhem_fit' >> $filename
+                    
+                    if [ "$dimension" == "3" ]; then
+                        echo "#endif // GPE_ONLY_2D" >> $filename
+                    fi
                     if [ "$floating_type" == "double" ]; then
                         echo "#endif // GPE_ONLY_FLOAT" >> $filename
                     fi
-                    
                     if [ "$n_reduction" == "8" ] || [ "$n_reduction" == "16" ]; then
                         echo "#endif // GPE_LIMIT_N_REDUCTION" >> $filename
                     fi
-                    echo '} // namespace bvh_mhem_fit' >> $filename
                 fi
             done
         done
