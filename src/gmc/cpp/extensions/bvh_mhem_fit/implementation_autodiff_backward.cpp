@@ -6,7 +6,7 @@
 namespace bvh_mhem_fit {
 
 template<int REDUCTION_N, typename scalar_t, unsigned N_DIMS>
-ForwardBackWardOutput implementation_autodiff_backward(torch::Tensor mixture, const BvhMhemFitConfig& config) {
+ForwardBackWardOutput implementation_autodiff_backward(torch::Tensor mixture, const torch::Tensor& gradient_fitting, const BvhMhemFitConfig& config) {
     using namespace torch::indexing;
     using LBVH = lbvh::Bvh<N_DIMS, scalar_t>;
     using AutoDiffScalar = autodiff::Variable<scalar_t>;
@@ -114,15 +114,20 @@ ForwardBackWardOutput implementation_autodiff_backward(torch::Tensor mixture, co
         }
     }
     // backprop
-    for(AutoDiffGaussian& g : out_mixture) {
-        auto& w = g.weight;
-        auto& p = g.position;
-        auto& c = g.covariance;
-        w.expr->propagate(1.f);
-        for (int i = 0; i < int(N_DIMS); ++i) {
-            p[i].expr->propagate(1.f);
-            for (int j = 0; j < int(N_DIMS); ++j) {
-                c[i][j].expr->propagate(1.f);
+    {
+        auto gradient = gradient_fitting.view({n_mixtures * int(config.n_components_fitting), -1});
+        auto gradient_a = gpe::struct_accessor<gpe::Gaussian<N_DIMS, scalar_t>, 1, float>(gradient);
+        int g_index = 0;
+        for(AutoDiffGaussian& g : out_mixture) {
+            auto& w = g.weight;
+            auto& p = g.position;
+            auto& c = g.covariance;
+            w.expr->propagate(gradient_a[g_index].weight);
+            for (int i = 0; i < int(N_DIMS); ++i) {
+                p[i].expr->propagate(gradient_a[g_index].position[i]);
+                for (int j = 0; j < int(N_DIMS); ++j) {
+                    c[i][j].expr->propagate(gradient_a[g_index].covariance[i][j]);
+                }
             }
         }
     }
@@ -142,6 +147,7 @@ ForwardBackWardOutput implementation_autodiff_backward(torch::Tensor mixture, co
         }
         index++;
     }
+    out.output = out.output.view({n.batch, n.layers, config.n_components_fitting, -1});
 
     out.mixture_gradient = torch::zeros({n_mixtures * n.components, mixture.size(-1)});
     auto mixture_gradient_a = gpe::accessor<scalar_t, 2>(out.mixture_gradient);
@@ -156,17 +162,11 @@ ForwardBackWardOutput implementation_autodiff_backward(torch::Tensor mixture, co
         }
         index++;
     }
-
-    std::cout << "input: " << std::endl;
-    std::cout << mixture << std::endl;
-    std::cout << "fitting: " << std::endl;
-    std::cout << out.output << std::endl;
-    std::cout << "gradient: " << std::endl;
-    std::cout << out.mixture_gradient << std::endl;
+    out.mixture_gradient = out.mixture_gradient.view({n.batch, n.layers, n.components, -1});
 
     return out;
 }
 
-template ForwardBackWardOutput implementation_autodiff_backward<2, float, 2>(torch::Tensor mixture, const BvhMhemFitConfig& config);
+template ForwardBackWardOutput implementation_autodiff_backward<2, float, 2>(torch::Tensor mixture, const torch::Tensor& gradient_fitting, const BvhMhemFitConfig& config);
 
 }

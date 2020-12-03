@@ -186,7 +186,6 @@ int main(int argc, char *argv[]) {
 
                 if (BACKWARD) {
                     auto mixture_copy = mixture.clone();
-                    bvh_mhem_fit::implementation_autodiff_backward<2, float, 2>(mixture_copy.cpu().clone(), named_config.second);
                     for (int i = 0; i < 100; ++i) {
                         std::cout << "step " << i << std::endl;
                         auto forward_out = bvh_mhem_fit::forward_impl(mixture_copy, named_config.second);
