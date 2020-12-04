@@ -93,6 +93,52 @@ glm::mat<N_DIMS, N_DIMS, scalar_t> removeGrad(const glm::mat<N_DIMS, N_DIMS, sca
     return v;
 }
 
+template<typename scalar_t>
+autodiff::Variable<scalar_t> makeAutodiff(scalar_t v) {
+    return autodiff::Variable<scalar_t>(v);
+}
+
+template<int N_DIMS, typename scalar_t>
+glm::vec<N_DIMS, autodiff::Variable<scalar_t>> makeAutodiff(const glm::vec<N_DIMS, scalar_t>& v) {
+    glm::vec<N_DIMS, autodiff::Variable<scalar_t>> r;
+    for (int i = 0; i < N_DIMS; ++i) {
+        r[i] = makeAutodiff(v[i]);
+    }
+    return r;
+}
+
+template<int N_DIMS, typename scalar_t>
+glm::mat<N_DIMS, N_DIMS, autodiff::Variable<scalar_t>> makeAutodiff(const glm::mat<N_DIMS, N_DIMS, scalar_t>& v) {
+    glm::mat<N_DIMS, N_DIMS, autodiff::Variable<scalar_t>> r;
+    for (int i = 0; i < N_DIMS; ++i) {
+        r[i] = makeAutodiff(v[i]);
+    }
+    return r;
+}
+
+template<typename scalar_t>
+scalar_t extractGrad(const autodiff::Variable<scalar_t>& v) {
+    return v.grad();
+}
+
+template<int N_DIMS, typename scalar_t>
+glm::vec<N_DIMS, scalar_t> extractGrad(const glm::vec<N_DIMS, autodiff::Variable<scalar_t>>& v) {
+    glm::vec<N_DIMS, scalar_t> r;
+    for (int i = 0; i < N_DIMS; ++i) {
+        r[i] = extractGrad(v[i]);
+    }
+    return r;
+}
+
+template<int N_DIMS, typename scalar_t>
+glm::mat<N_DIMS, N_DIMS, scalar_t> extractGrad(const glm::mat<N_DIMS, N_DIMS, autodiff::Variable<scalar_t>>& v) {
+    glm::mat<N_DIMS, N_DIMS, scalar_t> r;
+    for (int i = 0; i < N_DIMS; ++i) {
+        r[i] = extractGrad(v[i]);
+    }
+    return r;
+}
+
 
 #else // __CUDACC__
 

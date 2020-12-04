@@ -444,7 +444,7 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_em(const gpe::Vector
     const auto posDiffsOuter = gpe::transform(posDiffs, [](const pos_t& p) { return glm::outerProduct(p, p); });
     const auto targetCovs = gpe::transform(target.data, [](const G& g){ return g.covariance; });
     const auto unweightedCovs = gpe::cwise_fun(posDiffsOuter, targetCovs, fun::plus<cov_t>);
-    const auto weightedCovs = gpe::cwise_fun(responsibilities_3, unweightedCovs, [](scalar_t r, const cov_t& cov) { return r * cov; });
+    const auto weightedCovs = gpe::cwise_fun(responsibilities_3, unweightedCovs, fun::times<scalar_t, cov_t>);
     auto newCovariances = gpe::reduce_cols(weightedCovs, cov_t(0), fun::plus<cov_t>);
     newCovariances = gpe::cwise_fun(newCovariances, newWeights, [](cov_t cov, scalar_t w) {
         if (w < gpe::Epsilon<scalar_t>::large)

@@ -23,11 +23,11 @@ constexpr uint CONVOLUTION_LAYER_START = 0;
 constexpr uint CONVOLUTION_LAYER_END = 3;
 constexpr uint LIMIT_N_BATCH = 100;
 constexpr bool USE_CUDA = false;
-constexpr bool BACKWARD = true;
+constexpr bool BACKWARD = false;
 constexpr bool RENDER = true;
 constexpr uint RESOLUTION = 128;
 constexpr bool DO_STATS = false;
-constexpr uint N_FITTING_COMPONENTS = 2;
+constexpr uint N_FITTING_COMPONENTS = 32;
 
 torch::Tensor render(torch::Tensor mixture, const int resolution, const int n_batch_limit) {
     using namespace torch::indexing;
@@ -109,7 +109,7 @@ int main(int argc, char *argv[]) {
 #ifndef GPE_LIMIT_N_REDUCTION
     std::vector<int> reduction_n_options = {16};
 #else
-    std::vector<int> reduction_n_options = {2};
+    std::vector<int> reduction_n_options = {4};
 #endif
     std::vector<lbvh::Config::MortonCodeAlgorithm> morton_code_options = {
         lbvh::Config::MortonCodeAlgorithm::Old
@@ -158,12 +158,12 @@ int main(int argc, char *argv[]) {
 
             for (uint i = 0; i < CONVOLUTION_LAYER_END - CONVOLUTION_LAYER_START; i++) {
                 assert(i + CONVOLUTION_LAYER_START < 3);
-//                auto mixture = container.attr(std::to_string(i + CONVOLUTION_LAYER_START)).toTensor();
+                auto mixture = container.attr(std::to_string(i + CONVOLUTION_LAYER_START)).toTensor();
 //                mixture = mixture.index({Slice(0,1), Slice(0,1), Slice(0,8), Slice()});
-                auto mixture = torch::tensor({{0.5f,  5.0f,  5.0f,  4.0f, -0.5f, -0.5f,  4.0f},
-                                              {0.5f,  8.0f,  8.0f,  4.0f, -2.5f, -2.5f,  4.0f},
-                                              {0.5f, 20.0f, 10.0f,  5.0f,  0.0f,  0.0f,  7.0f},
-                                              {0.5f, 20.0f, 20.0f,  5.0f,  0.5f,  0.5f,  7.0f}}).view({1, 1, 4, 7});
+//                auto mixture = torch::tensor({{0.5f,  5.0f,  5.0f,  4.0f, -0.5f, -0.5f,  4.0f},
+//                                              {0.5f,  8.0f,  8.0f,  4.0f, -2.5f, -2.5f,  4.0f},
+//                                              {0.5f, 20.0f, 10.0f,  5.0f,  0.0f,  0.0f,  7.0f},
+//                                              {0.5f, 20.0f, 20.0f,  5.0f,  0.5f,  0.5f,  7.0f}}).view({1, 1, 4, 7});
 //                auto mixture = torch::tensor({{1.0f,  5.0f,  5.0f,  4.0f, -2.5f, -2.5f,  4.0f},
 //                                              {0.5f,  5.0f,  5.0f,  4.0f, -2.5f, -2.5f,  4.0f},
 //                                              {0.5f, 20.0f, 20.0f,  5.0f,  0.5f,  0.5f,  7.0f},

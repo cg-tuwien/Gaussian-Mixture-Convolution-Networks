@@ -261,6 +261,16 @@ EXECUTION_DEVICES scalar_t gaussian_amplitude(const glm::mat<DIMS, DIMS, scalar_
     return a / gpe::sqrt(glm::determinant(cov));
 }
 
+template <typename scalar_t, int DIMS>
+EXECUTION_DEVICES glm::mat<DIMS, DIMS, scalar_t> grad_gaussian_amplitude(const glm::mat<DIMS, DIMS, scalar_t>& cov, scalar_t grad) {
+    using gradless_scalar_t = gpe::remove_grad_t<scalar_t>;
+    constexpr auto a = gcem::pow(gradless_scalar_t(2) * glm::pi<gradless_scalar_t>(), - DIMS * gradless_scalar_t(0.5));
+    assert(glm::determinant(cov) > 0);
+    const auto d = glm::determinant(cov);
+    const auto k = (a * scalar_t(-0.5)) / gpe::sqrt(d * d * d);
+    return k * grad_determinant(cov, grad);
+}
+
 inline void check_mixture(torch::Tensor mixture) {
     TORCH_CHECK(mixture.is_contiguous(), "mixture must be contiguous")
     TORCH_CHECK(!torch::isnan(mixture).any().item<bool>(), "mixture contains NaNs");

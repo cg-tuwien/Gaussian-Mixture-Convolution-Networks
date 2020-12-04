@@ -1,3 +1,6 @@
+#ifndef NDEBUG
+#include <iostream>
+
 #include "containers.h"
 #include "algorithms.h"
 
@@ -5,7 +8,6 @@ namespace gpe {
 namespace  {
 
 
-#ifndef NDEBUG
 static struct UnitTests {
     UnitTests() {
         testBitSet();
@@ -38,6 +40,8 @@ static struct UnitTests {
         testReduce2d();
         testReduceRows();
         testReduceCols();
+
+        std::cout << "unit tests for mixture_grad done" << std::endl;
     }
 
     void testBitSet() {
@@ -386,7 +390,8 @@ static struct UnitTests {
     }
 } unit_tests;
 
-#endif
 
 } // anonymous namespace
 } // namespace gpe
+
+#endif // not NDEBUG

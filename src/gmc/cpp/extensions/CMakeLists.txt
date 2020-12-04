@@ -200,6 +200,6 @@ target_link_libraries(0_test_evaluate_inversed PUBLIC OpenMP::OpenMP_CXX torch Q
 add_executable(0_test_bvh_fit bvh_mhem_fit/test_bvh_fit.cpp)
 target_link_libraries(0_test_bvh_fit PUBLIC OpenMP::OpenMP_CXX torch Qt5::Widgets bvh_mhem_fit integrate evaluate_inversed math lbvh common)
 
-add_executable(0_unittest_bvh_fit_backward bvh_mhem_fit/unittest_bvh_fit_backward.cpp)
+add_executable(0_unittest_bvh_fit_backward bvh_mhem_fit/unittest_mixture_grad.cpp bvh_mhem_fit/unittest_bvh_fit_backward.cpp)
 target_link_libraries(0_unittest_bvh_fit_backward PUBLIC OpenMP::OpenMP_CXX torch Qt5::Widgets bvh_mhem_fit integrate evaluate_inversed math lbvh common)
 
