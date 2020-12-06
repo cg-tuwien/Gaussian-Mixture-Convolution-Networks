@@ -1,3 +1,4 @@
 from .em_generator import EMGenerator
 from .gradient_descent_generator import GradientDescentGenerator
 from .eckart_generator_hp import EckartGeneratorHP
+from .eckart_generator_sp import EckartGeneratorSP
