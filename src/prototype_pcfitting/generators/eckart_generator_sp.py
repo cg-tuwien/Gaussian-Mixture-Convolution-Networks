@@ -85,6 +85,8 @@ class EckartGeneratorSP(GMMGenerator):
         # weights of the parents of each point. initialized with one (fictional 0th layer has only one Gaussian)
         parentweights = torch.ones(1, 1, self._n_gaussians_per_node, dtype=self._dtype).cuda()
 
+        llh_loss_calc = LikelihoodLoss()
+
         absiteration = 0  # Iteration index overall
         for level in range(self._n_levels):
             print("Level: ", level)
@@ -109,11 +111,13 @@ class EckartGeneratorSP(GMMGenerator):
                 points = pcbatch.unsqueeze(1).unsqueeze(3)  # (1, 1, np, 1, 3)
 
                 # E-Step
-                responsibilities, losses = self._expectation(points, gm_data, point_weighting_factors, relevant_parents)
+                responsibilities = self._expectation(points, gm_data, point_weighting_factors, relevant_parents)
                 # losses = scaler.scale_up_losses(losses)
                 # Nan-Losses cannot be avoided and will be ignored for the mean calculation
-                loss = -losses[~torch.isnan(losses)].mean().view(1) # ToDo, look at this
-                del losses
+                mixture = gm_data.approximate_whole_mixture()
+                loss = llh_loss_calc.calculate_score_packed(pcbatch, mixture)
+                # loss = -losses[~torch.isnan(losses)].mean().view(1) # ToDo, look at this
+                # del losses
 
                 pwf_per_gaussian = point_weighting_factors.unsqueeze(2) \
                     .expand(point_count, parentcount_for_level, self._n_gaussians_per_node).reshape(point_count, -1)
@@ -149,7 +153,8 @@ class EckartGeneratorSP(GMMGenerator):
         res_gm = res_gm.float()
         res_gmm = res_gmm.float()
 
-        print("Final Loss: ", LikelihoodLoss().calculate_score_packed(pcbatch, res_gm))
+        print("Final Loss: ", LikelihoodLoss().calculate_score_packed(pcbatch, res_gm).item())
+        # print("EckartSP: # of invalid Gaussians: ", torch.sum(gm.weights(res_gmm).eq(0)).item())
 
         return res_gm, res_gmm
 
@@ -163,11 +168,17 @@ class EckartGeneratorSP(GMMGenerator):
         result = torch.zeros(n_parents, 2, 3, dtype=pcbatch.dtype).cuda()
         for i in range(n_parents):
             rel_points = pcbatch[0, pwfp_relevant[:, i], :]
-            # ToDo: Size of rel_points may be 0
-            rel_bbmin = torch.min(rel_points, dim=0)[0]
-            rel_bbmax = torch.max(rel_points, dim=0)[0]
-            result[i, 0, :] = rel_bbmin
-            result[i, 1, :] = rel_bbmax - rel_bbmin
+            if rel_points.shape[0] > 1:
+                rel_bbmin = torch.min(rel_points, dim=0)[0]
+                rel_bbmax = torch.max(rel_points, dim=0)[0]
+                result[i, 0, :] = rel_bbmin
+                result[i, 1, :] = rel_bbmax - rel_bbmin
+            elif rel_points.shape[0] == 1:
+                result[i, 0, :] = rel_points[0] - torch.tensor([0.01, 0.01, 0.01]).cuda()
+                result[i, 1, :] = torch.tensor([0.02, 0.02, 0.02])
+            else:
+                result[i, 0, :] = torch.tensor([0.0, 0.0, 0.0])
+                result[i, 1, :] = torch.tensor([1.0, 1.0, 1.0])
         return result
 
     def _initialize_gms_on_bounding_box(self, bbs: torch.Tensor, relevant_parents: torch.Tensor, parentweights: torch.Tensor):
@@ -198,7 +209,7 @@ class EckartGeneratorSP(GMMGenerator):
         gmdata.positions[0, 0, :, :] += bbs_rep[:, 0, :]
         gmdata.covariances = 0.1 * torch.eye(3).to(self._dtype).cuda().unsqueeze(0).unsqueeze(0).unsqueeze(0). \
             repeat(1, 1, self._n_gaussians_per_node * gmcount, 1, 1)
-        gmdata.covariances[0, 0, :, :, :] *= bbs_rep[:, 1, :].unsqueeze(2)
+        gmdata.covariances[0, 0, :, :, :] *= bbs_rep[:, 1, :].unsqueeze(2) ** 2
         gmdata.priors = torch.zeros(1, 1, self._n_gaussians_per_node * gmcount).to(self._dtype).cuda()
         gmdata.priors[:, :, :] = 1 / self._n_gaussians_per_node
 
@@ -207,7 +218,7 @@ class EckartGeneratorSP(GMMGenerator):
         return gmdata
 
     def _expectation(self, points: torch.Tensor, gm_data, point_weighting_factors: torch.Tensor,
-                     relevant_parents: torch.Tensor) -> (torch.Tensor, torch.Tensor):
+                     relevant_parents: torch.Tensor) -> torch.Tensor:
         # This performs the Expectation step of the EM Algorithm. This calculates 1) the responsibilities.
         # So the probabilities, how likely each point belongs to each gaussian and 2) the overall Log-Likelihoods
         # for each Sub-GM given the point cloud.
@@ -227,7 +238,7 @@ class EckartGeneratorSP(GMMGenerator):
         #       responsibilities for point-gaussian-combinations where the point does not belong to a
         #       gaussian's parent will be 0. Also note, that there might be Sub-GMs without points assigned to them.
         #       The losses of these will be nan!
-        #   losses: torch.Tensor of shape (1, p): Log-Likelihood for each Parent (Sub-GM)
+        #   This does not return losses, as the actual loss might drift far away from this loss
         #
         #   Note that this does not support executing only parts of the responsibilities at once for memory optimization
         #   (as in the M-Step). It would be possible to implement this though.
@@ -274,8 +285,8 @@ class EckartGeneratorSP(GMMGenerator):
         llh_intermediate[:, :] = -float("inf")
         llh_intermediate[mask_indizes[:, 0], mask_indizes[:, 1]] = likelihood_log.view(-1)
         llh_sum = torch.logsumexp(llh_intermediate, dim=1).view(1, 1, n_sample_points, 1)
-        llh_intermediate[mask_indizes[:, 0], mask_indizes[:, 1]] = global_likelihood_log.view(-1)
-        global_llh_sum = torch.logsumexp(llh_intermediate, dim=1).view(n_sample_points, 1) # loss per point
+        # llh_intermediate[mask_indizes[:, 0], mask_indizes[:, 1]] = global_likelihood_log.view(-1)
+        # global_llh_sum = torch.logsumexp(llh_intermediate, dim=1).view(n_sample_points, 1) # loss per point
         del llh_intermediate
 
         # prefilter = relevant_parents.unsqueeze(1).expand(n_sample_points, pairing_count)
@@ -295,16 +306,16 @@ class EckartGeneratorSP(GMMGenerator):
         #     global_llh_sum[0, 0, p, 0] = torch.logsumexp(global_likelihood_log[0, 0, relevant_pairs], dim=0)
 
         # Calculate Loss per GM (per Parent)
-        indicator = point_weighting_factors > 0  # indicator: (np, nP)
-        losses = ((indicator * global_llh_sum.repeat(1, parent_count)).nansum(dim=0)
-                  / torch.nansum(point_weighting_factors, dim=0)).view(1, -1)  # (1, nP)
+        # indicator = torch.greater(point_weighting_factors, 0)  # indicator: (np, nP)
+        # losses = ((indicator * global_llh_sum.repeat(1, parent_count)).nansum(dim=0)
+        #           / indicator.sum(dim=0)).view(1, -1)  # (1, nP)
 
         # Responsibilities_flat: (1, 1, xc)
         responsibilities_flat = torch.exp(likelihood_log - llh_sum[:, :, mask_indizes[:, 0], 0])
         responsibilities_matr = torch.zeros(1, 1, n_sample_points, all_gauss_count).cuda()
         responsibilities_matr[0, 0, mask_indizes[:, 0], mask_indizes[:, 1]] = responsibilities_flat
 
-        return responsibilities_matr, losses
+        return responsibilities_matr# , losses
 
     def _maximization(self, points: torch.Tensor, weighted_responsibilities: torch.Tensor, pwf_per_gaussian: torch.Tensor, gm_data):
         # This performs the Maximization step of the EM Algorithm.

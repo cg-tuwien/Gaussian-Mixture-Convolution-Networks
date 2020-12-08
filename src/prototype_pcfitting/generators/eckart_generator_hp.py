@@ -76,6 +76,8 @@ class EckartGeneratorHP(GMMGenerator):
         # the 0th layer, only has one (fictional) Gaussian, whose index is assumed to be 0
         parent_per_point[:, :] = 0
 
+        llh_loss_calc = LikelihoodLoss()
+
         # hierarchy: list of combined mixtures, one for each level
         hierarchy = []
         # weights of the parents of each point. initialized with one (fictional 0th layer has only one Gaussian)
@@ -106,15 +108,16 @@ class EckartGeneratorHP(GMMGenerator):
                 points = points_scaled.unsqueeze(1).unsqueeze(3)  # (1, 1, np, 1, 3)
 
                 # E-Step
-                responsibilities, losses = self._expectation(points, gm_data, parent_per_point, relevant_parents)
-                losses = scaler.scale_up_losses(losses)
+                responsibilities = self._expectation(points, gm_data, parent_per_point, relevant_parents)
+                # losses = scaler.scale_up_losses(losses)
                 # Nan-Losses cannot be avoided and will be ignored for the mean calculation
-                loss = -losses[~torch.isnan(losses)].mean().view(1)
-                del losses
+                # loss = -losses[~torch.isnan(losses)].mean().view(1)
+                # del losses
+                # We only approximate the whole mixture, actual loss might be better!
+                mixture = gm_data.approximate_whole_mixture(scaler)
+                loss = llh_loss_calc.calculate_score_packed(pcbatch, mixture)
 
                 if self._logger:
-                    # For logging, we do not actually get the accurate mixture, but we approximate it, as this is faster
-                    mixture = gm_data.approximate_whole_mixture(scaler)
                     self._logger.log(absiteration - 1, loss, mixture)
                     del mixture
 
@@ -139,7 +142,8 @@ class EckartGeneratorHP(GMMGenerator):
         res_gm = res_gm.float()
         res_gmm = res_gmm.float()
 
-        print("Final Loss: ", LikelihoodLoss().calculate_score_packed(pcbatch, res_gm))
+        print("Final Loss: ", LikelihoodLoss().calculate_score_packed(pcbatch, res_gm).item())
+        # print("EckartHP: # of invalid Gaussians: ", torch.sum(gm.weights(res_gmm).eq(0)).item())
 
         return res_gm, res_gmm
 
@@ -175,7 +179,7 @@ class EckartGeneratorHP(GMMGenerator):
         return gmdata
 
     def _expectation(self, points: torch.Tensor, gm_data, parent_per_point: torch.Tensor,
-                     relevant_parents: torch.Tensor) -> (torch.Tensor, torch.Tensor):
+                     relevant_parents: torch.Tensor) -> torch.Tensor:
         # This performs the Expectation step of the EM Algorithm. This calculates 1) the responsibilities.
         # So the probabilities, how likely each point belongs to each gaussian and 2) the overall Log-Likelihoods
         # for each Sub-GM given the point cloud.
@@ -195,7 +199,7 @@ class EckartGeneratorHP(GMMGenerator):
         #       responsibilities for point-gaussian-combinations where the point does not belong to a
         #       gaussian's parent will be 0. Also note, that there might be Sub-GMs without points assigned to them.
         #       The losses of these will be nan!
-        #   losses: torch.Tensor of shape (1, p): Log-Likelihood for each Parent (Sub-GM)
+        #   Loss-Approximation would not be useful
         #
         #   Note that this does not support executing only parts of the responsibilities at once for memory optimization
         #   (as in the M-Step). It would be possible to implement this though.
@@ -245,13 +249,13 @@ class EckartGeneratorHP(GMMGenerator):
 
         # Logarithmized Likelihood for each point given the GM. shape: (1, 1, np, 1)
         llh_sum = torch.logsumexp(likelihood_log, dim=3, keepdim=True)
-        global_llh_sum = torch.logsumexp(global_likelihood_log, dim=3, keepdim=True)
+        # global_llh_sum = torch.logsumexp(global_likelihood_log, dim=3, keepdim=True)
 
         # Calculate Loss per GM (per Parent)
-        indicator = parent_per_point.unsqueeze(2).repeat(1, 1, parent_count)  # (1, np, nP)
-        indicator = indicator.eq(torch.arange(0, parent_count).cuda().view(1, 1, -1).repeat(1, n_sample_points, 1))
-        losses = (indicator * global_llh_sum.squeeze(1).repeat(1, 1, parent_count)).sum(dim=1) \
-            / indicator.sum(dim=1)  # (1, nP)
+        # indicator = parent_per_point.unsqueeze(2).repeat(1, 1, parent_count)  # (1, np, nP)
+        # indicator = indicator.eq(torch.arange(0, parent_count).cuda().view(1, 1, -1).repeat(1, n_sample_points, 1))
+        # losses = (indicator * global_llh_sum.squeeze(1).repeat(1, 1, parent_count)).sum(dim=1) \
+        #     / indicator.sum(dim=1)  # (1, nP)
 
         # Local responsibilities: Responsibilities of points to their corresponding gaussians only
         responsibilities_local = torch.exp(likelihood_log - llh_sum)  # (1, 1, np, ngLocal)
@@ -259,7 +263,7 @@ class EckartGeneratorHP(GMMGenerator):
         responsibilities_global = torch.zeros(1, 1, n_sample_points, all_gauss_count, dtype=self._dtype).cuda()
         responsibilities_global[:, :, mask_indizes[:, 0], mask_indizes[:, 1]] = responsibilities_local.view(1, 1, -1)
 
-        return responsibilities_global, losses
+        return responsibilities_global
 
     def _maximization(self, points: torch.Tensor, responsibilities: torch.Tensor, gm_data):
         # This performs the Maximization step of the EM Algorithm.
@@ -306,12 +310,13 @@ class EckartGeneratorHP(GMMGenerator):
                 matrices_from_points = points_rep.unsqueeze(5) * points_rep.unsqueeze(5).transpose(-1, -2)
 
                 # Fill T-Variables
-                t_2 += (matrices_from_points[:, :, :, 0:actual_gauss_subbatch_size]
+                t_2 += (matrices_from_points
                         * relevant_responsibilities.unsqueeze(4).unsqueeze(5)).sum(dim=2)  # shape: (1, 1, J, 3, 3)
                 t_0 += relevant_responsibilities.sum(dim=2)  # shape: (1, 1, J)
-                t_1 += (points_rep[:, :, :, 0:actual_gauss_subbatch_size] * relevant_responsibilities.unsqueeze(4))\
+                t_1 += (points_rep * relevant_responsibilities.unsqueeze(4))\
                     .sum(dim=2)  # shape: (1, 1, J, 3)
                 del matrices_from_points
+                del points_rep
 
             # formulas taken from eckart paper
             gm_data.positions[:, :, j_start:j_end] = t_1 / t_0.unsqueeze(3)  # (1, 1, J, 3)
