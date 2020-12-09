@@ -83,7 +83,7 @@ class EMGenerator(GMMGenerator):
 
         # eps is a small multiple of the identity matrix which is added to the cov-matrizes
         # in order to avoid singularities
-        self._eps = (torch.eye(3, 3, dtype=self._dtype) * 1e-6).view(1, 1, 1, 3, 3) \
+        self._eps = (torch.eye(3, 3, dtype=self._dtype) * 1e-4).view(1, 1, 1, 3, 3) \
             .expand(batch_size, 1, self._n_gaussians, 3, 3).cuda()
 
         # running defines which batches are still being trained
@@ -224,8 +224,8 @@ class EMGenerator(GMMGenerator):
         if losses is None:
             losses = torch.zeros(batch_size, dtype=self._dtype).cuda()
         losses[running] = -llh_sum.mean(dim=2).view(running_batch_size)
-        if losses.sum() < -10:
-            print("dbgx")
+        #if losses.sum() < -10:
+        #    print("dbgx")
         # Calculating responsibilities
         responsibilities = torch.zeros(batch_size, 1, n_sample_points, self._n_gaussians, dtype=self._dtype).cuda()
         responsibilities[running] = torch.exp(likelihood_log - llh_sum)
@@ -352,7 +352,7 @@ class EMGenerator(GMMGenerator):
             sample_points = pcbatch
 
         if self._eps is None:
-            self._eps = (torch.eye(3, 3, dtype=self._dtype) * 1e-6).view(1, 1, 1, 3, 3) \
+            self._eps = (torch.eye(3, 3, dtype=self._dtype) * 1e-4).view(1, 1, 1, 3, 3) \
                 .expand(batch_size, 1, self._n_gaussians, 3, 3).cuda()
 
         assignments = torch.randint(low=0, high=self._n_gaussians, size=(batch_size * n_sample_points,))
@@ -404,7 +404,7 @@ class EMGenerator(GMMGenerator):
             sample_points = pcbatch
 
         if self._eps is None:
-            self._eps = (torch.eye(3, 3, dtype=self._dtype) * 1e-6).view(1, 1, 1, 3, 3) \
+            self._eps = (torch.eye(3, 3, dtype=self._dtype) * 1e-4).view(1, 1, 1, 3, 3) \
                 .expand(batch_size, 1, self._n_gaussians, 3, 3).cuda()
 
         mix = self.initialize_adam1(pcbatch)
@@ -453,8 +453,8 @@ class EMGenerator(GMMGenerator):
         def set_covariances(self, covariances, running):
             # running indicates which batch entries should be replaced
             relcovs = ~torch.isnan(covariances.det().sqrt())
-            if not relcovs.all():
-                print("dbg")
+            #if not relcovs.all():
+            #    print("dbg")
             runningcovs = self._covariances[running]
             runningcovs[relcovs] = covariances[relcovs]
             self._covariances[running] = runningcovs

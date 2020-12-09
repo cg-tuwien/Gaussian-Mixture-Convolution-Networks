@@ -7,16 +7,16 @@ from prototype_pcfitting.error_functions import LikelihoodLoss
 
 # --- CONFIGUREABLE VARIABLES ---
 # Define Paths
-model_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_test/models"
-genpc_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_test/pointclouds"
-gengmm_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_test/gmms"
+model_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_vartest/models"
+genpc_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_vartest/pointclouds"
+gengmm_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_vartest/gmms"
 
 # Define point count of pointclouds to use, and how many points to use for evaluation
-n_points = 1000000
+n_points = 100000
 eval_points = 20000
 
 # Define identifiers of Generators to evaluate and error functions to use
-generator_identifiers = ["GD", "EM"]
+generator_identifiers = ["EMi0", "EMi3", "EckHP", "EckSP0.3", "EckSP0.5"]
 error_functions: List[ErrorFunction] = [LikelihoodLoss()]
 error_function_identifiers = ["Likelihood Loss"]
 

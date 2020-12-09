@@ -69,7 +69,7 @@ class EckartGeneratorHP(GMMGenerator):
         pcbatch = pcbatch.to(self._dtype).cuda()
 
         # eps is used to avoid singularities and as default covariance for invalid gaussians
-        self._eps = (torch.eye(3, 3, dtype=self._dtype) * 1e-6).view(1, 1, 1, 3, 3).cuda()
+        self._eps = (torch.eye(3, 3, dtype=self._dtype) * 1e-4).view(1, 1, 1, 3, 3).cuda()
 
         # parent_per_point (1,n) identifies which gaussian in the previous layer this point is assigned to
         parent_per_point = torch.zeros(1, point_count).to(torch.long).cuda()

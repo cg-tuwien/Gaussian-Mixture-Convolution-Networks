@@ -71,7 +71,7 @@ class EckartGeneratorSP(GMMGenerator):
         pcbatch = pcbatch.to(self._dtype).cuda()
 
         # eps is used to avoid singularities and as default covariance for invalid gaussians
-        self._eps = (torch.eye(3, 3, dtype=self._dtype) * 1e-6).view(1, 1, 1, 3, 3).cuda()
+        self._eps = (torch.eye(3, 3, dtype=self._dtype) * 1e-4).view(1, 1, 1, 3, 3).cuda()
 
         # parent_per_point (1,n) identifies which gaussian in the previous layer this point is assigned to
         # parent_per_point = torch.zeros(1, point_count).to(torch.long).cuda()
@@ -173,9 +173,13 @@ class EckartGeneratorSP(GMMGenerator):
                 rel_bbmax = torch.max(rel_points, dim=0)[0]
                 result[i, 0, :] = rel_bbmin
                 result[i, 1, :] = rel_bbmax - rel_bbmin
-            elif rel_points.shape[0] == 1:
-                result[i, 0, :] = rel_points[0] - torch.tensor([0.01, 0.01, 0.01]).cuda()
-                result[i, 1, :] = torch.tensor([0.02, 0.02, 0.02])
+                zeroextend = (result[i, 1, :] == 0)
+                if zeroextend.any():
+                    result[i, 0, zeroextend] -= 0.01
+                    result[i, 1, zeroextend] = 0.02
+            # elif rel_points.shape[0] == 1:
+            #     result[i, 0, :] = rel_points[0] - torch.tensor([0.01, 0.01, 0.01]).cuda()
+            #     result[i, 1, :] = torch.tensor([0.02, 0.02, 0.02])
             else:
                 result[i, 0, :] = torch.tensor([0.0, 0.0, 0.0])
                 result[i, 1, :] = torch.tensor([1.0, 1.0, 1.0])

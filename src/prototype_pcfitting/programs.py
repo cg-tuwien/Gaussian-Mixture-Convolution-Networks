@@ -134,6 +134,7 @@ def execute_evaluation(training_name: str, model_path: str, genpc_path: str, gen
                 for j in range(len(error_functions)):
                     loss = error_functions[j].calculate_score_packed(pc_scaled, gm).item()
                     print(name, " / ", gid, ". ", error_function_identifiers[j], ": ", loss)
+                print("Invalid Gaussians: ", (mixture.weights(gm).eq(0)).sum().item())
 
     print("Done")
 
@@ -151,6 +152,7 @@ def quick_evaluation(pc_path: str, gm_path: str, is_model: bool, error_function:
     gm = mixture.read_gm_from_ply(gm_path, is_model).cuda()
     if is_model:
         gm = mixture.convert_priors_to_amplitudes(gm)
+    print("Invalid Gaussians: ", (mixture.weights(gm).eq(0)).sum().item())
     gm = scaler.scale_down_gm(gm)
 
     # Evaluate using each error function
