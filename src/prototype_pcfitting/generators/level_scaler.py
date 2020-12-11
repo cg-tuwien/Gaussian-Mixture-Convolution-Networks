@@ -2,14 +2,13 @@ import torch
 
 
 class LevelScaler:
-    # This class helps to scale a GM-level in hierarchical EM (Eckart)
+    # This class helps to scale a GM-level in hierarchical EM (Eckart HP)
 
     def __init__(self):
         self.scaleP = self.offsetP = None   # Scaling and Offset Values for points per Parent
         self.scaleL = None  # Scaling values for loss per parent
         self._parent_count = 0  # Number of parents
-        self._parent_per_point = None # Parent per point
-
+        self._parent_per_point = None  # Parent per point
 
     def set_pointcloud(self, pcbatch: torch.Tensor, parent_per_point: torch.Tensor, parent_count: int):
         # Has to be called before scaling!
@@ -25,8 +24,8 @@ class LevelScaler:
         self._parent_count = parent_count
         self._parent_per_point = parent_per_point
 
-        self.scaleP = torch.zeros(parent_count).to(pcbatch.dtype).cuda() # shape: (parent_count)
-        self.offsetP = torch.zeros(parent_count, 3).to(pcbatch.dtype).cuda() # (parent_count, 3)
+        self.scaleP = torch.zeros(parent_count).to(pcbatch.dtype).cuda()  # shape: (parent_count)
+        self.offsetP = torch.zeros(parent_count, 3).to(pcbatch.dtype).cuda()  # (parent_count, 3)
         for i in range(parent_count):
             rel_point_mask: torch.Tensor = torch.eq(parent_per_point, i)
             pcount = rel_point_mask.sum()
@@ -51,10 +50,12 @@ class LevelScaler:
     def scale_down_pc(self, pcbatch: torch.Tensor) -> torch.Tensor:
         # Scales down the given point cloud (1,n,3) according to the scales extracted in set_pointcloud_batch
         # The scaled pointcloud is returned (1,n,3).
-        scaleddown = (pcbatch[0,:,:] - self.offsetP[self._parent_per_point, :]) / self.scaleP[self._parent_per_point, :]
+        scaleddown = (pcbatch[0, :, :] - self.offsetP[self._parent_per_point, :]) \
+                     / self.scaleP[self._parent_per_point, :]
         return scaleddown.view(1, -1, 3)
 
-    def scale_up_gmm_wpc(self, weights: torch.Tensor, positions: torch.Tensor, covariances: torch.Tensor) -> (torch.Tensor, torch.Tensor, torch.Tensor):
+    def scale_up_gmm_wpc(self, weights: torch.Tensor, positions: torch.Tensor, covariances: torch.Tensor) -> \
+            (torch.Tensor, torch.Tensor, torch.Tensor):
         # Scales up the given GMMs (with priors as weights!) according to the scales extracted in set_pointcloud_batch
         # The scaled GMs are returned. Batch size must be one!
         j = int(weights.shape[2] / self._parent_count)

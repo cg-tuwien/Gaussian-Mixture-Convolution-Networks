@@ -5,8 +5,6 @@ import torch
 import gmc.mixture as gm
 import numpy
 
-from prototype_pcfitting.error_functions import LikelihoodLoss
-
 
 class EMGenerator(GMMGenerator):
     # GMM Generator using simple Expectation Maximization (numerically stable)
@@ -16,9 +14,10 @@ class EMGenerator(GMMGenerator):
                  n_sample_points: int = -1,
                  termination_criterion: TerminationCriterion = MaxIterationTerminationCriterion(100),
                  initialization_method: int = 0,
-                 m_step_gaussians_subbatchsize: int = -1,
-                 m_step_points_subbatchsize: int = -1,
-                 dtype: torch.dtype = torch.float32):
+                 em_step_gaussians_subbatchsize: int = -1,
+                 em_step_points_subbatchsize: int = -1,
+                 dtype: torch.dtype = torch.float32,
+                 eps: float = 1e-4):
         # Constructor. Creates a new EMGenerator.
         # Parameters:
         #   n_gaussians: int
@@ -33,18 +32,27 @@ class EMGenerator(GMMGenerator):
         #   initialization_method: int
         #       Defines which initialization to use: 0 = Random by sample mean and cov, 1 = Random responsibilities,
         #       2 = furthest point sampling, 3 = furthest point sampling and artifical responsibilities
+        #   em_step_gaussian_subbatchsize: int
+        #       How many Gaussian Sub-Mixtures should be processed in the E- and M-Step at once
+        #       -1 means all Gaussians (default)
+        #   em_step_points_subbatchsize: int
+        #       How many points should be processed in the E- and M-Step at once
+        #       -1 means all Points (default)
         #   dtype: torch.dtype
         #       In which data type (precision) the operations should be performed. The final gmm is always
         #       converted to float32 though. Default: torch.float32
+        #   eps: float
+        #       Small value to be added to the Covariances for numerical stability
         #
         self._n_gaussians = n_gaussians
         self._n_sample_points = n_sample_points
         self._initialization_method = initialization_method
         assert (0 <= initialization_method <= 3)
         self._termination_criterion = termination_criterion
-        self._m_step_gaussians_subbatchsize = m_step_gaussians_subbatchsize
-        self._m_step_points_subbatchsize = m_step_points_subbatchsize
+        self._m_step_gaussians_subbatchsize = em_step_gaussians_subbatchsize
+        self._m_step_points_subbatchsize = em_step_points_subbatchsize
         self._logger = None
+        self._epsvar = eps
         self._eps = None
         self._dtype = dtype
 
@@ -83,7 +91,7 @@ class EMGenerator(GMMGenerator):
 
         # eps is a small multiple of the identity matrix which is added to the cov-matrizes
         # in order to avoid singularities
-        self._eps = (torch.eye(3, 3, dtype=self._dtype) * 1e-4).view(1, 1, 1, 3, 3) \
+        self._eps = (torch.eye(3, 3, dtype=self._dtype) * self._epsvar).view(1, 1, 1, 3, 3) \
             .expand(batch_size, 1, self._n_gaussians, 3, 3).cuda()
 
         # running defines which batches are still being trained
@@ -119,10 +127,8 @@ class EMGenerator(GMMGenerator):
             points_rep = sample_points.unsqueeze(1).unsqueeze(3) \
                 .expand(batch_size, 1, n_sample_points, self._n_gaussians, 3)
 
-            # data_loading.write_pc_to_off("D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_test/pointclouds/n20000/test/pc" + str(iteration-1) + ".off", sample_points)
-
             # Expectation: Calculates responsibilities and current losses
-            responsibilities, losses = self.expectation(points_rep, gm_data, running, last_losses)
+            responsibilities, losses = self._expectation(points_rep, gm_data, running, last_losses)
             last_losses = losses
 
             # Log Loss (before changing the values in the maximization step,
@@ -132,9 +138,6 @@ class EMGenerator(GMMGenerator):
             assert not torch.isnan(loss).any()
             if self._logger:
                 self._logger.log(iteration - 1, losses, gm_data.pack_mixture(), running)
-                # test_gm = gm_data.pack_mixture()
-                # test_loss = LikelihoodLoss().calculate_score_packed(sample_points, test_gm).item()
-                # print("Test-Loss: ", test_loss)
 
             # If in the previous iteration we already reached the termination criteration, stop now
             # and do not perform the maximization step
@@ -143,7 +146,7 @@ class EMGenerator(GMMGenerator):
                 break
 
             # Maximization -> update GM-data
-            self.maximization(points_rep, responsibilities, gm_data, running)
+            self._maximization(points_rep, responsibilities, gm_data, running)
 
         # Create final mixtures
         final_gm = gm_data.pack_mixture().float()
@@ -154,12 +157,15 @@ class EMGenerator(GMMGenerator):
 
         return final_gm, final_gmm
 
-    def expectation(self, points: torch.Tensor, gm_data, running: torch.Tensor, losses: torch.Tensor = None) -> \
+    def _expectation(self, points: torch.Tensor, gm_data, running: torch.Tensor, losses: torch.Tensor = None) -> \
             (torch.Tensor, torch.Tensor):
         # This performs the Expectation step of the EM Algorithm. This calculates 1) the responsibilities.
         # So the probabilities, how likely each point belongs to each gaussian and 2) the overall Log-Likelihood
         # of this GM given the point cloud.
         # The calculations are performed numerically stable in Log-Space!
+        # Per default, all points and Gaussians are processed at once.
+        # However, by setting em_step_gaussians_subbatchsize and em_step_points_subbatchsize in the constructor,
+        # this can be split into several processings to save memory.
         # Parameters:
         #   points: torch.Tensor of shape (batch_size, 1, n_points, 1, 3)
         #       This is a expansion of the (sampled) point cloud
@@ -189,7 +195,8 @@ class EMGenerator(GMMGenerator):
         if point_subbatch_size < 1:
             point_subbatch_size = n_sample_points
 
-        likelihood_log = torch.zeros(running_batch_size, 1, n_sample_points, self._n_gaussians, dtype=self._dtype).cuda()
+        likelihood_log = \
+            torch.zeros(running_batch_size, 1, n_sample_points, self._n_gaussians, dtype=self._dtype).cuda()
         gmpos = gm_data.get_positions()
         gmicov = gm_data.get_inversed_covariances()
         gmloga = gm_data.get_logarithmized_amplitudes()
@@ -200,13 +207,14 @@ class EMGenerator(GMMGenerator):
             for i_start in range(0, n_sample_points, point_subbatch_size):
                 i_end = i_start + point_subbatch_size
                 actual_point_subbatch_size = min(n_sample_points, i_end) - i_start
-                points_rep = points[running, :, i_start:i_end, :, :].expand(running_batch_size, 1, actual_point_subbatch_size, actual_gauss_subbatch_size, 3)
+                points_rep = points[running, :, i_start:i_end, :, :]\
+                    .expand(running_batch_size, 1, actual_point_subbatch_size, actual_gauss_subbatch_size, 3)
                 # GM-Positions, expanded for each PC point. shape: (bs, 1, np, ng, 3)
-                gmpositions_rep = gmpos[running, :, j_start:j_end] \
-                    .unsqueeze(2).expand(running_batch_size, 1, actual_point_subbatch_size, actual_gauss_subbatch_size, 3)
+                gmpositions_rep = gmpos[running, :, j_start:j_end].unsqueeze(2)\
+                    .expand(running_batch_size, 1, actual_point_subbatch_size, actual_gauss_subbatch_size, 3)
                 # GM-Inverse Covariances, expanded for each PC point. shape: (bs, 1, np, ng, 3, 3)
-                gmicovs_rep = gmicov[running, :, j_start:j_end] \
-                    .unsqueeze(2).expand(running_batch_size, 1, actual_point_subbatch_size, actual_gauss_subbatch_size, 3, 3)
+                gmicovs_rep = gmicov[running, :, j_start:j_end].unsqueeze(2)\
+                    .expand(running_batch_size, 1, actual_point_subbatch_size, actual_gauss_subbatch_size, 3, 3)
                 # Tensor of {PC-point minus GM-position}-vectors. shape: (bs, 1, np, ng, 3, 1)
                 grelpos = (points_rep - gmpositions_rep).unsqueeze(5)
                 # Tensor of 0.5 times the Mahalanobis distances of PC points to Gaussians. shape: (bs, 1, np, ng)
@@ -224,17 +232,18 @@ class EMGenerator(GMMGenerator):
         if losses is None:
             losses = torch.zeros(batch_size, dtype=self._dtype).cuda()
         losses[running] = -llh_sum.mean(dim=2).view(running_batch_size)
-        #if losses.sum() < -10:
-        #    print("dbgx")
         # Calculating responsibilities
         responsibilities = torch.zeros(batch_size, 1, n_sample_points, self._n_gaussians, dtype=self._dtype).cuda()
         responsibilities[running] = torch.exp(likelihood_log - llh_sum)
         # Calculating responsibilities and returning them and the mean loglikelihoods
         return responsibilities, losses
 
-    def maximization(self, points_rep: torch.Tensor, responsibilities: torch.Tensor, gm_data, running: torch.Tensor):
+    def _maximization(self, points_rep: torch.Tensor, responsibilities: torch.Tensor, gm_data, running: torch.Tensor):
         # This performs the Maximization step of the EM Algorithm.
         # Updates the GM-Model given the responsibilities which resulted from the E-Step.
+        # Per default, all points and Gaussians are processed at once.
+        # However, by setting em_step_gaussians_subbatchsize and em_step_points_subbatchsize in the constructor,
+        # this can be split into several processings to save memory.
         # Parameters:
         #   points_rep: torch.Tensor of shape (batch_size, 1, n_points, n_gaussians, 3)
         #       This is a expansion of the (sampled) point cloud, repeated n_gaussian times along dimension 4
@@ -275,8 +284,8 @@ class EMGenerator(GMMGenerator):
                 # actual_point_subbatch_size = relevant_responsibilities.shape[2]
                 relevant_points = points_rep[running, :, i_start:i_end, j_start:j_end, :]
                 matrices_from_points = relevant_points.unsqueeze(5) * relevant_points.unsqueeze(5).transpose(-1, -2)
-                # Fill T-Variables
-                t_2 += (matrices_from_points * relevant_responsibilities.unsqueeze(4).unsqueeze(5)).sum(dim=2)  # shape: (1, 1, J, 3, 3)
+                # Fill T-Variables      # t_2 shape: (1, 1, J, 3, 3)
+                t_2 += (matrices_from_points * relevant_responsibilities.unsqueeze(4).unsqueeze(5)).sum(dim=2)
                 t_0 += relevant_responsibilities.sum(dim=2)  # shape: (1, 1, J)
                 t_1 += (relevant_points * relevant_responsibilities.unsqueeze(4)) \
                     .sum(dim=2)  # shape: (1, 1, J, 3)
@@ -284,7 +293,8 @@ class EMGenerator(GMMGenerator):
 
             new_positions[:, :, j_start:j_end] = t_1 / t_0.unsqueeze(3)  # (bs, 1, ng, 3)
             new_covariances[:, :, j_start:j_end] = t_2 / t_0.unsqueeze(3).unsqueeze(4) - \
-                (new_positions[:, :, j_start:j_end].unsqueeze(4) * new_positions[:, :, j_start:j_end].unsqueeze(4).transpose(-1, -2)) + self._eps[running]
+                (new_positions[:, :, j_start:j_end].unsqueeze(4) * new_positions[:, :, j_start:j_end].unsqueeze(4)
+                 .transpose(-1, -2)) + self._eps[running]
             new_priors[:, :, j_start:j_end] = t_0 / n_sample_points
             del t_0, t_1, t_2
 
@@ -299,7 +309,8 @@ class EMGenerator(GMMGenerator):
         gm_data.set_covariances(new_covariances, running)
         gm_data.set_priors(new_priors, running)
 
-        assert not torch.isnan(gm_data.get_logarithmized_amplitudes()).any(), "Numerical Issues! Consider increasing precision."
+        assert not torch.isnan(gm_data.get_logarithmized_amplitudes()).any(),\
+            "Numerical Issues! Consider increasing precision."
 
     def initialize_rand1(self, pcbatch: torch.Tensor) -> torch.Tensor:
         # Creates a new initial Gaussian Mixture (batch) for a given point cloud (batch).
@@ -352,7 +363,7 @@ class EMGenerator(GMMGenerator):
             sample_points = pcbatch
 
         if self._eps is None:
-            self._eps = (torch.eye(3, 3, dtype=self._dtype) * 1e-4).view(1, 1, 1, 3, 3) \
+            self._eps = (torch.eye(3, 3, dtype=self._dtype) * self._epsvar).view(1, 1, 1, 3, 3) \
                 .expand(batch_size, 1, self._n_gaussians, 3, 3).cuda()
 
         assignments = torch.randint(low=0, high=self._n_gaussians, size=(batch_size * n_sample_points,))
@@ -364,7 +375,7 @@ class EMGenerator(GMMGenerator):
 
         gm_data = self.TrainingData(batch_size, self._n_gaussians, self._dtype)
         sp_rep = sample_points.unsqueeze(1).unsqueeze(3).expand(batch_size, 1, n_sample_points, self._n_gaussians, 3)
-        self.maximization(sp_rep, responsibilities, gm_data, torch.ones(batch_size, dtype=torch.bool))
+        self._maximization(sp_rep, responsibilities, gm_data, torch.ones(batch_size, dtype=torch.bool))
         return gm_data.pack_mixture_model().cuda().to(self._dtype)
 
     def initialize_adam1(self, pcbatch: torch.Tensor) -> torch.Tensor:
@@ -404,7 +415,7 @@ class EMGenerator(GMMGenerator):
             sample_points = pcbatch
 
         if self._eps is None:
-            self._eps = (torch.eye(3, 3, dtype=self._dtype) * 1e-4).view(1, 1, 1, 3, 3) \
+            self._eps = (torch.eye(3, 3, dtype=self._dtype) * self._epsvar).view(1, 1, 1, 3, 3) \
                 .expand(batch_size, 1, self._n_gaussians, 3, 3).cuda()
 
         mix = self.initialize_adam1(pcbatch)
@@ -417,7 +428,7 @@ class EMGenerator(GMMGenerator):
 
         sp_rep = sample_points.unsqueeze(1).unsqueeze(3).expand(batch_size, 1, n_sample_points, self._n_gaussians, 3)
 
-        responsibilities, llh = self.expectation(sp_rep, gm_data, running)
+        responsibilities, llh = self._expectation(sp_rep, gm_data, running)
 
         # resp dimension: (batch_size, 1, n_points, n_gaussians)
         # let's find the maximum per gaussian
@@ -428,7 +439,7 @@ class EMGenerator(GMMGenerator):
         assignedresps[batch_indizes, point_indizes, assignments] = 1
         assignedresps = assignedresps.unsqueeze(1).to(self._dtype)
 
-        self.maximization(sp_rep, assignedresps, gm_data, running)
+        self._maximization(sp_rep, assignedresps, gm_data, running)
         return gm_data.pack_mixture_model().cuda().to(self._dtype)
 
     class TrainingData:
@@ -452,14 +463,10 @@ class EMGenerator(GMMGenerator):
 
         def set_covariances(self, covariances, running):
             # running indicates which batch entries should be replaced
-            relcovs = ~torch.isnan(covariances.det().sqrt())
-            #if not relcovs.all():
-            #    print("dbg")
+            relcovs = ~torch.isnan(covariances.det().sqrt())    # ToDo: Think about this approach
             runningcovs = self._covariances[running]
             runningcovs[relcovs] = covariances[relcovs]
             self._covariances[running] = runningcovs
-            # self._covariances[torch.isnan(self._covariances.det().sqrt())] = torch.eye(3, 3, dtype=covariances.dtype).cuda() * 1e-6
-            # self._inversed_covariances[running] = covariances.inverse().contiguous()
             runningicovs = self._inversed_covariances[running]
             runningicovs[relcovs] = covariances[relcovs].inverse().contiguous()
             self._inversed_covariances[running] = runningicovs
@@ -472,8 +479,8 @@ class EMGenerator(GMMGenerator):
         def set_priors(self, priors, running):
             # running indicates which batch entries should be replaced
             self._priors[running] = priors
-            # self._amplitudes[running] = priors / (self._covariances[running].det().sqrt() * 15.74960995)
-            self._logamplitudes[running] = torch.log(priors) - 0.5*torch.log(self._covariances[running].det()) - 2.7568156719207764
+            self._logamplitudes[running] = torch.log(priors) - \
+                0.5 * torch.log(self._covariances[running].det()) - 2.7568156719207764
 
         def get_positions(self):
             return self._positions
