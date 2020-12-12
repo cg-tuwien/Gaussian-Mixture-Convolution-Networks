@@ -312,8 +312,7 @@ auto cwise_fun(const Vector2d<T1, N1, N2>& m1,
         for (unsigned j = 0; j < m1[i].size(); ++j) {
             const T1& a = m1[i][j];
             const T2& b = m2[i][j];
-            ProductType v = fun(a, b);
-            matrix[i][j] = v;
+            matrix[i][j] = fun(a, b);
         }
     }
     return matrix;
@@ -335,8 +334,7 @@ auto cwise_fun(const Vector2d<T1, N1, N2>& m,
         for (unsigned j = 0; j < m[i].size(); ++j) {
             const T1& a = m[i][j];
             const T2& b = v[i];
-            ProductType v = fun(a, b);
-            matrix[i][j] = v;
+            matrix[i][j] = fun(a, b);
         }
     }
     return matrix;
@@ -358,8 +356,7 @@ auto cwise_fun(const Vector<T1, N2>& v,
         for (unsigned j = 0; j < m[i].size(); ++j) {
             const T2& a = v[j];
             const T1& b = m[i][j];
-            ProductType v = fun(a, b);
-            matrix[i][j] = v;
+            matrix[i][j] = fun(a, b);
         }
     }
     return matrix;
