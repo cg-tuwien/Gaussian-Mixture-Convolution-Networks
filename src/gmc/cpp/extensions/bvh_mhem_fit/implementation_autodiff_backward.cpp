@@ -129,6 +129,7 @@ ForwardBackWardOutput implementation_autodiff_backward(torch::Tensor mixture, co
                     c[i][j].expr->propagate(gradient_a[g_index].covariance[i][j]);
                 }
             }
+            ++g_index;
         }
     }
 

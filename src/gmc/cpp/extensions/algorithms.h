@@ -15,9 +15,9 @@
 
 namespace gpe {
 namespace functors {
-template<typename T1, typename T2 = T1>
+template<typename T1, typename T2 = T1, typename T3 = decltype (T1{} + T2{})>
 __host__ __device__ GPE_ALGORITHMS_INLINE
-auto plus(const T1& a, const T2& b) -> decltype (a + b) {
+T3 plus(const T1& a, const T2& b) {
     return a + b;
 }
 template<typename T1, typename T2 = T1>
@@ -25,19 +25,19 @@ __host__ __device__ GPE_ALGORITHMS_INLINE
 auto minus(const T1& a, const T2& b) -> decltype (a - b) {
     return a - b;
 }
-template<typename T1, typename T2 = T1>
+template<typename T1, typename T2 = T1, typename T3 = decltype (T1{} * T2{})>
 __host__ __device__ GPE_ALGORITHMS_INLINE
-auto times(const T1& a, const T2& b) -> decltype (a * b) {
+T3 times(const T1& a, const T2& b)  {
     return a * b;
 }
-template<typename T1, typename T2 = T1>
+template<typename T1, typename T2 = T1, typename T3 = decltype (T1{} / T2{})>
 __host__ __device__ GPE_ALGORITHMS_INLINE
-auto divided_AbyB(const T1& a, const T2& b) -> decltype (a / b) {
+T3 divided_AbyB(const T1& a, const T2& b) {
     return a / b;
 }
-template<typename T1, typename T2 = T1>
+template<typename T1, typename T2 = T1, typename T3 = decltype (T2{} / T1{})>
 __host__ __device__ GPE_ALGORITHMS_INLINE
-auto divided_BbyA(const T1& a, const T2& b) -> decltype (b / a) {
+T3 divided_BbyA(const T1& a, const T2& b) {
     return b / a;
 }
 template<typename T1, typename T2 = T1>
@@ -177,6 +177,54 @@ auto cwise_fun(const Array<T1, N2>& v,
         }
     }
     return matrix;
+}
+
+template<typename T1, typename T2, uint32_t N, typename Function>
+__host__ __device__ GPE_ALGORITHMS_INLINE
+void cwise_ref_fun(gpe::Array<T1, N>* m1,
+                   gpe::Array<T2, N>* m2,
+                   Function fun) {
+    for (unsigned i = 0; i < N; ++i) {
+        fun((*m1)[i], (*m2)[i]);
+    }
+}
+
+template<typename T1, typename T2, uint32_t N1, uint32_t N2, typename Function>
+__host__ __device__ GPE_ALGORITHMS_INLINE
+void cwise_ref_fun(Array2d<T1, N1, N2>* m1,
+                   Array2d<T2, N1, N2>* m2,
+                   Function fun) {
+    for (unsigned i = 0; i < N1; ++i) {
+        for (unsigned j = 0; j < N2; ++j) {
+            fun((*m1)[i][j], (*m2)[i][j]);
+        }
+    }
+}
+
+/// multiplies every row in m with the corresponding element in v (column vector)
+template<typename T1, typename T2, uint32_t N1, uint32_t N2, typename Function>
+__host__ __device__ GPE_ALGORITHMS_INLINE
+void cwise_ref_fun(Array2d<T1, N1, N2>* m,
+                   Array<T2, N1>* v,
+                   Function fun) {
+    for (unsigned i = 0; i < N1; ++i) {
+        for (unsigned j = 0; j < N2; ++j) {
+            fun((*m)[i][j], (*v)[i]);
+        }
+    }
+}
+
+/// multiplies every column in m with the corresponding element in v (row vector)
+template<typename T1, typename T2, uint32_t N1, uint32_t N2, typename Function>
+__host__ __device__ GPE_ALGORITHMS_INLINE
+void cwise_ref_fun(Array<T1, N2>* v,
+                   Array2d<T2, N1, N2>* m,
+                   Function fun) {
+    for (unsigned i = 0; i < N1; ++i) {
+        for (unsigned j = 0; j < N2; ++j) {
+            fun((*v)[j], (*m)[i][j]);
+        }
+    }
 }
 
 template<typename T1, typename T2, uint32_t N, typename Function>

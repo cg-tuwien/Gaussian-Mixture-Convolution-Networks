@@ -83,6 +83,12 @@ int main(int argc, char *argv[]) {
                                    N_FITTING_COMPONENTS};
 
     std::vector<std::pair<torch::Tensor, torch::Tensor>> test_cases;
+    test_cases.push_back({torch::tensor({{0.5f,  0.0f,  0.0f,  2.0f,  0.0f,  0.0f,  2.0f},
+                                         {0.5f,  0.0f,  0.0f,  2.0f,  0.0f,  0.0f,  2.0f},
+                                         {0.5f, 10.0f, 10.0f,  1.0f,  0.0f,  0.0f,  1.0f},
+                                         {0.5f, 10.0f, 10.0f,  1.0f,  0.0f,  0.0f,  1.0f}}).view({1, 1, 4, 7}),
+                          torch::tensor({{1.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f},
+                                         {1.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f}}).view({1, 1, 2, 7})});
     test_cases.push_back({torch::tensor({{0.5f,  5.0f,  5.0f,  4.0f, -0.5f, -0.5f,  4.0f},
                                          {0.5f,  8.0f,  8.0f,  4.0f, -2.5f, -2.5f,  4.0f},
                                          {0.5f, 20.0f, 10.0f,  5.0f,  0.0f,  0.0f,  7.0f},
@@ -95,6 +101,12 @@ int main(int argc, char *argv[]) {
                                          {1.5f, 20.0f, 20.0f,  5.0f,  0.5f,  0.5f,  7.0f}}).view({1, 1, 4, 7}),
                           torch::tensor({{1.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f},
                                          {1.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f}}).view({1, 1, 2, 7})});
+    test_cases.push_back({torch::tensor({{1.0f,  4.0f,  3.0f,  2.0f, -1.5f, -1.5f,  4.0f},
+                                         {0.8f,  5.0f,  6.0f,  3.0f, -2.5f, -2.5f,  5.5f},
+                                         {0.5f, 18.0f, 19.0f,  4.0f,  0.4f,  0.4f,  7.0f},
+                                         {1.5f, 20.0f, 21.0f,  5.0f,  0.5f,  0.5f,  8.0f}}).view({1, 1, 4, 7}),
+                          torch::tensor({{0.7f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f},
+                                         {1.3f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f}}).view({1, 1, 2, 7})});
 
     for (const auto& test_case : test_cases) {
         const torch::Tensor& mixture = test_case.first;

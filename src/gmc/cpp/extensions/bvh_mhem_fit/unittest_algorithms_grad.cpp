@@ -21,6 +21,7 @@ void assert_similar(float a, float b) {
 static struct UnitTests {
     UnitTests() {
         test_cwise();
+        test_add_approach();
 
         std::cout << "unit tests for algorithms_grad done" << std::endl;
     }
@@ -37,16 +38,16 @@ static struct UnitTests {
         longArrs.push_back({1.2f, 0.5f, -0.5f, -1.5f});
 
 
-//        for (const auto& s1 : shortArrs) {
-//            for (const auto& s2 : shortArrs) {
-//                test_cwise_grads(s1, s2);
-//            }
-//        }
-//        for (const auto& s1 : longArrs) {
-//            for (const auto& s2 : longArrs) {
-//                test_cwise_grads(s1, s2);
-//            }
-//        }
+        for (const auto& s1 : shortArrs) {
+            for (const auto& s2 : shortArrs) {
+                test_cwise_grads(s1, s2);
+            }
+        }
+        for (const auto& s1 : longArrs) {
+            for (const auto& s2 : longArrs) {
+                test_cwise_grads(s1, s2);
+            }
+        }
 
         for (const auto& s : shortArrs) {
             for (const auto& l : longArrs) {
@@ -103,8 +104,59 @@ static struct UnitTests {
 
         auto grads = gpe::grad::cwise_fun(left, right, grad, grad_fun);
 
-        gpe::cwise_fun(left_autodiff, grads.left_grad, [](const autodiff::Variable<float>& autodiff, const float& analytical) { assert_similar(autodiff.grad(), analytical); return 0; });
-        gpe::cwise_fun(right_autodiff, grads.right_grad, [](const autodiff::Variable<float>& autodiff, const float& analytical) { assert_similar(autodiff.grad(), analytical); return 0; });
+        gpe::cwise_fun(left_autodiff, grads.m_left, [](const autodiff::Variable<float>& autodiff, const float& analytical) { assert_similar(autodiff.grad(), analytical); return 0; });
+        gpe::cwise_fun(right_autodiff, grads.m_right, [](const autodiff::Variable<float>& autodiff, const float& analytical) { assert_similar(autodiff.grad(), analytical); return 0; });
+    }
+
+
+    void test_add_approach() {
+        namespace fun = gpe::functors;
+        namespace gradfun = gpe::grad::functors;
+
+        gpe::Array<float, 8> a = {0, 1, 2, 3, 4, 5, 6, 7};
+        gpe::Array<float, 4> b = {0.1f, 0.2f, 0.3f, 0.4f};
+
+        auto ab = gpe::outer_product(a, b, fun::times<float>);
+        gpe::Array<float, 4> c = {-1.1f, -1.2f, -1.3f, -1.4f};
+
+        const auto cc = gpe::cwise_fun(c, c, fun::times<float>);
+        const auto ab_plus_cc = gpe::cwise_fun(cc, ab, fun::plus<float>);
+        const auto ab_plus_cc_times_cc = gpe::cwise_fun(cc, ab_plus_cc, fun::times<float>);
+        const auto ab_plus_cc_times_cc_sq = gpe::cwise_fun(ab_plus_cc_times_cc, ab_plus_cc_times_cc, fun::times<float>);
+        const auto sum = gpe::reduce(ab_plus_cc_times_cc_sq, 0.f, fun::plus<float>);
+
+        // define grads
+        std::decay_t<decltype (sum)> sum_grad = 1.5f;
+        std::decay_t<decltype (ab_plus_cc_times_cc_sq)> ab_plus_cc_times_cc_sq_grad{};
+        std::decay_t<decltype (ab_plus_cc_times_cc)> ab_plus_cc_times_cc_grad{};
+        std::decay_t<decltype (ab_plus_cc)> ab_plus_cc_grad{};
+        std::decay_t<decltype (cc)> cc_grad{};
+        std::decay_t<decltype (c)> c_grad{};
+        std::decay_t<decltype (ab)> ab_grad{};
+
+        // compute analytical grads
+        gpe::grad::sum(ab_plus_cc_times_cc_sq, sum_grad).addTo(&ab_plus_cc_times_cc_sq_grad);
+        gpe::grad::cwise_fun(ab_plus_cc_times_cc, ab_plus_cc_times_cc, ab_plus_cc_times_cc_sq_grad, gradfun::times<float>).addTo(&ab_plus_cc_times_cc_grad, &ab_plus_cc_times_cc_grad);
+        gpe::grad::cwise_fun(cc, ab_plus_cc, ab_plus_cc_times_cc_grad, gradfun::times<float>).addTo(&cc_grad, &ab_plus_cc_grad);
+        gpe::grad::cwise_fun(cc, ab, ab_plus_cc_grad, gradfun::plus<float>).addTo(&cc_grad, &ab_grad);
+        gpe::grad::cwise_fun(c, c, cc_grad, gradfun::times<float>).addTo(&c_grad, &c_grad);
+
+        // compute autodiff grads
+        {
+            auto ab_autodiff = gpe::makeAutodiff(ab);
+            auto c_autodiff = gpe::makeAutodiff(c);
+            using AdFloat = autodiff::Variable<float>;
+            auto cc = gpe::cwise_fun(c_autodiff, c_autodiff, fun::times<AdFloat, AdFloat, AdFloat>);
+            auto ab_plus_cc = gpe::cwise_fun(cc, ab_autodiff, fun::plus<AdFloat, AdFloat, AdFloat>);
+            auto ab_plus_cc_times_cc = gpe::cwise_fun(cc, ab_plus_cc, fun::times<AdFloat, AdFloat, AdFloat>);
+            auto ab_plus_cc_times_cc_sq = gpe::cwise_fun(ab_plus_cc_times_cc, ab_plus_cc_times_cc, fun::times<AdFloat, AdFloat, AdFloat>);
+            auto sum = gpe::reduce(ab_plus_cc_times_cc_sq, AdFloat(0.f), fun::plus<AdFloat, AdFloat, AdFloat>);
+            sum.expr->propagate(sum_grad);
+
+            // compare
+            gpe::cwise_fun(ab_autodiff, ab_grad, [](const autodiff::Variable<float>& autodiff, const float& analytical) { assert_similar(autodiff.grad(), analytical); return 0; });
+            gpe::cwise_fun(c_autodiff, c_grad, [](const autodiff::Variable<float>& autodiff, const float& analytical) { assert_similar(autodiff.grad(), analytical); return 0; });
+        }
     }
 
 } unit_tests;

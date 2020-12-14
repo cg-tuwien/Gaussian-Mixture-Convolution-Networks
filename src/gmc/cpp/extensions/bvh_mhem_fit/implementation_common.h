@@ -33,6 +33,8 @@ template <typename scalar_t, int N_FITTING, int N_TARGET>
 struct GradientCacheData {
     using gradless_scalar_t = gpe::remove_grad_t<scalar_t>;
     gpe::Array2d<gradless_scalar_t, N_TARGET, N_FITTING> responsibilities_1;
+    gpe::Array2d<gradless_scalar_t, N_TARGET, N_FITTING> responsibilities_2;
+    gpe::Array2d<gradless_scalar_t, N_TARGET, N_FITTING> responsibilities_3;
 };
 
 template<typename scalar_t, int N_DIMS, int REDUCTION_N>
@@ -52,7 +54,7 @@ struct AugmentedBvh
         // auto node_attributes = torch::zeros({n_mixtures, n_nodes, REDUCTION_N * mixture.size(-1) + 3}, torch::TensorOptions(mixture.device()).dtype(mixture.scalar_type()));
     };
 //    static_assert (alignof (Gaussian_type) == 4, "adsf");
-    static_assert (sizeof (NodeAttributes) <= sizeof(scalar_t) * (REDUCTION_N * (1 + N_DIMS + N_DIMS * N_DIMS) * 2 + 4 + REDUCTION_N * REDUCTION_N * 2), "NodeAttribute is too large and won't fit into the torch::Tensor");
+//    static_assert (sizeof (NodeAttributes) <= sizeof(scalar_t) * (REDUCTION_N * (1 + N_DIMS + N_DIMS * N_DIMS) * 2 + 4 + REDUCTION_N * REDUCTION_N * 2), "NodeAttribute is too large and won't fit into the torch::Tensor");
 //    static_assert (sizeof (NodeAttributes) == sizeof(scalar_t) * (REDUCTION_N * (1 + N_DIMS + N_DIMS * N_DIMS) * 2 + 4 + REDUCTION_N * REDUCTION_N * 2), "NodeAttribute has unexpected size (it could be smaller, no problem, just unexpected)");
 
     const unsigned n_internal_nodes;
