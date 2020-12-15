@@ -70,8 +70,12 @@ struct Array {
     const T* end() const {
         return data + N;
     }
-
 };
+
+template<typename T>
+Array<T, 1> array(const T& v) {
+    return Array<T, 1>{v};
+}
 
 template<typename T, uint32_t N_ROWS, uint32_t N_COLS = N_ROWS>
 using Array2d = Array<Array<T, N_COLS>, N_ROWS>;

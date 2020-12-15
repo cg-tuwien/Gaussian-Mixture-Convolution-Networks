@@ -27,33 +27,39 @@ void plus(const T1& a, const T2& b, T1* a_grad, T2* b_grad, const decltype (a + 
 }
 template<typename T1, typename T2 = T1>
 __host__ __device__ GPE_ALGORITHMS_INLINE
+void minus(const T1& a, const T2& b, T1* a_grad, T2* b_grad, const decltype (a - b)& incoming_grad) {
+    *a_grad = incoming_grad;
+    *b_grad = -incoming_grad;
+}
+template<typename T1, typename T2 = T1>
+__host__ __device__ GPE_ALGORITHMS_INLINE
 void times(const T1& a, const T2& b, T1* a_grad, T2* b_grad, const decltype (a * b)& incoming_grad) {
     *a_grad = b * incoming_grad;
     *b_grad = a * incoming_grad;
 }
-template<typename scalar_t, int N_DIMS>
+template<typename scalar_t, int N_DIMS1, int N_DIMS2>
 __host__ __device__ GPE_ALGORITHMS_INLINE
-void times(const scalar_t& a, const glm::mat<N_DIMS, N_DIMS, scalar_t>& b, scalar_t* a_grad, glm::mat<N_DIMS, N_DIMS, scalar_t>* b_grad, const glm::mat<N_DIMS, N_DIMS, scalar_t>& incoming_grad) {
+void times(const scalar_t& a, const glm::mat<N_DIMS1, N_DIMS2, scalar_t>& b, scalar_t* a_grad, glm::mat<N_DIMS1, N_DIMS2, scalar_t>* b_grad, const glm::mat<N_DIMS1, N_DIMS2, scalar_t>& incoming_grad) {
     *a_grad = gpe::sum(gpe::cwise_mul(b, incoming_grad));
     *b_grad = a * incoming_grad;
 }
-template<typename scalar_t, int N_DIMS>
+template<int N_DIMS1, int N_DIMS2, typename scalar_t>
 __host__ __device__ GPE_ALGORITHMS_INLINE
-void times(const glm::mat<N_DIMS, N_DIMS, scalar_t>& a, const scalar_t& b, glm::mat<N_DIMS, N_DIMS, scalar_t>* a_grad, scalar_t* b_grad, const glm::mat<N_DIMS, N_DIMS, scalar_t>& incoming_grad, int) {
+void times(const glm::mat<N_DIMS1, N_DIMS2, scalar_t>& a, const scalar_t& b, glm::mat<N_DIMS1, N_DIMS2, scalar_t>* a_grad, scalar_t* b_grad, const glm::mat<N_DIMS1, N_DIMS2, scalar_t>& incoming_grad) {
     *a_grad = b * incoming_grad;
     *b_grad = gpe::sum(gpe::cwise_mul(a, incoming_grad));
 }
 template<typename scalar_t, int N_DIMS>
 __host__ __device__ GPE_ALGORITHMS_INLINE
 void times(const scalar_t& a, const glm::vec<N_DIMS, scalar_t>& b, scalar_t* a_grad, glm::vec<N_DIMS, scalar_t>* b_grad, const glm::vec<N_DIMS, scalar_t>& incoming_grad) {
-    *a_grad = gpe::sum(gpe::cwise_mul(b, incoming_grad));
+    *a_grad = gpe::sum(b * incoming_grad);
     *b_grad = a * incoming_grad;
 }
-template<typename scalar_t, int N_DIMS>
+template<int N_DIMS, typename scalar_t>
 __host__ __device__ GPE_ALGORITHMS_INLINE
 void times(const glm::vec<N_DIMS, scalar_t>& a, const scalar_t& b, glm::vec<N_DIMS, scalar_t>* a_grad, scalar_t* b_grad, const glm::vec<N_DIMS, scalar_t>& incoming_grad, int) {
     *a_grad = b * incoming_grad;
-    *b_grad = gpe::sum(gpe::cwise_mul(a, incoming_grad));
+    *b_grad = gpe::sum(a * incoming_grad);
 }
 
 template<typename T1, typename T2 = T1>
@@ -117,10 +123,28 @@ OneGrad<gpe::Array2d<T1, N1, N2>> transform(const gpe::Array2d<T1, N1, N2>& mat,
 
 template<typename T1, typename T2, typename T3, uint32_t N, typename Function>
 __host__ __device__ GPE_ALGORITHMS_INLINE
-TwoGrads<gpe::Array<T1, N>, gpe::Array<T2, N>> cwise_fun(const gpe::Array<T1, N>& m1,
-               const gpe::Array<T2, N>& m2,
-               const gpe::Array<T3, N>& incoming_grad,
-               Function fun) {
+TwoGrads<gpe::Array<T1, N>, T2> cwise_fun(
+                const gpe::Array<T1, N>& a,
+                const T2& b,
+                const gpe::Array<T3, N>& incoming_grad,
+                Function fun) {
+    TwoGrads<gpe::Array<T1, N>, T2> grads;
+    grads.m_right = {};
+    for (unsigned i = 0; i < N; ++i) {
+        T2 gr;
+        fun(a[i], b, &grads.m_left[i], &gr, incoming_grad[i]);
+        grads.m_right += gr;
+    }
+    return grads;
+}
+
+template<typename T1, typename T2, typename T3, uint32_t N, typename Function>
+__host__ __device__ GPE_ALGORITHMS_INLINE
+TwoGrads<gpe::Array<T1, N>, gpe::Array<T2, N>> cwise_fun(
+                const gpe::Array<T1, N>& m1,
+                const gpe::Array<T2, N>& m2,
+                const gpe::Array<T3, N>& incoming_grad,
+                Function fun) {
     TwoGrads<gpe::Array<T1, N>, gpe::Array<T2, N>> grads;
     for (unsigned i = 0; i < N; ++i) {
         fun(m1[i], m2[i], &grads.m_left[i], &grads.m_right[i], incoming_grad[i]);

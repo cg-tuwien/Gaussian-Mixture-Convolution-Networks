@@ -53,12 +53,10 @@ EXECUTION_DEVICES glm::mat<DIMS, DIMS, scalar_t> determinant(const glm::mat<DIMS
 template<int N_DIMS, typename T>
 EXECUTION_DEVICES
 void outerProduct(const glm::vec<N_DIMS, T>& a, const glm::vec<N_DIMS, T>& b, glm::vec<N_DIMS, T>* a_grad, glm::vec<N_DIMS, T>* b_grad, const glm::mat<N_DIMS, N_DIMS, T>& incoming_grad) {
-    #ifndef N_DEBUG
     for (int i = 0; i < N_DIMS; ++i) {
-        assert((*a_grad)[i] == 0);
-        assert((*b_grad)[i] == 0);
+        (*a_grad)[i] = 0;
+        (*b_grad)[i] = 0;
     }
-    #endif
     for (int i = 0; i < N_DIMS; ++i) {
         for (int j = 0; j < N_DIMS; ++j) {
             (*a_grad)[i] += incoming_grad[j][i] * b[j];

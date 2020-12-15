@@ -20,9 +20,9 @@ __host__ __device__ GPE_ALGORITHMS_INLINE
 T3 plus(const T1& a, const T2& b) {
     return a + b;
 }
-template<typename T1, typename T2 = T1>
+template<typename T1, typename T2 = T1, typename T3 = decltype (T1{} - T2{})>
 __host__ __device__ GPE_ALGORITHMS_INLINE
-auto minus(const T1& a, const T2& b) -> decltype (a - b) {
+T3 minus(const T1& a, const T2& b) {
     return a - b;
 }
 template<typename T1, typename T2 = T1, typename T3 = decltype (T1{} * T2{})>
@@ -110,6 +110,18 @@ auto transform(const gpe::Array2d<T, N1, N2>& mat, Function fun) -> Array2d<decl
 
 template<typename T1, typename T2, uint32_t N, typename Function>
 __host__ __device__ GPE_ALGORITHMS_INLINE
+auto cwise_fun(const gpe::Array<T1, N>& a,
+               const T2& b,
+               Function fun) -> Array<decltype (fun(a.front(), b)), N> {
+    gpe::Array<decltype (fun(a.front(), b)), N> vec;
+    for (unsigned i = 0; i < N; ++i) {
+        vec[i] = fun(a[i], b);
+    }
+    return vec;
+}
+
+template<typename T1, typename T2, uint32_t N, typename Function>
+__host__ __device__ GPE_ALGORITHMS_INLINE
 auto cwise_fun(const gpe::Array<T1, N>& m1,
                const gpe::Array<T2, N>& m2,
                Function fun) -> Array<decltype (fun(m1.front(), m2.front())), N> {
@@ -177,6 +189,14 @@ auto cwise_fun(const Array<T1, N2>& v,
         }
     }
     return matrix;
+}
+
+template<typename T1, typename T2, typename Function>
+__host__ __device__ GPE_ALGORITHMS_INLINE
+void cwise_ref_fun(T1* m1,
+                   T2* m2,
+                   Function fun) {
+    fun(*m1, *m2);
 }
 
 template<typename T1, typename T2, uint32_t N, typename Function>

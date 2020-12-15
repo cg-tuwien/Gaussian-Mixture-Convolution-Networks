@@ -57,7 +57,7 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_TARGET> grad_em(const gpe::Vector
     auto fitting_grad_array = gpe::to_array(fitting_grad, G{0, pos_t(0), cov_t(0)});
 
     const auto grad_finalFittingWeights = gpe::transform(fitting_grad_array, [](const G& g){ return g.weight; });
-    const auto grad_fittingPositions = gpe::transform(fitting_grad_array, [](const G& g){ return g.position; });
+    auto grad_fittingPositions = gpe::transform(fitting_grad_array, [](const G& g){ return g.position; });
     auto grad_fittingCovariances = gpe::transform(fitting_grad_array, [](const G& g){ return g.covariance; });
 
     // forward cached
@@ -84,7 +84,9 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_TARGET> grad_em(const gpe::Vector
     const auto int1_final_fitting_weights = gpe::cwise_fun(fittingWeights, normal_amplitudes, fun::times<scalar_t>);
     const auto clippedFittingWeights = gpe::transform(fittingWeights, gpe::Epsilon<scalar_t>::clip);
     const auto target_gaussian_amplitudes = gpe::transform(targetCovs, gpe::gaussian_amplitude<scalar_t, N_DIMS>);
-    const auto pure_target_weights = gpe::cwise_fun(targetWeights, target_gaussian_amplitudes, fun::divided_AbyB<scalar_t>);
+    const auto int1TargetWeights = gpe::transform(targetWeights, [abs_integral](const scalar_t& w){ return w / gpe::removeGrad(abs_integral); });
+    const auto pure_target_weights = gpe::cwise_fun(int1TargetWeights, target_gaussian_amplitudes, fun::divided_AbyB<scalar_t>);
+    const auto weightedPositions = gpe::cwise_fun(responsibilities_3, targetPositions, fun::times<scalar_t, pos_t>);
 
 
     // todo: make grad variable for every forward variable
@@ -106,19 +108,22 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_TARGET> grad_em(const gpe::Vector
     std::decay_t<decltype (responsibilities_3)>         grad_responsibilities_3         {};
     std::decay_t<decltype (clippedFittingWeights)>      grad_clippedFittingWeights      {};
     std::decay_t<decltype (fittingWeights)>             grad_fittingWeights             {};
+    std::decay_t<decltype (int1TargetWeights)>          grad_int1TargetWeights          {};
     std::decay_t<decltype (pure_target_weights)>        grad_pure_target_weights        {};
     std::decay_t<decltype (posDiffsOuter)>              grad_posDiffsOuter              {};
     std::decay_t<decltype (posDiffs)>                   grad_posDiffs                   {};
     std::decay_t<decltype (target_gaussian_amplitudes)> grad_target_gaussian_amplitudes {};
+    std::decay_t<decltype (weightedPositions)>          grad_weightedPositions          {};
 
 
     // walk gradient back
 
-    // const auto finalFittingWeights = gpe::transform(int1_final_fitting_weights, [abs_integral](scalar_t v) { return v * abs_integral; });
-    gpe::grad::transform(int1_final_fitting_weights, grad_finalFittingWeights, [abs_integral, &grad_abs_integral](scalar_t v, scalar_t g) {
-            grad_abs_integral += v * g;
-            return g * abs_integral;
-    }).addTo(&grad_int1_final_fitting_weights);
+    // const auto finalFittingWeights = gpe::cwise_fun(int1_final_fitting_weights, abs_integral, fun::times<scalar_t, scalar_t, scalar_t>);
+    gpe::grad::cwise_fun(int1_final_fitting_weights, abs_integral, grad_finalFittingWeights, gradfun::times<scalar_t>).addTo(&grad_int1_final_fitting_weights, &grad_abs_integral);
+//    gpe::grad::transform(int1_final_fitting_weights, grad_finalFittingWeights, [abs_integral, &grad_abs_integral](scalar_t v, scalar_t g) {
+//            grad_abs_integral += v * g;
+//            return g * abs_integral;
+//    }).addTo(&grad_int1_final_fitting_weights);
 
     // const auto int1_final_fitting_weights = gpe::cwise_fun(fittingWeights, normal_amplitudes, fun::times<scalar_t>);
     gpe::grad::cwise_fun(fittingWeights, normal_amplitudes, grad_int1_final_fitting_weights, gradfun::times<scalar_t>).addTo(&grad_fittingWeights, &grad_normal_amplitudes);
@@ -130,18 +135,22 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_TARGET> grad_em(const gpe::Vector
     gpe::grad::sum_cols(weightedCovs, grad_fittingCovariances).addTo(&grad_weightedCovs);
 
     // const auto weightedCovs = gpe::cwise_fun(responsibilities_3, gpe::removeGrad(unweightedCovs), fun::times<scalar_t, gradless_cov_t>);
-    gpe::grad::cwise_fun(responsibilities_3, unweightedCovs, grad_weightedCovs, gradfun::times<scalar_t, N_DIMS>).addTo(&grad_responsibilities_3, &grad_unweightedCovs);
+    gpe::grad::cwise_fun(responsibilities_3, unweightedCovs, grad_weightedCovs, gradfun::times<scalar_t, N_DIMS, N_DIMS>).addTo(&grad_responsibilities_3, &grad_unweightedCovs);
 
     // const auto unweightedCovs = gpe::cwise_fun(posDiffsOuter, targetCovs, fun::plus<cov_t>);
     gpe::grad::cwise_fun(posDiffsOuter, targetCovs, grad_unweightedCovs, gradfun::plus<cov_t>).addTo(&grad_posDiffsOuter, &grad_targetCovs);
 
-    // const auto posDiffsOuter = gpe::transform(posDiffs, [](const pos_t& p) { return glm::outerProduct(p, p); });
+    // const auto posDiffsOuter = gpe::cwise_fun(posDiffs, posDiffs, gpe::outerProduct<scalar_t, N_DIMS>);
+    gpe::grad::cwise_fun(posDiffs, posDiffs, grad_posDiffsOuter, gpe::grad::outerProduct<N_DIMS, scalar_t>).addTo(&grad_posDiffs, &grad_posDiffs);
 
     // const auto posDiffs = gpe::outer_product(targetPositions, fittingPositions, fun::minus<pos_t>);
+    gpe::grad::outer_product(targetPositions, fittingPositions, grad_posDiffs, gradfun::minus<pos_t>).addTo(&grad_targetPositions, &grad_fittingPositions);
 
     // const auto fittingPositions = gpe::reduce_cols(weightedPositions, pos_t(0), fun::plus<pos_t>);
+    gpe::grad::sum_cols(weightedPositions, grad_fittingPositions).addTo(&grad_weightedPositions);
 
     // const auto weightedPositions = gpe::cwise_fun(responsibilities_3, targetPositions, fun::times<scalar_t, pos_t>);
+    gpe::grad::cwise_fun(responsibilities_3, targetPositions, grad_weightedPositions, gradfun::times<scalar_t, N_DIMS>).addTo(&grad_responsibilities_3, &grad_targetPositions);
 
     // const auto responsibilities_3 = gpe::cwise_fun(clippedFittingWeights, gpe::removeGrad(responsibilities_2), fun::divided_BbyA<scalar_t>);
     gpe::grad::cwise_fun(clippedFittingWeights, responsibilities_2, grad_responsibilities_3, gradfun::divided_BbyA<scalar_t>).addTo(&grad_clippedFittingWeights, &grad_responsibilities_2);
@@ -156,8 +165,8 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_TARGET> grad_em(const gpe::Vector
     // const auto responsibilities_2 = gpe::cwise_fun(responsibilities_1, pure_target_weights, fun::times<scalar_t>);
     gpe::grad::cwise_fun(responsibilities_1, pure_target_weights, grad_responsibilities_2, gradfun::times<scalar_t>).addTo(&grad_responsibilities_1, &grad_pure_target_weights);
 
-    // const auto pure_target_weights = gpe::cwise_fun(targetWeights, target_gaussian_amplitudes, fun::divided_AbyB<scalar_t>);
-    gpe::grad::cwise_fun(targetWeights, target_gaussian_amplitudes, grad_pure_target_weights, gradfun::divided_AbyB<scalar_t>).addTo(&grad_targetWeights, &grad_target_gaussian_amplitudes);
+    // const auto pure_target_weights = gpe::cwise_fun(int1TargetWeights, target_gaussian_amplitudes, fun::divided_AbyB<scalar_t, scalar_t, scalar_t>);
+    gpe::grad::cwise_fun(int1TargetWeights, target_gaussian_amplitudes, grad_pure_target_weights, gradfun::divided_AbyB<scalar_t>).addTo(&grad_int1TargetWeights, &grad_target_gaussian_amplitudes);
 
     // const auto target_gaussian_amplitudes = gpe::transform(targetCovs, gpe::gaussian_amplitude<scalar_t, N_DIMS>);
     gpe::grad::transform(targetCovs, grad_target_gaussian_amplitudes, gpe::grad::gaussian_amplitude<scalar_t, N_DIMS>).addTo(&grad_targetCovs);
@@ -166,11 +175,14 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_TARGET> grad_em(const gpe::Vector
 //    gpe::grad::cwise_fun(weighted_likelihood_clamped_matrix, weighted_likelihood_sum, grad_responsibilities_1, gradfun::divided_AbyB<gradless_scalar_t>)
 //            .addTo(grad_weighted_likelihood_clamped_matrix, grad_weighted_likelihood_sum);
 
+    // const auto int1TargetWeights = gpe::cwise_fun(targetWeights, abs_integral, fun::divided_AbyB<scalar_t, scalar_t, scalar_t>);
+    gpe::grad::cwise_fun(targetWeights, abs_integral, grad_int1TargetWeights, gradfun::divided_AbyB<scalar_t>).addTo(&grad_targetWeights, &grad_abs_integral);
+
     gpe::Vector<G, N_TARGET> target_grad{};
     for (unsigned i = 0; i < N_TARGET; ++i) {
-        target_grad.push_back(G{grad_targetWeights[i] / abs_integral,
-                                pos_t(0),
-                                cov_t(0)});
+        target_grad.push_back(G{grad_targetWeights[i],
+                                grad_targetPositions[i],
+                                grad_targetCovs[i]});
     }
 
 //    if (gpe::abs(abs_integral - gpe::reduce(result, scalar_t(0), [](scalar_t i, const G& g) { return i + gpe::abs(gpe::integrate(g)); })) >= scalar_t(0.0001)) {

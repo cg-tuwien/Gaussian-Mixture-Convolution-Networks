@@ -162,16 +162,17 @@ static struct UnitTests {
     template<typename A1, typename A2, typename A3>
     void test_cwise_funs(const A1& left, const A2& right, const A3& grad) {
         test_cwise_case(left, right, grad, gpe::functors::plus<autodiff::Variable<float>>, gpe::grad::functors::plus<float>);
+        test_cwise_case(left, right, grad, gpe::functors::minus<autodiff::Variable<float>>, gpe::grad::functors::minus<float>);
         test_cwise_case(left, right, grad, gpe::functors::times<autodiff::Variable<float>>, gpe::grad::functors::times<float>);
 
-        bool right_has_zeros = false;
-        gpe::transform(right, [&right_has_zeros](float v) { if (gpe::abs(v) < 0.00001f) right_has_zeros = true; return 0; });
-        if (!right_has_zeros)
+        bool right_contains_zeros = false;
+        gpe::transform(right, [&right_contains_zeros](float v) { if (gpe::abs(v) < 0.00001f) right_contains_zeros = true; return 0; });
+        if (!right_contains_zeros)
             test_cwise_case(left, right, grad, gpe::functors::divided_AbyB<autodiff::Variable<float>>, gpe::grad::functors::divided_AbyB<float>);
 
-        bool left_has_zeros = false;
-        gpe::transform(left, [&left_has_zeros](float v) { if (gpe::abs(v) < 0.00001f) left_has_zeros = true; return 0; });
-        if (!left_has_zeros)
+        bool left_contains_zeros = false;
+        gpe::transform(left, [&left_contains_zeros](float v) { if (gpe::abs(v) < 0.00001f) left_contains_zeros = true; return 0; });
+        if (!left_contains_zeros)
             test_cwise_case(left, right, grad, gpe::functors::divided_BbyA<autodiff::Variable<float>>, gpe::grad::functors::divided_BbyA<float>);
     }
 
