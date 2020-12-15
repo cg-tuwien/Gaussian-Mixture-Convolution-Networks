@@ -1,7 +1,7 @@
-#ifndef EPSILON_H
-#define EPSILON_H
+#ifndef GPE_UTIL_EPSILON_H
+#define GPE_UTIL_EPSILON_H
 
-#include "math/scalar.h"
+#include "util/scalar.h"
 #include "util/autodiff.h"
 #include "util/cuda.h"
 
@@ -40,4 +40,4 @@ struct Epsilon<autodiff::Variable<double>> {
 #endif
 }
 
-#endif // EPSILON_H
+#endif // GPE_UTIL_EPSILON_H

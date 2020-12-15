@@ -60,9 +60,6 @@ include_directories(SYSTEM ${MY_INCLUDE_PATHS} SYSTEM ${TORCH_INCLUDE_DIRS})
 
 set(COMMON_HEADERS
     common.h
-    containers.h
-    algorithms.h
-    mixture.h
     parallel_start.h
     hacked_accessor.h
     cuda_qt_creator_definitinos.h
@@ -77,13 +74,10 @@ set(COMMON_SOURCES
 add_library(common ${COMMON_HEADERS} ${COMMON_SOURCES})
 
 set(MATH_HEADERS
-    math/gpe_glm.h
     math/symeig.h
     math/symeig_cuda.h
     math/symeig_cpu.h
-    math/symeig_detail.h
-    math/scalar.h
-    math/matrix.h)
+    math/symeig_detail.h)
 set(MATH_SOURCES
     math/symeig_cpu.cpp
     math/symeig_cuda.cpp
@@ -103,10 +97,18 @@ add_library(lbvh ${LBVH_HEADERS} lbvh/bvh.cu)
 target_link_libraries(lbvh PUBLIC OpenMP::OpenMP_CXX torch math common)
 
 set(UTIL_HEADERS
+    util/algorithms.h
     util/autodiff.h
+    util/containers.h
+    util/cuda.h
     util/epsilon.h
-    util/algorithms_grad.h
-    util/cuda.h)
+    util/glm.h
+    util/mixture.h
+    util/grad/algorithms.h
+    util/grad/common.h
+    util/grad/glm.h
+    util/grad/mixture.h
+    util/scalar.h)
 add_library(util ${UTIL_HEADERS} util/dummy.cpp)
 
 set(EVALUATE_INVERSED_HEADERS
@@ -149,38 +151,38 @@ set(BVH_MHEM_FIT_SOURCES
     bvh_mhem_fit/bindings.cpp
     bvh_mhem_fit/implementation_dispatch.cpp
     bvh_mhem_fit/implementation_autodiff_backward.cpp
-    bvh_mhem_fit/implementation_forward_instances/template_instance_implementation_forward_2_float_2.cu
-    bvh_mhem_fit/implementation_forward_instances/template_instance_implementation_forward_2_float_3.cu
-    bvh_mhem_fit/implementation_forward_instances/template_instance_implementation_forward_2_double_2.cu
-    bvh_mhem_fit/implementation_forward_instances/template_instance_implementation_forward_2_double_3.cu
-    bvh_mhem_fit/implementation_forward_instances/template_instance_implementation_forward_4_float_2.cu
-    bvh_mhem_fit/implementation_forward_instances/template_instance_implementation_forward_4_float_3.cu
-    bvh_mhem_fit/implementation_forward_instances/template_instance_implementation_forward_4_double_2.cu
-    bvh_mhem_fit/implementation_forward_instances/template_instance_implementation_forward_4_double_3.cu
-    bvh_mhem_fit/implementation_forward_instances/template_instance_implementation_forward_8_float_2.cu
-    bvh_mhem_fit/implementation_forward_instances/template_instance_implementation_forward_8_float_3.cu
-    bvh_mhem_fit/implementation_forward_instances/template_instance_implementation_forward_8_double_2.cu
-    bvh_mhem_fit/implementation_forward_instances/template_instance_implementation_forward_8_double_3.cu
-    bvh_mhem_fit/implementation_forward_instances/template_instance_implementation_forward_16_float_2.cu
-    bvh_mhem_fit/implementation_forward_instances/template_instance_implementation_forward_16_float_3.cu
-    bvh_mhem_fit/implementation_forward_instances/template_instance_implementation_forward_16_double_2.cu
-    bvh_mhem_fit/implementation_forward_instances/template_instance_implementation_forward_16_double_3.cu
-    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_2_float_2.cu
-    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_2_float_3.cu
-    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_2_double_2.cu
-    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_2_double_3.cu
-    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_4_float_2.cu
-    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_4_float_3.cu
-    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_4_double_2.cu
-    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_4_double_3.cu
-    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_8_float_2.cu
-    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_8_float_3.cu
-    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_8_double_2.cu
-    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_8_double_3.cu
-    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_16_float_2.cu
-    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_16_float_3.cu
-    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_16_double_2.cu
-    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_16_double_3.cu
+    bvh_mhem_fit/implementation_forward_instances/template_instance_implementation_forward_2_float_2.cpp
+    bvh_mhem_fit/implementation_forward_instances/template_instance_implementation_forward_2_float_3.cpp
+    bvh_mhem_fit/implementation_forward_instances/template_instance_implementation_forward_2_double_2.cpp
+    bvh_mhem_fit/implementation_forward_instances/template_instance_implementation_forward_2_double_3.cpp
+    bvh_mhem_fit/implementation_forward_instances/template_instance_implementation_forward_4_float_2.cpp
+    bvh_mhem_fit/implementation_forward_instances/template_instance_implementation_forward_4_float_3.cpp
+    bvh_mhem_fit/implementation_forward_instances/template_instance_implementation_forward_4_double_2.cpp
+    bvh_mhem_fit/implementation_forward_instances/template_instance_implementation_forward_4_double_3.cpp
+    bvh_mhem_fit/implementation_forward_instances/template_instance_implementation_forward_8_float_2.cpp
+    bvh_mhem_fit/implementation_forward_instances/template_instance_implementation_forward_8_float_3.cpp
+    bvh_mhem_fit/implementation_forward_instances/template_instance_implementation_forward_8_double_2.cpp
+    bvh_mhem_fit/implementation_forward_instances/template_instance_implementation_forward_8_double_3.cpp
+    bvh_mhem_fit/implementation_forward_instances/template_instance_implementation_forward_16_float_2.cpp
+    bvh_mhem_fit/implementation_forward_instances/template_instance_implementation_forward_16_float_3.cpp
+    bvh_mhem_fit/implementation_forward_instances/template_instance_implementation_forward_16_double_2.cpp
+    bvh_mhem_fit/implementation_forward_instances/template_instance_implementation_forward_16_double_3.cpp
+    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_2_float_2.cpp
+    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_2_float_3.cpp
+    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_2_double_2.cpp
+    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_2_double_3.cpp
+    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_4_float_2.cpp
+    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_4_float_3.cpp
+    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_4_double_2.cpp
+    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_4_double_3.cpp
+    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_8_float_2.cpp
+    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_8_float_3.cpp
+    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_8_double_2.cpp
+    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_8_double_3.cpp
+    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_16_float_2.cpp
+    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_16_float_3.cpp
+    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_16_double_2.cpp
+    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_16_double_3.cpp
 )
 add_library(bvh_mhem_fit ${BVH_MHEM_FIT_HEADERS} ${BVH_MHEM_FIT_SOURCES})
 target_link_libraries(bvh_mhem_fit PUBLIC OpenMP::OpenMP_CXX torch math lbvh common)

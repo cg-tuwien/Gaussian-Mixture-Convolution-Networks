@@ -1,5 +1,5 @@
-#ifndef GPE_CONTAINERS_H
-#define GPE_CONTAINERS_H
+#ifndef GPE_UTIL_CONTAINERS_H
+#define GPE_UTIL_CONTAINERS_H
 
 #include <cassert>
 #include <cinttypes>
@@ -411,4 +411,4 @@ gpe::Array2d<autodiff::Variable<T>, N1, N2> makeAutodiff(const gpe::Array2d<T, N
 
 } // namespace gpe
 
-#endif // GPE_CONTAINERS_H
+#endif // GPE_UTIL_CONTAINERS_H

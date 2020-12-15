@@ -12,9 +12,8 @@
 #include <cuda_runtime.h>
 
 #include "common.h"
-#include "mixture.h"
-
 #include "parallel_binding.h"
+#include "util/mixture.h"
 
 std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> cuda_bvh_forward(const torch::Tensor& mixture, const torch::Tensor& xes);
 

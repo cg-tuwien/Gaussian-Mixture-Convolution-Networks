@@ -8,10 +8,11 @@
 
 #include <torch/extension.h>
 
-#include "math/gpe_glm.h"
+#include "util/glm.h"
 
 #include "common.h"
 #include "math/symeig_detail.h"
+#include "util/mixture.h"
 
 namespace {
 
@@ -36,8 +37,8 @@ void execute_parallel_forward(const torch::PackedTensorAccessor32<scalar_t, 3>& 
 std::tuple<at::Tensor, at::Tensor> gpe::symeig_cpu_forward(const torch::Tensor& matrices) {
     using namespace torch::indexing;
     // currently only 2x2 matrices
-    TORCH_CHECK(matrices.size(-1) == 2 && matrices.size(-2) == 2);
-    TORCH_CHECK(matrices.device().is_cpu(), "this one is just for cpu..");
+    TORCH_CHECK(matrices.size(-1) == 2 && matrices.size(-2) == 2)
+    TORCH_CHECK(matrices.device().is_cpu(), "this one is just for cpu..")
 
     const auto original_shape = matrices.sizes().vec();
     const auto n_dims = original_shape.back();

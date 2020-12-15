@@ -1,12 +1,13 @@
-#ifndef GPE_UTIL_ALGORITHMS_GRAD_H
-#define GPE_UTIL_ALGORITHMS_GRAD_H
+#ifndef GPE_UTIL_GRAD_ALGORITHMS_H
+#define GPE_UTIL_GRAD_ALGORITHMS_H
 
 #include <cinttypes>
 
 #include <cuda_runtime.h>
 
-#include "containers.h"
-#include "algorithms.h"
+#include "util/algorithms.h"
+#include "util/containers.h"
+#include "util/grad/common.h"
 
 #ifdef NDEBUG
 #define GPE_ALGORITHMS_INLINE __forceinline__
@@ -72,25 +73,6 @@ void divided_BbyA(const T1& a, const T2& b, T1* a_grad, T2* b_grad, const declty
 }
 
 // ////////////////////////////////////////  array algorithms //////////////////////////////////////////
-
-template <typename A1, typename A2>
-struct TwoGrads {
-    A1 m_left;
-    A2 m_right;
-
-    void addTo(A1* left, A2* right) {
-        cwise_ref_fun(&m_left, left, [](const auto& m_g, auto& g) { g += m_g; });
-        cwise_ref_fun(&m_right, right, [](const auto& m_g, auto& g) { g += m_g; });
-    }
-};
-
-template <typename A1>
-struct OneGrad {
-    A1 m_grad;
-    void addTo(A1* grad) {
-        cwise_ref_fun(&m_grad, grad, [](const auto& m_g, auto& g) { g += m_g; });
-    }
-};
 
 template<typename T1, typename T2, uint32_t N, typename Function>
 __host__ __device__ GPE_ALGORITHMS_INLINE
@@ -237,4 +219,4 @@ OneGrad<Array2d<T1, N1, N2>> sum_cols(const Array2d<T1, N1, N2>&, const Array<T1
 
 #undef GPE_ALGORITHMS_INLINE
 
-#endif // GPE_UTIL_ALGORITHMS_GRAD_H
+#endif // GPE_UTIL_GRAD_ALGORITHMS_H

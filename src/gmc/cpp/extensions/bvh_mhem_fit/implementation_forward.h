@@ -6,22 +6,21 @@
 #include <cuda_runtime.h>
 #include <torch/types.h>
 
-#include "algorithms.h"
 #include "bvh_mhem_fit/implementation_common.h"
 #include "common.h"
-#include "containers.h"
 #include "cuda_qt_creator_definitinos.h"
 #include "cuda_operations.h"
 #include "hacked_accessor.h"
 #include "lbvh/aabb.h"
 #include "lbvh/bvh.h"
-#include "math/gpe_glm.h"
-#include "math/matrix.h"
-#include "math/scalar.h"
-#include "mixture.h"
+#include "util/glm.h"
+#include "util/scalar.h"
 #include "parallel_start.h"
+#include "util/algorithms.h"
 #include "util/autodiff.h"
+#include "util/containers.h"
 #include "util/cuda.h"
+#include "util/mixture.h"
 
 // todo:
 // - in collect_result, run a new fitting with the most important node to fill up the remaining gaussian slots
@@ -445,7 +444,8 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_em(const gpe::Vector
     assert(!has_nan(fittingPositions));
 
     const auto posDiffs = gpe::outer_product(targetPositions, fittingPositions, fun::minus<pos_t>);
-    const auto posDiffsOuter = gpe::transform(posDiffs, [](const pos_t& p) { return glm::outerProduct(p, p); });
+//    const auto posDiffsOuter = gpe::transform(posDiffs, [](const pos_t& p) { return glm::outerProduct(p, p); });
+    const auto posDiffsOuter = gpe::cwise_fun(posDiffs, posDiffs, gpe::outerProduct<scalar_t, N_DIMS>);
     const auto unweightedCovs = gpe::cwise_fun(posDiffsOuter, targetCovs, fun::plus<cov_t, cov_t, cov_t>);
 
     const auto weightedCovs = gpe::cwise_fun(responsibilities_3, unweightedCovs, fun::times<scalar_t, cov_t, cov_t>);

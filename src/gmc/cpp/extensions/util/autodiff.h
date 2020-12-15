@@ -1,5 +1,5 @@
-#ifndef UTIL_AUTODIFF_H
-#define UTIL_AUTODIFF_H
+#ifndef GPE_UTIL_AUTODIFF_H
+#define GPE_UTIL_AUTODIFF_H
 
 #include <cuda_runtime.h>
 
@@ -9,7 +9,7 @@
 #include <autodiff/reverse.hpp>
 #endif
 
-#include "math/gpe_glm.h"
+#include "util/glm.h"
 
 namespace gpe {
 template <typename scalar>
@@ -152,4 +152,4 @@ T removeGrad(const T& v) {
 
 }
 
-#endif // UTIL_AUTODIFF_H
+#endif // GPE_UTIL_AUTODIFF_H

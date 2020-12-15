@@ -1,6 +1,6 @@
 #include "bvh_mhem_fit/implementation.h"
 #include "bvh_mhem_fit/implementation_template_externs.h"
-#include "mixture.h"
+#include "util/mixture.h"
 
 namespace bvh_mhem_fit {
 namespace  {

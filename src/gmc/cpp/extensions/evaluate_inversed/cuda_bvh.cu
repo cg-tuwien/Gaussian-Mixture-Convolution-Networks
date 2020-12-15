@@ -9,16 +9,15 @@
 
 
 #include "common.h"
-#include "mixture.h"
 #include "cuda_qt_creator_definitinos.h"
+#include "hacked_accessor.h"
 #include "lbvh/aabb.h"
 #include "lbvh/bvh.h"
 #include "lbvh/query.h"
 #include "lbvh/predicator.h"
-#include "math/gpe_glm.h"
-
-#include "hacked_accessor.h"
+#include "util/glm.h"
 #include "parallel_start.h"
+#include "util/mixture.h"
 
 template <typename scalar_t, int DIMS>
 __host__ __device__

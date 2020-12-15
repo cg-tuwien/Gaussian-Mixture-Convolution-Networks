@@ -11,12 +11,12 @@
 
 #include <cuda_runtime.h>
 
-#include "common.h"
-#include "mixture.h"
-#include "evaluate_inversed/parallel_binding.h"
 #include "bvh_mhem_fit/implementation.h"
 #include "bvh_mhem_fit/implementation_autodiff_backward.h"
+#include "common.h"
+#include "evaluate_inversed/parallel_binding.h"
 #include "integrate/binding.h"
+#include "util/mixture.h"
 
 constexpr bool RENDER = false;
 constexpr uint RESOLUTION = 128;

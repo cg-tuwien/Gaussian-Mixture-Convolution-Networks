@@ -3,10 +3,9 @@
 
 #include <thrust/tuple.h>
 
-#include "math/gpe_glm.h"
+#include "util/glm.h"
 
-#include "math/scalar.h"
-#include "math/matrix.h"
+#include "util/scalar.h"
 
 namespace gpe {
 

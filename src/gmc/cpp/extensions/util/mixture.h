@@ -1,5 +1,5 @@
-#ifndef MIXTURE_H
-#define MIXTURE_H
+#ifndef GPE_UTIL_MIXTURE_H
+#define GPE_UTIL_MIXTURE_H
 #include <vector>
 #include <iostream>
 #include <type_traits>
@@ -7,14 +7,34 @@
 #include <gcem.hpp>
 #include <torch/types.h>
 
-#include "math/gpe_glm.h"
-#include "math/matrix.h"
-#include "math/scalar.h"
+#include "util/glm.h"
+#include "util/scalar.h"
 #include "util/autodiff.h"
 #include "util/cuda.h"
 
 namespace gpe {
 
+template <int DIMS, typename scalar_t>
+EXECUTION_DEVICES glm::vec<DIMS, scalar_t>&
+vec(scalar_t& memory_location) {
+    return reinterpret_cast<glm::vec<DIMS, scalar_t>&>(memory_location);
+}
+
+template <int DIMS, typename scalar_t>
+EXECUTION_DEVICES const glm::vec<DIMS, scalar_t>&
+vec(const scalar_t& memory_location) {
+    return reinterpret_cast<const glm::vec<DIMS, scalar_t>&>(memory_location);
+}
+
+template <int DIMS, typename scalar_t>
+EXECUTION_DEVICES const glm::mat<DIMS, DIMS, scalar_t>& mat(const scalar_t& memory_location) {
+    return reinterpret_cast<const glm::mat<DIMS, DIMS, scalar_t>&>(memory_location);
+}
+
+template <int DIMS, typename scalar_t>
+EXECUTION_DEVICES glm::mat<DIMS, DIMS, scalar_t>& mat(scalar_t& memory_location) {
+    return reinterpret_cast<glm::mat<DIMS, DIMS, scalar_t>&>(memory_location);
+}
 
 struct MixtureAndXesNs {
     int batch = 0;
@@ -78,16 +98,16 @@ inline torch::Tensor pack_mixture(const torch::Tensor weights, const torch::Tens
     const auto n_batch = weights.size(0);
     const auto n_layers = weights.size(1);
     const auto n_components = weights.size(2);
-    TORCH_CHECK(positions.size(0) == n_batch);
-    TORCH_CHECK(covariances.size(0) == n_batch);
-    TORCH_CHECK(positions.size(1) == n_layers);
-    TORCH_CHECK(covariances.size(1) == n_layers);
-    TORCH_CHECK(positions.size(2) == n_components);
-    TORCH_CHECK(covariances.size(2) == n_components);
+    TORCH_CHECK(positions.size(0) == n_batch)
+    TORCH_CHECK(covariances.size(0) == n_batch)
+    TORCH_CHECK(positions.size(1) == n_layers)
+    TORCH_CHECK(covariances.size(1) == n_layers)
+    TORCH_CHECK(positions.size(2) == n_components)
+    TORCH_CHECK(covariances.size(2) == n_components)
 
     const auto n_dims = positions.size(3);
-    TORCH_CHECK(covariances.size(3) == n_dims);
-    TORCH_CHECK(covariances.size(4) == n_dims);
+    TORCH_CHECK(covariances.size(3) == n_dims)
+    TORCH_CHECK(covariances.size(4) == n_dims)
 
     return torch::cat({weights.view({n_batch, n_layers, n_components, 1}), positions, covariances.view({n_batch, n_layers, n_components, n_dims * n_dims})}, 3);
 }
@@ -261,16 +281,6 @@ EXECUTION_DEVICES scalar_t gaussian_amplitude(const glm::mat<DIMS, DIMS, scalar_
     return a / gpe::sqrt(glm::determinant(cov));
 }
 
-template <typename scalar_t, int DIMS>
-EXECUTION_DEVICES glm::mat<DIMS, DIMS, scalar_t> grad_gaussian_amplitude(const glm::mat<DIMS, DIMS, scalar_t>& cov, scalar_t grad) {
-    using gradless_scalar_t = gpe::remove_grad_t<scalar_t>;
-    constexpr auto a = gcem::pow(gradless_scalar_t(2) * glm::pi<gradless_scalar_t>(), - DIMS * gradless_scalar_t(0.5));
-    assert(glm::determinant(cov) > 0);
-    const auto d = glm::determinant(cov);
-    const auto k = (a * scalar_t(-0.5)) / gpe::sqrt(d * d * d);
-    return k * grad_determinant(cov, grad);
-}
-
 inline void check_mixture(torch::Tensor mixture) {
     TORCH_CHECK(mixture.is_contiguous(), "mixture must be contiguous")
     TORCH_CHECK(!torch::isnan(mixture).any().item<bool>(), "mixture contains NaNs");
@@ -317,4 +327,4 @@ inline MixtureAndXesNs check_input_and_get_ns(torch::Tensor mixture, torch::Tens
 
 } // namespace gpe
 
-#endif // MIXTURE_H
+#endif // GPE_UTIL_MIXTURE_H

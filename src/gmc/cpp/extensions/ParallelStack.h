@@ -2,7 +2,7 @@
 #define PARALLELSTACK_H
 
 #include "cuda_operations.h"
-#include "math/scalar.h"
+#include "util/scalar.h"
 
 //#define GPE_SINGLE_THREADED_MODE
 

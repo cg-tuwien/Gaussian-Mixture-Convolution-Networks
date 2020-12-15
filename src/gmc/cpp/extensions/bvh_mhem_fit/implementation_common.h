@@ -4,10 +4,10 @@
 #include <torch/types.h>
 
 #include "BvhMhemFitConfig.h"
-#include "containers.h"
 #include "lbvh/bvh.h"
 #include "hacked_accessor.h"
 #include "util/autodiff.h"
+#include "util/containers.h"
 #include "util/cuda.h"
 #include "util/epsilon.h"
 

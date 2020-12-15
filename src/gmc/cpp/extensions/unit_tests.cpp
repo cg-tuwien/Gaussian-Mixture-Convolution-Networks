@@ -1,8 +1,8 @@
 #ifndef NDEBUG
 #include <iostream>
 
-#include "containers.h"
-#include "algorithms.h"
+#include "util/containers.h"
+#include "util/algorithms.h"
 
 namespace gpe {
 namespace  {

@@ -4,7 +4,7 @@
 #include <type_traits>
 
 #include "common.h"
-#include "mixture.h"
+#include "util/mixture.h"
 #include "lbvh/aabb.h"
 #include "lbvh/Config.h"
 

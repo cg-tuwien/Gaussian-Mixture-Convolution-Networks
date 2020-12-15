@@ -5,23 +5,24 @@
 #include <cuda_runtime.h>
 #include <torch/types.h>
 
-#include "algorithms.h"
 #include "bvh_mhem_fit/implementation_common.h"
 #include "common.h"
-#include "containers.h"
 #include "cuda_qt_creator_definitinos.h"
 #include "cuda_operations.h"
 #include "hacked_accessor.h"
 #include "lbvh/aabb.h"
 #include "lbvh/bvh.h"
-#include "math/gpe_glm.h"
-#include "math/matrix.h"
-#include "math/scalar.h"
-#include "mixture.h"
+#include "util/glm.h"
+#include "util/scalar.h"
 #include "parallel_start.h"
 #include "ParallelStack.h"
-#include "util/algorithms_grad.h"
+#include "util/algorithms.h"
+#include "util/containers.h"
 #include "util/cuda.h"
+#include "util/grad/algorithms.h"
+#include "util/grad/glm.h"
+#include "util/grad/mixture.h"
+#include "util/mixture.h"
 
 
 // todo:
@@ -123,7 +124,7 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_TARGET> grad_em(const gpe::Vector
     gpe::grad::cwise_fun(fittingWeights, normal_amplitudes, grad_int1_final_fitting_weights, gradfun::times<scalar_t>).addTo(&grad_fittingWeights, &grad_normal_amplitudes);
 
     // const auto normal_amplitudes = gpe::transform(fittingCovariances, gpe::gaussian_amplitude<scalar_t, N_DIMS>);
-    gpe::grad::transform(fittingCovariances, grad_normal_amplitudes, gpe::grad_gaussian_amplitude<scalar_t, N_DIMS>).addTo(&grad_fittingCovariances);
+    gpe::grad::transform(fittingCovariances, grad_normal_amplitudes, gpe::grad::gaussian_amplitude<scalar_t, N_DIMS>).addTo(&grad_fittingCovariances);
 
     //auto fittingCovariances = gpe::reduce_cols(weightedCovs, cov_t(0), fun::plus<cov_t>);
     gpe::grad::sum_cols(weightedCovs, grad_fittingCovariances).addTo(&grad_weightedCovs);
@@ -159,7 +160,7 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_TARGET> grad_em(const gpe::Vector
     gpe::grad::cwise_fun(targetWeights, target_gaussian_amplitudes, grad_pure_target_weights, gradfun::divided_AbyB<scalar_t>).addTo(&grad_targetWeights, &grad_target_gaussian_amplitudes);
 
     // const auto target_gaussian_amplitudes = gpe::transform(targetCovs, gpe::gaussian_amplitude<scalar_t, N_DIMS>);
-    gpe::grad::transform(targetCovs, grad_target_gaussian_amplitudes, gpe::grad_gaussian_amplitude<scalar_t, N_DIMS>).addTo(&grad_targetCovs);
+    gpe::grad::transform(targetCovs, grad_target_gaussian_amplitudes, gpe::grad::gaussian_amplitude<scalar_t, N_DIMS>).addTo(&grad_targetCovs);
 
     // const auto responsibilities_1 = gpe::cwise_fun(weighted_likelihood_clamped_matrix, weighted_likelihood_sum, fun::divided_AbyB<gradless_scalar_t>);
 //    gpe::grad::cwise_fun(weighted_likelihood_clamped_matrix, weighted_likelihood_sum, grad_responsibilities_1, gradfun::divided_AbyB<gradless_scalar_t>)

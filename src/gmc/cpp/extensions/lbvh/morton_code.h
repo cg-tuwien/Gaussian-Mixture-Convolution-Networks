@@ -4,9 +4,9 @@
 #include <cuda_runtime.h>
 #include <cstdint>
 
-#include "math/gpe_glm.h"
+#include "util/glm.h"
 
-#include "math/scalar.h"
+#include "util/scalar.h"
 #include "cuda_operations.h"
 
 #define EXECUTION_DEVICES __host__ __device__ __forceinline__

@@ -13,10 +13,9 @@
 #include "lbvh/morton_code.h"
 #include "math/symeig_detail.h"
 #include "math/symeig_cuda.h"
-#include "math/scalar.h"
-#include "math/matrix.h"
-#include "mixture.h"
+#include "util/scalar.h"
 #include "parallel_start.h"
+#include "util/mixture.h"
 
 namespace lbvh
 {

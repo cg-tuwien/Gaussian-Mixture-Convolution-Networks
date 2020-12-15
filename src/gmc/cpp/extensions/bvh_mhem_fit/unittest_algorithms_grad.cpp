@@ -1,13 +1,13 @@
 #ifndef NDEBUG
 #include <iostream>
 
-#include "math/gpe_glm.h"
+#include "util/glm.h"
 
 #include "util/autodiff.h"
-#include "math/scalar.h"
-#include "containers.h"
-#include "algorithms.h"
-#include "util/algorithms_grad.h"
+#include "util/scalar.h"
+#include "util/containers.h"
+#include "util/algorithms.h"
+#include "util/grad/algorithms.h"
 
 
 namespace  {

@@ -1,5 +1,5 @@
-#ifndef UTIL_CUDA_H
-#define UTIL_CUDA_H
+#ifndef GPE_UTIL_CUDA_H
+#define GPE_UTIL_CUDA_H
 
 #include <cuda_runtime.h>
 
@@ -28,4 +28,4 @@ template< class T >
 using remove_cvref_t = typename remove_cvref<T>::type;
 }
 
-#endif // UTIL_CUDA_H
+#endif // GPE_UTIL_CUDA_H

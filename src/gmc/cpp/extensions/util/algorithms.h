@@ -1,5 +1,5 @@
-#ifndef GPE_ALGORITHMS_H
-#define GPE_ALGORITHMS_H
+#ifndef GPE_UTIL_ALGORITHMS_H
+#define GPE_UTIL_ALGORITHMS_H
 
 #include <cinttypes>
 
@@ -467,4 +467,4 @@ __host__ __device__ GPE_ALGORITHMS_INLINE
 
 }
 
-#endif // GPE_ALGORITHMS_H
+#endif // GPE_UTIL_ALGORITHMS_H

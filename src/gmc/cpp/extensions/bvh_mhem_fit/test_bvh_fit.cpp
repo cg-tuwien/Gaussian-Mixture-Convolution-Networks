@@ -12,11 +12,11 @@
 #include <cuda_runtime.h>
 
 #include "common.h"
-#include "mixture.h"
-#include "evaluate_inversed/parallel_binding.h"
 #include "bvh_mhem_fit/implementation.h"
 #include "bvh_mhem_fit/implementation_autodiff_backward.h"
+#include "evaluate_inversed/parallel_binding.h"
 #include "integrate/binding.h"
+#include "util/mixture.h"
 
 constexpr uint N_BATCHES = 1;
 constexpr uint CONVOLUTION_LAYER_START = 0;

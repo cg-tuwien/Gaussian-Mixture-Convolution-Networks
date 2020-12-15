@@ -1,5 +1,5 @@
-#ifndef MATH_GPE_GLM_H
-#define MATH_GPE_GLM_H
+#ifndef GPE_UTIL_GLM_H
+#define GPE_UTIL_GLM_H
 
 //#define GLM_FORCE_SIZE_T_LENGTH
 #define GLM_FORCE_PURE
@@ -9,8 +9,26 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/constants.hpp>
 
+#include "util/scalar.h"
 
 namespace gpe {
+
+template <int DIMS, typename scalar_t>
+GLM_FUNC_QUALIFIER bool isnan(const glm::vec<DIMS, scalar_t>& x) {
+    bool nan = false;
+    for (unsigned i = 0; i < DIMS; ++i)
+        nan = nan || gpe::isnan(x[i]);
+    return nan;
+}
+
+template <int DIMS, typename scalar_t>
+GLM_FUNC_QUALIFIER bool isnan(const glm::mat<DIMS, DIMS, scalar_t>& x) {
+    bool nan = false;
+    for (unsigned i = 0; i < DIMS; ++i)
+        for (unsigned j = 0; j < DIMS; ++j)
+            nan = nan || gpe::isnan(x[i][j]);
+    return nan;
+}
 
 template <typename scalar_t>
 GLM_FUNC_QUALIFIER scalar_t trace(const glm::mat<2, 2, scalar_t>& m) {
@@ -65,6 +83,11 @@ GLM_FUNC_QUALIFIER glm::vec<DIMS, scalar_t> diagonal(const glm::mat<DIMS, DIMS, 
     return d;
 }
 
+template <typename scalar_t, int N_DIMS>
+GLM_FUNC_QUALIFIER glm::mat<N_DIMS, N_DIMS, scalar_t> outerProduct(const glm::vec<N_DIMS, scalar_t>& a, const glm::vec<N_DIMS, scalar_t>& b) {
+    return glm::outerProduct(a, b);
+}
+
 } // namespace gpe
 
-#endif // MATH_GPE_GLM_H
+#endif // GPE_UTIL_GLM_H

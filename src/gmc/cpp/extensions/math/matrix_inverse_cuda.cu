@@ -12,7 +12,6 @@
 
 #include "common.h"
 #include "cuda_qt_creator_definitinos.h"
-#include "math/matrix.h"
 #include "math/symeig_detail.h"
 
 template <typename scalar_t, int DIMS>
