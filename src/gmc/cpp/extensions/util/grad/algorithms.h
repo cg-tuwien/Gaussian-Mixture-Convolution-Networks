@@ -74,6 +74,25 @@ void divided_BbyA(const T1& a, const T2& b, T1* a_grad, T2* b_grad, const declty
 
 // ////////////////////////////////////////  array algorithms //////////////////////////////////////////
 
+template<typename T1, typename T2, typename T3, uint32_t N1, uint32_t N2, typename Function>
+__host__ __device__ GPE_ALGORITHMS_INLINE
+TwoGrads<gpe::Array<T1, N1>, gpe::Array<T2, N2>> outer_product(const gpe::Array<T1, N1>& a,
+                    const gpe::Array<T2, N2>& b,
+                    const gpe::Array2d<T3, N1, N2>& incoming_grad,
+                    Function fun) {
+    TwoGrads<gpe::Array<T1, N1>, gpe::Array<T2, N2>> r{};
+    for (unsigned i = 0; i < N1; ++i) {
+        for (unsigned j = 0; j < N2; ++j) {
+            T1 ga;
+            T2 gb;
+            fun(a[i], b[j], &ga, &gb, incoming_grad[i][j]);
+            r.m_left[i] += ga;
+            r.m_right[j] += gb;
+        }
+    }
+    return r;
+}
+
 template<typename T1, typename T2, uint32_t N, typename Function>
 __host__ __device__ GPE_ALGORITHMS_INLINE
 OneGrad<gpe::Array<T1, N>> transform(const gpe::Array<T1, N>& vec, const gpe::Array<T2, N>& incoming_grad, Function fun) {

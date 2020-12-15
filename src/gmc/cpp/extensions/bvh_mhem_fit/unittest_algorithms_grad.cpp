@@ -20,10 +20,93 @@ void assert_similar(float a, float b) {
 
 static struct UnitTests {
     UnitTests() {
+        test_outer_product();
         test_cwise();
         test_add_approach();
 
         std::cout << "unit tests for algorithms_grad done" << std::endl;
+    }
+    void test_outer_product() {
+        std::vector<gpe::Array<float, 2>> shortArrs;
+        shortArrs.push_back({0, 0});
+        shortArrs.push_back({1, 1});
+        shortArrs.push_back({1.2f, 0.5f});
+
+        std::vector<gpe::Array<float, 4>> longArrs;
+        longArrs.push_back({0, 0, 0, 0});
+        longArrs.push_back({1, 1, 1, 1});
+        longArrs.push_back({1.2f, 0.5f, -0.5f, -1.5f});
+
+
+        for (const auto& s1 : shortArrs) {
+            for (const auto& s2 : shortArrs) {
+                test_outer_product_grads(s1, s2);
+            }
+        }
+        for (const auto& s1 : longArrs) {
+            for (const auto& s2 : longArrs) {
+                test_outer_product_grads(s1, s2);
+            }
+        }
+        for (const auto& s1 : shortArrs) {
+            for (const auto& s2 : longArrs) {
+                test_outer_product_grads(s1, s2);
+            }
+        }
+        for (const auto& s1 : longArrs) {
+            for (const auto& s2 : shortArrs) {
+                test_outer_product_grads(s1, s2);
+            }
+        }
+    }
+
+    template<typename A1, typename A2>
+    void test_outer_product_grads(const A1& left, const A2& right) {
+        test_outer_product_funs(left, right, gpe::outer_product(left, right, [](auto, auto) { return 0.f; }));
+        test_outer_product_funs(left, right, gpe::outer_product(left, right, [](auto, auto) { return 1.f; }));
+        test_outer_product_funs(left, right, gpe::outer_product(left, right, [](auto, auto) { return -1.f; }));
+        test_outer_product_funs(left, right, gpe::outer_product(left, right, [](auto, auto) { return 2.3f; }));
+        test_outer_product_funs(left, right, gpe::outer_product(left, right, [](auto, auto) { return -1.3f; }));
+        float c = -2.0f;
+        test_outer_product_funs(left, right, gpe::outer_product(left, right, [&c](auto, auto) { c += 0.2f; return c; }));
+        c = -100.f;
+        test_outer_product_funs(left, right, gpe::outer_product(left, right, [&c](auto, auto) { c += 0.2f; return c; }));
+        c = -0.55f;
+        test_outer_product_funs(left, right, gpe::outer_product(left, right, [&c](auto, auto) { c += 0.2f; return c; }));
+        c = 1.f;
+        test_outer_product_funs(left, right, gpe::outer_product(left, right, [&c](auto, auto) { c += 0.2f; return c; }));
+    }
+
+    template<typename A1, typename A2, typename A3>
+    void test_outer_product_funs(const A1& left, const A2& right, const A3& grad) {
+        test_outer_product_case(left, right, grad, gpe::functors::plus<autodiff::Variable<float>>, gpe::grad::functors::plus<float>);
+        test_outer_product_case(left, right, grad, gpe::functors::times<autodiff::Variable<float>>, gpe::grad::functors::times<float>);
+
+        bool right_has_zeros = false;
+        gpe::transform(right, [&right_has_zeros](float v) { if (gpe::abs(v) < 0.00001f) right_has_zeros = true; return 0; });
+        if (!right_has_zeros)
+            test_outer_product_case(left, right, grad, gpe::functors::divided_AbyB<autodiff::Variable<float>>, gpe::grad::functors::divided_AbyB<float>);
+
+        bool left_has_zeros = false;
+        gpe::transform(left, [&left_has_zeros](float v) { if (gpe::abs(v) < 0.00001f) left_has_zeros = true; return 0; });
+        if (!left_has_zeros)
+            test_outer_product_case(left, right, grad, gpe::functors::divided_BbyA<autodiff::Variable<float>>, gpe::grad::functors::divided_BbyA<float>);
+    }
+
+    template<uint32_t N1, uint32_t N2, typename ForwardFun, typename GradFun>
+    void test_outer_product_case(const gpe::Array<float, N1>& left, const gpe::Array<float, N2>& right, const gpe::Array2d<float, N1, N2>& grad, ForwardFun forward_fun, GradFun grad_fun) {
+        auto left_autodiff = gpe::makeAutodiff(left);
+        auto right_autodiff = gpe::makeAutodiff(right);
+        auto result_autodiff = gpe::outer_product(left_autodiff, right_autodiff, forward_fun);
+        gpe::cwise_fun(result_autodiff, grad, [](autodiff::Variable<float> r, float g) {
+            r.expr->propagate(g);
+            return 0;
+        });
+
+        auto grads = gpe::grad::outer_product(left, right, grad, grad_fun);
+
+        gpe::cwise_fun(left_autodiff, grads.m_left, [](const autodiff::Variable<float>& autodiff, const float& analytical) { assert_similar(autodiff.grad(), analytical); return 0; });
+        gpe::cwise_fun(right_autodiff, grads.m_right, [](const autodiff::Variable<float>& autodiff, const float& analytical) { assert_similar(autodiff.grad(), analytical); return 0; });
     }
 
     void test_cwise() {
