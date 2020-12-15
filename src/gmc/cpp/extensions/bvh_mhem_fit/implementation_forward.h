@@ -384,23 +384,22 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_em(const gpe::Vector
 
     const auto componentIntegrals = gpe::transform(target_array, gpe::integrate<scalar_t, N_DIMS>);
 
+    // todo: fix this for mixtures containing negative weights
     const scalar_t integral = gpe::reduce(componentIntegrals, scalar_t(0), fun::plus<scalar_t>);
     const scalar_t clippedIntegral = gpe::Epsilon<scalar_t>::clip(integral);
 
-    // todo: this is temporary. abs_integral produces bad results for negative gaussians, so the sum of abs integrals didn't work anyway. replace with cippedIntegral when calculating the gradient.
-    const scalar_t abs_integral = gpe::removeGrad(clippedIntegral);
     const auto targetWeights = gpe::transform(target_array, [](const G& g){ return g.weight; });
     const auto targetPositions = gpe::transform(target_array, [](const G& g){ return g.position; });
     const auto targetCovs = gpe::transform(target_array, [](const G& g){ return g.covariance; });
-//    const auto int1TargetWeights = gpe::transform(targetWeights, [abs_integral](const scalar_t& w){ return w / gpe::removeGrad(abs_integral); });
-    const auto int1TargetWeights = gpe::cwise_fun(targetWeights, abs_integral, fun::divided_AbyB<scalar_t, scalar_t, scalar_t>);
 
-    const auto target_double_gmm_vector = gpe::removeGrad(gpe::transform(target, [abs_integral](const G& g){ return G{g.weight / abs_integral, g.position, g.covariance}; }));
+    const auto int1TargetWeights = gpe::cwise_fun(targetWeights, clippedIntegral, fun::divided_AbyB<scalar_t, scalar_t, scalar_t>);
+
+    const auto target_double_gmm_vector = gpe::removeGrad(gpe::transform(target, [clippedIntegral](const G& g){ return G{g.weight / clippedIntegral, g.position, g.covariance}; }));
     const auto initialDoubleGMM = fit_initial<N_FITTING>(target_double_gmm_vector, config);
     const auto targetDoubleGmm = gpe::to_array(target_double_gmm_vector, GradlessG{0, pos_t(0), cov_t(1)});
 
 
-    const auto likelihood_matrix = gpe::outer_product(gpe::removeGrad(targetDoubleGmm), gpe::removeGrad(initialDoubleGMM), likelihood<gradless_scalar_t, N_DIMS>);
+    const auto likelihood_matrix = gpe::outer_product(gpe::removeGrad(targetDoubleGmm), gpe::removeGrad(initialDoubleGMM), gpe::likelihood<gradless_scalar_t, N_DIMS>);
     const auto kldiv_sign_matrix = gpe::outer_product(gpe::removeGrad(targetDoubleGmm), gpe::removeGrad(initialDoubleGMM), [](auto target, auto fitting) {
         return (gpe::sign(fitting.weight) == gpe::sign(target.weight)) ? kl_divergence<gradless_scalar_t, N_DIMS>(target, fitting) : gradless_scalar_t(0);
     });
@@ -464,7 +463,7 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_em(const gpe::Vector
     const auto normal_amplitudes = gpe::transform(fittingCovariances, gpe::gaussian_amplitude<scalar_t, N_DIMS>);
     const auto int1_final_fitting_weights = gpe::cwise_fun(fittingWeights, normal_amplitudes, fun::times<scalar_t, scalar_t, scalar_t>);
 //    const auto finalFittingWeights = gpe::transform(int1_final_fitting_weights, [&abs_integral](scalar_t v) { return scalar_t(v * abs_integral); });
-    const auto finalFittingWeights = gpe::cwise_fun(int1_final_fitting_weights, abs_integral, fun::times<scalar_t, scalar_t, scalar_t>);
+    const auto finalFittingWeights = gpe::cwise_fun(int1_final_fitting_weights, clippedIntegral, fun::times<scalar_t, scalar_t, scalar_t>);
 
 //    float grad_weights[] = {0.7f, 1.3f};
     float grad_weights[] = {1.0f, 1.0f};
@@ -498,7 +497,7 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_em(const gpe::Vector
 //#endif
 //        assert(false);
 //    }
-    assert(gpe::abs(abs_integral - gpe::reduce(result, scalar_t(0), [](scalar_t i, const G& g) { return i + gpe::abs(gpe::integrate(g)); })) < gradless_scalar_t(0.0001));
+    assert(gpe::abs(clippedIntegral - gpe::reduce(result, scalar_t(0), [](scalar_t i, const G& g) { return i + gpe::abs(gpe::integrate(g)); })) < gradless_scalar_t(0.0001));
     return result;
 }
 

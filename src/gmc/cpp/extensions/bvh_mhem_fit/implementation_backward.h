@@ -177,6 +177,7 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_TARGET> grad_em(const gpe::Vector
 
     // const auto int1TargetWeights = gpe::cwise_fun(targetWeights, abs_integral, fun::divided_AbyB<scalar_t, scalar_t, scalar_t>);
     gpe::grad::cwise_fun(targetWeights, abs_integral, grad_int1TargetWeights, gradfun::divided_AbyB<scalar_t>).addTo(&grad_targetWeights, &grad_abs_integral);
+    assert(grad_abs_integral < 0.00000001f); // otherwise need backprop through componentIntegrals
 
     gpe::Vector<G, N_TARGET> target_grad{};
     for (unsigned i = 0; i < N_TARGET; ++i) {
