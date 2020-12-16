@@ -25,8 +25,8 @@ static struct UnitTests {
         test_gaussian_amplitude<3>();
         test_evaluate<2>();
         test_evaluate<3>();
-//        test_likelihood<2>();
-//        test_likelihood<3>();
+        test_likelihood<2>();
+        test_likelihood<3>();
         test_vecOnVec<2>();
         test_vecOnVec<3>();
         test_scalarGrads();
@@ -127,9 +127,21 @@ static struct UnitTests {
     std::vector<gpe::Gaussian<DIMS, float>> _gaussianCollection() {
         using G = gpe::Gaussian<DIMS, float>;
         std::vector<G> collection;
-        for (auto weight : _scalarCollection()) {
-            for (auto pos : _vecCollection<DIMS>()) {
-                for (auto cov : _covCollection<DIMS>()) {
+
+        std::vector<float> weights = {0.f, 0.4f, 1.f};
+
+        std::vector<glm::vec<DIMS, float>> positions;
+        positions.push_back(_vec<DIMS>(0, 0, 0));
+        positions.push_back(_vec<DIMS>(-1.4f, 2.5, 0.9f));
+
+        std::vector<glm::mat<DIMS, DIMS, float>> covs;
+        covs.push_back(glm::mat<DIMS, DIMS, float>(1));
+        covs.push_back(glm::mat<DIMS, DIMS, float>(1) * 2.0f - 0.5f);
+        covs.push_back(_cov<DIMS>(2.5f,  0.5f, -0.2f, 1.5f,  0.3f, 3.2f));
+
+        for (auto weight : weights) {
+            for (auto pos : positions) {
+                for (auto cov : covs) {
                     collection.push_back(G{weight, pos, cov});
                 }
             }
@@ -139,7 +151,8 @@ static struct UnitTests {
 
     template<int DIMS>
     void test_likelihood() {
-        for (auto grad : _scalarCollection()) {
+        std::vector<float> grads = {-1.0, 0.f, 0.4f, 1.f};
+        for (auto grad : grads) {
             for (auto g1 : _gaussianCollection<DIMS>()) {
                 for (auto g2 : _gaussianCollection<DIMS>()) {
                     test_binarycase(g1, g2, grad, gpe::likelihood<AutodiffScalar, DIMS>, gpe::grad::likelihood<float, DIMS>);
