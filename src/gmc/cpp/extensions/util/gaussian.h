@@ -105,16 +105,6 @@ EXECUTION_DEVICES scalar_t evaluate_inversed(const glm::vec<DIMS, scalar_t>& eva
 }
 
 template <typename scalar_t, int DIMS>
-EXECUTION_DEVICES scalar_t evaluate(const glm::vec<DIMS, scalar_t>& evalpos,
-                                                      const scalar_t& weight,
-                                                      const glm::vec<DIMS, scalar_t>& pos,
-                                                      const glm::mat<DIMS, DIMS, scalar_t>& cov) {
-    const auto t = evalpos - pos;
-    const auto v = scalar_t(-0.5) * glm::dot(t, (glm::inverse(cov) * t));
-    return weight * gpe::exp(v);
-}
-
-template <typename scalar_t, int DIMS>
 EXECUTION_DEVICES scalar_t evaluate_inversed(const Gaussian<DIMS, scalar_t>& gaussian,
                                                                const glm::vec<DIMS, scalar_t>& evalpos) {
     const auto t = evalpos - gaussian.position;
@@ -123,8 +113,7 @@ EXECUTION_DEVICES scalar_t evaluate_inversed(const Gaussian<DIMS, scalar_t>& gau
 }
 
 template <typename scalar_t, int DIMS>
-EXECUTION_DEVICES scalar_t evaluate(const Gaussian<DIMS, scalar_t>& gaussian,
-                                                      const glm::vec<DIMS, scalar_t>& evalpos) {
+EXECUTION_DEVICES scalar_t evaluate(const Gaussian<DIMS, scalar_t>& gaussian, const glm::vec<DIMS, scalar_t>& evalpos) {
     const auto t = evalpos - gaussian.position;
     const auto v = scalar_t(-0.5) * glm::dot(t, (glm::inverse(gaussian.covariance) * t));
     return gaussian.weight * gpe::exp(v);
@@ -166,7 +155,7 @@ template <typename scalar_t, int N_DIMS, int N_VIRTUAL_POINTS = 4>
 EXECUTION_DEVICES scalar_t likelihood(const gpe::Gaussian<N_DIMS, scalar_t>& target, const gpe::Gaussian<N_DIMS, scalar_t>& fitting) {
     // Continuous projection for fast L 1 reconstruction: Equation 9
     scalar_t normal_amplitude = gpe::gaussian_amplitude(fitting.covariance);
-    scalar_t a = gpe::evaluate(target.position, normal_amplitude, fitting.position, fitting.covariance);
+    scalar_t a = gpe::evaluate(gpe::Gaussian<N_DIMS, scalar_t>{normal_amplitude, fitting.position, fitting.covariance}, target.position);
     auto c = glm::inverse(fitting.covariance) * target.covariance;
     scalar_t b = gpe::exp(scalar_t(-0.5) * gpe::trace(c));
     scalar_t target_normal_amplitudes = gpe::gaussian_amplitude(target.covariance);

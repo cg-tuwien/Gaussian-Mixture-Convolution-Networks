@@ -50,6 +50,20 @@ EXECUTION_DEVICES glm::mat<DIMS, DIMS, scalar_t> determinant(const glm::mat<DIMS
     return cofactor(cov) * grad;
 }
 
+template <typename scalar_t, int DIMS>
+EXECUTION_DEVICES glm::mat<DIMS, DIMS, scalar_t> inverse(const glm::mat<DIMS, DIMS, scalar_t>& cov, const glm::mat<DIMS, DIMS, scalar_t>& incoming_grad) {
+    assert(glm::determinant(cov) > 0);
+    // acording to https://people.maths.ox.ac.uk/gilesm/files/AD2008.pdf. omitting the transpose as we have symmetric matrices
+    const auto cov_inv = glm::inverse(cov);
+    return - cov_inv * incoming_grad * cov_inv;
+}
+
+template <typename scalar_t, int DIMS>
+EXECUTION_DEVICES glm::mat<DIMS, DIMS, scalar_t> inverse_with_cached_covInv(const glm::mat<DIMS, DIMS, scalar_t>& cached_covInv, const glm::mat<DIMS, DIMS, scalar_t>& incoming_grad) {
+    // acording to https://people.maths.ox.ac.uk/gilesm/files/AD2008.pdf. omitting the transpose as we have symmetric matrices
+    return - cached_covInv * incoming_grad * cached_covInv;
+}
+
 template<int N_DIMS, typename T>
 EXECUTION_DEVICES
 void outerProduct(const glm::vec<N_DIMS, T>& a, const glm::vec<N_DIMS, T>& b, glm::vec<N_DIMS, T>* a_grad, glm::vec<N_DIMS, T>* b_grad, const glm::mat<N_DIMS, N_DIMS, T>& incoming_grad) {
@@ -63,6 +77,13 @@ void outerProduct(const glm::vec<N_DIMS, T>& a, const glm::vec<N_DIMS, T>& b, gl
             (*b_grad)[j] += incoming_grad[j][i] * a[i];
         }
     }
+}
+
+template<int N_DIMS, typename T>
+EXECUTION_DEVICES
+void dot(const glm::vec<N_DIMS, T>& a, const glm::vec<N_DIMS, T>& b, glm::vec<N_DIMS, T>* a_grad, glm::vec<N_DIMS, T>* b_grad, const T& incoming_grad) {
+    *a_grad = b * incoming_grad;
+    *b_grad = a * incoming_grad;
 }
 
 
