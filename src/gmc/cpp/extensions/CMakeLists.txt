@@ -109,6 +109,7 @@ set(UTIL_HEADERS
     util/grad/common.h
     util/grad/glm.h
     util/grad/gaussian.h
+    util/grad/scalar.h
     util/scalar.h)
 add_library(util ${UTIL_HEADERS} util/dummy.cpp)
 

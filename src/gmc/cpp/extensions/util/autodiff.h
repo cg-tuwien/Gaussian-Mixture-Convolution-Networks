@@ -139,6 +139,30 @@ glm::mat<N_DIMS, N_DIMS, scalar_t> extractGrad(const glm::mat<N_DIMS, N_DIMS, au
     return r;
 }
 
+template <typename scalar_t>
+void propagateGrad(const autodiff::Variable<scalar_t>& v, scalar_t grad) {
+    v.expr->propagate(grad);
+}
+
+template <typename scalar_t>
+void propagateGrad(const autodiff::reverse::ExprPtr<scalar_t>& v, scalar_t grad) {
+    v->propagate(grad);
+}
+
+template<int N_DIMS, typename scalar_t>
+void propagateGrad(const glm::vec<N_DIMS, autodiff::Variable<scalar_t>>& v, const glm::vec<N_DIMS, scalar_t>& grad) {
+    for (int i = 0; i < N_DIMS; ++i) {
+        propagateGrad(v[i], grad[i]);
+    }
+}
+
+template<int N_DIMS, typename scalar_t>
+void propagateGrad(const glm::mat<N_DIMS, N_DIMS, autodiff::Variable<scalar_t>>& v, const glm::mat<N_DIMS, N_DIMS, scalar_t>& grad) {
+    for (int i = 0; i < N_DIMS; ++i) {
+        propagateGrad(v[i], grad[i]);
+    }
+}
+
 
 #else // __CUDACC__
 
