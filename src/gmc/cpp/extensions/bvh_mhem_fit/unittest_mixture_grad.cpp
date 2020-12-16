@@ -6,7 +6,8 @@
 #include "util/autodiff.h"
 #include "util/scalar.h"
 #include "util/mixture.h"
-#include "util/grad/mixture.h"
+#include "util/gaussian.h"
+#include "util/grad/gaussian.h"
 #include "util/grad/glm.h"
 
 
@@ -17,9 +18,102 @@ static struct UnitTests {
         test_determinant<3>();
         test_gaussian_amplitude<2>();
         test_gaussian_amplitude<3>();
+        test_likelihood<2>();
+        test_likelihood<3>();
         test_outerProduct();
 
         std::cout << "unit tests for mixture_grad done" << std::endl;
+    }
+
+    template<int DIMS>
+    glm::vec<DIMS, float> _vec(float a, float b, float c) {
+        glm::vec<3, float> r;
+        r.x = a;
+        r.y = b;
+        r.z = c;
+        return r;
+    }
+
+    template<int DIMS>
+    glm::mat<DIMS, DIMS, float> _cov(float xx, float xy, float xz, float yy, float yz, float zz) {
+        glm::mat<3, 3, float> r;
+        r[0][0] = xx;
+        r[0][1] = xy;
+        r[0][2] = xz;
+        r[1][0] = xy;
+        r[1][1] = yy;
+        r[1][2] = yz;
+        r[2][0] = xz;
+        r[2][1] = yz;
+        r[2][2] = zz;
+        return r;
+    }
+
+    template<int DIMS>
+    void test_likelihood() {
+        for (float grad = -4.f; grad < 4.5f; grad++) {
+            test_likelihood_case<DIMS>({0.f, _vec<DIMS>(0, 0, 0), glm::mat<DIMS, DIMS, float>(1)}, {0.f, _vec<DIMS>(0, 0, 0), glm::mat<DIMS, DIMS, float>(1)}, grad);
+            test_likelihood_case<DIMS>({0.f, _vec<DIMS>(0, 0, 0), glm::mat<DIMS, DIMS, float>(1)}, {0.f, _vec<DIMS>(1, 1, 1), glm::mat<DIMS, DIMS, float>(1)}, grad);
+            test_likelihood_case<DIMS>({0.f, _vec<DIMS>(1, 1, 1), glm::mat<DIMS, DIMS, float>(1)}, {0.f, _vec<DIMS>(0, 0, 0), glm::mat<DIMS, DIMS, float>(1)}, grad);
+
+            test_likelihood_case<DIMS>({0.5f, _vec<DIMS>(0, 0, 0), glm::mat<DIMS, DIMS, float>(1)}, {0.7f, _vec<DIMS>(0, 0, 0), glm::mat<DIMS, DIMS, float>(1)}, grad);
+            test_likelihood_case<DIMS>({0.5f, _vec<DIMS>(0, 0, 0), glm::mat<DIMS, DIMS, float>(1)}, {0.7f, _vec<DIMS>(1, 1, 1), glm::mat<DIMS, DIMS, float>(1)}, grad);
+            test_likelihood_case<DIMS>({0.5f, _vec<DIMS>(1, 1, 1), glm::mat<DIMS, DIMS, float>(1)}, {0.7f, _vec<DIMS>(0, 0, 0), glm::mat<DIMS, DIMS, float>(1)}, grad);
+
+            test_likelihood_case<DIMS>({0.5f, _vec<DIMS>(1, 2, 3), glm::mat<DIMS, DIMS, float>(1)}, {0.5f, _vec<DIMS>(-1.5, 1.5, 2.5), glm::mat<DIMS, DIMS, float>(1)}, grad);
+            test_likelihood_case<DIMS>({1.0f, _vec<DIMS>(1, 2, 3), glm::mat<DIMS, DIMS, float>(1)}, {1.0f, _vec<DIMS>(-1.5, 1.5, 2.5), glm::mat<DIMS, DIMS, float>(1)}, grad);
+
+            test_likelihood_case<DIMS>({0.f, _vec<DIMS>(1, 2, 3), glm::mat<DIMS, DIMS, float>(1) * 0.5f}, {0.f, _vec<DIMS>(-1.5, 1.5, 2.5), glm::mat<DIMS, DIMS, float>(1) * 2.0f + 0.5f}, grad);
+            test_likelihood_case<DIMS>({0.5f, _vec<DIMS>(1, 2, 3), glm::mat<DIMS, DIMS, float>(1) * 0.5f}, {0.5f, _vec<DIMS>(-1.5, 1.5, 2.5), glm::mat<DIMS, DIMS, float>(1) * 2.0f + 0.5f}, grad);
+            test_likelihood_case<DIMS>({1.0f, _vec<DIMS>(1, 2, 3), glm::mat<DIMS, DIMS, float>(1) * 0.5f}, {1.0f, _vec<DIMS>(-1.5, 1.5, 2.5), glm::mat<DIMS, DIMS, float>(1) * 2.0f + 0.5f}, grad);
+
+            test_likelihood_case<DIMS>({0.f, _vec<DIMS>(1, 2, 3), glm::mat<DIMS, DIMS, float>(1) * 2.0f + 0.5f}, {0.f, _vec<DIMS>(-1.5, 1.5, 2.5), glm::mat<DIMS, DIMS, float>(1) * 0.5f}, grad);
+            test_likelihood_case<DIMS>({0.5f, _vec<DIMS>(1, 2, 3), glm::mat<DIMS, DIMS, float>(1) * 2.0f + 0.5f}, {0.5f, _vec<DIMS>(-1.5, 1.5, 2.5), glm::mat<DIMS, DIMS, float>(1) * 0.5f}, grad);
+            test_likelihood_case<DIMS>({1.0f, _vec<DIMS>(1, 2, 3), glm::mat<DIMS, DIMS, float>(1) * 2.0f + 0.5f}, {1.0f, _vec<DIMS>(-1.5, 1.5, 2.5), glm::mat<DIMS, DIMS, float>(1) * 0.5f}, grad);
+
+            test_likelihood_case<DIMS>({0.f, _vec<DIMS>(1, 2, 3), glm::mat<DIMS, DIMS, float>(1) * 2.0f + 0.5f}, {0.f, _vec<DIMS>(-1.5, 1.5, 2.5), glm::mat<DIMS, DIMS, float>(1) * 2.0f - 0.5f}, grad);
+            test_likelihood_case<DIMS>({0.5f, _vec<DIMS>(1, 2, 3), glm::mat<DIMS, DIMS, float>(1) * 2.0f + 0.5f}, {0.5f, _vec<DIMS>(-1.5, 1.5, 2.5), glm::mat<DIMS, DIMS, float>(1) * 2.0f - 0.5f}, grad);
+            test_likelihood_case<DIMS>({1.0f, _vec<DIMS>(1, 2, 3), glm::mat<DIMS, DIMS, float>(1) * 2.0f + 0.5f}, {1.0f, _vec<DIMS>(-1.5, 1.5, 2.5), glm::mat<DIMS, DIMS, float>(1) * 2.0f - 0.5f}, grad);
+
+            test_likelihood_case<DIMS>({0.f, _vec<DIMS>(1, 2, 3), glm::mat<DIMS, DIMS, float>(1) * 2.0f - 0.5f}, {0.f, _vec<DIMS>(-1.5, 1.5, 2.5), glm::mat<DIMS, DIMS, float>(1) * 2.0f + 0.5f}, grad);
+            test_likelihood_case<DIMS>({0.5f, _vec<DIMS>(1, 2, 3), glm::mat<DIMS, DIMS, float>(1) * 2.0f - 0.5f}, {0.5f, _vec<DIMS>(-1.5, 1.5, 2.5), glm::mat<DIMS, DIMS, float>(1) * 2.0f + 0.5f}, grad);
+            test_likelihood_case<DIMS>({1.0f, _vec<DIMS>(1, 2, 3), glm::mat<DIMS, DIMS, float>(1) * 2.0f - 0.5f}, {1.0f, _vec<DIMS>(-1.5, 1.5, 2.5), glm::mat<DIMS, DIMS, float>(1) * 2.0f + 0.5f}, grad);
+
+            test_likelihood_case<DIMS>({0.f, _vec<DIMS>(1, 2, 3), _cov<DIMS>(1.5f, -0.1f, 0.2f, 2.5f, -0.3f, 2.2f)}, {0.f, _vec<DIMS>(-1.5, 1.5, 2.5), _cov<DIMS>(1.5f, -0.1f, 0.2f, 2.5f, -0.3f, 2.2f)}, grad);
+            test_likelihood_case<DIMS>({0.5f, _vec<DIMS>(1, 2, 3), _cov<DIMS>(1.5f, -0.1f, 0.2f, 2.5f, -0.3f, 2.2f)}, {0.5f, _vec<DIMS>(-1.5, 1.5, 2.5), _cov<DIMS>(1.5f, -0.1f, 0.2f, 2.5f, -0.3f, 2.2f)}, grad);
+            test_likelihood_case<DIMS>({1.0f, _vec<DIMS>(1, 2, 3), _cov<DIMS>(1.5f, -0.1f, 0.2f, 2.5f, -0.3f, 2.2f)}, {1.0f, _vec<DIMS>(-1.5, 1.5, 2.5), _cov<DIMS>(1.5f, -0.1f, 0.2f, 2.5f, -0.3f, 2.2f)}, grad);
+
+            test_likelihood_case<DIMS>({0.f, _vec<DIMS>(1, 2, 3), _cov<DIMS>(1.5f, -0.1f, 0.2f, 2.5f, -0.3f, 2.2f)}, {0.f, _vec<DIMS>(-1.5, 1.5, 2.5), _cov<DIMS>(2.5f, 0.5f, -0.2f, 1.5f, 0.3f, 3.2f)}, grad);
+            test_likelihood_case<DIMS>({0.5f, _vec<DIMS>(1, 2, 3), _cov<DIMS>(1.5f, -0.1f, 0.2f, 2.5f, -0.3f, 2.2f)}, {0.5f, _vec<DIMS>(-1.5, 1.5, 2.5), _cov<DIMS>(2.5f, 0.5f, -0.2f, 1.5f, 0.3f, 3.2f)}, grad);
+            test_likelihood_case<DIMS>({1.0f, _vec<DIMS>(1, 2, 3), _cov<DIMS>(1.5f, -0.1f, 0.2f, 2.5f, -0.3f, 2.2f)}, {1.0f, _vec<DIMS>(-1.5, 1.5, 2.5), _cov<DIMS>(2.5f, 0.5f, -0.2f, 1.5f, 0.3f, 3.2f)}, grad);
+        }
+    }
+
+    template<int DIMS>
+    void test_likelihood_case(const gpe::Gaussian<DIMS, float>& t, const gpe::Gaussian<DIMS, float>& f, float grad) {
+        auto t_autodiff = gpe::makeAutodiff(t);
+        auto f_autodiff = gpe::makeAutodiff(f);
+        auto result_autodiff = gpe::likelihood(t_autodiff, f_autodiff);
+        result_autodiff.expr->propagate(grad);
+
+        const auto grad_t_autodiff = gpe::extractGrad(t_autodiff);
+        const auto grad_f_autodiff = gpe::extractGrad(f_autodiff);
+        gpe::Gaussian<DIMS, float> grad_t_analytical;
+        gpe::Gaussian<DIMS, float> grad_f_analytical;
+        gpe::grad::likelihood(t, f, &grad_t_analytical, &grad_f_analytical, grad);
+
+
+        auto ssrt = [](const auto& autodiff, const auto& analytical) {
+            assert(std::abs(autodiff.weight - analytical.weight) < 0.00001f);
+            for (int i = 0; i < DIMS; ++i) {
+                assert(std::abs(autodiff.position[i] - analytical.position[i]) < 0.00001f);
+            }
+            const glm::mat<DIMS, DIMS, float> covdiff = (autodiff.covariance - analytical.covariance);
+            auto rmse = gpe::sqrt(gpe::sum(gpe::cwise_mul(covdiff, covdiff)));
+            assert(rmse < 0.0001f);
+        };
+        ssrt(grad_t_autodiff, grad_t_analytical);
+        ssrt(grad_f_autodiff, grad_f_analytical);
     }
 
     template<int DIMS>
@@ -31,7 +125,8 @@ static struct UnitTests {
             test_gaussian_amplitude_case(glm::mat<DIMS, DIMS, float>(1) * 2.0f + 0.5f, grad);
             test_gaussian_amplitude_case(glm::mat<DIMS, DIMS, float>(1) * 2.0f - 0.5f, grad);
 
-            test_gaussian_amplitude_case(glm::mat<DIMS, DIMS, float>({{1.5, -0.1}, {-0.1, 2.5}}), grad);
+            test_gaussian_amplitude_case(_cov<DIMS>(1.5f, -0.1f, 0.2f, 2.5f, -0.3f, 2.2f), grad);
+
         }
     }
 

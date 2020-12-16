@@ -21,6 +21,7 @@
 #include "util/containers.h"
 #include "util/cuda.h"
 #include "util/mixture.h"
+#include "util/gaussian.h"
 
 // todo:
 // - in collect_result, run a new fitting with the most important node to fill up the remaining gaussian slots
@@ -35,21 +36,6 @@ EXECUTION_DEVICES scalar_t centroid_distance(const gpe::Gaussian<N_DIMS, scalar_
     if (gpe::sign(a.weight) != gpe::sign(b.weight))
         return std::numeric_limits<scalar_t>::infinity();
     return gpe::squared_norm(a.position - b.position);
-}
-
-// todo: numerical problems when N_VIRTUAL_POINTS is large: a*b for instance 0.001, wi_bar becomes 5.6 -> bad things
-// that depends on cov magnitude => better normalise mixture to have covs in the magnitude of the identity
-template <typename scalar_t, int N_DIMS, int N_VIRTUAL_POINTS = 4>
-EXECUTION_DEVICES scalar_t likelihood(const gpe::Gaussian<N_DIMS, scalar_t>& target, const gpe::Gaussian<N_DIMS, scalar_t>& fitting) {
-    // Continuous projection for fast L 1 reconstruction: Equation 9
-    scalar_t normal_amplitude = gpe::gaussian_amplitude(fitting.covariance);
-    scalar_t a = gpe::evaluate(target.position, normal_amplitude, fitting.position, fitting.covariance);
-    auto c = glm::inverse(fitting.covariance) * target.covariance;
-    scalar_t b = gpe::exp(scalar_t(-0.5) * gpe::trace(c));
-    scalar_t target_normal_amplitudes = gpe::gaussian_amplitude(target.covariance);
-    scalar_t wi_bar = N_VIRTUAL_POINTS * target.weight / target_normal_amplitudes;
-    // pow(0, 0) gives nan in cuda with fast math
-    return gpe::pow(gpe::Epsilon<scalar_t>::clip(a * b), wi_bar);
 }
 
 template <typename scalar_t, int N_DIMS>
@@ -311,7 +297,7 @@ gpe::Array<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_initial(const gpe::Ve
         disparity_matrix = gpe::outer_product(target_double_gmm_without_grad, target_double_gmm_without_grad, centroid_distance<gradless_scalar_t, N_DIMS>);   // returns gpe::Vector<gpe::Vector>
         break;
     case BvhMhemFitConfig::FitInitialDisparityMethod::Likelihood:
-        disparity_matrix = gpe::outer_product(target_double_gmm_without_grad, target_double_gmm_without_grad, likelihood<gradless_scalar_t, N_DIMS>);   // returns gpe::Vector<gpe::Vector>
+        disparity_matrix = gpe::outer_product(target_double_gmm_without_grad, target_double_gmm_without_grad, gpe::likelihood<gradless_scalar_t, N_DIMS>);   // returns gpe::Vector<gpe::Vector>
         for (unsigned i = 0; i < disparity_matrix.size(); ++i) {
             for (unsigned j = i + 1; j < disparity_matrix[i].size(); ++j) {
                 disparity_matrix[i][j] = gpe::min(-disparity_matrix[i][j], -disparity_matrix[j][i]);

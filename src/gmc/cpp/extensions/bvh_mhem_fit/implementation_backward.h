@@ -21,7 +21,7 @@
 #include "util/cuda.h"
 #include "util/grad/algorithms.h"
 #include "util/grad/glm.h"
-#include "util/grad/mixture.h"
+#include "util/grad/gaussian.h"
 #include "util/mixture.h"
 
 

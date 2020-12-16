@@ -102,12 +102,13 @@ set(UTIL_HEADERS
     util/containers.h
     util/cuda.h
     util/epsilon.h
+    util/gaussian.h
     util/glm.h
     util/mixture.h
     util/grad/algorithms.h
     util/grad/common.h
     util/grad/glm.h
-    util/grad/mixture.h
+    util/grad/gaussian.h
     util/scalar.h)
 add_library(util ${UTIL_HEADERS} util/dummy.cpp)
 
