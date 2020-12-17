@@ -32,7 +32,7 @@ namespace  {
 
 // todo: min of KL divergencies is probably a better distance
 template <typename scalar_t, int N_DIMS>
-EXECUTION_DEVICES scalar_t centroid_distance(const gpe::Gaussian<N_DIMS, scalar_t>& a, const gpe::Gaussian<N_DIMS, scalar_t>& b) {
+EXECUTION_DEVICES scalar_t cluster_centroid_distance(const gpe::Gaussian<N_DIMS, scalar_t>& a, const gpe::Gaussian<N_DIMS, scalar_t>& b) {
     if (gpe::sign(a.weight) != gpe::sign(b.weight))
         return std::numeric_limits<scalar_t>::infinity();
     return gpe::squared_norm(a.position - b.position);
@@ -150,88 +150,10 @@ gpe::Array<gpe::Vector<gaussian_index_t, N_INPUT - N_CLUSTERS + 1>, N_CLUSTERS> 
     return retval;
 }
 
-template <typename scalar_t, int N_DIMS, uint32_t N_GAUSSIANS_CAPACITY, uint32_t N_MAX_CLUSTER_ELEMENTS>
-EXECUTION_DEVICES
-gpe::Gaussian<N_DIMS, scalar_t> averageCluster(const gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_GAUSSIANS_CAPACITY>& mixture,
-                                               const gpe::Vector<gaussian_index_t, N_MAX_CLUSTER_ELEMENTS>& cluster_indices) {
-    using G = gpe::Gaussian<N_DIMS, scalar_t>;
-    G new_gaussian = {scalar_t(0), typename G::pos_t(0), typename G::cov_t(0)};
-
-    assert(cluster_indices.size() > 0);
-
-    for (unsigned i = 0; i < cluster_indices.size(); ++i) {
-        auto gaussian_id = cluster_indices[i];
-        const auto& gaussian = mixture[gaussian_id];
-
-        assert(new_gaussian.weight == 0 || gpe::sign(new_gaussian.weight) == gpe::sign(gaussian.weight)); // can't merge positive and negative gaussian
-        new_gaussian.weight += gaussian.weight;
-        new_gaussian.position += gaussian.weight * gaussian.position;
-        assert(glm::determinant(gaussian.covariance) > 0);
-        new_gaussian.covariance += gaussian.weight * gaussian.covariance;
-    }
-    if (gpe::abs(new_gaussian.weight) < gpe::Epsilon<scalar_t>::large) {
-        new_gaussian.covariance = typename G::cov_t(1.0);
-        assert(glm::determinant(new_gaussian.covariance) > 0);
-    }
-    else {
-        new_gaussian.position /= new_gaussian.weight;
-        new_gaussian.covariance /= new_gaussian.weight;
-        // no good (?): very large weight G + small weight G should result in large G and not 1/2 large G
-        // subsequently we'll rescale the whole mixture anyways
-//        new_gaussian.weight /= scalar_t(cluster_indices.size());
-        assert(glm::determinant(new_gaussian.covariance) > 0);
-    }
-    assert(gpe::isnan(new_gaussian.weight) == false);
-    assert(gpe::isnan(glm::dot(new_gaussian.position, new_gaussian.position)) == false);
-    assert(gpe::isnan(glm::determinant(new_gaussian.covariance)) == false);
-
-    return new_gaussian;
-};
 
 template <typename scalar_t, int N_DIMS, uint32_t N_GAUSSIANS_CAPACITY, uint32_t N_MAX_CLUSTER_ELEMENTS>
 EXECUTION_DEVICES
-gpe::Gaussian<N_DIMS, scalar_t> averageCluster_corrected(const gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_GAUSSIANS_CAPACITY>& mixture,
-                                               const gpe::Vector<gaussian_index_t, N_MAX_CLUSTER_ELEMENTS>& cluster_indices) {
-    using G = gpe::Gaussian<N_DIMS, scalar_t>;
-    G new_gaussian = {scalar_t(0), typename G::pos_t(0), typename G::cov_t(0)};
-
-    assert(cluster_indices.size() > 0);
-
-    for (unsigned i = 0; i < cluster_indices.size(); ++i) {
-        auto gaussian_id = cluster_indices[i];
-        const auto& gaussian = mixture[gaussian_id];
-
-        assert(new_gaussian.weight == 0 || gpe::sign(new_gaussian.weight) == gpe::sign(gaussian.weight)); // can't merge positive and negative gaussian
-        auto weight = gaussian.weight;
-        weight /= gpe::gaussian_amplitude(gaussian.covariance);
-        new_gaussian.weight += weight;
-        new_gaussian.position += weight * gaussian.position;
-        assert(glm::determinant(gaussian.covariance) > 0);
-        new_gaussian.covariance += weight * gaussian.covariance;
-    }
-    if (gpe::abs(new_gaussian.weight) < gpe::Epsilon<scalar_t>::large) {
-        new_gaussian.covariance = typename G::cov_t(1.0);
-        assert(glm::determinant(new_gaussian.covariance) > 0);
-    }
-    else {
-        new_gaussian.position /= new_gaussian.weight;
-        new_gaussian.covariance /= new_gaussian.weight;
-        new_gaussian.weight *= gpe::gaussian_amplitude(new_gaussian.covariance);
-        // no good (?): very large weight G + small weight G should result in large G and not 1/2 large G
-        // subsequently we'll rescale the whole mixture anyways
-//        new_gaussian.weight /= scalar_t(cluster_indices.size());
-        assert(glm::determinant(new_gaussian.covariance) > 0);
-    }
-    assert(gpe::isnan(new_gaussian.weight) == false);
-    assert(gpe::isnan(glm::dot(new_gaussian.position, new_gaussian.position)) == false);
-    assert(gpe::isnan(glm::determinant(new_gaussian.covariance)) == false);
-
-    return new_gaussian;
-};
-
-template <typename scalar_t, int N_DIMS, uint32_t N_GAUSSIANS_CAPACITY, uint32_t N_MAX_CLUSTER_ELEMENTS>
-EXECUTION_DEVICES
-gpe::Gaussian<N_DIMS, scalar_t> maxWeight(const gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_GAUSSIANS_CAPACITY>& mixture,
+gpe::Gaussian<N_DIMS, scalar_t> cluster_select_maxWeight(const gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_GAUSSIANS_CAPACITY>& mixture,
                                              const gpe::Vector<gaussian_index_t, N_MAX_CLUSTER_ELEMENTS>& cluster_indices) {
     using G = gpe::Gaussian<N_DIMS, scalar_t>;
     G new_gaussian = {scalar_t(0), typename G::pos_t(0), typename G::cov_t(0)};
@@ -254,30 +176,6 @@ gpe::Gaussian<N_DIMS, scalar_t> maxWeight(const gpe::Vector<gpe::Gaussian<N_DIMS
     return new_gaussian;
 };
 
-template <typename scalar_t, int N_DIMS, uint32_t N_GAUSSIANS_CAPACITY, uint32_t N_MAX_CLUSTER_ELEMENTS>
-EXECUTION_DEVICES
-gpe::Gaussian<N_DIMS, scalar_t> maxIntegral(const gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_GAUSSIANS_CAPACITY>& mixture,
-                                             const gpe::Vector<gaussian_index_t, N_MAX_CLUSTER_ELEMENTS>& cluster_indices) {
-    using G = gpe::Gaussian<N_DIMS, scalar_t>;
-    G new_gaussian = {scalar_t(0), typename G::pos_t(0), typename G::cov_t(0)};
-    scalar_t max_abs  = 0;
-    assert(cluster_indices.size() > 0);
-
-    for (unsigned i = 0; i < cluster_indices.size(); ++i) {
-        auto gaussian_id = cluster_indices[i];
-        const auto& gaussian = mixture[gaussian_id];
-        if (gpe::abs(gpe::integrate(gaussian)) > max_abs ) {
-            max_abs = gpe::abs(gpe::integrate(gaussian));
-            new_gaussian = gaussian;
-        }
-    }
-    assert(gpe::isnan(new_gaussian.weight) == false);
-    assert(gpe::isnan(glm::dot(new_gaussian.position, new_gaussian.position)) == false);
-    assert(gpe::isnan(glm::determinant(new_gaussian.covariance)) == false);
-
-    return new_gaussian;
-};
-
 
 template <unsigned N_FITTING, typename scalar_t, int N_DIMS, unsigned N_TARGET>
 EXECUTION_DEVICES
@@ -290,49 +188,15 @@ gpe::Array<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_initial(const gpe::Ve
 //    scalar_t abs_integral;
 //    const gpe::Vector<G, N_TARGET> target_double_gmm = normalise_mixture(target, &abs_integral);
 
-    gpe::Vector2d<gradless_scalar_t, N_TARGET, N_TARGET> disparity_matrix;
+    auto disparity_matrix = gpe::outer_product(target_double_gmm, target_double_gmm, cluster_centroid_distance<gradless_scalar_t, N_DIMS>);
     gpe::Vector<gpe::Gaussian<N_DIMS, gradless_scalar_t>, N_TARGET> target_double_gmm_without_grad = gpe::removeGrad(target_double_gmm);
-    switch (config.fit_initial_disparity_method) {
-    case BvhMhemFitConfig::FitInitialDisparityMethod::CentroidDistance:
-        disparity_matrix = gpe::outer_product(target_double_gmm_without_grad, target_double_gmm_without_grad, centroid_distance<gradless_scalar_t, N_DIMS>);   // returns gpe::Vector<gpe::Vector>
-        break;
-    case BvhMhemFitConfig::FitInitialDisparityMethod::Likelihood:
-        disparity_matrix = gpe::outer_product(target_double_gmm_without_grad, target_double_gmm_without_grad, gpe::likelihood<gradless_scalar_t, N_DIMS>);   // returns gpe::Vector<gpe::Vector>
-        for (unsigned i = 0; i < disparity_matrix.size(); ++i) {
-            for (unsigned j = i + 1; j < disparity_matrix[i].size(); ++j) {
-                disparity_matrix[i][j] = gpe::min(-disparity_matrix[i][j], -disparity_matrix[j][i]);
-            }
-        }
-        break;
-    case BvhMhemFitConfig::FitInitialDisparityMethod::KLDivergence:
-        disparity_matrix = gpe::outer_product(target_double_gmm_without_grad, target_double_gmm_without_grad, kl_divergence<gradless_scalar_t, N_DIMS>);   // returns gpe::Vector<gpe::Vector>
-        for (unsigned i = 0; i < disparity_matrix.size(); ++i) {
-            for (unsigned j = i + 1; j < disparity_matrix[i].size(); ++j) {
-                disparity_matrix[i][j] = gpe::min(disparity_matrix[i][j], disparity_matrix[j][i]);
-            }
-        }
-        break;
-    }
 
     const auto clustering = clusterise_using_heap<N_FITTING>(disparity_matrix);                             // returns gpe::Array<gpe::Vector>
     assert(clustering.size() == N_FITTING);
 
     gpe::Array<G, N_FITTING> result;
     for (unsigned i = 0; i < N_FITTING; ++i) {
-        switch (config.fit_initial_cluster_merge_method) {
-        case BvhMhemFitConfig::FitInitialClusterMergeMethod::Average:
-            result[i] = (averageCluster(target_double_gmm, clustering[i]));
-            break;
-        case BvhMhemFitConfig::FitInitialClusterMergeMethod::AverageCorrected:
-            result[i] = (averageCluster_corrected(target_double_gmm, clustering[i]));
-            break;
-        case BvhMhemFitConfig::FitInitialClusterMergeMethod::MaxIntegral:
-            result[i] = (maxIntegral(target_double_gmm, clustering[i]));
-            break;
-        case BvhMhemFitConfig::FitInitialClusterMergeMethod::MaxWeight:
-            result[i] = (maxWeight(target_double_gmm, clustering[i]));
-            break;
-        }
+        result[i] = (cluster_select_maxWeight(target_double_gmm, clustering[i]));
     }
     scalar_t result_integral = gpe::reduce(result, scalar_t(0), [](scalar_t i, const G& g) { return i + gpe::abs(gpe::integrate(g)); });
     // result_integral should be approx 1, since we shouldn't fit on zero mixtures anymore and incoming target_double_gmm is normalised;
