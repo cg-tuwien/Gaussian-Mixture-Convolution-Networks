@@ -5,6 +5,7 @@
 
 #include <cuda_runtime.h>
 
+#include "common.h"
 #include "util/algorithms.h"
 #include "util/containers.h"
 #include "util/grad/common.h"
@@ -79,6 +80,20 @@ void divided_BbyA(const T1& a, const T2& b, T1* a_grad, T2* b_grad, const declty
 }
 
 // ////////////////////////////////////////  array algorithms //////////////////////////////////////////
+
+template<typename DataType, typename index_type, uint32_t N1, uint32_t N2>
+__host__ __device__ GPE_ALGORITHMS_INLINE
+OneGrad<gpe::Array<DataType, N1>> select(const gpe::Array<DataType, N1>& data,
+                                         const gpe::Array<index_type, N2>& indices,
+                                         const gpe::Array<DataType, N2>& incoming_grad) {
+    GPE_UNUSED(data);
+    OneGrad<gpe::Array<DataType, N1>> retval{};
+    for (unsigned i = 0; i < N2; ++i) {
+        assert(indices[i] < N1);
+        retval.m_grad[i] = incoming_grad[i];
+    }
+    return retval;
+}
 
 template<typename T1, typename T2, typename T3, uint32_t N1, uint32_t N2, typename Function>
 __host__ __device__ GPE_ALGORITHMS_INLINE

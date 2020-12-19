@@ -9,7 +9,7 @@
 #include "util/cuda.h"
 #include "util/glm.h"
 #include "util/scalar.h"
-#include "epsilon.h"
+#include "util/epsilon.h"
 
 namespace gpe {
 
@@ -162,6 +162,22 @@ EXECUTION_DEVICES scalar_t likelihood(const gpe::Gaussian<N_DIMS, scalar_t>& tar
     scalar_t wi_bar = N_VIRTUAL_POINTS * target.weight / target_normal_amplitudes;
     // pow(0, 0) gives nan in cuda with fast math
     return gpe::pow(gpe::Epsilon<scalar_t>::clip(a * b), wi_bar);
+}
+
+template <typename scalar_t, int N_DIMS>
+EXECUTION_DEVICES scalar_t kl_divergence(const gpe::Gaussian<N_DIMS, scalar_t>& target, const gpe::Gaussian<N_DIMS, scalar_t>& fitting) {
+    auto p_diff = target.position - fitting.position;
+
+    auto target_cov = target.covariance;
+    auto fitting_cov = fitting.covariance;
+//    auto inversed_target_cov = glm::inverse(target.covariance);
+    auto inversed_fitting_cov = glm::inverse(fitting.covariance);
+
+    // mahalanobis_factor = mahalanobis distance squared
+    auto mahalanobis_factor = glm::dot(p_diff, inversed_fitting_cov * p_diff);
+    auto trace = gpe::trace(inversed_fitting_cov * target_cov);
+    auto logarithm = gpe::log(glm::determinant(target_cov) / glm::determinant(fitting_cov));
+    return scalar_t(0.5) * (mahalanobis_factor + trace - N_DIMS - logarithm);
 }
 
 } // namespace gpe

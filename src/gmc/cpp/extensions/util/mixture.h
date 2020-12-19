@@ -7,11 +7,12 @@
 #include <gcem.hpp>
 #include <torch/types.h>
 
-#include "util/glm.h"
-#include "util/scalar.h"
 #include "util/autodiff.h"
+#include "util/containers.h"
 #include "util/cuda.h"
 #include "util/gaussian.h"
+#include "util/glm.h"
+#include "util/scalar.h"
 
 namespace gpe {
 
@@ -111,6 +112,20 @@ inline torch::Tensor pack_mixture(const torch::Tensor weights, const torch::Tens
     TORCH_CHECK(covariances.size(4) == n_dims)
 
     return torch::cat({weights.view({n_batch, n_layers, n_components, 1}), positions, covariances.view({n_batch, n_layers, n_components, n_dims * n_dims})}, 3);
+}
+
+template<int N_DIMS, typename scalar_t, unsigned N>
+EXECUTION_DEVICES
+gpe::Array<gpe::Gaussian<N_DIMS, scalar_t>, N> pack_mixture(const gpe::Array<scalar_t, N>& weights,
+                                                            const gpe::Array<glm::vec<N_DIMS, scalar_t>, N>& positions,
+                                                            const gpe::Array<glm::mat<N_DIMS, N_DIMS, scalar_t>, N>& covariances) {
+    gpe::Array<gpe::Gaussian<N_DIMS, scalar_t>, N> r;
+    for (unsigned i = 0; i < N; ++i) {
+        r[i].weight = weights[i];
+        r[i].position = positions[i];
+        r[i].covariance = covariances[i];
+    }
+    return r;
 }
 
 inline torch::Tensor mixture_with_inversed_covariances(torch::Tensor mixture) {

@@ -64,7 +64,17 @@ auto bit_and(const T1& a, const T2& b) -> decltype (a & b) {
 }
 
 // ////////////////////////////////////////  array algorithms //////////////////////////////////////////
-
+template<typename DataType, typename index_type, uint32_t N1, uint32_t N2>
+__host__ __device__ GPE_ALGORITHMS_INLINE
+gpe::Array<DataType, N2> select(const gpe::Array<DataType, N1>& data,
+                                const gpe::Array<index_type, N2>& indices) {
+    gpe::Array<DataType, N2> retval;
+    for (unsigned i = 0; i < N2; ++i) {
+        assert(indices[i] < N1);
+        retval[i] = data[indices[i]];
+    }
+    return retval;
+}
 
 template<typename T1, typename T2, uint32_t N1, uint32_t N2, typename Function>
 __host__ __device__ GPE_ALGORITHMS_INLINE
