@@ -372,8 +372,8 @@ at::Tensor Bvh<N_DIMS, scalar_t>::compute_morton_codes(const at::Tensor& aabbs, 
                 const auto cov_diag_nd = gpe::diagonal(gaussian.covariance) / cov_max;
                 const auto cov_diag_3d = make_vec3(cov_diag_nd);
 
-                const auto& aabb = reinterpret_cast<const Aabb<float>&>(aabb_a[mixture_id][component_id][0]);
-                const auto& whole = reinterpret_cast<const Aabb<float>&>(aabb_whole_a[mixture_id][0]);
+                const auto& aabb = reinterpret_cast<const Aabb<scalar_t>&>(aabb_a[mixture_id][component_id][0]);
+                const auto& whole = reinterpret_cast<const Aabb<scalar_t>&>(aabb_whole_a[mixture_id][0]);
                 auto& morton_code = reinterpret_cast<morton_cuda_t&>(morton_codes_a[mixture_id][component_id]);
 
                 auto p = centroid(aabb);
