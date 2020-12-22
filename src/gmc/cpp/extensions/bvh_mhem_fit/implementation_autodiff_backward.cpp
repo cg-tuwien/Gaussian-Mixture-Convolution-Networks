@@ -125,7 +125,8 @@ ForwardBackWardOutput implementation_autodiff_backward(torch::Tensor mixture, co
             auto& c = g.covariance;
             w.expr->propagate(gradient_a[g_index].weight);
             for (int i = 0; i < int(N_DIMS); ++i) {
-                p[i].expr->propagate(gradient_a[g_index].position[i]);
+                auto grad_p = gradient_a[g_index].position[i];
+                p[i].expr->propagate(grad_p);
                 for (int j = 0; j < int(N_DIMS); ++j) {
                     c[i][j].expr->propagate(gradient_a[g_index].covariance[i][j]);
                 }
