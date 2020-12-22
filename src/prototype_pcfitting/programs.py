@@ -1,5 +1,7 @@
 import os
 import gc
+import time
+
 import torch
 from typing import List
 
@@ -65,6 +67,7 @@ def execute_fitting_on_single_pcbatch(training_name: str, pcbatch: torch.Tensor,
                                                       log_loss_console: int,
                                                       log_loss_tb: int, log_rendering_tb: int, log_gm: int,
                                                       initialgmbatch: torch.Tensor = None):
+    t = int(time.time())
     names = ["" + str(i + 1) for i in range(pcbatch.shape[0])]
 
     # scaler = None
@@ -75,7 +78,7 @@ def execute_fitting_on_single_pcbatch(training_name: str, pcbatch: torch.Tensor,
     # scaled_pc = pcbatch
 
     for j in range(len(generators)):
-        gen_id = training_name + "/" + generator_identifiers[j]
+        gen_id = training_name + "/" + str(t) + "-" + generator_identifiers[j]
 
         # Create Logger
         logger = GMLogger(names=names, log_prefix=gen_id, log_path=log_path,
