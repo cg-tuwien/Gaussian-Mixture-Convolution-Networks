@@ -29,9 +29,17 @@ struct Gaussian {
             }
         }
     }
+
+    Gaussian& operator += (const Gaussian& other) {
+        weight += other.weight;
+        position += other.position;
+        covariance += other.covariance;
+        return *this;
+    }
+
     scalar_t weight = 0;
     pos_t position = pos_t(0);
-    cov_t covariance = cov_t(1);
+    cov_t covariance = cov_t(0);
 };
 static_assert (sizeof (Gaussian<2, float>) == 7*4, "Something wrong with Gaussian");
 static_assert (sizeof (Gaussian<3, float>) == 13*4, "Something wrong with Gaussian");
@@ -130,7 +138,10 @@ template <typename scalar_t, int DIMS>
 EXECUTION_DEVICES scalar_t integrate(const Gaussian<DIMS, scalar_t>& gaussian) {
     using gradless_scalar_t = gpe::remove_grad_t<scalar_t>;
     constexpr gradless_scalar_t factor = gcem::pow(2 * glm::pi<gradless_scalar_t>(), gradless_scalar_t(DIMS));
-    return gaussian.weight * gpe::sqrt(factor * glm::determinant(gaussian.covariance));
+    const scalar_t d = glm::determinant(gaussian.covariance);
+    const scalar_t inside = factor * d;
+    const scalar_t root = gpe::sqrt(inside);
+    return gaussian.weight * root;
 }
 
 template <typename scalar_t, int DIMS>

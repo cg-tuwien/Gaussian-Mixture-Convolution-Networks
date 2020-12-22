@@ -87,8 +87,7 @@ auto outer_product(const gpe::Array<T1, N1>& m1,
         const T1& c_i = m1[i];
         for (unsigned j = 0; j < N2; ++j) {
             const T2& c_j = m2[j];
-            ProductType v = fun(c_i, c_j);
-            matrix[i][j] = v;
+            matrix[i][j] = fun(c_i, c_j);
         }
     }
     return matrix;
@@ -321,8 +320,7 @@ auto outer_product(const gpe::Vector<T1, N1>& m1,
         const T1& c_i = m1[i];
         for (unsigned j = 0; j < m2.size(); ++j) {
             const T2& c_j = m2[j];
-            ProductType v = fun(c_i, c_j);
-            matrix[i][j] = v;
+            matrix[i][j] = fun(c_i, c_j);
         }
     }
     return matrix;

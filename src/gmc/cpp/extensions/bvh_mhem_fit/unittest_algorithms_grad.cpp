@@ -80,6 +80,7 @@ static struct UnitTests {
     template<typename A1, typename A2, typename A3>
     void test_outer_product_funs(const A1& left, const A2& right, const A3& grad) {
         test_outer_product_case(left, right, grad, gpe::functors::plus<autodiff::Variable<float>>, gpe::grad::functors::plus<float>);
+        test_outer_product_case(left, right, grad, gpe::functors::minus<autodiff::Variable<float>>, gpe::grad::functors::minus<float>);
         test_outer_product_case(left, right, grad, gpe::functors::times<autodiff::Variable<float>>, gpe::grad::functors::times<float>);
 
         bool right_has_zeros = false;

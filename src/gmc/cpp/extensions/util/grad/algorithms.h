@@ -8,6 +8,7 @@
 #include "common.h"
 #include "util/algorithms.h"
 #include "util/containers.h"
+#include "util/glm.h"
 #include "util/grad/common.h"
 
 #ifdef NDEBUG
@@ -23,42 +24,49 @@ namespace functors {
 template<typename T1, typename T2 = T1>
 __host__ __device__ GPE_ALGORITHMS_INLINE
 void plus(const T1& a, const T2& b, T1* a_grad, T2* b_grad, const decltype (a + b)& incoming_grad) {
+    assert(a_grad != b_grad);
     *a_grad = incoming_grad;
     *b_grad = incoming_grad;
 }
 template<typename T1, typename T2 = T1>
 __host__ __device__ GPE_ALGORITHMS_INLINE
 void minus(const T1& a, const T2& b, T1* a_grad, T2* b_grad, const decltype (a - b)& incoming_grad) {
+    assert(a_grad != b_grad);
     *a_grad = incoming_grad;
     *b_grad = -incoming_grad;
 }
 template<typename T1, typename T2 = T1>
 __host__ __device__ GPE_ALGORITHMS_INLINE
 void times(const T1& a, const T2& b, T1* a_grad, T2* b_grad, const decltype (a * b)& incoming_grad) {
+    assert(a_grad != b_grad);
     *a_grad = b * incoming_grad;
     *b_grad = a * incoming_grad;
 }
 template<typename scalar_t, int N_DIMS1, int N_DIMS2>
 __host__ __device__ GPE_ALGORITHMS_INLINE
 void times(const scalar_t& a, const glm::mat<N_DIMS1, N_DIMS2, scalar_t>& b, scalar_t* a_grad, glm::mat<N_DIMS1, N_DIMS2, scalar_t>* b_grad, const glm::mat<N_DIMS1, N_DIMS2, scalar_t>& incoming_grad) {
+    assert(static_cast<void*>(a_grad) != static_cast<void*>(b_grad));
     *a_grad = gpe::sum(gpe::cwise_mul(b, incoming_grad));
     *b_grad = a * incoming_grad;
 }
 template<int N_DIMS1, int N_DIMS2, typename scalar_t>
 __host__ __device__ GPE_ALGORITHMS_INLINE
 void times(const glm::mat<N_DIMS1, N_DIMS2, scalar_t>& a, const scalar_t& b, glm::mat<N_DIMS1, N_DIMS2, scalar_t>* a_grad, scalar_t* b_grad, const glm::mat<N_DIMS1, N_DIMS2, scalar_t>& incoming_grad) {
+    assert(a_grad != b_grad);
     *a_grad = b * incoming_grad;
     *b_grad = gpe::sum(gpe::cwise_mul(a, incoming_grad));
 }
 template<typename scalar_t, int N_DIMS>
 __host__ __device__ GPE_ALGORITHMS_INLINE
 void times(const scalar_t& a, const glm::vec<N_DIMS, scalar_t>& b, scalar_t* a_grad, glm::vec<N_DIMS, scalar_t>* b_grad, const glm::vec<N_DIMS, scalar_t>& incoming_grad) {
+    assert(static_cast<void*>(a_grad) != static_cast<void*>(b_grad));
     *a_grad = gpe::sum(b * incoming_grad);
     *b_grad = a * incoming_grad;
 }
 template<int N_DIMS, typename scalar_t>
 __host__ __device__ GPE_ALGORITHMS_INLINE
 void times(const glm::vec<N_DIMS, scalar_t>& a, const scalar_t& b, glm::vec<N_DIMS, scalar_t>* a_grad, scalar_t* b_grad, const glm::vec<N_DIMS, scalar_t>& incoming_grad, int) {
+    assert(a_grad != b_grad);
     *a_grad = b * incoming_grad;
     *b_grad = gpe::sum(a * incoming_grad);
 }
@@ -66,6 +74,7 @@ void times(const glm::vec<N_DIMS, scalar_t>& a, const scalar_t& b, glm::vec<N_DI
 template<typename T1, typename T2 = T1>
 __host__ __device__ GPE_ALGORITHMS_INLINE
 void divided_AbyB(const T1& a, const T2& b, T1* a_grad, T2* b_grad, const decltype (a / b)& incoming_grad) {
+    assert(a_grad != b_grad);
     *a_grad = incoming_grad / b;
     *b_grad = -incoming_grad * a / (b * b);
 }
@@ -73,6 +82,7 @@ void divided_AbyB(const T1& a, const T2& b, T1* a_grad, T2* b_grad, const declty
 template<typename T1, typename T2 = T1>
 __host__ __device__ GPE_ALGORITHMS_INLINE
 void divided_BbyA(const T1& a, const T2& b, T1* a_grad, T2* b_grad, const decltype (b / a)& incoming_grad) {
+    assert(a_grad != b_grad);
     *a_grad = -incoming_grad * b / (a * a);
     *b_grad = incoming_grad / a;
 }
@@ -90,7 +100,7 @@ OneGrad<gpe::Array<DataType, N1>> select(const gpe::Array<DataType, N1>& data,
     OneGrad<gpe::Array<DataType, N1>> retval{};
     for (unsigned i = 0; i < N2; ++i) {
         assert(indices[i] < N1);
-        retval.m_grad[i] = incoming_grad[i];
+        retval.m_grad[indices[i]] = incoming_grad[i];
     }
     return retval;
 }

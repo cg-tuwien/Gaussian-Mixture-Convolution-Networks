@@ -9,6 +9,7 @@
 #include <autodiff/reverse.hpp>
 #endif
 
+#include "util/containers.h"
 #include "util/glm.h"
 
 namespace gpe {
@@ -93,6 +94,25 @@ glm::mat<N_DIMS, N_DIMS, scalar_t> removeGrad(const glm::mat<N_DIMS, N_DIMS, sca
     return v;
 }
 
+template <uint32_t N, typename T, typename size_type>
+auto removeGrad(const gpe::Vector<T, N, size_type>& vec) -> gpe::Vector<decltype (removeGrad(vec.front())), N, size_type> {
+    using R = decltype (removeGrad(vec.front()));
+    gpe::Vector<R, N, size_type> r;
+    for (const auto& val : vec)
+        r.push_back(removeGrad(val));
+    return r;
+}
+
+template <uint32_t N, typename T>
+auto removeGrad(const gpe::Array<T, N>& arr) -> gpe::Array<decltype (removeGrad(arr.front())), N> {
+    using R = decltype (removeGrad(arr.front()));
+    gpe::Array<R, N> r;
+    unsigned i = 0;
+    for (const auto& val : arr)
+        r[i++] = removeGrad(val);
+    return r;
+}
+
 template<typename scalar_t>
 autodiff::Variable<scalar_t> makeAutodiff(scalar_t v) {
     return autodiff::Variable<scalar_t>(v);
@@ -112,6 +132,24 @@ glm::mat<N_DIMS, N_DIMS, autodiff::Variable<scalar_t>> makeAutodiff(const glm::m
     glm::mat<N_DIMS, N_DIMS, autodiff::Variable<scalar_t>> r;
     for (int i = 0; i < N_DIMS; ++i) {
         r[i] = makeAutodiff(v[i]);
+    }
+    return r;
+}
+
+template<uint32_t N, typename T>
+gpe::Array<autodiff::Variable<T>, N> makeAutodiff(const gpe::Array<T, N>& v) {
+    gpe::Array<autodiff::Variable<T>, N> r;
+    for (unsigned i = 0; i < N; ++i) {
+        r[i] = makeAutodiff(v[i]);
+    }
+    return r;
+}
+
+template<uint32_t N1, uint32_t N2, typename T>
+gpe::Array2d<autodiff::Variable<T>, N1, N2> makeAutodiff(const gpe::Array2d<T, N1, N2>& m) {
+    gpe::Array2d<autodiff::Variable<T>, N1, N2> r;
+    for (unsigned i = 0; i < N1; ++i) {
+        r[i] = makeAutodiff(m[i]);
     }
     return r;
 }
@@ -136,6 +174,16 @@ glm::mat<N_DIMS, N_DIMS, scalar_t> extractGrad(const glm::mat<N_DIMS, N_DIMS, au
     for (int i = 0; i < N_DIMS; ++i) {
         r[i] = extractGrad(v[i]);
     }
+    return r;
+}
+
+template <uint32_t N, typename T>
+auto extractGrad(const gpe::Array<T, N>& arr) -> gpe::Array<decltype (extractGrad(arr.front())), N> {
+    using R = decltype (extractGrad(arr.front()));
+    gpe::Array<R, N> r;
+    unsigned i = 0;
+    for (const auto& val : arr)
+        r[i++] = extractGrad(val);
     return r;
 }
 

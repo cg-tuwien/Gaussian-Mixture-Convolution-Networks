@@ -56,6 +56,21 @@ EXECUTION_DEVICES void evaluate(const Gaussian<DIMS, scalar_t>& gaussian, const 
     grad_gaussian->position = -grad_t;
 }
 
+template <typename scalar_t, int DIMS>
+EXECUTION_DEVICES Gaussian<DIMS, scalar_t> integrate(const Gaussian<DIMS, scalar_t>& gaussian, scalar_t incoming_grad) {
+    constexpr scalar_t factor = gcem::pow(2 * glm::pi<scalar_t>(), scalar_t(DIMS));
+//    return gaussian.weight * gpe::sqrt(factor * glm::determinant(gaussian.covariance));
+    const auto root = gpe::sqrt(factor * glm::determinant(gaussian.covariance));
+
+    Gaussian<DIMS, scalar_t> outgoing_grad;
+    // const auto result = gaussian.weight * root;
+    outgoing_grad.weight = root * incoming_grad;
+    outgoing_grad.position = {};
+    outgoing_grad.covariance = gpe::grad::determinant(gaussian.covariance, factor * gaussian.weight * incoming_grad / (2 * root));
+
+    return outgoing_grad;
+}
+
 template <typename scalar_t, int N_DIMS, int N_VIRTUAL_POINTS = 4>
 EXECUTION_DEVICES scalar_t likelihood(const gpe::Gaussian<N_DIMS, scalar_t>& target, const gpe::Gaussian<N_DIMS, scalar_t>& fitting,
                                       gpe::Gaussian<N_DIMS, scalar_t>* grad_target, gpe::Gaussian<N_DIMS, scalar_t>* grad_fitting,

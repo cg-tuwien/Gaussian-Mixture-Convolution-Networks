@@ -43,7 +43,7 @@ add_compile_definitions(GMC_CMAKE_TEST_BUILD)
 add_compile_definitions(QT_NO_KEYWORDS)
 add_compile_definitions(GLM_FORCE_XYZW_ONLY)
 add_compile_definitions(GPE_LIMIT_N_REDUCTION)
-add_compile_definitions(GPE_ONLY_FLOAT)
+#add_compile_definitions(GPE_ONLY_FLOAT)
 add_compile_definitions(GPE_ONLY_2D)
 find_package(QT NAMES Qt5 COMPONENTS Core Widgets REQUIRED)
 find_package(Qt5 COMPONENTS Core Widgets REQUIRED)
@@ -109,6 +109,7 @@ set(UTIL_HEADERS
     util/grad/common.h
     util/grad/glm.h
     util/grad/gaussian.h
+    util/grad/mixture.h
     util/grad/scalar.h
     util/scalar.h)
 add_library(util ${UTIL_HEADERS} util/dummy.cpp)
@@ -205,6 +206,6 @@ target_link_libraries(0_test_evaluate_inversed PUBLIC OpenMP::OpenMP_CXX torch Q
 add_executable(0_test_bvh_fit bvh_mhem_fit/test_bvh_fit.cpp)
 target_link_libraries(0_test_bvh_fit PUBLIC OpenMP::OpenMP_CXX torch Qt5::Widgets bvh_mhem_fit integrate evaluate_inversed math lbvh common)
 
-add_executable(0_unittest_bvh_fit_backward bvh_mhem_fit/unittest_mixture_grad.cpp bvh_mhem_fit/unittest_algorithms_grad.cpp bvh_mhem_fit/unittest_bvh_fit_backward.cpp)
+add_executable(0_unittest_bvh_fit_backward bvh_mhem_fit/unit_test_support.h bvh_mhem_fit/unittest_mixture_grad.cpp bvh_mhem_fit/unittest_algorithms_grad.cpp bvh_mhem_fit/unittest_bvh_fit_backward.cpp)
 target_link_libraries(0_unittest_bvh_fit_backward PUBLIC OpenMP::OpenMP_CXX torch Qt5::Widgets bvh_mhem_fit integrate evaluate_inversed math lbvh common)
 

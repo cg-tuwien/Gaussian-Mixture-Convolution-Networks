@@ -1,4 +1,5 @@
 #include "implementation_autodiff_backward.h"
+#define GPE_AUTODIFF
 #include "implementation_forward.h"
 
 #include "util/autodiff.h"
@@ -169,5 +170,6 @@ ForwardBackWardOutput implementation_autodiff_backward(torch::Tensor mixture, co
 }
 
 template ForwardBackWardOutput implementation_autodiff_backward<2, float, 2>(torch::Tensor mixture, const torch::Tensor& gradient_fitting, const BvhMhemFitConfig& config);
+template ForwardBackWardOutput implementation_autodiff_backward<2, double, 2>(torch::Tensor mixture, const torch::Tensor& gradient_fitting, const BvhMhemFitConfig& config);
 
 }
