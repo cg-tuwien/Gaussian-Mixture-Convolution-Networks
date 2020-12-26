@@ -4,6 +4,7 @@ from gmc.cpp.extensions.furthest_point_sampling import furthest_point_sampling
 import torch
 import gmc.mixture as gm
 import numpy
+from sklearn.cluster import KMeans
 
 
 class EMGenerator(GMMGenerator):
@@ -31,7 +32,7 @@ class EMGenerator(GMMGenerator):
         #       (We could implement saving of the best result in order to avoid moving out of optima)
         #   initialization_method: int
         #       Defines which initialization to use: 0 = Random by sample mean and cov, 1 = Random responsibilities,
-        #       2 = furthest point sampling, 3 = furthest point sampling and artifical responsibilities
+        #       2 = furthest point sampling, 3 = furthest point sampling and artifical responsibilities, 4 = kmeans
         #   em_step_gaussian_subbatchsize: int
         #       How many Gaussian Sub-Mixtures should be processed in the E- and M-Step at once
         #       -1 means all Gaussians (default)
@@ -47,7 +48,7 @@ class EMGenerator(GMMGenerator):
         self._n_gaussians = n_gaussians
         self._n_sample_points = n_sample_points
         self._initialization_method = initialization_method
-        assert (0 <= initialization_method <= 3)
+        assert (0 <= initialization_method <= 4)
         self._termination_criterion = termination_criterion
         self._m_step_gaussians_subbatchsize = em_step_gaussians_subbatchsize
         self._m_step_points_subbatchsize = em_step_points_subbatchsize
@@ -105,8 +106,10 @@ class EMGenerator(GMMGenerator):
                 gmbatch = self.initialize_rand2(pcbatch)
             elif self._initialization_method == 2:
                 gmbatch = self.initialize_adam1(pcbatch)
-            else:
+            elif self._initialization_method == 3:
                 gmbatch = self.initialize_adam2(pcbatch)
+            else:
+                gmbatch = self.initialize_kmeans(pcbatch)
         gm_data = self.TrainingData(batch_size, self._n_gaussians, self._dtype)
         gm_data.set_positions(gm.positions(gmbatch), running)
         gm_data.set_covariances(gm.covariances(gmbatch), running)
@@ -235,6 +238,9 @@ class EMGenerator(GMMGenerator):
         # Calculating responsibilities
         responsibilities = torch.zeros(batch_size, 1, n_sample_points, self._n_gaussians, dtype=self._dtype).cuda()
         responsibilities[running] = torch.exp(likelihood_log - llh_sum)
+
+        #print("#0-Res", (responsibilities.eq(0)).sum().item(), " / ",
+        #      (responsibilities.shape[2] * responsibilities.shape[3]))
         # Calculating responsibilities and returning them and the mean loglikelihoods
         return responsibilities, losses
 
@@ -309,6 +315,9 @@ class EMGenerator(GMMGenerator):
         gm_data.set_covariances(new_covariances, running)
         gm_data.set_priors(new_priors, running)
 
+        #print("#0-Priors", gm_data._priors.eq(0).sum().item(), "/", gm_data._priors.shape[2])
+        #print("--")
+
         assert not torch.isnan(gm_data.get_logarithmized_amplitudes()).any(),\
             "Numerical Issues! Consider increasing precision."
 
@@ -334,13 +343,17 @@ class EMGenerator(GMMGenerator):
         # Calculated mean prior.
         meanweight = 1.0 / self._n_gaussians
 
+        if self._eps is None:
+            self._eps = (torch.eye(3, 3, dtype=self._dtype) * self._epsvar).view(1, 1, 1, 3, 3) \
+                .expand(batch_size, 1, self._n_gaussians, 3, 3).cuda()
+
         # Sample positions from Gaussian -> shape: (bs, 1, ng, 3)
         positions = torch.zeros(batch_size, 1, self._n_gaussians, 3).to(self._dtype)
         for i in range(batch_size):
             positions[i, 0, :, :] = torch.tensor(
                 numpy.random.multivariate_normal(meanpos[i, :].cpu(), meancov[i, :, :].cpu(), self._n_gaussians)).cuda()
         # Repeat covariances for each Gaussian -> shape: (bs, 1, ng, 3, 3)
-        covariances = meancov.view(batch_size, 1, 1, 3, 3).expand(batch_size, 1, self._n_gaussians, 3, 3)
+        covariances = meancov.view(batch_size, 1, 1, 3, 3).expand(batch_size, 1, self._n_gaussians, 3, 3) + self._eps
         # Set weight for each Gaussian -> shape: (bs, 1, ng)
         weights = torch.zeros(batch_size, 1, self._n_gaussians).to(self._dtype)
         weights[:, :, :] = meanweight
@@ -387,11 +400,15 @@ class EMGenerator(GMMGenerator):
         #   pcbatch: torch.Tensor(batch_size, n_points, 3)
         batch_size = pcbatch.shape[0]
 
+        if self._eps is None:
+            self._eps = (torch.eye(3, 3, dtype=self._dtype) * self._epsvar).view(1, 1, 1, 3, 3) \
+                .expand(batch_size, 1, self._n_gaussians, 3, 3).cuda()
+
         sampled = furthest_point_sampling.apply(pcbatch.float(), self._n_gaussians).to(torch.long).reshape(-1)
         batch_indizes = torch.arange(0, batch_size).repeat(self._n_gaussians, 1).transpose(-1, -2).reshape(-1)
         gmpositions = pcbatch[batch_indizes, sampled, :].view(batch_size, 1, self._n_gaussians, 3)
         # Achtung! Das gibt wohl eher die Indizes zurück
-        gmcovariances = torch.zeros(batch_size, 1, self._n_gaussians, 3, 3).to(self._dtype).cuda()
+        gmcovariances = torch.zeros(batch_size, 1, self._n_gaussians, 3, 3).to(self._dtype).cuda() + self._eps
         gmcovariances[:, :, :] = torch.eye(3, dtype=self._dtype).cuda()
         gmpriors = torch.zeros(batch_size, 1, self._n_gaussians).to(self._dtype).cuda()
         gmpriors[:, :, :] = 1 / self._n_gaussians
@@ -441,6 +458,36 @@ class EMGenerator(GMMGenerator):
 
         self._maximization(sp_rep, assignedresps, gm_data, running)
         return gm_data.pack_mixture_model().cuda().to(self._dtype)
+
+    def initialize_kmeans(self, pcbatch: torch.Tensor) -> torch.Tensor:
+        batch_size = pcbatch.shape[0]
+        point_count = pcbatch.shape[1]
+
+        positions = torch.zeros(batch_size, 1, self._n_gaussians, 3, dtype=self._dtype).cuda()
+        covariances = torch.zeros(batch_size, 1, self._n_gaussians, 3, 3, dtype=self._dtype).cuda()
+        priors = torch.zeros(batch_size, 1, self._n_gaussians, dtype=self._dtype).cuda()
+
+        if self._eps is None:
+            self._eps = (torch.eye(3, 3, dtype=self._dtype) * self._epsvar).view(1, 1, 1, 3, 3) \
+                .expand(batch_size, 1, self._n_gaussians, 3, 3).cuda()
+
+        for batch in range(batch_size):
+            km = KMeans(self._n_gaussians).fit(pcbatch[batch].cpu())
+            positions[batch, 0] = torch.tensor(km.cluster_centers_).cuda()
+            labels = torch.tensor(km.labels_).cuda()
+            allidcs = torch.tensor(range(self._n_gaussians)).cuda()
+            mask = labels.eq(allidcs.view(-1, 1))
+            count_per_cluster = mask.sum(1)
+            # points_rep: (ng, np, 3)
+            points_rep = pcbatch[batch].unsqueeze(0).repeat(self._n_gaussians,1,1)
+            points_rep = (points_rep - positions[batch, 0].unsqueeze(1).expand(self._n_gaussians, point_count, 3))\
+                .unsqueeze(3)
+            points_rep[~mask] = 0
+            covariances[batch, 0] = (points_rep * points_rep.transpose(-1, -2)).sum(1) \
+                / count_per_cluster.view(-1, 1, 1) + self._eps
+            priors[batch, 0, :] = 1 / self._n_gaussians
+
+        return gm.pack_mixture(priors, positions, covariances)
 
     class TrainingData:
         # Helper class. Capsules all relevant training data of the current GM batch.

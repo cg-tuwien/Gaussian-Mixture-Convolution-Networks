@@ -66,7 +66,7 @@ class PCDatasetIterator:
                     mesh = trimesh.load_mesh(objpath)
                     bb = mesh.bounding_box
                     samples, _ = trimesh.sample.sample_surface(mesh, self._point_count)
-                    samples *= 100.0 / np.max(bb.primitive.extents)
+                    # samples *= 100.0 / np.max(bb.primitive.extents) # Remove this line to preserve original scaling
                     data_loading.write_pc_to_off(pcpath, samples)
                     batch[i, :, :] = torch.from_numpy(samples)
         return batch, names

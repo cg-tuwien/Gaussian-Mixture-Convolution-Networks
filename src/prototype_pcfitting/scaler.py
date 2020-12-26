@@ -27,11 +27,20 @@ class Scaler:
 
         # Scale point clouds to [0,1] in the smallest dimension
         if self._scalingMethod == ScalingMethod.SMALLEST_TO_ONE:
+            extends[extends.eq(0)] = float("Inf")
             self.scaleP = torch.min(extends, dim=1)[0]  # shape: (m)
         else:
             self.scaleP = torch.max(extends, dim=1)[0]  # shape: (m)
         self.scaleP = self.scaleP.view(-1, 1, 1)  # shape: (m,1,1)
         self.offsetP = bbmin.view(-1, 1, 3)
+        self.scaleA = torch.pow(self.scaleP, 3)  # shape: (m,1,1)
+        self.scaleC = (self.scaleP ** 2).view(-1, 1, 1, 1, 1)  # shape: (m,1,1)
+
+    def set_pointcloud_batch_for_identity(self, pcbatch: torch.Tensor):
+        batch_size = pcbatch.shape[0]
+        # Can be called instead set_pointcloud_batch, when this scaler should not change anything
+        self.scaleP = torch.ones(batch_size, 1, 1, dtype=pcbatch.dtype).cuda()  # shape: (m,1,1)
+        self.offsetP = torch.zeros(batch_size, 1, 3, dtype=pcbatch.dtype).cuda()
         self.scaleA = torch.pow(self.scaleP, 3)  # shape: (m,1,1)
         self.scaleC = (self.scaleP ** 2).view(-1, 1, 1, 1, 1)  # shape: (m,1,1)
 

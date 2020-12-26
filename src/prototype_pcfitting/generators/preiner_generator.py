@@ -15,6 +15,7 @@ class PreinerGenerator(GMMGenerator):
     def __init__(self,
                  reduction_factor: float,
                  n_levels: int,
+                 gauss_subbatchsize: int = -1,
                  termination_criterion: TerminationCriterion = MaxIterationTerminationCriterion(20),
                  dtype: torch.dtype = torch.float32,
                  eps: float = 1e-4):
@@ -40,6 +41,7 @@ class PreinerGenerator(GMMGenerator):
         #       Small value to be added to the Covariances for numerical stability
         self._reduction_factor = reduction_factor
         self._n_levels = n_levels
+        self._gaussian_subbatchsize = gauss_subbatchsize
         self._termination_criterion = termination_criterion
         self._dtype = dtype
         self._logger = None
@@ -83,7 +85,7 @@ class PreinerGenerator(GMMGenerator):
         absiteration = 0  # Iteration index overall
         for level in range(self._n_levels):
             print("Level: ", level)
-            gausscount_for_level = round(point_count / (self._reduction_factor ** level))  # How many Gaussians the current level has
+            gausscount_for_level = round(point_count / (self._reduction_factor ** (level+1)))  # How many Gaussians the current level has
 
             # Initialize GMs
             gm_fit = self._initialize_level(pcbatch, gausscount_for_level)
@@ -113,7 +115,7 @@ class PreinerGenerator(GMMGenerator):
                     break
 
                 # M-Step
-                self._maximization(gm_fit, gm_ref, responsibilities)
+                self._maximization(gm_fit, gm_ref, responsibilities, point_count)
 
             # add gm to hierarchy
             gm_ref = gm_fit
@@ -138,6 +140,7 @@ class PreinerGenerator(GMMGenerator):
         return gmdata
 
     def _initialize_level(self, points: torch.Tensor, n_gaussians: int):
+        # TODO: Update to fit Preiner ("Initialize by randomly subsampling lower level")
         point_count = points.shape[1]
 
         # Calculate the mean pc position. shape: (bs, 1, 3)
@@ -180,19 +183,84 @@ class PreinerGenerator(GMMGenerator):
         #       responsibilities for point-gaussian-combinations where the point does not belong to a
         #       gaussian's parent will be 0. Also note, that there might be Sub-GMs without points assigned to them.
 
+        gauss_subbatch_size_fit = self._gaussian_subbatchsize
+        if gauss_subbatch_size_fit < 1:
+            gauss_subbatch_size_fit = len(gm_fit)
+        gauss_subbatch_size_ref = self._gaussian_subbatchsize
+        if gauss_subbatch_size_ref < 1:
+            gauss_subbatch_size_ref = len(gm_ref)
+
         n_virtual_points = n_sample_count * gm_ref.priors
-        gaussian_values = gm.evaluate_componentwise(gm_fit.pack_weightless_mixture(), gm_ref.positions)
-        exp_values = torch.exp(-0.5 * mat_tools.batched_trace(mat_tools.inverse(gm_fit.covariances).unsqueeze(2) @
-                                                              gm_ref.covariances.unqsueeze(3)))
-        likelihoods = torch.pow(gaussian_values * exp_values, n_virtual_points.unsqueeze(-1))
-        likelihoods = likelihoods * gm_fit.priors.unsqueeze(2)
-        # ToDo: Add KL-Divergence
-        likelihood_sum = likelihoods.sum(3, keepdim=True)
-        responsibilities = likelihoods / (likelihood_sum + 0.0001)
+
+        likelihood_log = \
+            torch.zeros(1, 1, len(gm_ref), len(gm_fit), dtype=self._dtype).cuda()
+        gmfpos = gm_fit.positions
+        gmficov = gm_fit.calculate_inversed_covariances()   # investige mat_tools.inverse
+        gmrpos = gm_ref.positions
+        gmfloga = torch.log(gm_fit.calculate_amplitudes())
+
+        for j_start in range(0, len(gm_fit), gauss_subbatch_size_fit):
+            j_end = j_start + gauss_subbatch_size_fit
+            actual_gauss_subbatch_size = min(len(gm_fit), j_end) - j_start
+            for i_start in range(0, len(gm_ref), gauss_subbatch_size_ref):
+                i_end = i_start + gauss_subbatch_size_ref
+                actual_point_subbatch_size = min(len(gm_ref), i_end) - i_start
+                points_rep = gmrpos[:, :, i_start:i_end, :].unsqueeze(3) \
+                    .expand(1, 1, actual_point_subbatch_size, actual_gauss_subbatch_size, 3)
+                # GM-Positions, expanded for each PC point. shape: (bs, 1, np, ng, 3)
+                gmpositions_rep = gmfpos[:, :, j_start:j_end].unsqueeze(2) \
+                    .expand(1, 1, actual_point_subbatch_size, actual_gauss_subbatch_size, 3)
+                # GM-Inverse Covariances, expanded for each PC point. shape: (bs, 1, np, ng, 3, 3)
+                gmicovs_rep = gmficov[:, :, j_start:j_end].unsqueeze(2) \
+                    .expand(1, 1, actual_point_subbatch_size, actual_gauss_subbatch_size, 3, 3)
+                pcovs_rep = gm_ref.covariances[:, :, i_start:i_end].unsqueeze(3) \
+                    .expand(1, 1, actual_point_subbatch_size, actual_gauss_subbatch_size, 3, 3)
+                # Tensor of {PC-point minus GM-position}-vectors. shape: (bs, 1, np, ng, 3, 1)
+                grelpos = (points_rep - gmpositions_rep).unsqueeze(5)
+                # Tensor of 0.5 times the Mahalanobis distances of PC points to Gaussians. shape: (bs, 1, np, ng)
+                expvalues = torch.matmul(grelpos.transpose(-2, -1), torch.matmul(gmicovs_rep, grelpos)).squeeze(
+                                5).squeeze(4)
+
+                # expvalues *= 0.5
+                # gma_log_rep = gmfloga[:, :, j_start:j_end].unsqueeze(2) \
+                #     .expand(1, 1, actual_point_subbatch_size, actual_gauss_subbatch_size)
+                # likelihood_log[:, :, i_start:i_end, j_start:j_end] = gma_log_rep - expvalues
+
+                expvalues += mat_tools.batched_trace(torch.matmul(gmicovs_rep, pcovs_rep))
+                expvalues += torch.log(torch.det(gm_fit.covariances[:, :, j_start:j_end]))
+                expvalues += 5.513631199
+                # it could be, that there are gaussians with prior-weight 0, so we need to avoid division by zero
+                # however, as we are actually describing ln(x^w), we know that that is ln(0), so -inf
+                relnvp = n_virtual_points[i_start:i_end]
+                nonzeronvp = ~relnvp.eq(0)
+                expvalues[nonzeronvp] /= (-2*relnvp[nonzeronvp]).unsqueeze(1)
+                expvalues[~nonzeronvp] = -float("Inf")
+                gmpriors_log_rep = torch.log(gm_fit.priors[:, :, j_start:j_end]).unsqueeze(2) \
+                    .expand(1, 1, actual_point_subbatch_size, actual_gauss_subbatch_size)
+                # ToDo: Add KL-Divergence
+                # The logarithmized likelihoods of each point for each gaussian. shape: (bs, 1, np, ng)
+                likelihood_log[:, :, i_start:i_end, j_start:j_end] = expvalues + gmpriors_log_rep
+
+        llh_sum = torch.logsumexp(likelihood_log, dim=3, keepdim=True)
+        responsibilities = torch.exp(likelihood_log - llh_sum)
+
+        # n_virtual_points = n_sample_count * gm_ref.priors
+        # gaussian_values = gm.evaluate_componentwise(gm_fit.pack_weightless_mixture(), gm_ref.positions)
+        # exp_values = torch.exp(-0.5 * mat_tools.batched_trace(mat_tools.inverse(gm_fit.covariances).unsqueeze(2) @
+        #                                                       gm_ref.covariances.unsqueeze(3)))
+        # likelihoods = torch.pow(gaussian_values * exp_values, n_virtual_points.unsqueeze(-1))
+        # likelihoods = likelihoods * gm_fit.priors.unsqueeze(2)
+        # # ToDo: Add KL-Divergence
+        # likelihood_sum = likelihoods.sum(3, keepdim=True)
+        # responsibilities = likelihoods / (likelihood_sum + 0.0001)
+
+        print ("#0-Res", (responsibilities.eq(0)).sum().item(), " / ", (responsibilities.shape[2] * responsibilities.shape[3]))
+        assert (not torch.isnan(responsibilities).any())
+        assert not torch.sum(responsibilities, 2).eq(0).any()
 
         return responsibilities
 
-    def _maximization(self, gm_fit, gm_ref, responsibilities: torch.Tensor):
+    def _maximization(self, gm_fit, gm_ref, responsibilities: torch.Tensor, n_sample_count):
         # This performs the Maximization step of the EM Algorithm.
         # Updates the GM-Model given the responsibilities which resulted from the E-Step.
         # Per default, all points and Gaussians are processed at once.
@@ -206,13 +274,38 @@ class PreinerGenerator(GMMGenerator):
         #   gm_data: TrainingData
         #       The current GM-object (will be changed)
 
-        weights = responsibilities * gm_ref.priors.unsqueeze(-1)
-        new_priors = torch.sum(weights, 2)
-        weights /= (new_priors + 0.0001).unsqueeze(2) # use an eps value for this
-        new_positions = torch.sum(weights.unsqueeze(-1) * gm_ref.positions.unsqueeze(3), 2)
+        # t_0 = torch.zeros(1, 1, len(gm_fit), dtype=self._dtype).cuda()
+        # t_1 = torch.zeros(1, 1, len(gm_fit), 3, dtype=self._dtype).cuda()
+        # t_2 = torch.zeros(1, 1, len(gm_fit), 3, 3, dtype=self._dtype).cuda()
+        # relevant_points = gm_ref.positions.unsqueeze(3).expand(1, 1, len(gm_ref), len(gm_fit), 3)
+        # matrices_from_points = relevant_points.unsqueeze(5) * relevant_points.unsqueeze(5).transpose(-1, -2)
+        # # Fill T-Variables      # t_2 shape: (1, 1, J, 3, 3)
+        # t_2 += (matrices_from_points * responsibilities.unsqueeze(4).unsqueeze(5)).sum(dim=2)
+        # t_0 += responsibilities.sum(dim=2)  # shape: (1, 1, J)
+        # t_1 += (relevant_points * responsibilities.unsqueeze(4)) \
+        #     .sum(dim=2)  # shape: (1, 1, J, 3)
+        # new_positions = t_1 / t_0.unsqueeze(3)  # (bs, 1, ng, 3)
+        # new_covariances = t_2 / t_0.unsqueeze(3).unsqueeze(4) - \
+        #     (new_positions.unsqueeze(4) * new_positions.unsqueeze(4).transpose(-1, -2)) + self._eps.unsqueeze(0)
+        # new_priors = t_0 / len(gm_ref)
+
+        n_virtual_points = n_sample_count * gm_ref.priors
+        new_priors = torch.sum(responsibilities, 2) / len(gm_fit)
+        #1, 1, nr, nf
+        weights = responsibilities * n_virtual_points.view(1, 1, len(gm_ref), 1).expand(1, 1, len(gm_ref), len(gm_fit))
+        new_positions = (weights.unsqueeze(-1) * gm_ref.positions.unsqueeze(3).expand(1, 1, len(gm_ref), len(gm_fit), 3)).sum(2) / torch.sum(weights, 2).unsqueeze(-1)
         pos_diffs = gm_ref.positions.unsqueeze(3).unsqueeze(5) - new_positions.unsqueeze(2).unsqueeze(5)
         new_covariances = torch.sum(weights.unsqueeze(-1).unsqueeze(-1) * (gm_ref.covariances.unsqueeze(3) + pos_diffs.matmul(pos_diffs.transpose(-1, -2))), 2)
-        new_covariances = new_covariances + (new_priors.lt(0.0001)).unsqueeze(-1).unsqueeze(-1) * torch.eye(3).cuda().view(1, 1, 1, 3, 3) * 0.0001 # ToDo: eps
+        new_covariances = new_covariances + (new_priors.lt(0.0001)).unsqueeze(-1).unsqueeze(-1) * torch.eye(3).cuda().view(1, 1, 1, 3, 3) * 0.0001
+        new_covariances /= torch.sum(weights, 2).unsqueeze(-1).unsqueeze(-1)
+
+        # weights = responsibilities * gm_ref.priors.unsqueeze(-1)
+        # new_priors = torch.sum(weights, 2)
+        # weights /= (new_priors + 0.0001).unsqueeze(2) # use an eps value for this
+        # new_positions = torch.sum(weights.unsqueeze(-1) * gm_ref.positions.unsqueeze(3), 2)
+        # pos_diffs = gm_ref.positions.unsqueeze(3).unsqueeze(5) - new_positions.unsqueeze(2).unsqueeze(5)
+        # new_covariances = torch.sum(weights.unsqueeze(-1).unsqueeze(-1) * (gm_ref.covariances.unsqueeze(3) + pos_diffs.matmul(pos_diffs.transpose(-1, -2))), 2)
+        # new_covariances = new_covariances + (new_priors.lt(0.0001)).unsqueeze(-1).unsqueeze(-1) * torch.eye(3).cuda().view(1, 1, 1, 3, 3) * 0.0001 # ToDo: eps
         gm_fit.priors = new_priors
         gm_fit.positions = new_positions
         gm_fit.covariances = new_covariances
@@ -224,6 +317,8 @@ class PreinerGenerator(GMMGenerator):
         gm_fit.positions[nans] = torch.tensor([0.0, 0.0, 0.0], dtype=self._dtype).cuda()
         gm_fit.covariances[nans] = self._eps[0, 0, :, :]
         gm_fit.priors[nans] = 0
+        print("#0-Priors", gm_fit.priors.eq(0).sum().item(), "/", len(gm_fit))
+        print("--")
 
 
     class GMLevelTrainingData:

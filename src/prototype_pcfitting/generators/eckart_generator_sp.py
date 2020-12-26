@@ -77,12 +77,13 @@ class EckartGeneratorSP(GMMGenerator):
         # the p_ik. How much influence each point has to each parent. sum for each point is 1
         point_weighting_factors = torch.ones(point_count, 1, dtype=self._dtype).cuda()
 
-        # hierarchy: list of combined mixtures, one for each level
-        hierarchy = []
+        # finished_subgmms: Gaussians that will not be expanded anymore, from each level
+        finished_subgmms = []
         # weights of the parents of each point. initialized with one (fictional 0th layer has only one Gaussian)
         parentweights = torch.ones(1, 1, self._n_gaussians_per_node, dtype=self._dtype).cuda()
 
         llh_loss_calc = LikelihoodLoss()
+        gm_data = None
 
         absiteration = 0  # Iteration index overall
         for level in range(self._n_levels):
@@ -90,11 +91,15 @@ class EckartGeneratorSP(GMMGenerator):
             parentcount_for_level = self._n_gaussians_per_node ** level  # How many parents the current level has
             relevant_parents = torch.arange(0, parentcount_for_level).cuda()  # (parentcount)
 
+            # replicate parent's pwf for each gaussian, and
+            pwf_per_gaussian = point_weighting_factors.unsqueeze(2) \
+                .expand(point_count, parentcount_for_level, self._n_gaussians_per_node).reshape(point_count, -1)
+
             # Scaler, to scale down the sub-pointclouds, and up the resulting sub-gms
             bbs = self.extract_bbs(pcbatch, point_weighting_factors)  # (K,2,3)
 
             # Initialize GMs
-            gm_data = self._initialize_gms_on_bounding_box(bbs, relevant_parents, parentweights)
+            gm_data = self._initialize_gms_on_bounding_box(bbs, relevant_parents, parentweights, pwf_per_gaussian)
 
             self._termination_criterion.reset()
 
@@ -109,13 +114,12 @@ class EckartGeneratorSP(GMMGenerator):
                 # E-Step
                 responsibilities = self._expectation(points, gm_data, point_weighting_factors)
 
-                # calculate loss (approximative - not quite accurate, actual loss might be better)
+                # Calculate Loss
                 mixture = gm_data.approximate_whole_mixture()
+                mixture = self._construct_full_gm(mixture, finished_subgmms)
                 loss = llh_loss_calc.calculate_score_packed(pcbatch, mixture)
 
-                # replicate parent's pwf for each gaussian, and weight responsibility
-                pwf_per_gaussian = point_weighting_factors.unsqueeze(2) \
-                    .expand(point_count, parentcount_for_level, self._n_gaussians_per_node).reshape(point_count, -1)
+                # weight responsibility
                 weighted_responsibilities = pwf_per_gaussian * responsibilities
 
                 if self._logger:
@@ -123,7 +127,7 @@ class EckartGeneratorSP(GMMGenerator):
                     del mixture
 
                 if not self._termination_criterion.may_continue(iteration - 1, loss.view(-1)).item():
-                    # Parition: Update point_weighting_factors
+                    # Partition: Update point_weighting_factors
                     new_pwf = torch.zeros_like(responsibilities)    # (1, 1, np, ng)
                     new_pwf[responsibilities > self._partition_threshold] = \
                         weighted_responsibilities[responsibilities > self._partition_threshold]
@@ -135,14 +139,17 @@ class EckartGeneratorSP(GMMGenerator):
                 # M-Step
                 self._maximization(points, weighted_responsibilities, pwf_per_gaussian, gm_data)
 
-            # add gm to hierarchy
-            hierarchy.append(gm_data)
+            finished_gaussians = point_weighting_factors.sum(0).eq(0)
+            if level + 1 != self._n_levels:
+                mixture = gm_data.approximate_whole_mixture()
+                finished_subgmms.append(mixture[:, :, finished_gaussians])
             # update parentweights
             parentweights = gm_data.get_premultiplied_priors().repeat(1, 1, self._n_gaussians_per_node, 1)\
                 .transpose(-1, -2).reshape(1, 1, -1)
 
         # Calculate final GMs
-        res_gm, res_gmm = self._construct_gm_from_hierarchy(hierarchy)
+        res_gm = self._construct_full_gm(gm_data.approximate_whole_mixture(), finished_subgmms)
+        res_gmm = gm.convert_amplitudes_to_priors(res_gm)
         res_gm = res_gm.float()
         res_gmm = res_gmm.float()
 
@@ -177,13 +184,15 @@ class EckartGeneratorSP(GMMGenerator):
         return result
 
     def _initialize_gms_on_bounding_box(self, bbs: torch.Tensor, relevant_parents: torch.Tensor,
-                                        parentweights: torch.Tensor):
+                                        parentweights: torch.Tensor, pwf_per_gaussian: torch.Tensor):
         # Initializes new GMs, each on the corners of its points respective bounding boxes
         # relevant_parents: torch.Tensor
         #   List of relevant parent indizes
         # parentweights: torch.Tensor
         #   Prior of each parent
         gmcount = bbs.shape[0]
+        finished_gaussians = pwf_per_gaussian.sum(0).eq(0)
+
         gmdata = self.GMLevelTrainingData(self._dtype)
         gmdata.parents = relevant_parents.repeat(1, self._n_gaussians_per_node)\
             .view(self._n_gaussians_per_node, -1).transpose(-1, -2).reshape(1, 1, -1)
@@ -212,6 +221,7 @@ class EckartGeneratorSP(GMMGenerator):
         gmdata.covariances[0, 0, :, :, :] *= bbs_rep[:, 1, :].unsqueeze(2) ** 2
         gmdata.priors = torch.zeros(1, 1, self._n_gaussians_per_node * gmcount).to(self._dtype).cuda()
         gmdata.priors[:, :, :] = 1 / self._n_gaussians_per_node
+        gmdata.priors[:, :, finished_gaussians] = 0
 
         gmdata.parentweights = parentweights
 
@@ -356,58 +366,12 @@ class EckartGeneratorSP(GMMGenerator):
         gm_data.covariances[nans] = self._eps[0, 0, 0, :, :]
         gm_data.priors[nans] = 0
 
-    def _construct_gm_from_hierarchy(self, hierarchy) -> (torch.Tensor, torch.Tensor):
-        # Constructs a final GM from a level hierarchy
-        # Returns the same mixture once with amplitudes as weights, once with priors
-        priors, covariances, positions = self._expand_subgm_from_level(hierarchy, -1, 0)
-        resgmm = gm.pack_mixture(priors, positions, covariances)
-        resgm = gm.convert_priors_to_amplitudes(resgmm)
-        return resgm, resgmm
-
-    def _expand_subgm_from_level(self, hierarchy, level, index) -> (torch.Tensor, torch.Tensor, torch.Tensor):
-        # Helperfunction for _construct_gm_from_hierarchy
-        # Expands a subgm from a certain node.
-        if level == len(hierarchy) - 1:
-            gmdata = hierarchy[-1]
-            return gmdata.priors[:, :, index:index + 1], gmdata.covariances[:, :, index:index + 1], \
-                gmdata.positions[:, :, index:index + 1]
-        else:
-            gmdata_upper = hierarchy[level]
-            myweight = 1
-            if level != -1:
-                myweight = gmdata_upper.priors[:, :, index]
-            if myweight == 0:
-                return gmdata_upper.priors[:, :, index:index + 1], \
-                       gmdata_upper.covariances[:, :, index:index + 1], \
-                       gmdata_upper.positions[:, :, index:index + 1]
-            restlevels = len(hierarchy) - level - 1
-            maxgaussians = self._n_gaussians_per_node ** restlevels
-            subgm_priors = torch.zeros(1, 1, maxgaussians, dtype=self._dtype).cuda()
-            subgm_covariances = torch.zeros(1, 1, maxgaussians, 3, 3, dtype=self._dtype).cuda()
-            subgm_positions = torch.zeros(1, 1, maxgaussians, 3, dtype=self._dtype).cuda()
-            currentindex = 0
-            endindex = -1
-            for relchildindex in range(self._n_gaussians_per_node):
-                abschildindex = index * self._n_gaussians_per_node + relchildindex
-                priors, covariances, positions = self._expand_subgm_from_level(hierarchy, level + 1, abschildindex)
-                num = priors.shape[2]
-                endindex = currentindex + num
-                subgm_priors[:, :, currentindex:endindex], subgm_covariances[:, :, currentindex:endindex], \
-                    subgm_positions[:, :, currentindex:endindex] = priors, covariances, positions
-                currentindex = endindex
-            if subgm_priors.sum() != 0:
-                subgm_priors *= myweight
-                return subgm_priors[:, :, 0:endindex], \
-                    subgm_covariances[:, :, 0:endindex], \
-                    subgm_positions[:, :, 0:endindex]
-            else:
-                if level == -1:
-                    empty = torch.zeros(1, 1, 0, dtype=self._dtype).cuda()
-                    return empty, empty.unsqueeze(3).unsqueeze(4).repeat(1, 1, 0, 3, 3), \
-                        empty.unsqueeze(3).repeat(1, 1, 0, 3)
-                return gmdata_upper.priors[:, :, index:index + 1], \
-                    gmdata_upper.covariances[:, :, index:index + 1], \
-                    gmdata_upper.positions[:, :, index:index + 1]
+    @staticmethod
+    def _construct_full_gm(current_gm_upscaled_packed: torch.Tensor, finished_subgmms: list):
+        for subgmm in finished_subgmms:
+            current_gm_upscaled_packed = torch.cat((current_gm_upscaled_packed, subgmm), dim=2)
+        current_gm_upscaled_packed = current_gm_upscaled_packed[:, :, gm.weights(current_gm_upscaled_packed)[0, 0] > 0]
+        return current_gm_upscaled_packed
 
     class GMLevelTrainingData:
         # Helper class. Capsules all relevant training data of the current GM batch on the given level.

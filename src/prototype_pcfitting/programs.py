@@ -29,7 +29,8 @@ def execute_fitting(training_name: str, model_path: str, genpc_path: str, gengmm
         print(f"Dataset Batch {i}: {batch.shape}, Remaining Batches: {dataset.remaining_batches_count()}")
 
         # Scale down
-        scaler.set_pointcloud_batch(batch)
+        # scaler.set_pointcloud_batch(batch)
+        scaler.set_pointcloud_batch_for_identity(batch)
         batch_scaled = scaler.scale_down_pc(batch)
 
         for j in range(len(generators)):
