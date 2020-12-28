@@ -33,7 +33,7 @@ class EMGenerator(GMMGenerator):
         #       As this algorithm works on batches, the common batch loss is given to the termination criterion
         #       (We could implement saving of the best result in order to avoid moving out of optima)
         #   initialization_method: string
-        #       Defines which initialization to use:
+        #       Defines which initialization to use. All options from GMMInitializer are available:
         #       'randnormpos' or 'rand1' = Random by sample mean and cov
         #       'randresp' or 'rand2' = Random responsibilities,
         #       'fsp' or 'adam1' = furthest point sampling,
@@ -106,20 +106,8 @@ class EMGenerator(GMMGenerator):
 
         # Initialize mixture data
         if gmbatch is None:
-            if self._initialization_method == 'randnormpos' or self._initialization_method == 'rand1':
-                gmbatch = self._initializer.initialize_randnormpos(pcbatch, self._n_gaussians)
-            elif self._initialization_method == 'randresp' or self._initialization_method == 'rand2':
-                gmbatch = self._initializer.initialize_randresp(pcbatch, self._n_gaussians, self._n_sample_points)
-            elif self._initialization_method == 'fsp' or self._initialization_method == 'adam1':
-                gmbatch = self._initializer.initialize_fsp(pcbatch, self._n_gaussians)
-            elif self._initialization_method == 'fspmax' or self._initialization_method == 'adam2':
-                gmbatch = self._initializer.initialize_fspmax(pcbatch, self._n_gaussians, self._n_sample_points)
-            elif self._initialization_method == 'kmeans-full':
-                gmbatch = self._initializer.initialize_kmeans(pcbatch, self._n_gaussians, fast=False)
-            elif self._initialization_method == 'kmeans-fast' or self._initialization_method == 'kmeans':
-                gmbatch = self._initializer.initialize_kmeans(pcbatch, self._n_gaussians, fast=True)
-            else:
-                raise Exception("Invalid Initialization Method for EMGenerator")
+            gmbatch = self._initializer.initialize_by_method_name(self._initialization_method, pcbatch,
+                                                                  self._n_gaussians, self._n_sample_points)
         gm_data = EMTools.TrainingData(batch_size, self._n_gaussians, self._dtype)
         gm_data.set_positions(gm.positions(gmbatch), running)
         gm_data.set_covariances(gm.covariances(gmbatch), running)

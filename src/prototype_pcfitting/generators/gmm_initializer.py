@@ -37,6 +37,34 @@ class GMMInitializer:
         self._dtype = dtype
         self._epsvar = eps
 
+    def initialize_by_method_name(self, method_name: str, pcbatch: torch.Tensor, n_gaussians: int, n_sample_points: int = -1):
+        # Calls one of the initialization methods by its name
+        # Parameters:
+        #   method_name: str
+        #       Name of the method to call. Options: 'randnormpos' ('rand1'), 'randresp' ('rand2'), 'fsp' ('adam1'),
+        #       'fspmax' ('adam2'), 'kmeans-full', 'kmeans-fast' ('kmeans')
+        #   pcbatch: torch.Tensor of size (batch_size, n_points, 3)
+        #       Point cloud
+        #   n_gaussians: int
+        #       Number of Gaussians
+        #   n_sample_points: int
+        #       How many points to sample (if necessary), -1 = all points
+
+        if method_name == 'randnormpos' or method_name == 'rand1':
+            return self.initialize_randnormpos(pcbatch, n_gaussians)
+        elif method_name == 'randresp' or method_name == 'rand2':
+            return self.initialize_randresp(pcbatch, n_gaussians, n_sample_points)
+        elif method_name == 'fsp' or method_name == 'adam1':
+            return self.initialize_fsp(pcbatch, n_gaussians)
+        elif method_name == 'fspmax' or method_name == 'adam2':
+            return self.initialize_fspmax(pcbatch, n_gaussians, n_sample_points)
+        elif method_name == 'kmeans-full':
+            return self.initialize_kmeans(pcbatch, n_gaussians, fast=False)
+        elif method_name == 'kmeans-fast' or method_name == 'kmeans':
+            return self.initialize_kmeans(pcbatch, n_gaussians, fast=True)
+        else:
+            raise Exception("Invalid Initialization Method for GMMInitializer")
+
     def initialize_randnormpos(self, pcbatch: torch.Tensor, n_gaussians: int) -> torch.Tensor:
         # Creates a new initial Gaussian Mixture (batch) for a given point cloud (batch).
         # The initialization is done according to McLachlan and Peel "Finite Mixture Models" (2000), Chapter 2.12.2
