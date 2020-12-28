@@ -6,25 +6,34 @@ import numpy as np
 
 from prototype_pcfitting import data_loading
 from gmc.cpp.extensions.furthest_point_sampling import furthest_point_sampling
-from .em_generator import EMGenerator
+from .em_tools import EMTools
 
 
 class GMMInitializer:
+    # Capsules all the possible GMM-initialization methods for the EM algorithm(s)
 
     def __init__(self,
                  em_step_gaussians_subbatchsize: int = -1,
                  em_step_points_subbatchsize: int = -1,
                  dtype: torch.dtype = torch.float32,
-                 eps: float = 1e-4,
-                 emgen: EMGenerator = None):
-        if emgen is None:
-            self._emgen = EMGenerator(n_gaussians=0,
-                                      em_step_gaussians_subbatchsize = em_step_gaussians_subbatchsize,
-                                      em_step_points_subbatchsize = em_step_points_subbatchsize,
-                                      dtype=dtype,
-                                      eps=eps)
-        else:
-            self._emgen = emgen
+                 eps: float = 1e-4):
+        #   Creates a new GMM-initializer.
+        #   em_step_gaussian_subbatchsize: int
+        #       How many Gaussian Sub-Mixtures should be processed in the E- and M-Step at once (only relevant for
+        #       initialization techniques randresp and fspmax)
+        #       -1 means all Gaussians (default)
+        #   em_step_points_subbatchsize: int
+        #       How many points should be processed in the E- and M-Step at once (only relevant for
+        #       initialization techniques randresp and fspmax)
+        #       -1 means all Points (default)
+        #   dtype: torch.dtype
+        #       In which data type (precision) the operations should be performed. The final gmm is always
+        #       converted to float32 though. Default: torch.float32
+        #   eps: float
+        #       Small value to be added to the Covariances for numerical stability. Default: 1e-4
+        #
+        self._em_step_gaussians_subbatchsize = em_step_gaussians_subbatchsize
+        self._em_step_points_subbatchsize = em_step_points_subbatchsize
         self._dtype = dtype
         self._epsvar = eps
 
@@ -36,6 +45,7 @@ class GMMInitializer:
         # point cloud.
         # Parameters:
         #   pcbatch: torch.Tensor(batch_size, n_points, 3)
+        #   n_gaussians: int, Number of Gaussians
         batch_size = pcbatch.shape[0]
         point_count = pcbatch.shape[1]
         dtype = pcbatch.dtype
@@ -74,6 +84,8 @@ class GMMInitializer:
         # The responsibilities are created somewhat randomly and from these the M step calculates the Gaussians.
         # Parameters:
         #   pcbatch: torch.Tensor(batch_size, n_points, 3)
+        #   n_gaussians: int (Number of Gaussians)
+        #   n_sample_points: int (How many points to sample, -1 = all points)
         batch_size = pcbatch.shape[0]
         point_count = pcbatch.shape[1]
         dtype = pcbatch.dtype
@@ -95,10 +107,10 @@ class GMMInitializer:
         responsibilities[batch_indizes, point_indizes, assignments] = 1
         responsibilities = responsibilities.unsqueeze(1).to(self._dtype)
 
-        gm_data = self._emgen.TrainingData(batch_size, n_gaussians, self._dtype)
+        gm_data = EMTools.TrainingData(batch_size, n_gaussians, self._dtype)
         sp_rep = sample_points.unsqueeze(1).unsqueeze(3).expand(batch_size, 1, n_sample_points, n_gaussians, 3)
-        self._emgen._n_gaussians = n_gaussians
-        self._emgen._maximization(sp_rep, responsibilities, gm_data, torch.ones(batch_size, dtype=torch.bool))
+        EMTools.maximization(sp_rep, responsibilities, gm_data, torch.ones(batch_size, dtype=torch.bool),
+                             eps, self._em_step_gaussians_subbatchsize, self._em_step_points_subbatchsize)
         return gm_data.pack_mixture_model().cuda().to(self._dtype)
 
     def initialize_fsp(self, pcbatch: torch.Tensor, n_gaussians: int):
@@ -108,6 +120,7 @@ class GMMInitializer:
         # an M step.
         # Parameters:
         #   pcbatch: torch.Tensor(batch_size, n_points, 3)
+        #   n_gaussians: int (number of Gaussians)
         batch_size = pcbatch.shape[0]
 
         eps = (torch.eye(3, 3, dtype=self._dtype) * self._epsvar).view(1, 1, 1, 3, 3) \
@@ -130,6 +143,8 @@ class GMMInitializer:
         # an M step
         # Parameters:
         #   pcbatch: torch.Tensor(batch_size, n_points, 3)
+        #   n_gaussians: int (number of Gaussians)
+        #   n_sample_points: int (How many points to sample, -1 = all points)
         batch_size = pcbatch.shape[0]
         point_count = pcbatch.shape[1]
 
@@ -146,7 +161,7 @@ class GMMInitializer:
 
         mix = self.initialize_fsp(pcbatch, n_gaussians)
 
-        gm_data = self._emgen.TrainingData(batch_size, n_gaussians, self._dtype)
+        gm_data = EMTools.TrainingData(batch_size, n_gaussians, self._dtype)
         running = torch.ones(batch_size, dtype=torch.bool)
         gm_data.set_positions(gm.positions(mix), running)
         gm_data.set_covariances(gm.covariances(mix), running)
@@ -154,8 +169,9 @@ class GMMInitializer:
 
         sp_rep = sample_points.unsqueeze(1).unsqueeze(3).expand(batch_size, 1, n_sample_points, n_gaussians, 3)
 
-        self._emgen._n_gaussians = n_gaussians
-        responsibilities, llh = self._emgen._expectation(sp_rep, gm_data, running)
+        responsibilities, llh = EMTools.expectation(sp_rep, gm_data, n_gaussians, running,
+                                                    self._em_step_gaussians_subbatchsize,
+                                                    self._em_step_points_subbatchsize)
 
         # resp dimension: (batch_size, 1, n_points, n_gaussians)
         # let's find the maximum per gaussian
@@ -166,10 +182,18 @@ class GMMInitializer:
         assignedresps[batch_indizes, point_indizes, assignments] = 1
         assignedresps = assignedresps.unsqueeze(1).to(self._dtype)
 
-        self._emgen._maximization(sp_rep, assignedresps, gm_data, running)
+        EMTools.maximization(sp_rep, assignedresps, gm_data, running, eps, self._em_step_gaussians_subbatchsize,
+                             self._em_step_points_subbatchsize)
         return gm_data.pack_mixture_model().cuda().to(self._dtype)
 
     def initialize_kmeans(self, pcbatch: torch.Tensor, n_gaussians: int, fast: bool = True) -> torch.Tensor:
+        # Creates a new initial Gaussian Mixture (batch) for a given point cloud (batch).
+        # Calculates the initial Gaussian positions using KMeans.
+        # Parameters:
+        #   pcbatch: torch.Tensor(batch_size, n_points, 3)
+        #   n_gaussians: int (number of Gaussians)
+        #   fast: bool
+        #       The fast version only performs a few iterations rather than the default scikit-options
         batch_size = pcbatch.shape[0]
         point_count = pcbatch.shape[1]
 
