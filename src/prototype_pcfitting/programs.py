@@ -54,6 +54,10 @@ def execute_fitting(training_name: str, model_path: str, genpc_path: str, gengmm
             data_loading.save_gms(scaler.scale_up_gm(gmbatch), scaler.scale_up_gmm(gmmbatch),
                                   os.path.join(gengmm_path, gen_id), names)
 
+            sumweights = mixture.weights(gmmbatch).sum(dim=2).squeeze(1)
+            ones = sumweights.gt(0.99) & sumweights.lt(1.01)
+            assert ones.all(), "Generator created an invalid mixture (sum of weights not 1)!"
+
             # Terminate Logging
             logger.finalize()
 
@@ -99,6 +103,10 @@ def execute_fitting_on_single_pcbatch(training_name: str, pcbatch: torch.Tensor,
         data_loading.save_gms(gmbatch, gmmbatch,
                               os.path.join(gengmm_path, gen_id), names)
 
+        sumweights = mixture.weights(gmmbatch).sum(dim=2).squeeze(1)
+        ones = sumweights.gt(0.99) & sumweights.lt(1.01)
+        assert ones.all(), "Generator created an invalid mixture (sum of weights not 1)!"
+
         # Terminate Logging
         logger.finalize()
 
@@ -140,6 +148,7 @@ def execute_evaluation(training_name: str, model_path: str, genpc_path: str, gen
                     loss = error_functions[j].calculate_score_packed(pc_scaled, gm).item()
                     print(name, " / ", gid, ". ", error_function_identifiers[j], ": ", loss)
                 print("Invalid Gaussians: ", (mixture.weights(gm).eq(0)).sum().item())
+                print("Sum of Weights: ", (mixture.weights(mixture.convert_amplitudes_to_priors(gm)).sum()))
 
     print("Done")
 
