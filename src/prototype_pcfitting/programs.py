@@ -73,7 +73,8 @@ def execute_fitting_on_single_pcbatch(training_name: str, pcbatch: torch.Tensor,
 
     # scaler = None
     scaler = Scaler()
-    scaler.set_pointcloud_batch(pcbatch.cuda())
+    # scaler.set_pointcloud_batch(pcbatch.cuda())
+    scaler.set_pointcloud_batch_for_identity(pcbatch.cuda())
 
     scaled_pc = scaler.scale_down_pc(pcbatch.cuda())
     # scaled_pc = pcbatch

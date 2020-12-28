@@ -5,6 +5,7 @@ import torch
 import gmc.mixture as gm
 import numpy
 from sklearn.cluster import KMeans
+from .gmm_initializer import GMMInitializer
 
 
 class EMGenerator(GMMGenerator):
@@ -14,7 +15,7 @@ class EMGenerator(GMMGenerator):
                  n_gaussians: int,
                  n_sample_points: int = -1,
                  termination_criterion: TerminationCriterion = MaxIterationTerminationCriterion(100),
-                 initialization_method: int = 0,
+                 initialization_method: str = 'randnormpos',
                  em_step_gaussians_subbatchsize: int = -1,
                  em_step_points_subbatchsize: int = -1,
                  dtype: torch.dtype = torch.float32,
@@ -30,7 +31,7 @@ class EMGenerator(GMMGenerator):
         #       Defining when to terminate. Default: After 100 Iterations.
         #       As this algorithm works on batches, the common batch loss is given to the termination criterion
         #       (We could implement saving of the best result in order to avoid moving out of optima)
-        #   initialization_method: int
+        #   initialization_method: string
         #       Defines which initialization to use: 0 = Random by sample mean and cov, 1 = Random responsibilities,
         #       2 = furthest point sampling, 3 = furthest point sampling and artifical responsibilities, 4 = kmeans
         #   em_step_gaussian_subbatchsize: int
@@ -48,7 +49,6 @@ class EMGenerator(GMMGenerator):
         self._n_gaussians = n_gaussians
         self._n_sample_points = n_sample_points
         self._initialization_method = initialization_method
-        assert (0 <= initialization_method <= 4)
         self._termination_criterion = termination_criterion
         self._m_step_gaussians_subbatchsize = em_step_gaussians_subbatchsize
         self._m_step_points_subbatchsize = em_step_points_subbatchsize
@@ -56,6 +56,7 @@ class EMGenerator(GMMGenerator):
         self._epsvar = eps
         self._eps = None
         self._dtype = dtype
+        self._initializer = GMMInitializer(emgen=self)
 
     def set_logging(self, logger: GMLogger = None):
         # Sets logging options
@@ -100,16 +101,20 @@ class EMGenerator(GMMGenerator):
 
         # Initialize mixture data
         if gmbatch is None:
-            if self._initialization_method == 0:
-                gmbatch = self.initialize_rand1(pcbatch)
-            elif self._initialization_method == 1:
-                gmbatch = self.initialize_rand2(pcbatch)
-            elif self._initialization_method == 2:
-                gmbatch = self.initialize_adam1(pcbatch)
-            elif self._initialization_method == 3:
-                gmbatch = self.initialize_adam2(pcbatch)
+            if self._initialization_method == 'randnormpos' or self._initialization_method == 'rand1':
+                gmbatch = self._initializer.initialize_randnormpos(pcbatch, self._n_gaussians)
+            elif self._initialization_method == 'randresp' or self._initialization_method == 'rand2':
+                gmbatch = self._initializer.initialize_randresp(pcbatch, self._n_gaussians, self._n_sample_points)
+            elif self._initialization_method == 'fsp' or self._initialization_method == 'adam1':
+                gmbatch = self._initializer.initialize_fsp(pcbatch, self._n_gaussians)
+            elif self._initialization_method == 'fspmax' or self._initialization_method == 'adam2':
+                gmbatch = self._initializer.initialize_fspmax(pcbatch, self._n_gaussians, self._n_sample_points)
+            elif self._initialization_method == 'kmeans-full':
+                gmbatch = self.initialize_kmeans(pcbatch, fast=False)
+            elif self._initialization_method == 'kmeans-fast' or self._initialization_method == 'kmeans':
+                gmbatch = self.initialize_kmeans(pcbatch, fast=True)
             else:
-                gmbatch = self.initialize_kmeans(pcbatch)
+                raise Exception("Invalid Initialization Method for EMGenerator")
         gm_data = self.TrainingData(batch_size, self._n_gaussians, self._dtype)
         gm_data.set_positions(gm.positions(gmbatch), running)
         gm_data.set_covariances(gm.covariances(gmbatch), running)
@@ -370,6 +375,8 @@ class EMGenerator(GMMGenerator):
         batch_size = pcbatch.shape[0]
         point_count = pcbatch.shape[1]
         n_sample_points = min(point_count, self._n_sample_points)
+        if n_sample_points == -1:
+            n_sample_points = point_count
         if n_sample_points < point_count:
             sample_points = data_loading.sample(pcbatch, n_sample_points)
         else:
@@ -426,6 +433,8 @@ class EMGenerator(GMMGenerator):
         point_count = pcbatch.shape[1]
 
         n_sample_points = min(point_count, self._n_sample_points)
+        if n_sample_points == -1:
+            n_sample_points = point_count
         if n_sample_points < point_count:
             sample_points = data_loading.sample(pcbatch, n_sample_points)
         else:
@@ -459,7 +468,7 @@ class EMGenerator(GMMGenerator):
         self._maximization(sp_rep, assignedresps, gm_data, running)
         return gm_data.pack_mixture_model().cuda().to(self._dtype)
 
-    def initialize_kmeans(self, pcbatch: torch.Tensor) -> torch.Tensor:
+    def initialize_kmeans(self, pcbatch: torch.Tensor, fast: bool) -> torch.Tensor:
         batch_size = pcbatch.shape[0]
         point_count = pcbatch.shape[1]
 
@@ -472,7 +481,10 @@ class EMGenerator(GMMGenerator):
                 .expand(batch_size, 1, self._n_gaussians, 3, 3).cuda()
 
         for batch in range(batch_size):
-            km = KMeans(self._n_gaussians).fit(pcbatch[batch].cpu())
+            if fast:
+                km = KMeans(self._n_gaussians, n_init=1, max_iter=20).fit(pcbatch[batch].cpu())
+            else:
+                km = KMeans(self._n_gaussians).fit(pcbatch[batch].cpu())
             positions[batch, 0] = torch.tensor(km.cluster_centers_).cuda()
             labels = torch.tensor(km.labels_).cuda()
             allidcs = torch.tensor(range(self._n_gaussians)).cuda()

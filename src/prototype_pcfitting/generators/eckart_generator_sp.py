@@ -169,7 +169,7 @@ class EckartGeneratorSP(GMMGenerator):
         result = torch.zeros(n_parents, 2, 3, dtype=pcbatch.dtype).cuda()
         for i in range(n_parents):
             rel_points = pcbatch[0, pwfp_relevant[:, i], :]
-            if rel_points.shape[0] > 1:
+            if rel_points.shape[0] > 0:
                 rel_bbmin = torch.min(rel_points, dim=0)[0]
                 rel_bbmax = torch.max(rel_points, dim=0)[0]
                 result[i, 0, :] = rel_bbmin

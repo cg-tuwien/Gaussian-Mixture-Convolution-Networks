@@ -5,6 +5,8 @@ from .level_scaler import LevelScaler
 import torch
 import gmc.mixture as gm
 import math
+from sklearn.cluster import KMeans
+from . import EMGenerator
 
 
 class EckartGeneratorHP(GMMGenerator):
@@ -86,6 +88,7 @@ class EckartGeneratorHP(GMMGenerator):
         llh_loss_calc = LikelihoodLoss()
         mixture = None
 
+        finished_gaussians = torch.tensor([], dtype=torch.long, device='cuda')
         # finished_subgmms: Gaussians that will not be expanded anymore, from each level
         finished_subgmms = []
         # weights of the parents of each point. initialized with one (fictional 0th layer has only one Gaussian)
@@ -103,7 +106,13 @@ class EckartGeneratorHP(GMMGenerator):
             points_scaled = scaler.scale_down_pc(pcbatch)  # (1, np, 3)
 
             # Initialize GMs
-            gm_data = self._initialize_gms_on_unit_cube(relevant_parents, parentweights)
+            # gm_data = self._initialize_gms_on_unit_cube(relevant_parents, parentweights)
+            # gm_data = self._initialize_with_kmeans(relevant_parents, parentweights, parent_per_point, points_scaled)
+            # gm_data = self._initialize_with_adam2(relevant_parents, parentweights, parent_per_point, points_scaled)
+            # gm_data = self._initialize_with_rand1(relevant_parents, parentweights, parent_per_point, points_scaled)
+            # bbs = self._extract_bbs(points_scaled, relevant_parents, parent_per_point)
+            # gm_data = self._initialize_gms_on_bounding_box(bbs, relevant_parents, parentweights, finished_gaussians)
+            gm_data = self._initialize_on_eigen_vectors(relevant_parents, parentweights, parent_per_point, points_scaled)
 
             self._termination_criterion.reset()
 
@@ -188,6 +197,263 @@ class EckartGeneratorHP(GMMGenerator):
             repeat(1, 1, self._n_gaussians_per_node * gmcount, 1, 1)
         gmdata.priors = torch.zeros(1, 1, self._n_gaussians_per_node * gmcount).to(self._dtype).cuda()
         gmdata.priors[:, :, :] = 1 / self._n_gaussians_per_node
+
+        gmdata.parentweights = parentweights
+
+        return gmdata
+
+    def _initialize_with_kmeans(self, relevant_parents: torch.Tensor, parentweights: torch.Tensor,
+                                parent_per_point: torch.Tensor, pcbatch_scaled: torch.Tensor):
+        gmcount = relevant_parents.shape[0]
+        gausscount = gmcount * self._n_gaussians_per_node
+        gmdata = self.GMLevelTrainingData(self._dtype)
+        gmdata.positions = torch.zeros(1, 1, gausscount, 3, dtype=self._dtype, device='cuda')
+        gmdata.covariances = torch.zeros(1, 1, gausscount, 3, 3, dtype=self._dtype, device='cuda')
+        gmdata.priors = torch.zeros(1, 1, gausscount, dtype=self._dtype, device='cuda')
+        for i in relevant_parents:
+            gidx_start = i * self._n_gaussians_per_node
+            gidx_end = gidx_start + self._n_gaussians_per_node
+            rel_point_mask: torch.Tensor = torch.eq(parent_per_point, i)
+            relpoints = pcbatch_scaled[rel_point_mask]
+            pcount = rel_point_mask.sum()
+            if pcount < self._n_gaussians_per_node:
+                gmdata.positions[0, 0, gidx_start:gidx_end] = 0.0
+                gmdata.covariances[0, 0, gidx_start:gidx_end] = self._eps
+                gmdata.priors[0, 0, gidx_start:gidx_end] = 0.0
+                gmdata.positions[0, 0, gidx_start:gidx_start + pcount] = relpoints
+                gmdata.covariances[0, 0, gidx_start:gidx_start + pcount] = 0.1 * torch.eye(3, dtype=self._dtype, device='cuda')
+                gmdata.priors[0, 0, gidx_start:gidx_start + pcount] = 1 / pcount
+            else:
+                km = KMeans(self._n_gaussians_per_node, n_init=1, max_iter=20).fit(relpoints.cpu())
+                # km = KMeans(self._n_gaussians_per_node).fit(relpoints.cpu())
+                gmdata.positions[0, 0, gidx_start:gidx_end] = torch.tensor(km.cluster_centers_, device='cuda')
+                labels = torch.tensor(km.labels_).cuda()
+                allidcs = torch.tensor(range(self._n_gaussians_per_node), device='cuda')
+                mask = labels.eq(allidcs.view(-1, 1))
+                count_per_cluster = mask.sum(1)
+                # points_rep: (ng, np, 3)
+                points_rep = relpoints.unsqueeze(0).repeat(self._n_gaussians_per_node, 1, 1)
+                points_rep = (points_rep - gmdata.positions[0, 0, gidx_start:gidx_end].unsqueeze(1)
+                              .expand(self._n_gaussians_per_node, pcount, 3)).unsqueeze(3)
+                points_rep[~mask] = 0
+                gmdata.covariances[0, 0, gidx_start:gidx_end] = (points_rep * points_rep.transpose(-1, -2)).sum(1) \
+                    / count_per_cluster.view(-1, 1, 1) + self._eps
+                gmdata.priors[0, 0, gidx_start:gidx_end] = 1 / self._n_gaussians_per_node
+
+        gmdata.parentweights = parentweights
+
+        return gmdata
+
+    def _initialize_with_rand1(self, relevant_parents: torch.Tensor, parentweights: torch.Tensor,
+                               parent_per_point: torch.Tensor, pcbatch_scaled: torch.Tensor):
+        gmcount = relevant_parents.shape[0]
+        gausscount = gmcount * self._n_gaussians_per_node
+        gmdata = self.GMLevelTrainingData(self._dtype)
+        gmdata.positions = torch.zeros(1, 1, gausscount, 3, dtype=self._dtype, device='cuda')
+        gmdata.covariances = torch.zeros(1, 1, gausscount, 3, 3, dtype=self._dtype, device='cuda')
+        gmdata.priors = torch.zeros(1, 1, gausscount, dtype=self._dtype, device='cuda')
+        emgen = EMGenerator(self._n_gaussians_per_node, -1, dtype=self._dtype,
+                            em_step_gaussians_subbatchsize=self._m_step_gaussians_subbatchsize,
+                            em_step_points_subbatchsize=self._m_step_points_subbatchsize,
+                            eps=self._eps[0, 0, 0, 0, 0].item())
+        for i in relevant_parents:
+            gidx_start = i * self._n_gaussians_per_node
+            gidx_end = gidx_start + self._n_gaussians_per_node
+            rel_point_mask: torch.Tensor = torch.eq(parent_per_point, i)
+            relpoints = pcbatch_scaled[rel_point_mask]
+            pcount = rel_point_mask.sum()
+            if pcount < self._n_gaussians_per_node:
+                gmdata.positions[0, 0, gidx_start:gidx_end] = 0.0
+                gmdata.covariances[0, 0, gidx_start:gidx_end] = self._eps
+                gmdata.priors[0, 0, gidx_start:gidx_end] = 0.0
+                gmdata.positions[0, 0, gidx_start:gidx_start + pcount] = relpoints
+                gmdata.covariances[0, 0, gidx_start:gidx_start + pcount] = 0.1 * torch.eye(3, dtype=self._dtype,
+                                                                                           device='cuda')
+                gmdata.priors[0, 0, gidx_start:gidx_start + pcount] = 1 / pcount
+            else:
+                gmtensor = emgen.initialize_rand1(relpoints.view(1, -1, 3))
+                gmdata.positions[:, :, gidx_start:gidx_end] = gm.positions(gmtensor)
+                gmdata.covariances[:, :, gidx_start:gidx_end] = gm.covariances(gmtensor)
+                gmdata.priors[:, :, gidx_start:gidx_end] = gm.weights(gmtensor)
+
+        gmdata.parentweights = parentweights
+
+        return gmdata
+
+    def _initialize_with_adam2(self, relevant_parents: torch.Tensor, parentweights: torch.Tensor,
+                               parent_per_point: torch.Tensor, pcbatch_scaled: torch.Tensor):
+        gmcount = relevant_parents.shape[0]
+        gausscount = gmcount * self._n_gaussians_per_node
+        gmdata = self.GMLevelTrainingData(self._dtype)
+        gmdata.positions = torch.zeros(1, 1, gausscount, 3, dtype=self._dtype, device='cuda')
+        gmdata.covariances = torch.zeros(1, 1, gausscount, 3, 3, dtype=self._dtype, device='cuda')
+        gmdata.priors = torch.zeros(1, 1, gausscount, dtype=self._dtype, device='cuda')
+        emgen = EMGenerator(self._n_gaussians_per_node, -1, dtype=self._dtype,
+                            em_step_gaussians_subbatchsize=self._m_step_gaussians_subbatchsize,
+                            em_step_points_subbatchsize=self._m_step_points_subbatchsize,
+                            eps=self._eps[0, 0, 0, 0, 0].item())
+        for i in relevant_parents:
+            gidx_start = i * self._n_gaussians_per_node
+            gidx_end = gidx_start + self._n_gaussians_per_node
+            rel_point_mask: torch.Tensor = torch.eq(parent_per_point, i)
+            relpoints = pcbatch_scaled[rel_point_mask]
+            pcount = rel_point_mask.sum()
+            if pcount < self._n_gaussians_per_node:
+                gmdata.positions[0, 0, gidx_start:gidx_end] = 0.0
+                gmdata.covariances[0, 0, gidx_start:gidx_end] = self._eps
+                gmdata.priors[0, 0, gidx_start:gidx_end] = 0.0
+                gmdata.positions[0, 0, gidx_start:gidx_start + pcount] = relpoints
+                gmdata.covariances[0, 0, gidx_start:gidx_start + pcount] = 0.1 * torch.eye(3, dtype=self._dtype, device='cuda')
+                gmdata.priors[0, 0, gidx_start:gidx_start + pcount] = 1 / pcount
+            else:
+                gmtensor = emgen.initialize_adam2(relpoints.view(1, -1, 3))
+                gmdata.positions[:, :, gidx_start:gidx_end] = gm.positions(gmtensor)
+                gmdata.covariances[:, :, gidx_start:gidx_end] = gm.covariances(gmtensor)
+                gmdata.priors[:, :, gidx_start:gidx_end] = gm.weights(gmtensor)
+
+        gmdata.parentweights = parentweights
+
+        return gmdata
+
+    @staticmethod
+    def _extract_bbs(pcbatch: torch.Tensor, relevant_parents: torch.Tensor, parent_per_point: torch.Tensor) -> torch.Tensor:
+        # This gets a pcbatch of size (1, n, 3) and point_weighting_factors of size (n, K) (K = #parents)
+        # This returns the bounding boxes for each parent (K,2,3) (0=min,1=extend)
+        # The bounding box is a arbitrary box rather than a regular cube.
+        n_parents = relevant_parents.shape[0]
+        result = torch.zeros(n_parents, 2, 3, dtype=pcbatch.dtype).cuda()
+        for i in relevant_parents:
+            rel_point_mask: torch.Tensor = torch.eq(parent_per_point, i)
+            rel_points = pcbatch[rel_point_mask]
+            if rel_points.shape[0] > 0:
+                rel_bbmin = torch.min(rel_points, dim=0)[0]
+                rel_bbmax = torch.max(rel_points, dim=0)[0]
+                result[i, 0, :] = rel_bbmin
+                result[i, 1, :] = rel_bbmax - rel_bbmin
+                zeroextend = (result[i, 1, :] == 0)
+                if zeroextend.any():
+                    result[i, 0, zeroextend] -= 0.01
+                    result[i, 1, zeroextend] = 0.02
+            else:
+                result[i, 0, :] = torch.tensor([0.0, 0.0, 0.0])
+                result[i, 1, :] = torch.tensor([1.0, 1.0, 1.0])
+        return result
+
+    def _initialize_gms_on_bounding_box(self, bbs: torch.Tensor, relevant_parents: torch.Tensor,
+                                        parentweights: torch.Tensor, finished_gaussians: torch.Tensor):
+        # Initializes new GMs, each on the corners of its points respective bounding boxes
+        # relevant_parents: torch.Tensor
+        #   List of relevant parent indizes
+        # parentweights: torch.Tensor
+        #   Prior of each parent
+        gmcount = bbs.shape[0]
+
+        gmdata = self.GMLevelTrainingData(self._dtype)
+        gmdata.parents = relevant_parents.repeat(1, self._n_gaussians_per_node)\
+            .view(self._n_gaussians_per_node, -1).transpose(-1, -2).reshape(1, 1, -1)
+        bbs_rep = bbs.unsqueeze(0).repeat(self._n_gaussians_per_node, 1, 1, 1).transpose(0, 1).reshape(-1, 2, 3)
+        position_templates = torch.tensor([
+            [0, 0, 0],
+            [1, 1, 1],
+            [0, 0, 1],
+            [1, 1, 0],
+            [0, 1, 1],
+            [1, 0, 0],
+            [0, 1, 0],
+            [1, 0, 1]
+        ], dtype=self._dtype).cuda()
+        if self._n_gaussians_per_node <= 8:
+            gmdata.positions = position_templates[0:self._n_gaussians_per_node].unsqueeze(0).unsqueeze(0)\
+                .repeat(1, 1, gmcount, 1)
+        else:
+            gmdata.positions = position_templates.unsqueeze(0).unsqueeze(0). \
+                repeat(1, 1, math.ceil(self._n_gaussians_per_node / 8), 1)
+            gmdata.positions = gmdata.positions[:, :, 0:self._n_gaussians_per_node, :].repeat(1, 1, gmcount, 1)
+        gmdata.positions[0, 0, :, :] *= bbs_rep[:, 1, :]
+        gmdata.positions[0, 0, :, :] += bbs_rep[:, 0, :]
+        gmdata.covariances = 0.1 * torch.eye(3).to(self._dtype).cuda().unsqueeze(0).unsqueeze(0).unsqueeze(0). \
+            repeat(1, 1, self._n_gaussians_per_node * gmcount, 1, 1)
+        gmdata.covariances[0, 0, :, :, :] *= bbs_rep[:, 1, :].unsqueeze(2) ** 2
+        gmdata.priors = torch.zeros(1, 1, self._n_gaussians_per_node * gmcount).to(self._dtype).cuda()
+        gmdata.priors[:, :, :] = 1 / self._n_gaussians_per_node
+        gmdata.priors[:, :, finished_gaussians] = 0
+
+        gmdata.parentweights = parentweights
+
+        return gmdata
+
+    def _initialize_on_eigen_vectors(self, relevant_parents: torch.Tensor, parentweights: torch.Tensor,
+                                    parent_per_point: torch.Tensor, pcbatch_scaled: torch.Tensor):
+        gmcount = relevant_parents.shape[0]
+        gausscount = gmcount * self._n_gaussians_per_node
+        gmdata = self.GMLevelTrainingData(self._dtype)
+        gmdata.positions = torch.zeros(1, 1, gausscount, 3, dtype=self._dtype, device='cuda')
+        gmdata.covariances = torch.zeros(1, 1, gausscount, 3, 3, dtype=self._dtype, device='cuda')
+        gmdata.priors = torch.zeros(1, 1, gausscount, dtype=self._dtype, device='cuda')
+
+        position_templates3d = torch.tensor([
+            [-1, -1, -1],
+            [1, 1, 1],
+            [-1, 1, -1],
+            [1, -1, 1],
+            [-1, -1, 1],
+            [1, 1, -1],
+            [-1, 1, 1],
+            [1, -1, -1]
+        ], dtype=self._dtype).cuda()
+        position_templates2d = torch.tensor([
+            [-1, -1, 0],
+            [1, 1, 0],
+            [-1, 1, 0],
+            [1, -1, 0],
+            [1, 0, 0],
+            [-1, 0, 0],
+            [0, 1, 0],
+            [0, -1, 0]
+        ])
+        # position_templates = torch.tensor([
+        #     [-1, 0, 0],
+        #     [1, 0, 0],
+        #     [0, -1, 0],
+        #     [0, 1, 0],
+        #     [0, 0, -1],
+        #     [0, 0, 1],
+        #     [-1, -1, -1],
+        #     [-1, 1, 1]
+        # ], dtype=self._dtype).cuda()
+
+        for i in relevant_parents:
+            gidx_start = i * self._n_gaussians_per_node
+            gidx_end = gidx_start + self._n_gaussians_per_node
+            rel_point_mask: torch.Tensor = torch.eq(parent_per_point, i)
+            relpoints = pcbatch_scaled[rel_point_mask]
+            pcount = rel_point_mask.sum()
+            if pcount < self._n_gaussians_per_node:
+                gmdata.positions[0, 0, gidx_start:gidx_end] = 0.0
+                gmdata.covariances[0, 0, gidx_start:gidx_end] = self._eps
+                gmdata.priors[0, 0, gidx_start:gidx_end] = 0.0
+                gmdata.positions[0, 0, gidx_start:gidx_start + pcount] = relpoints
+                gmdata.covariances[0, 0, gidx_start:gidx_start + pcount] = 0.1 * torch.eye(3, dtype=self._dtype,
+                                                                                           device='cuda')
+                gmdata.priors[0, 0, gidx_start:gidx_start + pcount] = 1 / pcount
+            else:
+                meanpos = relpoints.mean(dim=0, keepdim=True)
+                diffs = (relpoints - meanpos.expand(pcount, 3)).unsqueeze(2)
+                meancov = (diffs * diffs.transpose(-1, -2)).mean(dim=0)
+                meanweight = 1.0 / self._n_gaussians_per_node
+                eigenvalues, eigenvectors = torch.eig(meancov, True)
+                eigenvalues_sorted, indices = torch.sort(eigenvalues[:, 0], dim=0, descending=True)
+                eigenvectors_sorted = 4 * eigenvalues_sorted.unsqueeze(0).repeat(3,1) * eigenvectors[:, indices]
+                if self._n_gaussians_per_node <= 8:
+                    if eigenvalues_sorted[2] > 1e-8:
+                        gmdata.positions[0, 0, gidx_start:gidx_end] = position_templates3d[0:self._n_gaussians_per_node]
+                    else:
+                        gmdata.positions[0, 0, gidx_start:gidx_end] = position_templates2d[0:self._n_gaussians_per_node]
+                else:
+                    raise Exception("Not supported")
+                gmdata.positions[0, 0, gidx_start:gidx_end] = torch.matmul(eigenvectors_sorted, gmdata.positions[0, 0, gidx_start:gidx_end].transpose(-1, -2)).transpose(-1, -2) + meanpos.squeeze()
+                gmdata.covariances[0, 0, gidx_start:gidx_end] = meancov + self._eps
+                gmdata.priors[0, 0, gidx_start:gidx_end] = meanweight
 
         gmdata.parentweights = parentweights
 
