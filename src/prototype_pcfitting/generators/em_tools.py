@@ -188,11 +188,11 @@ class EMTools:
         # Note that priors or amplitudes should always be set after the covariances are set,
         # otherwise the conversion is not correct anymore.
 
-        def __init__(self, batch_size, n_gaussians, dtype):
+        def __init__(self, batch_size, n_gaussians, dtype, eps):
             self._positions = torch.zeros(batch_size, 1, n_gaussians, 3, dtype=dtype).cuda()
             self._logamplitudes = torch.zeros(batch_size, 1, n_gaussians, dtype=dtype).cuda()
             self._priors = torch.zeros(batch_size, 1, n_gaussians, dtype=dtype).cuda()
-            self._covariances = torch.zeros(batch_size, 1, n_gaussians, 3, 3, dtype=dtype).cuda()
+            self._covariances = eps.clone()
             self._inversed_covariances = torch.zeros(batch_size, 1, n_gaussians, 3, 3, dtype=dtype).cuda()
 
         def set_positions(self, positions, running):
@@ -202,7 +202,7 @@ class EMTools:
         def set_covariances(self, covariances, running):
             # running indicates which batch entries should be replaced
             # If changing the covariance would lead them to have uncalculable sqrt-det, they will not be changed
-            relcovs = ~torch.isnan(covariances.det().sqrt())    # ToDo: Think about this approach
+            relcovs = ~torch.isnan(covariances.det().sqrt())
             runningcovs = self._covariances[running]
             runningcovs[relcovs] = covariances[relcovs]
             self._covariances[running] = runningcovs

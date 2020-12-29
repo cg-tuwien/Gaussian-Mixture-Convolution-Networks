@@ -22,7 +22,7 @@ class EckartGeneratorSP(GMMGenerator):
                  m_step_gaussians_subbatchsize: int = -1,
                  m_step_points_subbatchsize: int = -1,
                  dtype: torch.dtype = torch.float32,
-                 eps: float = 1e-4):
+                 eps: float = 1e-3):
         # Constructor. Creates a new EckartGenerator.
         # Parameters:
         #   n_gaussians_per_node: int
@@ -124,6 +124,7 @@ class EckartGeneratorSP(GMMGenerator):
                 mixture = gm_data.approximate_whole_mixture()
                 mixture = self._construct_full_gm(mixture, finished_subgmms)
                 loss = llh_loss_calc.calculate_score_packed(pcbatch, mixture)
+                assert not torch.isinf(loss).any()
 
                 if loss.isnan().any():
                     loss = llh_loss_calc.calculate_score_packed(pcbatch, mixture)
@@ -133,7 +134,6 @@ class EckartGeneratorSP(GMMGenerator):
 
                 if self._logger:
                     self._logger.log(absiteration - 1, loss, mixture)
-                    del mixture
 
                 if not self._termination_criterion.may_continue(iteration - 1, loss.view(-1)).item():
                     # Partition: Update point_weighting_factors
@@ -300,6 +300,7 @@ class EckartGeneratorSP(GMMGenerator):
         #   (as in the M-Step). It would be possible to implement this though.
 
         n_sample_points = points.shape[2]
+        parent_count = point_weighting_factors.shape[1]
         all_gauss_count = gm_data.positions.shape[2]
 
         # mask_indizes is a list of indizes of a) points with their corresponding b) gauss (child) indizes
@@ -335,13 +336,18 @@ class EckartGeneratorSP(GMMGenerator):
         llh_intermediate = torch.zeros(n_sample_points, all_gauss_count, dtype=self._dtype).cuda()
         llh_intermediate[:, :] = -float("inf")
         llh_intermediate[mask_indizes[:, 0], mask_indizes[:, 1]] = likelihood_log.view(-1)
-        llh_sum = torch.logsumexp(llh_intermediate, dim=1).view(1, 1, n_sample_points, 1)
+        llh_intermediate = llh_intermediate.reshape(n_sample_points, parent_count, self._n_gaussians_per_node)
+        llh_sum = torch.logsumexp(llh_intermediate, dim=2).view(1, 1, n_sample_points, parent_count)
+        llh_sum = llh_sum.unsqueeze(4) \
+            .expand(1, 1, n_sample_points, parent_count, self._n_gaussians_per_node).reshape(1, 1, n_sample_points, all_gauss_count)
         del llh_intermediate
 
         # Responsibilities_flat: (1, 1, xc)
-        responsibilities_flat = torch.exp(likelihood_log - llh_sum[:, :, mask_indizes[:, 0], 0])
+        responsibilities_flat = torch.exp(likelihood_log - llh_sum[:, :, mask_indizes[:, 0], mask_indizes[:, 1]])
         responsibilities_matr = torch.zeros(1, 1, n_sample_points, all_gauss_count).cuda()
         responsibilities_matr[0, 0, mask_indizes[:, 0], mask_indizes[:, 1]] = responsibilities_flat
+
+        assert not torch.isnan(responsibilities_matr).any()
 
         return responsibilities_matr
 
@@ -402,10 +408,10 @@ class EckartGeneratorSP(GMMGenerator):
 
             # formulas taken from eckart paper
             gm_data.positions[:, :, j_start:j_end] = t_1 / t_0.unsqueeze(3)  # (1, 1, J, 3)
-            gm_data.covariances[:, :, j_start:j_end] = t_2 / t_0.unsqueeze(3).unsqueeze(4) - \
-                (gm_data.positions[:, :, j_start:j_end].unsqueeze(4) *
-                    gm_data.positions[:, :, j_start:j_end].unsqueeze(4).transpose(-1, -2)) \
-                + self._eps.expand_as(t_2)
+            gm_data.set_covariances_where_valid(j_start, j_end, t_2 / t_0.unsqueeze(3).unsqueeze(4) -
+                                                (gm_data.positions[:, :, j_start:j_end].unsqueeze(4) *
+                                                gm_data.positions[:, :, j_start:j_end].unsqueeze(4).transpose(-1, -2))
+                                                + self._eps.expand_as(t_2))
             relevant_point_count = pwf_per_gaussian[:, j_start:j_end].sum(dim=0).view(1, -1)  # (1, J)
             gm_data.priors[:, :, j_start:j_end] = t_0 / relevant_point_count
             del t_0, t_1, t_2
@@ -449,6 +455,12 @@ class EckartGeneratorSP(GMMGenerator):
 
         def calculate_amplitudes(self) -> torch.Tensor:
             return self.priors / (self.covariances.det().sqrt() * 15.74960995)
+
+        def set_covariances_where_valid(self, j_start: int, j_end: int, covariances: torch.Tensor):
+            relcovs = ~torch.isnan(covariances.det().sqrt())
+            runningcovs = self.covariances[:, :, j_start:j_end]
+            runningcovs[relcovs] = covariances[relcovs]
+            self.covariances[:, :, j_start:j_end] = runningcovs
 
         def approximate_whole_mixture(self) -> torch.Tensor:
             # Scales the mixtures up and multiplies the priors with their parents priors

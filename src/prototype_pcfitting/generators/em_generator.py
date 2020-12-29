@@ -108,9 +108,9 @@ class EMGenerator(GMMGenerator):
         if gmbatch is None:
             gmbatch = self._initializer.initialize_by_method_name(self._initialization_method, pcbatch,
                                                                   self._n_gaussians, self._n_sample_points)
-        gm_data = EMTools.TrainingData(batch_size, self._n_gaussians, self._dtype)
+        gm_data = EMTools.TrainingData(batch_size, self._n_gaussians, self._dtype, eps)
         gm_data.set_positions(gm.positions(gmbatch), running)
-        gm_data.set_covariances(gm.covariances(gmbatch), running)
+        gm_data.set_covariances(gm.covariances(gmbatch), running, eps)
         gm_data.set_amplitudes(gm.weights(gmbatch), running)
 
         iteration = 0
