@@ -3,6 +3,7 @@ from prototype_pcfitting import TerminationCriterion, MaxIterationTerminationCri
 from gmc.cpp.extensions.furthest_point_sampling import furthest_point_sampling
 import torch
 import gmc.mixture as gm
+from gmc import mat_tools
 import numpy
 from sklearn.cluster import KMeans
 from .gmm_initializer import GMMInitializer
@@ -19,7 +20,7 @@ class EMGenerator(GMMGenerator):
                  initialization_method: str = 'randnormpos',
                  em_step_gaussians_subbatchsize: int = -1,
                  em_step_points_subbatchsize: int = -1,
-                 dtype: torch.dtype = torch.float32,
+                 dtype: torch.dtype = torch.float64,
                  eps: float = 1e-4):
         # Constructor. Creates a new EMGenerator.
         # Parameters:
@@ -98,8 +99,8 @@ class EMGenerator(GMMGenerator):
 
         # eps is a small multiple of the identity matrix which is added to the cov-matrizes
         # in order to avoid singularities
-        eps = (torch.eye(3, 3, dtype=self._dtype) * self._epsvar).view(1, 1, 1, 3, 3) \
-            .expand(batch_size, 1, self._n_gaussians, 3, 3).cuda()
+        eps = (torch.eye(3, 3, dtype=self._dtype, device='cuda') * self._epsvar).view(1, 1, 1, 3, 3) \
+            .expand(batch_size, 1, self._n_gaussians, 3, 3)
 
         # running defines which batches are still being trained
         running = torch.ones(batch_size, dtype=torch.bool)
@@ -110,13 +111,13 @@ class EMGenerator(GMMGenerator):
                                                                   self._n_gaussians, self._n_sample_points)
         gm_data = EMTools.TrainingData(batch_size, self._n_gaussians, self._dtype, eps)
         gm_data.set_positions(gm.positions(gmbatch), running)
-        gm_data.set_covariances(gm.covariances(gmbatch), running, eps)
+        gm_data.set_covariances(gm.covariances(gmbatch), running)
         gm_data.set_amplitudes(gm.weights(gmbatch), running)
 
         iteration = 0
 
         # last losses. saved so we have losses for gms that are already finished
-        last_losses = torch.ones(batch_size, dtype=self._dtype).cuda()
+        last_losses = torch.ones(batch_size, dtype=self._dtype, device='cuda')
         while True:
             iteration += 1
 

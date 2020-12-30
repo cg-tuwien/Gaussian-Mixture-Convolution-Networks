@@ -524,7 +524,7 @@ def write_gm_to_ply(m_weights: Tensor, m_positions: Tensor, m_covariances: Tenso
     file.close()
 
 
-def read_gm_from_ply(filename: str, ismodel: bool) -> Tensor:
+def read_gm_from_ply(filename: str, ismodel: bool, device='cuda') -> Tensor:
     # Reads a Gaussian Mixture from a ply-file
     # The parameter "ismodel" defines whether the weights in the file represent amplitudes (False) or priors (True)
     # The weights of the returned GM are amplitudes.
@@ -535,9 +535,9 @@ def read_gm_from_ply(filename: str, ismodel: bool) -> Tensor:
         if header:
             if line.startswith("element component "):
                 number = int(line[18:])
-                gmpos = torch.zeros((1, 1, number, 3))
-                gmcov = torch.zeros((1, 1, number, 3, 3))
-                gmwei = torch.zeros((1, 1, number))
+                gmpos = torch.zeros((1, 1, number, 3), device=device)
+                gmcov = torch.zeros((1, 1, number, 3, 3), device=device)
+                gmwei = torch.zeros((1, 1, number), device=device)
             elif line.startswith("end_header"):
                 header = False
         else:

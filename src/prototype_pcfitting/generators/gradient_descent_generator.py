@@ -107,7 +107,7 @@ class GradientDescentGenerator(GMMGenerator):
         iteration = 0
 
         if self._logger:
-            self._logger.log(iteration, losses, gm_data.pack_mixture(), torch.ones(batch_size, dtype=torch.bool).cuda())
+            self._logger.log(iteration, losses, gm_data.pack_mixture(), torch.ones(batch_size, dtype=torch.bool, device='cuda'))
 
         # Check termination criteria
         current_losses = losses.clone().detach()

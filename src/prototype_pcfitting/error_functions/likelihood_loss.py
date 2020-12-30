@@ -14,7 +14,7 @@ class LikelihoodLoss(ErrorFunction):
         points = pcbatch.view(batch_size, 1, -1, 3)
         point_count = points.shape[2]
         mixture_with_inversed_cov = gm.pack_mixture(gmamplitudes, gmpositions, gminvcovariances)
-        output = torch.zeros(batch_size, point_count, dtype=points.dtype).cuda()
+        output = torch.zeros(batch_size, point_count, dtype=points.dtype, device='cuda')
         subbatches = math.ceil((batch_size * point_count) / 65535)
         subbatch_pointcount = math.ceil(point_count / subbatches)
         for p in range(subbatches):
@@ -22,4 +22,6 @@ class LikelihoodLoss(ErrorFunction):
             endidx = min((p + 1) * subbatch_pointcount, point_count)
             output[:, startidx:endidx] = \
                 gm.evaluate_inversed(mixture_with_inversed_cov, points[:, :, startidx:endidx, :]).view(batch_size, -1)
-        return -torch.mean(torch.log(output + 0.00001), dim=1)
+        res = -torch.mean(torch.log(output + 0.00001), dim=1)
+        assert not torch.isinf(res).any()
+        return res

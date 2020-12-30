@@ -14,7 +14,7 @@ def load_pc_from_off(path: str) -> torch.Tensor:
     n_points = int(file.readline().strip().split(" ")[0])
     points = [[[float(s) for s in file.readline().strip().split(" ") if s != ''] for pt in range(n_points)]]
     file.close()
-    return torch.tensor(points, dtype=torch.float32)
+    return torch.tensor(points, dtype=torch.float32, device='cuda')
 
 
 def write_pc_to_off(path: str, pc: torch.Tensor):
@@ -44,7 +44,7 @@ def sample(pcbatch: torch.Tensor, n_sample_points: int) -> torch.Tensor:
 
 
 def read_gm_from_ply(filename: str, ismodel: bool) -> torch.Tensor:
-    return gm.read_gm_from_ply(filename, ismodel)
+    return gm.read_gm_from_ply(filename, ismodel, 'cuda')
 
 
 def write_gm_to_ply(weights: torch.Tensor, positions: torch.Tensor,

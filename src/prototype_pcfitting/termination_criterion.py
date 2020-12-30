@@ -34,11 +34,11 @@ class RelChangeTerminationCriterion(TerminationCriterion):
     def __init__(self, relchange: float, itercount: int):
         self.relchange = relchange
         self.itercount = itercount
-        self.last_losses = torch.zeros(1, itercount).cuda()
+        self.last_losses = torch.zeros(1, itercount, device='cuda')
         self.current_loss_index = -1
         self.current_loss_iteration = -1
         self.running = False
-        self.continuing = torch.ones(1, dtype=torch.bool).cuda()
+        self.continuing = torch.ones(1, dtype=torch.bool, device='cuda')
 
     def may_continue(self, iteration: int, losses: torch.Tensor) -> bool:
         # has to be called every iteration!
@@ -67,8 +67,8 @@ class RelChangeTerminationCriterion(TerminationCriterion):
         return self.continuing
 
     def reset(self):
-        self.last_losses = torch.zeros(1, self.itercount).cuda()
-        self.continuing = torch.ones(1, dtype=torch.bool).cuda()
+        self.last_losses = torch.zeros(1, self.itercount, device='cuda')
+        self.continuing = torch.ones(1, dtype=torch.bool, device='cuda')
         self.current_loss_index = -1
         self.current_loss_iteration = -1
         self.running = False

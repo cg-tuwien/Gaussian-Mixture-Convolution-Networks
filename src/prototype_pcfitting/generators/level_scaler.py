@@ -24,8 +24,8 @@ class LevelScaler:
         self._parent_count = parent_count
         self._parent_per_point = parent_per_point
 
-        self.scaleP = torch.zeros(parent_count).to(pcbatch.dtype).cuda()  # shape: (parent_count)
-        self.offsetP = torch.zeros(parent_count, 3).to(pcbatch.dtype).cuda()  # (parent_count, 3)
+        self.scaleP = torch.zeros(parent_count, dtype=pcbatch.dtype, device='cuda')  # shape: (parent_count)
+        self.offsetP = torch.zeros(parent_count, 3, dtype=pcbatch.dtype, device='cuda')  # (parent_count, 3)
         for i in range(parent_count):
             rel_point_mask: torch.Tensor = torch.eq(parent_per_point, i)
             pcount = rel_point_mask.sum()

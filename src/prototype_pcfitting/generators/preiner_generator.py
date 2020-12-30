@@ -7,6 +7,7 @@ from prototype_pcfitting.error_functions import LikelihoodLoss
 from .level_scaler import LevelScaler
 import torch
 import gmc.mixture as gm
+from gmc import mat_tools
 import math
 
 
@@ -45,7 +46,7 @@ class PreinerGenerator(GMMGenerator):
         self._termination_criterion = termination_criterion
         self._dtype = dtype
         self._logger = None
-        self._eps = (torch.eye(3, 3, dtype=self._dtype) * eps).view(1, 1, 3, 3).cuda()
+        self._eps = (torch.eye(3, 3, dtype=self._dtype, device='cuda') * eps).view(1, 1, 3, 3)
 
     def set_logging(self, logger: GMLogger = None):
         # Sets logging options. Note that logging increases the execution time,
@@ -70,10 +71,10 @@ class PreinerGenerator(GMMGenerator):
         batch_size = pcbatch.shape[0]
         assert (batch_size is 1), "PreinerGenerator currently does not support batchsizes > 1"
         point_count = pcbatch.shape[1]
-        pcbatch = pcbatch.to(self._dtype).cuda()
+        pcbatch = pcbatch.to(self._dtype, device='cuda')
 
         # parent_per_point (1,n) identifies which gaussian in the previous layer this point is assigned to
-        parent_per_point = torch.zeros(1, point_count).to(torch.long).cuda()
+        parent_per_point = torch.zeros(1, point_count, dtype=torch.long, device='cuda')
         # the 0th layer, only has one (fictional) Gaussian, whose index is assumed to be 0
         parent_per_point[:, :] = 0
 
@@ -157,7 +158,7 @@ class PreinerGenerator(GMMGenerator):
         # Sample positions from Gaussian -> shape: (bs, 1, ng, 3)
         positions = torch.zeros(1, 1, n_gaussians, 3).to(self._dtype)
         positions[0, 0, :, :] = torch.tensor(
-            numpy.random.multivariate_normal(meanpos[0, :].cpu(), meancov[0, :, :].cpu(), n_gaussians)).cuda()
+            numpy.random.multivariate_normal(meanpos[0, :].cpu(), meancov[0, :, :].cpu(), n_gaussians), device='cuda')
         # Repeat covariances for each Gaussian -> shape: (bs, 1, ng, 3, 3)
         covariances = meancov.view(1, 1, 1, 3, 3).expand(1, 1, n_gaussians, 3, 3)
         # Set weight for each Gaussian -> shape: (bs, 1, ng)
@@ -193,7 +194,7 @@ class PreinerGenerator(GMMGenerator):
         n_virtual_points = n_sample_count * gm_ref.priors
 
         likelihood_log = \
-            torch.zeros(1, 1, len(gm_ref), len(gm_fit), dtype=self._dtype).cuda()
+            torch.zeros(1, 1, len(gm_ref), len(gm_fit), dtype=self._dtype, device='cuda')
         gmfpos = gm_fit.positions
         gmficov = gm_fit.calculate_inversed_covariances()   # investige mat_tools.inverse
         gmrpos = gm_ref.positions
@@ -274,9 +275,9 @@ class PreinerGenerator(GMMGenerator):
         #   gm_data: TrainingData
         #       The current GM-object (will be changed)
 
-        # t_0 = torch.zeros(1, 1, len(gm_fit), dtype=self._dtype).cuda()
-        # t_1 = torch.zeros(1, 1, len(gm_fit), 3, dtype=self._dtype).cuda()
-        # t_2 = torch.zeros(1, 1, len(gm_fit), 3, 3, dtype=self._dtype).cuda()
+        # t_0 = torch.zeros(1, 1, len(gm_fit), dtype=self._dtype, device='cuda')
+        # t_1 = torch.zeros(1, 1, len(gm_fit), 3, dtype=self._dtype, device='cuda')
+        # t_2 = torch.zeros(1, 1, len(gm_fit), 3, 3, dtype=self._dtype, device='cuda')
         # relevant_points = gm_ref.positions.unsqueeze(3).expand(1, 1, len(gm_ref), len(gm_fit), 3)
         # matrices_from_points = relevant_points.unsqueeze(5) * relevant_points.unsqueeze(5).transpose(-1, -2)
         # # Fill T-Variables      # t_2 shape: (1, 1, J, 3, 3)
@@ -296,7 +297,7 @@ class PreinerGenerator(GMMGenerator):
         new_positions = (weights.unsqueeze(-1) * gm_ref.positions.unsqueeze(3).expand(1, 1, len(gm_ref), len(gm_fit), 3)).sum(2) / torch.sum(weights, 2).unsqueeze(-1)
         pos_diffs = gm_ref.positions.unsqueeze(3).unsqueeze(5) - new_positions.unsqueeze(2).unsqueeze(5)
         new_covariances = torch.sum(weights.unsqueeze(-1).unsqueeze(-1) * (gm_ref.covariances.unsqueeze(3) + pos_diffs.matmul(pos_diffs.transpose(-1, -2))), 2)
-        new_covariances = new_covariances + (new_priors.lt(0.0001)).unsqueeze(-1).unsqueeze(-1) * torch.eye(3).cuda().view(1, 1, 1, 3, 3) * 0.0001
+        new_covariances = new_covariances + (new_priors.lt(0.0001)).unsqueeze(-1).unsqueeze(-1) * torch.eye(3, device='cuda').view(1, 1, 1, 3, 3) * 0.0001
         new_covariances /= torch.sum(weights, 2).unsqueeze(-1).unsqueeze(-1)
 
         # weights = responsibilities * gm_ref.priors.unsqueeze(-1)
@@ -305,7 +306,7 @@ class PreinerGenerator(GMMGenerator):
         # new_positions = torch.sum(weights.unsqueeze(-1) * gm_ref.positions.unsqueeze(3), 2)
         # pos_diffs = gm_ref.positions.unsqueeze(3).unsqueeze(5) - new_positions.unsqueeze(2).unsqueeze(5)
         # new_covariances = torch.sum(weights.unsqueeze(-1).unsqueeze(-1) * (gm_ref.covariances.unsqueeze(3) + pos_diffs.matmul(pos_diffs.transpose(-1, -2))), 2)
-        # new_covariances = new_covariances + (new_priors.lt(0.0001)).unsqueeze(-1).unsqueeze(-1) * torch.eye(3).cuda().view(1, 1, 1, 3, 3) * 0.0001 # ToDo: eps
+        # new_covariances = new_covariances + (new_priors.lt(0.0001)).unsqueeze(-1).unsqueeze(-1) * torch.eye(3, device='cuda').view(1, 1, 1, 3, 3) * 0.0001 # ToDo: eps
         gm_fit.priors = new_priors
         gm_fit.positions = new_positions
         gm_fit.covariances = new_covariances
@@ -314,7 +315,7 @@ class PreinerGenerator(GMMGenerator):
         # set the prior of it to zero and the covariances and positions to NaN
         # To avoid NaNs, we will then replace those invalid values with 0 (pos) and eps (cov).
         nans = torch.isnan(gm_fit.priors) | (gm_fit.priors == 0)
-        gm_fit.positions[nans] = torch.tensor([0.0, 0.0, 0.0], dtype=self._dtype).cuda()
+        gm_fit.positions[nans] = torch.tensor([0.0, 0.0, 0.0], dtype=self._dtype, device='cuda')
         gm_fit.covariances[nans] = self._eps[0, 0, :, :]
         gm_fit.priors[nans] = 0
         print("#0-Priors", gm_fit.priors.eq(0).sum().item(), "/", len(gm_fit))
@@ -330,12 +331,12 @@ class PreinerGenerator(GMMGenerator):
         # Note that this is not one GM, but a whole bunch of GMs managed in the same structure
 
         def __init__(self, count, dtype):
-            self.positions: torch.Tensor = torch.zeros(1, 1, count, 3, dtype=dtype).cuda()
-            self.priors: torch.Tensor = torch.zeros(1, 1, count, dtype=dtype).cuda()
-            self.covariances: torch.Tensor = torch.zeros(1, 1, count, 3, 3, dtype=dtype).cuda()
+            self.positions: torch.Tensor = torch.zeros(1, 1, count, 3, dtype=dtype, device='cuda')
+            self.priors: torch.Tensor = torch.zeros(1, 1, count, dtype=dtype, device='cuda')
+            self.covariances: torch.Tensor = torch.zeros(1, 1, count, 3, 3, dtype=dtype, device='cuda')
 
         def calculate_inversed_covariances(self) -> torch.Tensor:
-            return self.covariances.inverse().contiguous()
+            return mat_tools.inverse(self.covariances.contiguous())
 
         def calculate_amplitudes(self) -> torch.Tensor:
             return self.priors * self.normal_amplitudes()

@@ -36,6 +36,7 @@ def execute_fitting(training_name: str, model_path: str, genpc_path: str, gengmm
         for j in range(len(generators)):
             gc.collect()
             torch.cuda.empty_cache()
+            print(generator_identifiers[j], "on", names)
 
             gen_id = training_name + "/" + generator_identifiers[j]
 
@@ -159,7 +160,8 @@ def quick_evaluation(pc_path: str, gm_path: str, is_model: bool, error_function:
 
     # Scale down
     scaler = Scaler()
-    scaler.set_pointcloud_batch(pc)
+    #scaler.set_pointcloud_batch(pc)
+    scaler.set_pointcloud_batch_for_identity(pc)
     pc_scaled = scaler.scale_down_pc(pc)
 
     # Load gm
