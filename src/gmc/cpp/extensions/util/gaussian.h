@@ -101,6 +101,11 @@ std::ostream& operator <<(std::ostream& stream, const Gaussian<N_DIMS, scalar_t>
     return stream;
 }
 
+template <int DIMS, typename scalar_t>
+EXECUTION_DEVICES bool isnan(const Gaussian<DIMS, scalar_t>& g) {
+    return gpe::isnan(g.weight) || gpe::isnan(g.position) || gpe::isnan(g.covariance);
+}
+
 
 template <typename scalar_t, int DIMS>
 EXECUTION_DEVICES scalar_t evaluate_inversed(const glm::vec<DIMS, scalar_t>& evalpos,

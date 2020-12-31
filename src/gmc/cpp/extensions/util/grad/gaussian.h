@@ -16,11 +16,12 @@ namespace grad {
 
 template <typename scalar_t, int DIMS>
 EXECUTION_DEVICES glm::mat<DIMS, DIMS, scalar_t> gaussian_amplitude(const glm::mat<DIMS, DIMS, scalar_t>& cov, scalar_t grad) {
-    constexpr auto a = gcem::pow(scalar_t(2) * glm::pi<scalar_t>(), - DIMS * scalar_t(0.5));
-    assert(glm::determinant(cov) > 0);
+    constexpr auto a = gcem::pow(scalar_t(2) * glm::pi<scalar_t>(), - DIMS * scalar_t(0.5)) * scalar_t(-0.5);
     const auto d = glm::determinant(cov);
-    const auto k = (a * scalar_t(-0.5)) / gpe::sqrt(d * d * d);
-    return k * grad::determinant(cov, grad);
+    assert(d > 0);
+//    const auto k = a / gpe::sqrt(d * d * d);
+    const auto k = a / (d * gpe::sqrt(d));   // same, but numerically more stable
+    return k * gpe::grad::determinant(cov, grad);
 }
 
 template <typename scalar_t, int DIMS>
@@ -72,7 +73,7 @@ EXECUTION_DEVICES Gaussian<DIMS, scalar_t> integrate(const Gaussian<DIMS, scalar
 }
 
 template <typename scalar_t, int N_DIMS, int N_VIRTUAL_POINTS = 4>
-EXECUTION_DEVICES scalar_t likelihood(const gpe::Gaussian<N_DIMS, scalar_t>& target, const gpe::Gaussian<N_DIMS, scalar_t>& fitting,
+EXECUTION_DEVICES void likelihood(const gpe::Gaussian<N_DIMS, scalar_t>& target, const gpe::Gaussian<N_DIMS, scalar_t>& fitting,
                                       gpe::Gaussian<N_DIMS, scalar_t>* grad_target, gpe::Gaussian<N_DIMS, scalar_t>* grad_fitting,
                                       scalar_t incoming_grad) {
     using Mat = glm::mat<N_DIMS, N_DIMS, scalar_t>;
@@ -87,7 +88,6 @@ EXECUTION_DEVICES scalar_t likelihood(const gpe::Gaussian<N_DIMS, scalar_t>& tar
     // pow(0, 0) gives nan in cuda with fast math
     const scalar_t ab = a * b;
     const scalar_t ab_clipped = gpe::Epsilon<scalar_t>::clip(ab);
-
 
     //    return gpe::pow(ab_clipped, wi_bar);
     scalar_t grad_ab_clipped, grad_wi_bar;

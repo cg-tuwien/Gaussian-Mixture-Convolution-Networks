@@ -195,6 +195,7 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_TARGET> grad_em(const gpe::Vector
 
     // const auto fitting_normal_amplitudes = gpe::transform(fittingCovariances, gpe::gaussian_amplitude<scalar_t, N_DIMS>);
     gpe::grad::transform(fittingCovariances, grad_fitting_normal_amplitudes, gpe::grad::gaussian_amplitude<scalar_t, N_DIMS>).addTo(&grad_fittingCovariances);
+    assert(!has_nan(grad_fittingCovariances));
 
     // auto fittingCovariances = gpe::reduce_cols(weightedCovs, cov_t(0), fun::plus<cov_t>);
     gpe::grad::sum_cols(weightedCovs, grad_fittingCovariances).addTo(&grad_weightedCovs);
@@ -207,6 +208,7 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_TARGET> grad_em(const gpe::Vector
 
     // const auto posDiffsOuter = gpe::cwise_fun(posDiffs, posDiffs, gpe::outerProduct<scalar_t, N_DIMS>);
     gpe::grad::cwise_fun(posDiffs, posDiffs, grad_posDiffsOuter, gpe::grad::outerProduct<N_DIMS, scalar_t>).addTo(&grad_posDiffs, &grad_posDiffs);
+    assert(!has_nan(grad_posDiffs));
 
     // const auto posDiffs = gpe::outer_product(target_positions, fittingPositions, fun::minus<pos_t>);
     gpe::grad::outer_product(target_positions, fittingPositions, grad_posDiffs, gradfun::minus<pos_t>).addTo(&grad_target_positions, &grad_fittingPositions);
@@ -219,6 +221,8 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_TARGET> grad_em(const gpe::Vector
 
     // const auto responsibilities_3 = gpe::cwise_fun(clippedFittingWeights, responsibilities_2, fun::divided_BbyA<scalar_t>);
     gpe::grad::cwise_fun(clippedFittingWeights, responsibilities_2, grad_responsibilities_3, gradfun::divided_BbyA<scalar_t>).addTo(&grad_clippedFittingWeights, &grad_responsibilities_2);
+    assert(!has_nan(grad_clippedFittingWeights));
+    assert(!has_nan(grad_responsibilities_2));
 
     // const auto clippedFittingWeights = gpe::transform(fitting_pure_weights, gpe::Epsilon<scalar_t>::clip);
     gpe::grad::transform(fitting_pure_weights, grad_clippedFittingWeights, gpe::Epsilon<scalar_t>::grad_clip).addTo(&grad_fitting_pure_weights);
@@ -231,13 +235,18 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_TARGET> grad_em(const gpe::Vector
 
     // const auto pure_target_weights = gpe::cwise_fun(target_int1_weights, target_gaussian_amplitudes, fun::divided_AbyB<scalar_t, scalar_t, scalar_t>);
     gpe::grad::cwise_fun(target_int1_weights, target_gaussian_amplitudes, grad_pure_target_weights, gradfun::divided_AbyB<scalar_t>).addTo(&grad_target_int1_weights, &grad_target_gaussian_amplitudes);
+    assert(!has_nan(grad_target_int1_weights));
+    assert(!has_nan(grad_target_gaussian_amplitudes));
 
     // const auto target_gaussian_amplitudes = gpe::transform(target_covariances, gpe::gaussian_amplitude<scalar_t, N_DIMS>);
     gpe::grad::transform(target_covariances, grad_target_gaussian_amplitudes, gpe::grad::gaussian_amplitude<scalar_t, N_DIMS>).addTo(&grad_target_covariances);
+    assert(!has_nan(grad_target_covariances));
 
     // const auto responsibilities_1 = gpe::cwise_fun(weighted_likelihood_clamped_matrix, weighted_likelihood_sum, fun::divided_AbyB<scalar_t>);
     gpe::grad::cwise_fun(weighted_likelihood_clamped_matrix, weighted_likelihood_sum, grad_responsibilities_1, gradfun::divided_AbyB<scalar_t>)
                         .addTo(&grad_weighted_likelihood_clamped_matrix, &grad_weighted_likelihood_sum);
+    assert(!has_nan(grad_weighted_likelihood_clamped_matrix));
+    assert(!has_nan(grad_weighted_likelihood_sum));
 
     // const auto weighted_likelihood_sum = gpe::reduce_rows(weighted_likelihood_clamped_matrix, scalar_t(0), fun::plus<scalar_t>);
     gpe::grad::sum_rows(weighted_likelihood_clamped_matrix, grad_weighted_likelihood_sum).addTo(&grad_weighted_likelihood_clamped_matrix);
@@ -253,21 +262,28 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_TARGET> grad_em(const gpe::Vector
 
     // const auto likelihood_matrix = gpe::outer_product(target_int1_mixture, initial_int1_mixture, gpe::likelihood<scalar_t, N_DIMS>);
     gpe::grad::outer_product(target_int1_mixture, initial_int1_mixture, grad_likelihood_matrix, gpe::grad::likelihood<scalar_t, N_DIMS>).addTo(&grad_target_int1_mixture, &grad_initial_int1_mixture);
+    assert(!has_nan(grad_target_int1_mixture));
+    assert(!has_nan(grad_initial_int1_mixture));
 
     // const auto target_int1_mixture = gpe::pack_mixture(target_int1_weights, target_positions, target_covariances);
     gpe::grad::unpackAndAdd(grad_target_int1_mixture, &grad_target_int1_weights, &grad_target_positions, &grad_target_covariances);
 
     // const auto initial_pure_weights = gpe::cwise_fun(initial_int1_weights, initial_gaussian_amplitudes, fun::divided_AbyB<scalar_t, scalar_t, scalar_t>);
     gpe::grad::cwise_fun(initial_int1_weights, initial_gaussian_amplitudes, grad_initial_pure_weights, gradfun::divided_AbyB<scalar_t>).addTo(&grad_initial_int1_weights, &grad_initial_gaussian_amplitudes);
+    assert(!has_nan(grad_initial_int1_weights));
+    assert(!has_nan(grad_initial_gaussian_amplitudes));
 
     // const auto initial_gaussian_amplitudes = gpe::transform(initial_covariances, gpe::gaussian_amplitude<scalar_t, N_DIMS>);
     gpe::grad::transform(initial_covariances, grad_initial_gaussian_amplitudes, gpe::grad::gaussian_amplitude<scalar_t, N_DIMS>).addTo(&grad_initial_covariances);
+    assert(!has_nan(grad_initial_covariances));
 
     // const auto initial_int1_mixture = gpe::pack_mixture(initial_int1_weights, initial_positions, initial_covariances);
     gpe::grad::unpackAndAdd(grad_initial_int1_mixture, &grad_initial_int1_weights, &grad_initial_positions, &grad_initial_covariances);
 
     // const auto initial_int1_weights = gpe::cwise_fun(initial_weights, initial_clipped_integral, fun::divided_AbyB<scalar_t, scalar_t, scalar_t>);
     gpe::grad::cwise_fun(initial_weights, initial_clipped_integral, grad_initial_int1_weights, gradfun::divided_AbyB<scalar_t>).addTo(&grad_initial_weights, &grad_initial_clipped_integral);
+    assert(!has_nan(grad_initial_weights));
+    assert(!gpe::isnan(grad_initial_clipped_integral));
 
     // const auto initial_clipped_integral = gpe::Epsilon<scalar_t>::clip(initial_integral);
     grad_initial_integral = gpe::Epsilon<scalar_t>::grad_clip(initial_integral, grad_initial_clipped_integral);
@@ -277,6 +293,7 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_TARGET> grad_em(const gpe::Vector
 
     // const auto initial_component_integrals = gpe::transform(initial_mixture, gpe::integrate<scalar_t, N_DIMS>);
     gpe::grad::transform(initial_mixture, grad_initial_component_integrals, gpe::grad::integrate<scalar_t, N_DIMS>).addTo(&grad_initial_mixture);
+    assert(!has_nan(grad_initial_mixture));
 
     // const auto initial_covariances = gpe::select(target_covariances, initial_indices);
     gpe::grad::select(target_covariances, initial_indices, grad_initial_covariances).addTo(&grad_target_covariances);
@@ -292,6 +309,8 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_TARGET> grad_em(const gpe::Vector
 
     // const auto target_int1_weights = gpe::cwise_fun(target_weights, target_clipped_integral, fun::divided_AbyB<scalar_t, scalar_t, scalar_t>);
     gpe::grad::cwise_fun(target_weights, target_clipped_integral, grad_target_int1_weights, gradfun::divided_AbyB<scalar_t>).addTo(&grad_target_weights, &grad_target_clipped_integral);
+    assert(!has_nan(grad_target_weights));
+    assert(!gpe::isnan(grad_target_clipped_integral));
 
     // const scalar_t target_clipped_integral = gpe::Epsilon<scalar_t>::clip(target_integral);
     grad_target_integral = gpe::Epsilon<scalar_t>::grad_clip(target_integral, grad_target_clipped_integral);
@@ -301,12 +320,13 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_TARGET> grad_em(const gpe::Vector
 
     // const auto target_component_integrals = gpe::transform(target_mixture, gpe::integrate<scalar_t, N_DIMS>);
     gpe::grad::transform(target_mixture, grad_target_component_integrals, gpe::grad::integrate<scalar_t, N_DIMS>).addTo(&grad_target_mixture);
+    assert(!has_nan(grad_target_mixture));
 
     // const auto target_covariances = gpe::transform(target_mixture, [](const G& g){ return g.covariance; });
     // const auto target_positions = gpe::transform(target_mixture, [](const G& g){ return g.position; });
     // const auto target_weights = gpe::transform(target_mixture, [](const G& g){ return g.weight; });
     gpe::Vector<G, N_TARGET> target_grad{};
-    for (unsigned i = 0; i < N_TARGET; ++i) {
+    for (unsigned i = 0; i < target.size(); ++i) {
         target_grad.push_back(G{grad_target_weights[i] + grad_target_mixture[i].weight,
                                 grad_target_positions[i] + grad_target_mixture[i].position,
                                 grad_target_covariances[i] + grad_target_mixture[i].covariance});
