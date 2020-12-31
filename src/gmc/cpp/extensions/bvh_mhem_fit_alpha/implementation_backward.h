@@ -391,7 +391,9 @@ void trickle_down_grad(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
         const Node* node = &bvh.nodes[current_index];
         if (current_index >= n_internal_nodes) {
             // leaf node
-            reinterpret_cast<G&>(target_grad[mixture_id][current_index - n_internal_nodes][0]) = bvh.per_node_attributes[current_index].grad[0];
+            if (bvh.per_node_attributes[current_index].grad.size() == 1) {  // grad is empty, if the original gaussian was zero. this check can be removed if the node attributes are initialised with zeroes.
+                reinterpret_cast<G&>(target_grad[mixture_id][current_index - n_internal_nodes][0]) = bvh.per_node_attributes[current_index].grad[0];
+            }
             continue;
         }
 

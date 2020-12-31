@@ -356,10 +356,20 @@ void trickle_down_grad(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
     assert(mixture_id < n_mixtures);
 
     Bvh bvh = AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>(mixture_id, nodes, aabbs, mixture, node_attributes, n, n_internal_nodes, n_nodes);
-    #ifndef __CUDA_ARCH__
-    std::vector<typename AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>::NodeAttributes> node_attributes_debug;
-    std::copy(bvh.per_node_attributes, bvh.per_node_attributes + n_nodes, std::back_inserter(node_attributes_debug));
-    #endif
+//    #ifndef __CUDA_ARCH__
+//        std::vector<typename AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>::NodeAttributes> node_attributes_debug;
+//        std::vector<Node> nodes_debug;
+//        std::vector<G> mixture_debug;
+
+//        auto updateDebug = [&]() {
+//            node_attributes_debug.clear();
+//            nodes_debug.clear();
+//            mixture_debug.clear();
+//            std::copy(bvh.per_node_attributes, bvh.per_node_attributes + n_nodes, std::back_inserter(node_attributes_debug));
+//            std::copy(bvh.nodes, bvh.nodes + n_nodes, std::back_inserter(nodes_debug));
+//            std::copy(bvh.gaussians, bvh.gaussians + n.components, std::back_inserter(mixture_debug));
+//        };
+//    #endif
 
     gpe::ParallelStack<node_index_t, 32 * 32, 0> stack;
     {
@@ -391,10 +401,13 @@ void trickle_down_grad(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
         const Node* node = &bvh.nodes[current_index];
         if (current_index >= n_internal_nodes) {
             // leaf node
-            reinterpret_cast<G&>(target_grad[mixture_id][current_index - n_internal_nodes][0]) = bvh.per_node_attributes[current_index].grad[0];
+            if (bvh.per_node_attributes[current_index].grad.size() == 1) {  // grad is empty, if the original gaussian was zero. this check can be removed if the node attributes are initialised with zeroes.
+                reinterpret_cast<G&>(target_grad[mixture_id][current_index - n_internal_nodes][0]) = bvh.per_node_attributes[current_index].grad[0];
+            }
             continue;
         }
 
+//        updateDebug();
         auto child_gaussians = bvh.collect_child_gaussians(node, gpe::Epsilon<scalar_t>::large);
         if (child_gaussians.size() > REDUCTION_N) {
             auto child_grads = grad_em<REDUCTION_N>(child_gaussians,
@@ -407,6 +420,7 @@ void trickle_down_grad(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
         else {
             bvh.distribute_gradient_on_children(node, bvh.per_node_attributes[current_index].grad, gpe::Epsilon<scalar_t>::large);
         }
+//        updateDebug();
 
         stack.push(bvh.nodes[current_index].left_idx, true, gpe_threadIdx.x);
         stack.push(bvh.nodes[current_index].right_idx, true, gpe_threadIdx.x);
