@@ -1,7 +1,6 @@
 #ifndef GPE_UTIL_MIXTURE_H
 #define GPE_UTIL_MIXTURE_H
 #include <vector>
-#include <iostream>
 #include <type_traits>
 
 #include <gcem.hpp>

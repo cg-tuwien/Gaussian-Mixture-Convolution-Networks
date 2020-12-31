@@ -1,8 +1,6 @@
 #ifndef GPE_UTIL_GAUSSIAN_H
 #define GPE_UTIL_GAUSSIAN_H
 
-#include <iostream>
-
 #include <gcem.hpp>
 
 #include "util/autodiff.h"
@@ -68,38 +66,6 @@ gpe::Gaussian<N_DIMS, scalar_t> extractGrad(const gpe::Gaussian<N_DIMS, autodiff
     return {extractGrad(g.weight), extractGrad(g.position), extractGrad(g.covariance)};
 }
 #endif
-
-template<typename scalar_t>
-void printGaussian(const Gaussian<2, scalar_t>& g) {
-    printf("g(w=%f, p=%f/%f, c=%f/%f//%f\n", g.weight, g.position.x, g.position.y, g.covariance[0][0], g.covariance[0][1], g.covariance[1][1]);
-}
-template<typename scalar_t>
-void printGaussian(const Gaussian<3, scalar_t>& g) {
-    printf("g(w=%f, p=%f/%f/%f, c=%f/%f/%f//%f/%f//%f\n",
-           g.weight,
-           g.position.x, g.position.y, g.position.z,
-           g.covariance[0][0], g.covariance[0][1], g.covariance[0][2],
-           g.covariance[1][1], g.covariance[1][2],
-           g.covariance[2][2]);
-}
-
-template<int N_DIMS, typename scalar_t>
-std::ostream& operator <<(std::ostream& stream, const Gaussian<N_DIMS, scalar_t>& g) {
-    stream << "Gauss[" << g.weight << "; " << g.position[0];
-    for (int i = 1; i < N_DIMS; i++)
-        stream << "/" << g.position[i];
-    stream << "; ";
-
-    for (int i = 0; i < N_DIMS; i++) {
-        for (int j = 0; j < N_DIMS; j++) {
-            if (i != 0 || j != 0)
-                stream << "/";
-            stream << g.covariance[i][j];
-        }
-    }
-    stream << "]";
-    return stream;
-}
 
 template <int DIMS, typename scalar_t>
 EXECUTION_DEVICES bool isnan(const Gaussian<DIMS, scalar_t>& g) {

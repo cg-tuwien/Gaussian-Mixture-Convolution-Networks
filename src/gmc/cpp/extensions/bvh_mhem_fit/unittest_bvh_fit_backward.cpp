@@ -17,6 +17,7 @@
 #include "evaluate_inversed/parallel_binding.h"
 #include "integrate/binding.h"
 #include "util/mixture.h"
+#include "unit_test_support.h"
 
 constexpr bool RENDER = false;
 constexpr uint RESOLUTION = 128;
@@ -70,6 +71,209 @@ void show(torch::Tensor rendering, const int resolution, const int n_batch_limit
     scrollarea->show();
 }
 
+std::vector<std::pair<torch::Tensor, torch::Tensor>> testCasesWith4GsIn2d() {
+    std::vector<torch::Tensor> grads;
+    grads.emplace_back(torch::tensor({{0.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f},
+                                      {0.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f}}).view({1, 1, 2, 7}));
+
+    grads.emplace_back(torch::tensor({{1.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f},
+                                      {1.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f}}).view({1, 1, 2, 7}));
+
+    grads.emplace_back(torch::tensor({{0.0f,  1.0f,  1.0f,  0.0f,  0.0f,  0.0f,  0.0f},
+                                      {0.0f,  1.0f,  1.0f,  0.0f,  0.0f,  0.0f,  0.0f}}).view({1, 1, 2, 7}));
+
+    grads.emplace_back(torch::tensor({{0.0f,  0.0f,  0.0f,  1.0f,  1.0f,  1.0f,  1.0f},
+                                      {0.0f,  0.0f,  0.0f,  1.0f,  1.0f,  1.0f,  1.0f}}).view({1, 1, 2, 7}));
+
+    grads.emplace_back(torch::tensor({{1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f},
+                                      {0.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f}}).view({1, 1, 2, 7}));
+
+    grads.emplace_back(torch::tensor({{0.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f},
+                                      {1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f}}).view({1, 1, 2, 7}));
+
+    grads.emplace_back(torch::tensor({{1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f},
+                                      {1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f}}).view({1, 1, 2, 7}));
+
+    grads.emplace_back(torch::tensor({{1.1f,  1.2f,  1.3f,  1.4f,  1.5f,  1.5f,  1.7f},
+                                      {1.8f,  1.9f,  0.1f,  0.2f,  0.4f,  0.4f,  5.5f}}).view({1, 1, 2, 7}));
+
+
+    std::vector<torch::Tensor> mixtures;
+    mixtures.emplace_back(torch::tensor({{0.5f,  0.0f,  0.0f,  2.0f,  0.0f,  0.0f,  2.0f},
+                                         {0.5f,  0.0f,  0.0f,  2.0f,  0.0f,  0.0f,  2.0f},
+                                         {0.5f, 10.0f, 10.0f,  1.0f,  0.0f,  0.0f,  1.0f},
+                                         {0.5f, 10.0f, 10.0f,  1.0f,  0.0f,  0.0f,  1.0f}}).view({1, 1, 4, 7}));
+
+    mixtures.emplace_back(torch::tensor({{0.5f,  5.0f,  5.0f,  4.0f, -0.5f, -0.5f,  4.0f},
+                                         {0.5f,  8.0f,  8.0f,  4.0f, -2.5f, -2.5f,  4.0f},
+                                         {0.5f, 20.0f, 10.0f,  5.0f,  0.0f,  0.0f,  7.0f},
+                                         {0.5f, 20.0f, 20.0f,  5.0f,  0.5f,  0.5f,  7.0f}}).view({1, 1, 4, 7}));
+
+    mixtures.emplace_back(torch::tensor({{1.0f,  0.0f,  0.0f,  4.0f, -2.5f, -2.5f,  4.0f},
+                                         {0.5f, 20.0f, 20.0f,  2.0f, -1.5f, -1.5f,  3.0f},
+                                         {0.5f, 40.0f, 40.0f,  4.0f,  0.5f,  0.5f,  4.0f},
+                                         {1.5f, 60.0f, 60.0f,  5.0f, -0.5f, -0.5f,  4.0f}}).view({1, 1, 4, 7}));
+
+    mixtures.emplace_back(torch::tensor({{1.0f, -0.5f, -0.5f,  4.0f, -1.0f, -1.0f,  4.0f},
+                                         {0.5f,  0.5f,  0.5f,  4.0f, -0.8f, -0.8f,  4.0f},
+                                         {0.5f, -0.5f,  0.5f,  5.0f,  0.5f,  0.5f,  7.0f},
+                                         {1.5f,  0.5f, -0.5f,  5.0f,  0.5f,  0.5f,  7.0f}}).view({1, 1, 4, 7}));
+
+    mixtures.emplace_back(torch::tensor({{1.0f, -2.5f,  2.5f,  4.0f, -1.0f, -1.0f,  4.0f},
+                                         {0.5f,  1.8f,  1.8f,  4.0f,  0.8f,  0.8f,  4.0f},
+                                         {0.5f, -0.5f,  4.5f,  5.0f,  0.5f,  0.5f,  7.0f},
+                                         {1.5f,  0.5f, -4.5f,  5.0f,  0.5f,  0.5f,  7.0f}}).view({1, 1, 4, 7}));
+
+//    mixtures.emplace_back(torch::tensor({{0.0f, -2.5f,  2.5f,  4.0f, -1.0f, -1.0f,  4.0f},        // 0 gaussians do not work yet
+//                                         {0.5f,  1.8f,  1.8f,  4.0f,  0.8f,  0.8f,  4.0f},
+//                                         {0.5f, -0.5f,  4.5f,  5.0f,  0.5f,  0.5f,  7.0f},
+//                                         {1.5f,  0.5f, -4.5f,  5.0f,  0.5f,  0.5f,  7.0f}}).view({1, 1, 4, 7}));
+
+    std::vector<std::pair<torch::Tensor, torch::Tensor>> test_cases;
+    for (const auto& grad : grads) {
+        for (const auto& mixture : mixtures) {
+            test_cases.emplace_back(mixture, grad);
+        }
+    }
+    return test_cases;
+}
+
+std::vector<std::pair<torch::Tensor, torch::Tensor>> testCasesWith8GsIn2d() {
+    std::vector<torch::Tensor> grads;
+    grads.emplace_back(torch::tensor({{1.1f,  1.2f,  1.3f,  1.4f,  1.5f,  1.5f,  1.7f},
+                                      {1.8f,  1.9f,  0.1f,  0.2f,  0.4f,  0.4f,  5.5f}}).view({1, 1, 2, 7}));
+
+    grads.emplace_back(torch::tensor({{0.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f},
+                                      {0.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f}}).view({1, 1, 2, 7}));
+
+    grads.emplace_back(torch::tensor({{1.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f},
+                                      {1.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f}}).view({1, 1, 2, 7}));
+
+    grads.emplace_back(torch::tensor({{0.0f,  1.0f,  1.0f,  0.0f,  0.0f,  0.0f,  0.0f},
+                                      {0.0f,  1.0f,  1.0f,  0.0f,  0.0f,  0.0f,  0.0f}}).view({1, 1, 2, 7}));
+
+    grads.emplace_back(torch::tensor({{0.0f,  0.0f,  0.0f,  1.0f,  1.0f,  1.0f,  1.0f},
+                                      {0.0f,  0.0f,  0.0f,  1.0f,  1.0f,  1.0f,  1.0f}}).view({1, 1, 2, 7}));
+
+    grads.emplace_back(torch::tensor({{1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f},
+                                      {0.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f}}).view({1, 1, 2, 7}));
+
+    grads.emplace_back(torch::tensor({{0.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f},
+                                      {1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f}}).view({1, 1, 2, 7}));
+
+    grads.emplace_back(torch::tensor({{1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f},
+                                      {1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f}}).view({1, 1, 2, 7}));
+
+//    grads.emplace_back(torch::tensor({{0.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f},
+//                                      {0.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f},
+//                                      {0.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f},
+//                                      {0.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f}}).view({1, 1, 4, 7}));
+
+//    grads.emplace_back(torch::tensor({{1.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f},
+//                                      {1.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f},
+//                                      {1.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f},
+//                                      {1.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f}}).view({1, 1, 4, 7}));
+
+//    grads.emplace_back(torch::tensor({{0.0f,  1.0f,  1.0f,  0.0f,  0.0f,  0.0f,  0.0f},
+//                                      {0.0f,  1.0f,  1.0f,  0.0f,  0.0f,  0.0f,  0.0f},
+//                                      {0.0f,  1.0f,  1.0f,  0.0f,  0.0f,  0.0f,  0.0f},
+//                                      {0.0f,  1.0f,  1.0f,  0.0f,  0.0f,  0.0f,  0.0f}}).view({1, 1, 4, 7}));
+
+//    grads.emplace_back(torch::tensor({{0.0f,  0.0f,  0.0f,  1.0f,  1.0f,  1.0f,  1.0f},
+//                                      {0.0f,  0.0f,  0.0f,  1.0f,  1.0f,  1.0f,  1.0f},
+//                                      {0.0f,  0.0f,  0.0f,  1.0f,  1.0f,  1.0f,  1.0f},
+//                                      {0.0f,  0.0f,  0.0f,  1.0f,  1.0f,  1.0f,  1.0f}}).view({1, 1, 4, 7}));
+
+//    grads.emplace_back(torch::tensor({{1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f},
+//                                      {0.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f},
+//                                      {0.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f},
+//                                      {0.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f}}).view({1, 1, 4, 7}));
+
+//    grads.emplace_back(torch::tensor({{0.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f},
+//                                      {0.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f},
+//                                      {1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f},
+//                                      {1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f}}).view({1, 1, 4, 7}));
+
+//    grads.emplace_back(torch::tensor({{1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f},
+//                                      {1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f},
+//                                      {1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f},
+//                                      {1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f}}).view({1, 1, 4, 7}));
+
+//    grads.emplace_back(torch::tensor({{0.1f,  0.5f,  0.9f,  1.3f,  1.7f,  1.7f,  2.1f},
+//                                      {0.2f,  0.6f,  1.0f,  1.4f,  1.8f,  1.8f,  2.2f},
+//                                      {0.3f,  0.7f,  1.1f,  1.5f,  1.9f,  1.9f,  2.3f},
+//                                      {0.4f,  0.8f,  1.2f,  1.6f,  2.0f,  2.0f,  2.4f}}).view({1, 1, 4, 7}));
+
+
+    std::vector<torch::Tensor> mixtures;
+    mixtures.emplace_back(torch::tensor({{0.0f,  5.0f,  5.0f,  4.0f, -0.5f, -0.5f,  4.0f},
+                                         {0.4f,  4.5f,  5.1f,  3.8f, -0.6f, -0.6f,  4.1f},
+                                         {0.5f,  8.0f,  8.0f,  4.0f, -2.5f, -2.5f,  4.0f},
+                                         {0.6f,  7.8f,  8.5f,  4.5f, -1.5f, -1.5f,  4.2f},
+                                         {0.0f, 18.0f, 11.0f,  6.0f,  0.0f,  0.0f,  8.0f},
+                                         {0.8f, 20.0f, 13.0f,  5.4f,  0.0f,  0.0f,  7.0f},
+                                         {0.0f, 21.0f, 16.0f,  5.7f,  0.5f,  0.5f,  6.0f},
+                                         {1.0f, 19.0f, 17.0f,  4.9f,  0.5f,  0.5f,  5.0f}}).view({1, 1, 8, 7}));
+
+    mixtures.emplace_back(torch::tensor({{0.5f,  0.0f,  0.0f,  2.0f,  0.0f,  0.0f,  2.0f},
+                                         {0.0f,  0.0f,  0.0f,  2.0f,  0.0f,  0.0f,  2.0f},
+                                         {0.5f,  0.0f,  0.0f,  2.0f,  0.0f,  0.0f,  2.0f},
+                                         {0.0f,  0.0f,  0.0f,  2.0f,  0.0f,  0.0f,  2.0f},
+                                         {0.5f, 10.0f, 10.0f,  1.0f,  0.0f,  0.0f,  1.0f},
+                                         {0.5f, 10.0f, 10.0f,  1.0f,  0.0f,  0.0f,  1.0f},
+                                         {0.0f, 10.0f, 10.0f,  1.0f,  0.0f,  0.0f,  1.0f},
+                                         {0.5f, 10.0f, 10.0f,  1.0f,  0.0f,  0.0f,  1.0f}}).view({1, 1, 8, 7}));
+
+    mixtures.emplace_back(torch::tensor({{1.0f,   0.0f,   0.0f,  4.0f, -2.5f, -2.5f,  4.0f},
+                                         {0.0f,  20.0f,  20.0f,  2.0f, -1.5f, -1.5f,  3.0f},
+                                         {0.5f,  40.0f,  40.0f,  4.0f,  0.5f,  0.5f,  4.0f},
+                                         {1.5f,  60.0f,  60.0f,  5.0f, -0.5f, -0.5f,  4.0f},
+                                         {0.0f,  80.0f,  80.0f,  4.0f, -2.5f, -2.5f,  4.0f},
+                                         {0.5f, 100.0f, 100.0f,  2.0f, -1.5f, -1.5f,  3.0f},
+                                         {0.0f, 120.0f, 120.0f,  4.0f,  0.5f,  0.5f,  4.0f},
+                                         {1.5f, 140.0f, 140.0f,  5.0f, -0.5f, -0.5f,  4.0f}}).view({1, 1, 8, 7}));
+
+    mixtures.emplace_back(torch::tensor({{1.0f, -0.5f, -0.5f,  4.0f, -1.0f, -1.0f,  4.0f},
+                                         {0.0f,  0.5f,  0.5f,  4.0f, -0.8f, -0.8f,  4.0f},
+                                         {0.7f, -0.5f,  0.5f,  5.0f,  0.5f,  0.5f,  7.0f},
+                                         {1.1f,  0.5f, -0.5f,  5.0f,  0.5f,  0.5f,  7.0f},
+                                         {1.2f, -0.7f, -0.3f,  3.0f, -1.0f, -1.0f,  4.0f},
+                                         {0.9f,  0.3f,  0.7f,  4.0f, -0.8f, -0.8f,  5.0f},
+                                         {0.0f, -0.7f,  0.3f,  5.0f,  0.5f,  0.5f,  6.0f},
+                                         {0.0f,  0.3f, -0.7f,  3.0f,  0.5f,  0.5f,  7.0f}}).view({1, 1, 8, 7}));
+
+    mixtures.emplace_back(torch::tensor({{0.0f, -2.5f,  2.5f,  4.0f, -1.0f, -1.0f,  4.0f},
+                                         {0.0f,  1.8f,  1.8f,  4.0f,  0.8f,  0.8f,  4.0f},
+                                         {0.7f, -0.5f,  4.5f,  5.0f,  0.5f,  0.5f,  7.0f},
+                                         {1.1f,  0.5f, -4.5f,  5.0f,  0.5f,  0.5f,  7.0f},
+                                         {1.2f, -1.5f,  0.5f,  4.0f, -1.0f, -1.0f,  4.0f},
+                                         {0.9f,  0.8f,  0.8f,  4.0f,  0.8f,  0.8f,  4.0f},
+                                         {0.0f, -0.5f,  7.5f,  5.0f,  0.5f,  0.5f,  7.0f},
+                                         {1.3f,  0.5f, -7.5f,  5.0f,  0.5f,  0.5f,  7.0f}}).view({1, 1, 8, 7}));
+
+//    mixtures.emplace_back(torch::tensor({{0.0f, -2.5f,  2.5f,  4.0f, -1.0f, -1.0f,  4.0f},        // 0 gaussians do not work yet
+//                                         {0.5f,  1.8f,  1.8f,  4.0f,  0.8f,  0.8f,  4.0f},
+//                                         {0.5f, -0.5f,  4.5f,  5.0f,  0.5f,  0.5f,  7.0f},
+//                                         {1.5f,  0.5f, -4.5f,  5.0f,  0.5f,  0.5f,  7.0f}}).view({1, 1, 4, 7}));
+
+    std::vector<std::pair<torch::Tensor, torch::Tensor>> test_cases;
+    for (const auto& grad : grads) {
+        for (const auto& mixture : mixtures) {
+            test_cases.emplace_back(mixture, grad);
+        }
+    }
+    return test_cases;
+}
+
+std::vector<std::pair<torch::Tensor, torch::Tensor>> concat(std::initializer_list<std::vector<std::pair<torch::Tensor, torch::Tensor>>> list) {
+    std::vector<std::pair<torch::Tensor, torch::Tensor>> r;
+    for (const auto& v : list) {
+        std::copy(v.begin(), v.end(), std::back_inserter(r));
+    }
+    return r;
+}
+
+
 int main(int argc, char *argv[]) {
     using namespace torch::indexing;
     using scalar_t = double;
@@ -83,70 +287,12 @@ int main(int argc, char *argv[]) {
                                    20.5f,
                                    N_FITTING_COMPONENTS};
 
-    std::vector<std::pair<torch::Tensor, torch::Tensor>> test_cases;
-//    test_cases.emplace_back(torch::tensor({{0.5f,  0.0f,  0.0f,  2.0f,  0.0f,  0.0f,  2.0f},
-//                                         {0.5f,  0.0f,  0.0f,  2.0f,  0.0f,  0.0f,  2.0f},
-//                                         {0.5f, 10.0f, 10.0f,  1.0f,  0.0f,  0.0f,  1.0f},
-//                                         {0.5f, 10.0f, 10.0f,  1.0f,  0.0f,  0.0f,  1.0f}}).view({1, 1, 4, 7}),
-//                          torch::tensor({{1.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f},
-//                                         {1.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f}}).view({1, 1, 2, 7}));
+    const auto threshold = scalar_t(0.0001) / (1 + (sizeof(scalar_t) - 4) * 25000);
+    std::cout << "test error threshold is " << threshold << std::endl;
 
-//    test_cases.emplace_back(torch::tensor({{0.5f,  5.0f,  5.0f,  4.0f, -0.5f, -0.5f,  4.0f},
-//                                         {0.5f,  8.0f,  8.0f,  4.0f, -2.5f, -2.5f,  4.0f},
-//                                         {0.5f, 20.0f, 10.0f,  5.0f,  0.0f,  0.0f,  7.0f},
-//                                         {0.5f, 20.0f, 20.0f,  5.0f,  0.5f,  0.5f,  7.0f}}).view({1, 1, 4, 7}),
-//                          torch::tensor({{1.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f},
-//                                         {1.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f}}).view({1, 1, 2, 7}));
-
-//    test_cases.emplace_back(torch::tensor({{1.0f,  5.0f,  5.0f,  4.0f, -2.5f, -2.5f,  4.0f},
-//                                         {0.5f,  5.0f,  5.0f,  4.0f, -2.5f, -2.5f,  4.0f},
-//                                         {0.5f, 20.0f, 20.0f,  5.0f,  0.5f,  0.5f,  7.0f},
-//                                         {1.5f, 20.0f, 20.0f,  5.0f,  0.5f,  0.5f,  7.0f}}).view({1, 1, 4, 7}),
-//                          torch::tensor({{1.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f},
-//                                         {1.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f}}).view({1, 1, 2, 7}));
-
-//    test_cases.emplace_back(torch::tensor({{1.0f,  4.0f,  3.0f,  2.0f, -1.5f, -1.5f,  4.0f},
-//                                         {0.8f,  5.0f,  6.0f,  3.0f, -2.5f, -2.5f,  5.5f},
-//                                         {0.5f, 18.0f, 19.0f,  4.0f,  0.4f,  0.4f,  7.0f},
-//                                         {1.5f, 20.0f, 21.0f,  5.0f,  0.5f,  0.5f,  8.0f}}).view({1, 1, 4, 7}),
-//                          torch::tensor({{0.7f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f},
-//                                         {1.3f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f}}).view({1, 1, 2, 7}));
-    test_cases.emplace_back(torch::tensor({{1.0f,  4.0f,  3.0f,  2.0f, -1.5f, -1.5f,  4.0f},
-                                           {0.8f,  5.0f,  6.0f,  3.0f, -2.5f, -2.5f,  5.5f},
-                                           {0.5f,  6.0f,  5.0f,  4.0f, -0.4f, -0.4f,  7.0f},
-                                           {1.5f,  5.5f,  3.0f,  5.0f,  0.5f,  0.5f,  8.0f}}).view({1, 1, 4, 7}),
-                            torch::tensor({{0.0f,  1.0f,  1.0f,  0.0f,  0.0f,  0.0f,  0.0f},
-                                           {0.0f,  1.0f,  1.0f,  0.0f,  0.0f,  0.0f,  0.0f}}).view({1, 1, 2, 7}));
-
-    test_cases.emplace_back(torch::tensor({{1.0f,  4.0f,  3.0f,  2.0f, -1.5f, -1.5f,  4.0f},
-                                           {0.8f,  5.0f,  6.0f,  3.0f, -2.5f, -2.5f,  5.5f},
-                                           {0.5f,  6.0f,  5.0f,  4.0f, -0.4f, -0.4f,  7.0f},
-                                           {1.5f,  5.5f,  3.0f,  5.0f,  0.5f,  0.5f,  8.0f}}).view({1, 1, 4, 7}),
-                            torch::tensor({{0.0f,  0.0f,  0.0f,  1.0f,  1.0f,  1.0f,  1.0f},
-                                           {0.0f,  0.0f,  0.0f,  1.0f,  1.0f,  1.0f,  1.0f}}).view({1, 1, 2, 7}));
-
-    test_cases.emplace_back(torch::tensor({{1.0f,  4.0f,  3.0f,  2.0f, -1.5f, -1.5f,  4.0f},
-                                           {0.8f,  5.0f,  6.0f,  3.0f, -2.5f, -2.5f,  5.5f},
-                                           {0.5f,  6.0f,  5.0f,  4.0f, -0.4f, -0.4f,  7.0f},
-                                           {1.5f,  5.5f,  3.0f,  5.0f,  0.5f,  0.5f,  8.0f}}).view({1, 1, 4, 7}),
-                          torch::tensor({{1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f},
-                                         {1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f}}).view({1, 1, 2, 7}));
-
-    test_cases.emplace_back(torch::tensor({{1.0f,  4.0f,  3.0f,  2.0f, -1.5f, -1.5f,  4.0f},
-                                           {0.8f,  5.0f,  6.0f,  3.0f, -2.5f, -2.5f,  5.5f},
-                                           {0.5f, 18.0f, 22.0f,  4.0f, -0.4f, -0.4f,  7.0f},
-                                           {1.5f, 20.0f, 18.0f,  5.0f,  0.5f,  0.5f,  8.0f}}).view({1, 1, 4, 7}),
-                          torch::tensor({{1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f},
-                                         {1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f}}).view({1, 1, 2, 7}));
-
-    test_cases.emplace_back(torch::tensor({{1.0f,  4.0f,  3.0f,  2.0f, -1.5f, -1.5f,  4.0f},
-                                           {0.8f,  5.0f,  6.0f,  3.0f, -2.5f, -2.5f,  5.5f},
-                                           {0.5f, 18.0f, 19.0f,  4.0f, -0.4f, -0.4f,  7.0f},
-                                           {1.5f, 20.0f, 21.0f,  5.0f,  0.5f,  0.5f,  8.0f}}).view({1, 1, 4, 7}),
-                          torch::tensor({{1.1f,  1.2f,  1.3f,  1.4f,  1.5f,  1.5f,  1.7f},
-                                         {1.8f,  1.9f,  0.1f,  0.2f,  0.4f,  0.4f,  5.5f}}).view({1, 1, 2, 7}));
-
-    for (const auto& test_case : test_cases) {
+    auto testCases = concat({testCasesWith4GsIn2d(), testCasesWith8GsIn2d()});
+    int i = 0;
+    for (const auto& test_case : testCases) {
         torch::Tensor mixture = test_case.first;
         torch::Tensor gradient_fitting = test_case.second;
         if (sizeof(scalar_t) > 4) {
@@ -159,24 +305,30 @@ int main(int argc, char *argv[]) {
             show(gt_rendering, RESOLUTION, 1);
         }
 
+        auto start = std::chrono::high_resolution_clock::now();
         auto autodiff_out = bvh_mhem_fit::implementation_autodiff_backward<2, scalar_t, 2>(mixture, gradient_fitting, config);
+        auto end = std::chrono::high_resolution_clock::now();
         auto forward_out = bvh_mhem_fit::forward_impl(mixture, config);
         auto gradient_target = bvh_mhem_fit::backward_impl(gradient_fitting, forward_out, config);
 
-//        std::cout << "target: " << mixture << std::endl;
-//        std::cout << "fitting: " << forward_out.fitting << std::endl;
-        std::cout << "gradient target (analytical): " << gradient_target << std::endl;
-        std::cout << "gradient target (autodiff): " << autodiff_out.mixture_gradient << std::endl;
-
-        std::cout << "gradient_fitting: " << gradient_fitting << std::endl;
         {
             auto gradient_an = gradient_target.contiguous();
             auto gradient_ad = autodiff_out.mixture_gradient.contiguous();
-            for (size_t i = 0; i < 4*7; ++i) {
-                assert(std::abs(gradient_ad.data_ptr<scalar_t>()[i] - gradient_an.data_ptr<scalar_t>()[i]) < scalar_t(0.0001));
+            auto n_Gs = size_t(gradient_ad.size(-2));
+            for (size_t i = 0; i < n_Gs * 7; ++i) {
+                auto similar = are_similar(gradient_ad.data_ptr<scalar_t>()[i], gradient_an.data_ptr<scalar_t>()[i], threshold);
+                if (!similar) {
+                    std::cout << "target: " << mixture << std::endl;
+                    std::cout << "fitting: " << forward_out.fitting << std::endl;
+                    std::cout << "gradient target (analytical): " << gradient_target << std::endl;
+                    std::cout << "gradient target (autodiff): " << autodiff_out.mixture_gradient << std::endl;
+                    std::cout << "gradient_fitting: " << gradient_fitting << std::endl;
+                    std::cout << "i = " << i << "; difference: " << gradient_ad.data_ptr<scalar_t>()[i] - gradient_an.data_ptr<scalar_t>()[i] << std::endl;
+                }
+                assert(similar);
             }
         }
-        std::cout << "=========" << std::endl;
+        std::cout << "test " << ++i << "/" << testCases.size() << " finished (ad gradient took " << std::chrono::duration_cast<std::chrono::milliseconds>(end-start).count() << "ms)" << std::endl;
 
         if (RENDER) {
             torch::Tensor gt_rendering = render(gpe::mixture_with_inversed_covariances(forward_out.fitting), RESOLUTION, 1);

@@ -6,29 +6,39 @@
 #include "util/gaussian.h"
 #include "util/glm.h"
 
-void assert_similar(float a, float b) {
+template<typename scalar_t>
+bool are_similar(scalar_t a, scalar_t b, scalar_t precision = scalar_t(0.00001)) {
     auto v = std::abs((a + b) / 2);
-    v = gpe::max(v, 1.f);
-    assert((std::abs(a - b) / v) < 0.00001f);
+    v = gpe::max(v, scalar_t(1));
+    return((std::abs(a - b) / v) < precision);
 }
-template<int N_DIMS>
-void assert_similar(const glm::vec<N_DIMS, float>& a, const glm::vec<N_DIMS, float>& b) {
+template<int N_DIMS, typename scalar_t>
+bool are_similar(const glm::vec<N_DIMS, scalar_t>& a, const glm::vec<N_DIMS, scalar_t>& b, scalar_t precision = scalar_t(0.00001)) {
+    bool similar = true;
     for (int i = 0; i < N_DIMS; ++i) {
-        assert_similar(a[i], b[i]);
+        similar = similar && are_similar(a[i], b[i], precision);
     }
+    return similar;
 }
-template<int N_DIMS>
-void assert_similar(const glm::mat<N_DIMS, N_DIMS, float>& a, const glm::mat<N_DIMS, N_DIMS, float>& b) {
+template<int N_DIMS, typename scalar_t>
+bool are_similar(const glm::mat<N_DIMS, N_DIMS, scalar_t>& a, const glm::mat<N_DIMS, N_DIMS, scalar_t>& b, scalar_t precision = scalar_t(0.00001)) {
+    bool similar = true;
     for (int i = 0; i < N_DIMS; ++i) {
-        assert_similar(a[i], b[i]);
+        similar = similar && are_similar(a[i], b[i], precision);
     }
+    return similar;
 }
 
-template<int N_DIMS>
-void assert_similar(const gpe::Gaussian<N_DIMS, float>& ad, const gpe::Gaussian<N_DIMS, float>& an) {
-    assert_similar(ad.weight, an.weight);
-    assert_similar(ad.position, an.position);
-    assert_similar(ad.covariance, an.covariance);
+template<int N_DIMS, typename scalar_t>
+bool are_similar(const gpe::Gaussian<N_DIMS, scalar_t>& ad, const gpe::Gaussian<N_DIMS, scalar_t>& an, scalar_t precision = scalar_t(0.00001)) {
+    return are_similar(ad.weight, an.weight, precision)
+            && are_similar(ad.position, an.position, precision)
+            && are_similar(ad.covariance, an.covariance, precision);
+}
+
+template<typename T>
+void assert_similar(const T& a, const T& b) {
+    assert(are_similar(a, b));
 }
 
 template<int N_DIMS>
@@ -55,6 +65,7 @@ glm::mat<DIMS, DIMS, float> _cov(float xx, float xy, float xz, float yy, float y
     return r;
 }
 
+inline
 std::vector<float> _scalarCollection() {
     std::vector<float> retval;
     retval.push_back(0);

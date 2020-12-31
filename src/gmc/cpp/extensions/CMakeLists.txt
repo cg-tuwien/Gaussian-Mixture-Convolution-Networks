@@ -14,7 +14,7 @@ set(CMAKE_CUDA_ARCHITECTURES 75)
 #     "-D_GLIBCXX_USE_CXX11_ABI=0 -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --expt-relaxed-constexpr --compiler-options '-fPIC' -O3 --use_fast_math -std=c++14"
 #     )
 string(APPEND CMAKE_CUDA_FLAGS " -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --expt-extended-lambda --expt-relaxed-constexpr")
-string(APPEND CMAKE_CUDA_FLAGS " -Xcompiler '-fPIC,-fopenmp,-ffast-math'  --use_fast_math")
+string(APPEND CMAKE_CUDA_FLAGS " -Xcompiler '-fPIC,-fopenmp,-ffast-math,-fno-finite-math-only'  --use_fast_math")
 string(APPEND CMAKE_CUDA_FLAGS_RELEASE " --generate-line-info -Xcompiler '-O4,-march=native'")
 string(APPEND CMAKE_CUDA_FLAGS_DEBUG " -g -G")
 
@@ -24,7 +24,7 @@ string(APPEND CMAKE_CUDA_FLAGS_DEBUG " -g -G")
 #string(APPEND CMAKE_LINKER_FLAGS" -fno-omit-frame-pointer -fsanitize=address")
 
 #target_compile_options(kre -Wall -Wextra -Wpedantic -Werror)
-string(APPEND CMAKE_CXX_FLAGS " -ffast-math")
+string(APPEND CMAKE_CXX_FLAGS " -ffast-math -fno-finite-math-only")
 string(APPEND CMAKE_CXX_FLAGS_RELEASE " -O4 -march=native")
 
 # this will enable the lld (llvm) linker. it's parallel and much faster, but not installed by default.
@@ -104,13 +104,14 @@ set(UTIL_HEADERS
     util/epsilon.h
     util/gaussian.h
     util/glm.h
-    util/mixture.h
     util/grad/algorithms.h
     util/grad/common.h
     util/grad/glm.h
     util/grad/gaussian.h
     util/grad/mixture.h
     util/grad/scalar.h
+    util/mixture.h
+    util/output.h
     util/scalar.h)
 add_library(util ${UTIL_HEADERS} util/dummy.cpp)
 
