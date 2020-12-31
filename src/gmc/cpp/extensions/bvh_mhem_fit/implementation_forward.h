@@ -279,7 +279,7 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_em(const gpe::Vector
     assert(!gpe::reduce(responsibilities_3, false, [](bool o, scalar_t v) { return o || v < 0; }));
 
     const auto weightedPositions = gpe::cwise_fun(responsibilities_3, target_positions, fun::times<scalar_t, pos_t, pos_t>);
-    const auto fittingPositions = gpe::reduce_cols(weightedPositions, pos_t(0), fun::plus<gradless_pos_t, gradless_pos_t, pos_t>);
+    const auto fittingPositions = gpe::reduce_cols(weightedPositions, pos_t(0), fun::plus<pos_t, pos_t, pos_t>);
     assert(!has_nan(fittingPositions));
 
     const auto posDiffs = gpe::outer_product(target_positions, fittingPositions, fun::minus<pos_t>);
