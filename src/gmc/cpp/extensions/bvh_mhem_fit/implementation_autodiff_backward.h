@@ -3,7 +3,7 @@
 
 #include <torch/types.h>
 
-#include "bvh_mhem_fit/BvhMhemFitConfig.h"
+#include "bvh_mhem_fit/Config.h"
 #include "bvh_mhem_fit/implementation.h"
 
 namespace bvh_mhem_fit {
@@ -14,10 +14,10 @@ torch::Tensor mixture_gradient;
 };
 
 template<int REDUCTION_N = 4, typename scalar_t, unsigned N_DIMS>
-ForwardBackWardOutput implementation_autodiff_backward(at::Tensor mixture, const torch::Tensor& gradient_fitting, const BvhMhemFitConfig& config);
+ForwardBackWardOutput implementation_autodiff_backward(at::Tensor mixture, const torch::Tensor& gradient_fitting, const Config& config);
 
-extern template ForwardBackWardOutput implementation_autodiff_backward<2, float, 2>(at::Tensor mixture, const torch::Tensor& gradient_fitting, const BvhMhemFitConfig& config);
-extern template ForwardBackWardOutput implementation_autodiff_backward<2, double, 2>(at::Tensor mixture, const torch::Tensor& gradient_fitting, const BvhMhemFitConfig& config);
+extern template ForwardBackWardOutput implementation_autodiff_backward<2, float, 2>(at::Tensor mixture, const torch::Tensor& gradient_fitting, const Config& config);
+extern template ForwardBackWardOutput implementation_autodiff_backward<2, double, 2>(at::Tensor mixture, const torch::Tensor& gradient_fitting, const Config& config);
 }
 
 #endif // IMPLEMENTATION_AUTODIFF_BACKWARD_H

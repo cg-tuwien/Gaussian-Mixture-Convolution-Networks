@@ -36,9 +36,9 @@ for direction in $direction_list; do
                     echo 'namespace bvh_mhem_fit {' >> $filename
                     
                     if [ "${direction}" == "forward" ]; then
-                        echo "template ForwardOutput forward_impl_t<$n_reduction, $floating_type, $dimension>(torch::Tensor mixture, const BvhMhemFitConfig& config);" >> $filename
+                        echo "template ForwardOutput forward_impl_t<$n_reduction, $floating_type, $dimension>(torch::Tensor mixture, const Config& config);" >> $filename
                     else
-                        echo "template torch::Tensor backward_impl_t<$n_reduction, $floating_type, $dimension>(torch::Tensor grad, const ForwardOutput& forward_out, const BvhMhemFitConfig& config);" >> $filename
+                        echo "template torch::Tensor backward_impl_t<$n_reduction, $floating_type, $dimension>(torch::Tensor grad, const ForwardOutput& forward_out, const Config& config);" >> $filename
                     fi
                     
                     echo '} // namespace bvh_mhem_fit' >> $filename

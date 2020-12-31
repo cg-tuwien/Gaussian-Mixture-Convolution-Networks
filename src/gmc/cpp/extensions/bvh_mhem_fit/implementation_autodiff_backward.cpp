@@ -7,7 +7,7 @@
 namespace bvh_mhem_fit {
 
 template<int REDUCTION_N, typename scalar_t, unsigned N_DIMS>
-ForwardBackWardOutput implementation_autodiff_backward(torch::Tensor mixture, const torch::Tensor& gradient_fitting, const BvhMhemFitConfig& config) {
+ForwardBackWardOutput implementation_autodiff_backward(torch::Tensor mixture, const torch::Tensor& gradient_fitting, const Config& config) {
     using namespace torch::indexing;
     using LBVH = lbvh::Bvh<N_DIMS, scalar_t>;
     using AutoDiffScalar = autodiff::Variable<scalar_t>;
@@ -170,7 +170,7 @@ ForwardBackWardOutput implementation_autodiff_backward(torch::Tensor mixture, co
     return out;
 }
 
-template ForwardBackWardOutput implementation_autodiff_backward<2, float, 2>(torch::Tensor mixture, const torch::Tensor& gradient_fitting, const BvhMhemFitConfig& config);
-template ForwardBackWardOutput implementation_autodiff_backward<2, double, 2>(torch::Tensor mixture, const torch::Tensor& gradient_fitting, const BvhMhemFitConfig& config);
+template ForwardBackWardOutput implementation_autodiff_backward<2, float, 2>(torch::Tensor mixture, const torch::Tensor& gradient_fitting, const Config& config);
+template ForwardBackWardOutput implementation_autodiff_backward<2, double, 2>(torch::Tensor mixture, const torch::Tensor& gradient_fitting, const Config& config);
 
 }

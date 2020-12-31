@@ -41,7 +41,7 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_TARGET> grad_em(const gpe::Vector
                                                                const gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING, size_type>& fitting,
                                                                const gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING, size_type>& fitting_grad,
                                                                const GradientCacheData<scalar_t, N_FITTING, N_FITTING * 2>& gradient_cache_data,
-                                                               const BvhMhemFitConfig& config) {
+                                                               const Config& config) {
     using G = gpe::Gaussian<N_DIMS, scalar_t>;
     using pos_t = typename G::pos_t;
     using cov_t = typename G::cov_t;
@@ -345,7 +345,7 @@ void trickle_down_grad(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
                        gpe::PackedTensorAccessor32<int, 2> flags,
                        gpe::PackedTensorAccessor32<typename AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>::NodeAttributes, 2> node_attributes,
                        const gpe::MixtureNs n, const int n_mixtures, const unsigned n_internal_nodes, const unsigned n_nodes,
-                       const BvhMhemFitConfig& config) {
+                       const Config& config) {
     GPE_UNUSED(gpe_gridDim)
     using G = gpe::Gaussian<N_DIMS, scalar_t>;
     using Bvh = AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>;
@@ -425,7 +425,7 @@ EXECUTION_DEVICES void distribute_grad(const dim3& gpe_gridDim, const dim3& gpe_
                                       gpe::PackedTensorAccessor32<int, 2> flags,
                                       gpe::PackedTensorAccessor32<typename AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>::NodeAttributes, 2> node_attributes,
                                       const gpe::MixtureNs n, const int n_mixtures, const unsigned n_internal_nodes, const unsigned n_nodes,
-                                      const BvhMhemFitConfig& config)
+                                      const Config& config)
 {
     GPE_UNUSED(gpe_gridDim)
     GPE_UNUSED(flags)
@@ -505,7 +505,7 @@ EXECUTION_DEVICES void distribute_grad(const dim3& gpe_gridDim, const dim3& gpe_
 
 
 template<int REDUCTION_N = 4, typename scalar_t, unsigned N_DIMS>
-at::Tensor backward_impl_t(at::Tensor grad, const ForwardOutput& forward_out, const BvhMhemFitConfig& config) {
+at::Tensor backward_impl_t(at::Tensor grad, const ForwardOutput& forward_out, const Config& config) {
     using namespace torch::indexing;
     using LBVH = lbvh::Bvh<N_DIMS, scalar_t>;
 

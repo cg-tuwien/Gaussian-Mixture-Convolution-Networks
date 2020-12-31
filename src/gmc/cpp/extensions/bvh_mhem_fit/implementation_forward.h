@@ -163,7 +163,7 @@ gaussian_index_t cluster_select_maxWeight(const gpe::Array<gpe::Gaussian<N_DIMS,
 
 template <unsigned N_FITTING, typename scalar_t, int N_DIMS, unsigned N_TARGET>
 EXECUTION_DEVICES
-gpe::Array<gaussian_index_t, N_FITTING> fit_initial(const gpe::Array<gpe::Gaussian<N_DIMS, scalar_t>, N_TARGET>& target, const BvhMhemFitConfig& config) {
+gpe::Array<gaussian_index_t, N_FITTING> fit_initial(const gpe::Array<gpe::Gaussian<N_DIMS, scalar_t>, N_TARGET>& target, const Config& config) {
     using G = gpe::Gaussian<N_DIMS, scalar_t>;
     using gradless_scalar_t = gpe::remove_grad_t<scalar_t>;
 
@@ -188,7 +188,7 @@ template <unsigned N_FITTING, typename scalar_t, int N_DIMS, unsigned N_TARGET>
 EXECUTION_DEVICES
 gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_em(const gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_TARGET>& target,
                                                                GradientCacheData<scalar_t, N_FITTING, N_FITTING * 2>* gradient_cache_data,
-                                                               const BvhMhemFitConfig& config) {
+                                                               const Config& config) {
     static_assert (N_FITTING * 2 == N_TARGET, "UNEXPECTED N_TARGET or N_FITTING");
     using G = gpe::Gaussian<N_DIMS, scalar_t>;
     using pos_t = typename G::pos_t;
@@ -279,7 +279,7 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_em(const gpe::Vector
     assert(!gpe::reduce(responsibilities_3, false, [](bool o, scalar_t v) { return o || v < 0; }));
 
     const auto weightedPositions = gpe::cwise_fun(responsibilities_3, target_positions, fun::times<scalar_t, pos_t, pos_t>);
-    const auto fittingPositions = gpe::reduce_cols(weightedPositions, pos_t(0), fun::plus<pos_t, pos_t, pos_t>);
+    const auto fittingPositions = gpe::reduce_cols(weightedPositions, pos_t(0), fun::plus<gradless_pos_t, gradless_pos_t, pos_t>);
     assert(!has_nan(fittingPositions));
 
     const auto posDiffs = gpe::outer_product(target_positions, fittingPositions, fun::minus<pos_t>);
@@ -395,7 +395,7 @@ void iterate_over_nodes(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
                         gpe::PackedTensorAccessor32<int, 2> flags,
                         gpe::PackedTensorAccessor32<typename AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>::NodeAttributes, 2> node_attributes,
                         const gpe::MixtureNs n, const int n_mixtures, const unsigned n_internal_nodes, const unsigned n_nodes,
-                        const BvhMhemFitConfig& config) {
+                        const Config& config) {
     GPE_UNUSED(gpe_gridDim)
     using G = gpe::Gaussian<N_DIMS, scalar_t>;
     using Bvh = AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>;
@@ -458,7 +458,7 @@ EXECUTION_DEVICES void collect_result(const dim3& gpe_gridDim, const dim3& gpe_b
                                       gpe::PackedTensorAccessor32<int, 2> flags,
                                       gpe::PackedTensorAccessor32<typename AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>::NodeAttributes, 2> node_attributes,
                                       const gpe::MixtureNs n, const int n_mixtures, const unsigned n_internal_nodes, const unsigned n_nodes,
-                                      const BvhMhemFitConfig& config)
+                                      const Config& config)
 {
     GPE_UNUSED(gpe_gridDim)
     GPE_UNUSED(flags)
@@ -545,7 +545,7 @@ EXECUTION_DEVICES void collect_result(const dim3& gpe_gridDim, const dim3& gpe_b
 
 
 template<int REDUCTION_N = 4, typename scalar_t, unsigned N_DIMS>
-ForwardOutput forward_impl_t(at::Tensor mixture, const BvhMhemFitConfig& config) {
+ForwardOutput forward_impl_t(at::Tensor mixture, const Config& config) {
     using namespace torch::indexing;
     using LBVH = lbvh::Bvh<N_DIMS, scalar_t>;
 

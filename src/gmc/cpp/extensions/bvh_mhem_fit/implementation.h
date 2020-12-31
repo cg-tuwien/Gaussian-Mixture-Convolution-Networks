@@ -3,7 +3,7 @@
 #include <tuple>
 #include <torch/script.h>
 
-#include "BvhMhemFitConfig.h"
+#include "bvh_mhem_fit/Config.h"
 
 
 namespace bvh_mhem_fit {
@@ -16,10 +16,9 @@ struct ForwardOutput {
     torch::Tensor bvh_attributes;
 };
 
+ForwardOutput forward_impl(at::Tensor mixture, const Config& config);
 
-ForwardOutput forward_impl(at::Tensor mixture, const BvhMhemFitConfig& config);
-
-torch::Tensor backward_impl(torch::Tensor grad, const ForwardOutput& forward_out, const BvhMhemFitConfig& config);
+torch::Tensor backward_impl(torch::Tensor grad, const ForwardOutput& forward_out, const Config& config);
 
 }
 #endif
