@@ -357,8 +357,19 @@ void trickle_down_grad(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
 
     Bvh bvh = AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>(mixture_id, nodes, aabbs, mixture, node_attributes, n, n_internal_nodes, n_nodes);
     #ifndef __CUDA_ARCH__
-    std::vector<typename AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>::NodeAttributes> node_attributes_debug;
-    std::copy(bvh.per_node_attributes, bvh.per_node_attributes + n_nodes, std::back_inserter(node_attributes_debug));
+        std::vector<typename AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>::NodeAttributes> node_attributes_debug;
+        std::vector<Node> nodes_debug;
+        std::vector<G> mixture_debug;
+
+        auto updateDebug = [&]() {
+            node_attributes_debug.clear();
+            nodes_debug.clear();
+            mixture_debug.clear();
+            std::copy(bvh.per_node_attributes, bvh.per_node_attributes + n_nodes, std::back_inserter(node_attributes_debug));
+            std::copy(bvh.nodes, bvh.nodes + n_nodes, std::back_inserter(nodes_debug));
+            std::copy(bvh.gaussians, bvh.gaussians + n.components, std::back_inserter(mixture_debug));
+        };
+        updateDebug();
     #endif
 
     gpe::ParallelStack<node_index_t, 32 * 32, 0> stack;
@@ -367,7 +378,8 @@ void trickle_down_grad(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
         top_stack.push_back(0);
         while (top_stack.size()) {
             auto node_id = top_stack.pop_back();
-            assert(node_id < n_nodes);
+            if(node_id >= n_nodes)
+                continue;   // ran out of nodes, this is a border case happening when the mixtures contain only zero gaussians.
             if (bvh.per_node_attributes[node_id].grad.size() == 0) {
                 top_stack.push_back(bvh.nodes[node_id].left_idx);
                 top_stack.push_back(bvh.nodes[node_id].right_idx);
