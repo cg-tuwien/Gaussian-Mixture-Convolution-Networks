@@ -22,6 +22,6 @@ class LikelihoodLoss(ErrorFunction):
             endidx = min((p + 1) * subbatch_pointcount, point_count)
             output[:, startidx:endidx] = \
                 gm.evaluate_inversed(mixture_with_inversed_cov, points[:, :, startidx:endidx, :]).view(batch_size, -1)
-        res = -torch.mean(torch.log(output + 0.00001), dim=1)
+        res = -torch.mean(torch.log(output), dim=1) # There could be a "output + 0.00001" here, but it changes the loss significantly
         assert not torch.isinf(res).any()
         return res

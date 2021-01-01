@@ -50,6 +50,8 @@ def execute_fitting(training_name: str, model_path: str, genpc_path: str, gengmm
 
             # Generate GMM
             gmbatch, gmmbatch = generators[j].generate(batch_scaled)
+            gmbatch = gmbatch.float()
+            gmmbatch = gmmbatch.float()
 
             # Save resulting GMs
             data_loading.save_gms(scaler.scale_up_gm(gmbatch), scaler.scale_up_gmm(gmmbatch),
@@ -96,6 +98,8 @@ def execute_fitting_on_single_pcbatch(training_name: str, pcbatch: torch.Tensor,
 
         # Generate GMM
         gmbatch, gmmbatch = generators[j].generate(scaled_pc, initialgmbatch)
+        gmbatch = gmbatch.float()
+        gmmbatch = gmmbatch.float()
 
         gmbatch = scaler.scale_up_gm(gmbatch)
         gmmbatch = scaler.scale_up_gmm(gmmbatch)

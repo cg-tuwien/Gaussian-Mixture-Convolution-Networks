@@ -1,5 +1,6 @@
 from prototype_pcfitting import GMMGenerator, GMLogger, data_loading
 from prototype_pcfitting import TerminationCriterion, MaxIterationTerminationCriterion
+from prototype_pcfitting.error_functions import LikelihoodLoss
 from gmc.cpp.extensions.furthest_point_sampling import furthest_point_sampling
 import torch
 import gmc.mixture as gm
@@ -48,8 +49,7 @@ class EMGenerator(GMMGenerator):
         #       How many points should be processed in the E- and M-Step at once
         #       -1 means all Points (default)
         #   dtype: torch.dtype
-        #       In which data type (precision) the operations should be performed. The final gmm is always
-        #       converted to float32 though. Default: torch.float32
+        #       In which data type (precision) the operations should be performed. Default: torch.float32
         #   eps: float
         #       Small value to be added to the Covariances for numerical stability
         #
@@ -154,8 +154,8 @@ class EMGenerator(GMMGenerator):
                                  self._em_step_gaussians_subbatchsize, self._em_step_points_subbatchsize)
 
         # Create final mixtures
-        final_gm = gm_data.pack_mixture().float()
-        final_gmm = gm_data.pack_mixture_model().float()
+        final_gm = gm_data.pack_mixture()
+        final_gmm = gm_data.pack_mixture_model()
 
         # Gaussian-Weights might be set to zero. This prints for how many Gs this is the case
         print("EM: # of invalid Gaussians: ", torch.sum(gm_data.get_priors() == 0).item())

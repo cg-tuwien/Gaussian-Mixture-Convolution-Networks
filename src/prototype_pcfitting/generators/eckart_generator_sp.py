@@ -53,8 +53,7 @@ class EckartGeneratorSP(GMMGenerator):
         #       How many points should be processed in the M-Step at once (see _maximization)
         #       -1 means all Points (default)
         #   dtype: torch.dtype
-        #       In which data type (precision) the oepration should be performed. The final gmm is always
-        #       converted to float32 though. Default: float32
+        #       In which data type (precision) the oepration should be performed. Default: float32
         #   eps: float
         #       Small value to be added to the Covariances for numerical stability
         self._n_gaussians_per_node = n_gaussians_per_node
@@ -175,8 +174,6 @@ class EckartGeneratorSP(GMMGenerator):
         # Calculate final GMs
         res_gm = self._construct_full_gm(gm_data.approximate_whole_mixture(), finished_subgmms)
         res_gmm = gm.convert_amplitudes_to_priors(res_gm)
-        res_gm = res_gm.float()
-        res_gmm = res_gmm.float()
 
         print("Final Loss: ", LikelihoodLoss().calculate_score_packed(pcbatch.float(), res_gm).item())
         # print("EckartSP: # of invalid Gaussians: ", torch.sum(gm.weights(res_gmm).eq(0)).item())
