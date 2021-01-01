@@ -1,7 +1,6 @@
 #ifndef NDEBUG
 #include <iostream>
 
-#include "unit_test_support.h"
 #include "util/algorithms.h"
 #include "util/autodiff.h"
 #include "util/mixture.h"
@@ -13,29 +12,14 @@
 #include "util/grad/glm.h"
 #include "util/scalar.h"
 
+#include "support.h"
 
-namespace  {
 using AutodiffScalar = autodiff::Variable<float>;
 
-static struct UnitTests {
-    UnitTests() {
-        test_cov_functions<2>();
-        test_cov_functions<3>();
-        test_gaussian_functions<2>();
-        test_gaussian_functions<3>();
-        test_likelihood<2>();
-        test_likelihood<3>();
-        test_vecOnVec<2>();
-        test_vecOnVec<3>();
-        test_scalarGrads();
-        test_matrix_inverse<2>();
-        test_matrix_inverse<3>();
+namespace {
 
-        std::cout << "unit tests for mixture_grad done" << std::endl;
-    }
-
-
-    template<int DIMS>
+struct UnitTests {
+    template<int DIMS> static
     void test_likelihood() {
         std::vector<float> grads = {-1.0, 0.f, 0.4f, 1.f};
         for (auto grad : grads) {
@@ -47,7 +31,7 @@ static struct UnitTests {
         }
     }
 
-    template<int DIMS>
+    template<int DIMS> static
     void test_gaussian_functions() {
         for (auto grad : _scalarCollection()) {
             for (auto g : _gaussianCollection<DIMS>()) {
@@ -59,7 +43,7 @@ static struct UnitTests {
         }
     }
 
-    template<int DIMS>
+    template<int DIMS> static
     void test_cov_functions() {
         for (float grad : _scalarCollection()) {
             for (const auto& cov : _covCollection<DIMS>()) {
@@ -69,7 +53,7 @@ static struct UnitTests {
         }
     }
 
-    template<int DIMS>
+    template<int DIMS> static
     void test_vecOnVec() {
         for (auto a : _vecCollection<DIMS>()) {
             for (auto b : _vecCollection<DIMS>()) {
@@ -83,6 +67,7 @@ static struct UnitTests {
         }
     }
 
+    static
     void test_scalarGrads() {
         std::vector<float> values = {0.f, 1.f, -1.f, 1.5, -1.5, 2.3f, -2.5f};
         for (auto a : values) {
@@ -97,15 +82,20 @@ static struct UnitTests {
     static AutodiffScalar pow(AutodiffScalar a, AutodiffScalar b) { return gpe::pow(a, b); }
     static AutodiffScalar exp(AutodiffScalar a) { return gpe::exp(a); }
     static AutodiffScalar log(AutodiffScalar a) { return gpe::log(a); }
-    template<int N_DIMS>
-    static glm::mat<N_DIMS, N_DIMS, AutodiffScalar> outerProduct(const glm::vec<N_DIMS, AutodiffScalar>& a, const glm::vec<N_DIMS, AutodiffScalar>& b) { return glm::outerProduct(a, b); }
-    template<int N_DIMS>
-    static AutodiffScalar determinant(const glm::mat<N_DIMS, N_DIMS, AutodiffScalar>& m) { return glm::determinant(m); }
-    template<int N_DIMS>
-    static glm::mat<N_DIMS, N_DIMS, AutodiffScalar> matrix_inverse(const glm::mat<N_DIMS, N_DIMS, AutodiffScalar>& m) { return glm::inverse(m); }
-    template<int N_DIMS>
-    static AutodiffScalar dot(const glm::vec<N_DIMS, AutodiffScalar>& a, const glm::vec<N_DIMS, AutodiffScalar>& b) { return glm::dot(a, b); }
 
+    template<int N_DIMS> static
+    glm::mat<N_DIMS, N_DIMS, AutodiffScalar> outerProduct(const glm::vec<N_DIMS, AutodiffScalar>& a, const glm::vec<N_DIMS, AutodiffScalar>& b) { return glm::outerProduct(a, b); }
+
+    template<int N_DIMS> static
+    AutodiffScalar determinant(const glm::mat<N_DIMS, N_DIMS, AutodiffScalar>& m) { return glm::determinant(m); }
+
+    template<int N_DIMS> static
+    glm::mat<N_DIMS, N_DIMS, AutodiffScalar> matrix_inverse(const glm::mat<N_DIMS, N_DIMS, AutodiffScalar>& m) { return glm::inverse(m); }
+
+    template<int N_DIMS> static
+    AutodiffScalar dot(const glm::vec<N_DIMS, AutodiffScalar>& a, const glm::vec<N_DIMS, AutodiffScalar>& b) { return glm::dot(a, b); }
+
+    static
     void test_scalarGrads_funs(float a, float b, float grad) {
 //        test_scalarGrads_binarycase(a, b, grad, gpe::functors::times<AutodiffScalar>, gpe::grad::functors::times<float>);
         if (a > 0) {
@@ -116,7 +106,7 @@ static struct UnitTests {
         test_unarycase(a, grad, exp, gpe::grad::exp<float>);
     }
 
-    template<int N_DIMS>
+    template<int N_DIMS> static
     void test_matrix_inverse() {
         for (auto grad : _covCollection<N_DIMS>()) {
             for (auto cov : _covCollection<N_DIMS>()) {
@@ -124,10 +114,36 @@ static struct UnitTests {
             }
         }
     }
+};
+
+}
 
 
-} unit_tests;
+TEST_CASE("grad mixture") {
+    SECTION("cov functions") {
+        UnitTests::test_cov_functions<2>();
+        UnitTests::test_cov_functions<3>();
+    }
+    SECTION("gaussian functions") {
+        UnitTests::test_gaussian_functions<2>();
+        UnitTests::test_gaussian_functions<3>();
+    }
+    SECTION("likelihood") {
+        UnitTests::test_likelihood<2>();
+        UnitTests::test_likelihood<3>();
+    }
+    SECTION("vec on vec functions") {
+        UnitTests::test_vecOnVec<2>();
+        UnitTests::test_vecOnVec<3>();
+    }
+    SECTION("scalar functions") {
+        UnitTests::test_scalarGrads();
+    }
+    SECTION("matrix functions") {
+        UnitTests::test_matrix_inverse<2>();
+        UnitTests::test_matrix_inverse<3>();
+    }
+}
 
-} // anonymous namespace
 
 #endif // not NDEBUG

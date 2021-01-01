@@ -34,9 +34,11 @@ string(APPEND CMAKE_CXX_FLAGS_RELEASE " -O4 -march=native")
 set (MY_ANACONDA_PATH "/home/madam/bin/anaconda3")
 
 list(APPEND CMAKE_PREFIX_PATH "${MY_ANACONDA_PATH}/lib/python3.7/site-packages/torch/")
+list(APPEND CMAKE_PREFIX_PATH "/home/madam/lib/catch2/")
 
 find_package(OpenMP REQUIRED)
 find_package(Torch REQUIRED)
+find_package(Catch2 REQUIRED)
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 add_compile_definitions(GMC_CMAKE_TEST_BUILD)
@@ -46,7 +48,8 @@ add_compile_definitions(GPE_LIMIT_N_REDUCTION)
 #add_compile_definitions(GPE_ONLY_FLOAT)
 add_compile_definitions(GPE_ONLY_2D)
 find_package(QT NAMES Qt5 COMPONENTS Core Widgets REQUIRED)
-find_package(Qt5 COMPONENTS Core Widgets REQUIRED)
+find_package(Qt5 COMPONENTS Core Widgets Test REQUIRED)
+
 
 set(MY_INCLUDE_PATHS
     ${MY_ANACONDA_PATH}/include/python3.7m/
@@ -69,7 +72,6 @@ set(COMMON_HEADERS
 )
 set(COMMON_SOURCES
     CpuSynchronisationPoint.cpp
-    unit_tests.cpp
 )
 add_library(common ${COMMON_HEADERS} ${COMMON_SOURCES})
 
@@ -258,9 +260,24 @@ target_link_libraries(0_test_bvh_fit PUBLIC OpenMP::OpenMP_CXX torch Qt5::Widget
 add_executable(0_test_bvh_fit_alpha bvh_mhem_fit_alpha/test_bvh_fit.cpp)
 target_link_libraries(0_test_bvh_fit_alpha PUBLIC OpenMP::OpenMP_CXX torch Qt5::Widgets bvh_mhem_fit_alpha integrate evaluate_inversed math lbvh common)
 
-add_executable(0_unittest_bvh_mhem_fit_vs_alpha bvh_mhem_fit/unittest_vs_alpha.cpp)
-target_link_libraries(0_unittest_bvh_mhem_fit_vs_alpha PUBLIC OpenMP::OpenMP_CXX torch Qt5::Widgets bvh_mhem_fit_alpha bvh_mhem_fit integrate evaluate_inversed math lbvh common)
 
-add_executable(0_unittest_bvh_mhem_fit_alpha_all bvh_mhem_fit_alpha/unit_test_support.h bvh_mhem_fit_alpha/unittest_mixture_grad.cpp bvh_mhem_fit_alpha/unittest_algorithms_grad.cpp bvh_mhem_fit_alpha/unittest_all.cpp)
-target_link_libraries(0_unittest_bvh_mhem_fit_alpha_all PUBLIC OpenMP::OpenMP_CXX torch Qt5::Widgets bvh_mhem_fit_alpha integrate evaluate_inversed math lbvh common)
+#unit tests:
+#add_executable(0_unittests bvh_mhem_fit_alpha/unit_test_support.h bvh_mhem_fit_alpha/unittest_mixture_grad.cpp bvh_mhem_fit_alpha/unittest_algorithms_grad.cpp bvh_mhem_fit_alpha/unittest_all.cpp)
+set(UNITTESTS_HEADERS
+    unittests/support.h
+)
+set(UNITTESTS_SOURCES
+    unittests/main.cpp
+    unittests/algorithms.cpp
+    unittests/alpha_vs_ad.cpp
+    unittests/grad_algorithms.cpp
+    unittests/grad_mixture.cpp
+    unittests/working_vs_alpha.cpp
+)
+add_executable(0_unittests ${UNITTESTS_SOURCES} ${UNITTESTS_HEADERS})
+target_link_libraries(0_unittests PUBLIC Catch2::Catch2 OpenMP::OpenMP_CXX torch Qt5::Widgets bvh_mhem_fit_alpha bvh_mhem_fit integrate evaluate_inversed math lbvh common)
+
+include(CTest)
+include(Catch)
+catch_discover_tests(0_unittests)
 
