@@ -34,7 +34,6 @@ string(APPEND CMAKE_CXX_FLAGS_RELEASE " -O4 -march=native")
 set (MY_ANACONDA_PATH "/home/madam/bin/anaconda3")
 
 list(APPEND CMAKE_PREFIX_PATH "${MY_ANACONDA_PATH}/lib/python3.7/site-packages/torch/")
-list(APPEND CMAKE_PREFIX_PATH "/home/madam/lib/catch2/")
 
 find_package(OpenMP REQUIRED)
 find_package(Torch REQUIRED)

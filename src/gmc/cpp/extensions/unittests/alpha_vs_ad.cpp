@@ -1,11 +1,7 @@
-#include <iostream>
-#include <string>
-
 #include <catch2/catch.hpp>
 #include <cuda_runtime.h>
 #include <torch/torch.h>
 #include <torch/script.h>
-
 
 #include "bvh_mhem_fit_alpha/implementation.h"
 #include "bvh_mhem_fit_alpha/implementation_autodiff_backward.h"
@@ -17,10 +13,6 @@
 #include "support.h"
 
 constexpr uint N_FITTING_COMPONENTS = 2;
-
-
-
-
 
 
 TEST_CASE( "testing alpha against autodiff", "[bvh_mhem_fit]" ) {

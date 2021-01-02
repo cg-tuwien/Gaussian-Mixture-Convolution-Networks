@@ -1,6 +1,3 @@
-#ifndef NDEBUG
-#include <iostream>
-
 #include "util/algorithms.h"
 #include "util/autodiff.h"
 #include "util/mixture.h"
@@ -144,6 +141,3 @@ TEST_CASE("grad mixture") {
         UnitTests::test_matrix_inverse<3>();
     }
 }
-
-
-#endif // not NDEBUG

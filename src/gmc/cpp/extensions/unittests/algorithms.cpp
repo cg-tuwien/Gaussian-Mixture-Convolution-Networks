@@ -1,5 +1,3 @@
-#ifndef NDEBUG
-
 #include <catch2/catch.hpp>
 
 #include "util/containers.h"
@@ -400,6 +398,3 @@ TEST_CASE("algorithms") {
         t.testReduceCols();
     }
 }
-
-
-#endif // not NDEBUG
