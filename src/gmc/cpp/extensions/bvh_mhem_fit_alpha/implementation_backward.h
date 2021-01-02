@@ -242,6 +242,7 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_TARGET> grad_em(const gpe::Vector
     gpe::grad::transform(target_covariances, grad_target_gaussian_amplitudes, gpe::grad::gaussian_amplitude<scalar_t, N_DIMS>).addTo(&grad_target_covariances);
     assert(!has_nan(grad_target_covariances));
 
+    // information: this line potentially causes numerical problems: weighted_likelihood_sum can be very small (epsilon from the clamp), and grad_weighted_likelihood_clamped_matrix += grad_responsibilities_1 / eps
     // const auto responsibilities_1 = gpe::cwise_fun(weighted_likelihood_clamped_matrix, weighted_likelihood_sum, fun::divided_AbyB<scalar_t>);
     gpe::grad::cwise_fun(weighted_likelihood_clamped_matrix, weighted_likelihood_sum, grad_responsibilities_1, gradfun::divided_AbyB<scalar_t>)
                         .addTo(&grad_weighted_likelihood_clamped_matrix, &grad_weighted_likelihood_sum);

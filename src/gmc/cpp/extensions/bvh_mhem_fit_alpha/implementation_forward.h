@@ -321,15 +321,15 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_em(const gpe::Vector
                            fittingCovariances[i]});
 #ifdef GPE_AUTODIFF
         if (test_propagate_grad) {
-//            autodiff::Variable<gradless_scalar_t>(fitting_weights[i]).expr->propagate(grad_weights[i]);
+            autodiff::Variable<gradless_scalar_t>(fitting_weights[i]).expr->propagate(1);
 
-            autodiff::Variable<gradless_scalar_t>(fittingPositions[i][0]).expr->propagate(grad_weights[i]);
-            autodiff::Variable<gradless_scalar_t>(fittingPositions[i][1]).expr->propagate(grad_weights[i]);
+            autodiff::Variable<gradless_scalar_t>(fittingPositions[i][0]).expr->propagate(1);
+            autodiff::Variable<gradless_scalar_t>(fittingPositions[i][1]).expr->propagate(1);
 
-//            autodiff::Variable<gradless_scalar_t>(fittingCovariances[i][0][0]).expr->propagate(grad_weights[i]);
-//            autodiff::Variable<gradless_scalar_t>(fittingCovariances[i][0][1]).expr->propagate(grad_weights[i]);
-//            autodiff::Variable<gradless_scalar_t>(fittingCovariances[i][1][0]).expr->propagate(grad_weights[i]);
-//            autodiff::Variable<gradless_scalar_t>(fittingCovariances[i][1][1]).expr->propagate(grad_weights[i]);
+            autodiff::Variable<gradless_scalar_t>(fittingCovariances[i][0][0]).expr->propagate(1);
+            autodiff::Variable<gradless_scalar_t>(fittingCovariances[i][0][1]).expr->propagate(1);
+            autodiff::Variable<gradless_scalar_t>(fittingCovariances[i][1][0]).expr->propagate(1);
+            autodiff::Variable<gradless_scalar_t>(fittingCovariances[i][1][1]).expr->propagate(1);
         }
 #endif
     }
