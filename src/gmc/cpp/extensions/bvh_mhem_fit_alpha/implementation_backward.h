@@ -15,6 +15,7 @@
 #include "util/glm.h"
 #include "util/scalar.h"
 #include "parallel_start.h"
+#define GPE_SINGLE_THREADED_MODE
 #include "ParallelStack.h"
 #include "util/algorithms.h"
 #include "util/containers.h"
@@ -559,14 +560,13 @@ at::Tensor backward_impl_t(at::Tensor grad, const ForwardOutput& forward_out, co
         dim3 dimGrid = dim3((uint(n_mixtures) + dimBlock.x - 1) / dimBlock.x, 1, 1);
 
         auto fun = [mixture_a, grad_a, nodes_a, aabbs_a, flags_a, node_attributes_a, n, n_mixtures, n_internal_nodes, n_nodes, config]
-                __host__ __device__
                 (const dim3& gpe_gridDim, const dim3& gpe_blockDim, const dim3& gpe_blockIdx, const dim3& gpe_threadIdx) {
             distribute_grad<scalar_t, N_DIMS, REDUCTION_N>(gpe_gridDim, gpe_blockDim, gpe_blockIdx, gpe_threadIdx,
                                                           mixture_a, grad_a, nodes_a, aabbs_a, flags_a, node_attributes_a,
                                                           n, n_mixtures, n_internal_nodes, n_nodes,
                                                           config);
         };
-        gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(mixture_view), dimGrid, dimBlock, fun);
+        gpe::start_serial(gpe::device(mixture_view), dimGrid, dimBlock, fun);
     }
 
     auto target_gradient = torch::zeros_like(mixture_view);
@@ -577,7 +577,7 @@ at::Tensor backward_impl_t(at::Tensor grad, const ForwardOutput& forward_out, co
                             (uint(n_mixtures) + dimBlock.y - 1) / dimBlock.y,
                             (uint(1) + dimBlock.z - 1) / dimBlock.z);
 
-        auto fun = [target_gradient_a, mixture_a, nodes_a, aabbs_a, flags_a, node_attributes_a, n, n_mixtures, n_internal_nodes, n_nodes, config] __host__ __device__
+        auto fun = [target_gradient_a, mixture_a, nodes_a, aabbs_a, flags_a, node_attributes_a, n, n_mixtures, n_internal_nodes, n_nodes, config]
                 (const dim3& gpe_gridDim, const dim3& gpe_blockDim, const dim3& gpe_blockIdx, const dim3& gpe_threadIdx) {
             trickle_down_grad<scalar_t, N_DIMS, REDUCTION_N>(gpe_gridDim, gpe_blockDim, gpe_blockIdx, gpe_threadIdx,
                                                              target_gradient_a,
@@ -585,7 +585,7 @@ at::Tensor backward_impl_t(at::Tensor grad, const ForwardOutput& forward_out, co
                                                              n, n_mixtures, n_internal_nodes, n_nodes,
                                                              config);
         };
-        gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(mixture_view), dimGrid, dimBlock, fun);
+        gpe::start_serial(gpe::device(mixture_view), dimGrid, dimBlock, fun);
     }
 
 

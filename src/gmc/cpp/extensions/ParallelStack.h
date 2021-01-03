@@ -4,8 +4,6 @@
 #include "cuda_operations.h"
 #include "util/scalar.h"
 
-//#define GPE_SINGLE_THREADED_MODE
-
 namespace gpe {
 
 template <typename T, size_t SIZE, unsigned SYNC_ID>

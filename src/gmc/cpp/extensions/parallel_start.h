@@ -110,6 +110,26 @@ inline void gpe_start_cpu_parallel(const dim3& gridDim, const dim3& blockDim, Fu
     }
 }
 
+template <typename Fun>
+inline void gpe_start_cpu_serial(const dim3& gridDim, const dim3& blockDim, Fun function) {
+    const auto n = blockDim.x * blockDim.y * blockDim.z;
+
+    gpe::detail::CpuSynchronisationPoint::setThreadCount(1);
+
+    for (unsigned i = 0; i < n; ++i) {
+        dim3 threadIdx = to3dIdx(blockDim, i);
+        for (unsigned blockIdxZ = 0; blockIdxZ < gridDim.z; ++blockIdxZ) {
+            for (unsigned blockIdxY = 0; blockIdxY < gridDim.y; ++blockIdxY) {
+                for (unsigned blockIdxX = 0; blockIdxX < gridDim.x; ++blockIdxX) {
+                    const auto blockIdx = dim3{blockIdxX, blockIdxY, blockIdxZ};
+                    function(gridDim, blockDim, blockIdx, threadIdx);
+                }
+            }
+        }
+    }
+}
+
+
 #ifdef __CUDACC__
 template <typename Fun>
 __global__ void gpe_generic_cuda_kernel(Fun function) {
@@ -177,6 +197,16 @@ void start_parallel(ComputeDevice device, const dim3& gridDim, const dim3& block
     }
 }
 
+template <typename Fun>
+void start_serial(ComputeDevice device, const dim3& gridDim, const dim3& blockDim, const Fun& function) {
+    if (device == ComputeDevice::CPU) {
+        detail::gpe_start_cpu_serial(gridDim, blockDim, function);
+    }
+    else {
+        std::cerr << "gpe::start_serial with device GPU not allowed!" << std::endl;
+        exit(1);
+    }
+}
 
 
 

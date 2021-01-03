@@ -70,14 +70,14 @@ ForwardBackWardOutput implementation_autodiff_backward(torch::Tensor mixture, co
                             (uint(n_mixtures) + dimBlock.y - 1) / dimBlock.y,
                             (uint(1) + dimBlock.z - 1) / dimBlock.z);
 
-        auto fun = [mixture_a, nodes_a, aabbs_a, flags_a, node_attributes_a, n, n_mixtures, n_internal_nodes, n_nodes, config] __host__ __device__
+        auto fun = [mixture_a, nodes_a, aabbs_a, flags_a, node_attributes_a, n, n_mixtures, n_internal_nodes, n_nodes, config]
                 (const dim3& gpe_gridDim, const dim3& gpe_blockDim, const dim3& gpe_blockIdx, const dim3& gpe_threadIdx) {
             iterate_over_nodes<AutoDiffScalar, N_DIMS, REDUCTION_N>(gpe_gridDim, gpe_blockDim, gpe_blockIdx, gpe_threadIdx,
                                                               mixture_a, nodes_a, aabbs_a, flags_a, node_attributes_a,
                                                               n, n_mixtures, n_internal_nodes, n_nodes,
                                                               config);
         };
-        gpe::start_parallel<gpe::ComputeDevice::CPU>(gpe::device(mixture), dimGrid, dimBlock, fun);
+        gpe::start_serial(gpe::device(mixture), dimGrid, dimBlock, fun);
     }
 
 //    auto out_mixture = torch::zeros({n_mixtures, config.n_components_fitting, mixture.size(-1)}, torch::TensorOptions(mixture.device()).dtype(mixture.dtype()));
@@ -91,14 +91,13 @@ ForwardBackWardOutput implementation_autodiff_backward(torch::Tensor mixture, co
         dim3 dimGrid = dim3((uint(n_mixtures) + dimBlock.x - 1) / dimBlock.x, 1, 1);
 
         auto fun = [mixture_a, out_mixture_a, nodes_a, aabbs_a, flags_a, node_attributes_a, n, n_mixtures, n_internal_nodes, n_nodes, config]
-                __host__ __device__
                 (const dim3& gpe_gridDim, const dim3& gpe_blockDim, const dim3& gpe_blockIdx, const dim3& gpe_threadIdx) {
             collect_result<AutoDiffScalar, N_DIMS, REDUCTION_N>(gpe_gridDim, gpe_blockDim, gpe_blockIdx, gpe_threadIdx,
                                                           mixture_a, out_mixture_a, nodes_a, aabbs_a, flags_a, node_attributes_a,
                                                           n, n_mixtures, n_internal_nodes, n_nodes,
                                                           config);
         };
-        gpe::start_parallel<gpe::ComputeDevice::CPU>(gpe::device(mixture), dimGrid, dimBlock, fun);
+        gpe::start_serial(gpe::device(mixture), dimGrid, dimBlock, fun);
     }
 
     // set gradients to 0

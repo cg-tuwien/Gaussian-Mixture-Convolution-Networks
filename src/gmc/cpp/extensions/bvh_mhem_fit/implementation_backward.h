@@ -14,6 +14,7 @@
 #include "lbvh/bvh.h"
 #include "util/glm.h"
 #include "util/scalar.h"
+#define GPE_SINGLE_THREADED_MODE
 #include "parallel_start.h"
 #include "ParallelStack.h"
 #include "util/algorithms.h"
@@ -589,7 +590,7 @@ at::Tensor backward_impl_t(at::Tensor grad, const ForwardOutput& forward_out, co
                                                           n, n_mixtures, n_internal_nodes, n_nodes,
                                                           config);
         };
-        gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(mixture_view), dimGrid, dimBlock, fun);
+        gpe::start_serial(gpe::device(mixture_view), dimGrid, dimBlock, fun);
     }
 
     auto target_gradient = torch::zeros_like(mixture_view);
@@ -608,7 +609,7 @@ at::Tensor backward_impl_t(at::Tensor grad, const ForwardOutput& forward_out, co
                                                              n, n_mixtures, n_internal_nodes, n_nodes,
                                                              config);
         };
-        gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(mixture_view), dimGrid, dimBlock, fun);
+        gpe::start_serial(gpe::device(mixture_view), dimGrid, dimBlock, fun);
     }
 
 
