@@ -256,9 +256,6 @@ target_link_libraries(0_test_evaluate_inversed PUBLIC OpenMP::OpenMP_CXX torch Q
 add_executable(0_test_bvh_fit bvh_mhem_fit/test_bvh_fit.cpp)
 target_link_libraries(0_test_bvh_fit PUBLIC OpenMP::OpenMP_CXX torch Qt5::Widgets bvh_mhem_fit integrate evaluate_inversed math lbvh common)
 
-add_executable(0_test_bvh_fit_alpha bvh_mhem_fit_alpha/test_bvh_fit.cpp)
-target_link_libraries(0_test_bvh_fit_alpha PUBLIC OpenMP::OpenMP_CXX torch Qt5::Widgets bvh_mhem_fit_alpha integrate evaluate_inversed math lbvh common)
-
 
 #unit tests:
 #add_executable(0_unittests bvh_mhem_fit_alpha/unit_test_support.h bvh_mhem_fit_alpha/unittest_mixture_grad.cpp bvh_mhem_fit_alpha/unittest_algorithms_grad.cpp bvh_mhem_fit_alpha/unittest_all.cpp)
@@ -279,4 +276,13 @@ target_link_libraries(0_unittests PUBLIC Catch2::Catch2 OpenMP::OpenMP_CXX torch
 include(CTest)
 include(Catch)
 catch_discover_tests(0_unittests)
+
+set(BENCHMARK_HEADERS
+)
+set(BENCHMARK_SOURCES
+    benchmarks/main.cpp
+    benchmarks/bvh_mhem_fit.cpp
+)
+add_executable(0_benchmarks ${BENCHMARK_SOURCES} ${BENCHMARK_HEADERS})
+target_link_libraries(0_benchmarks PUBLIC Catch2::Catch2 OpenMP::OpenMP_CXX torch Qt5::Widgets bvh_mhem_fit integrate evaluate_inversed math lbvh common)
 

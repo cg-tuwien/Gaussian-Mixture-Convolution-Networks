@@ -14,6 +14,10 @@ struct ForwardOutput {
     torch::Tensor bvh_nodes;
     torch::Tensor bvh_aabbs;
     torch::Tensor bvh_attributes;
+
+    ForwardOutput clone() {
+        return {fitting.clone(), target.clone(), bvh_mixture.clone(), bvh_nodes.clone(), bvh_aabbs.clone(), bvh_attributes.clone()};
+    }
 };
 
 ForwardOutput forward_impl(at::Tensor mixture, const Config& config);

@@ -460,6 +460,21 @@ EXECUTION_DEVICES void distribute_grad(const dim3& gpe_gridDim, const dim3& gpe_
 
     gpe::Vector<scalar_t, N_MAX_TARGET_COMPS> selectedNodesRating;
     gpe::Vector<node_index_t, N_MAX_TARGET_COMPS> selectedNodes;
+//    #ifndef __CUDA_ARCH__
+//        std::vector<typename AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>::NodeAttributes> node_attributes_debug;
+//        std::vector<Node> nodes_debug;
+//        std::vector<G> mixture_debug;
+
+//        auto updateDebug = [&]() {
+//            node_attributes_debug.clear();
+//            nodes_debug.clear();
+//            mixture_debug.clear();
+//            std::copy(bvh.per_node_attributes, bvh.per_node_attributes + n_nodes, std::back_inserter(node_attributes_debug));
+//            std::copy(bvh.nodes, bvh.nodes + n_nodes, std::back_inserter(nodes_debug));
+//            std::copy(bvh.gaussians, bvh.gaussians + n.components, std::back_inserter(mixture_debug));
+//        };
+//        updateDebug();
+//    #endif
 
     unsigned n_selected_components = 0;
     auto compute_rating = [&](node_index_t node_id) {
@@ -487,6 +502,7 @@ EXECUTION_DEVICES void distribute_grad(const dim3& gpe_gridDim, const dim3& gpe_
     n_selected_components = bvh.per_node_attributes[0].gaussians.size();
 
     while (n_selected_components < config.n_components_fitting - REDUCTION_N)  {
+//        updateDebug();
         auto best_node_cache_id = cach_id_with_highest_rating();
         if (best_node_cache_id >= selectedNodes.size())
             break;  // ran out of nodes
@@ -496,22 +512,28 @@ EXECUTION_DEVICES void distribute_grad(const dim3& gpe_gridDim, const dim3& gpe_
         assert(best_node_id < n_internal_nodes); // we should have only internal nodes at this point as cach_id_with_highest_rating() returns 0xffff.. if the node is not full.
 
         selectedNodes[best_node_cache_id] = best_descend_node.left_idx;
+//        updateDebug();
         selectedNodesRating[best_node_cache_id] = compute_rating(best_descend_node.left_idx);
+//        updateDebug();
 
         selectedNodes.push_back(best_descend_node.right_idx);
+//        updateDebug();
         selectedNodesRating.push_back(compute_rating(best_descend_node.right_idx));
+//        updateDebug();
         n_selected_components = n_selected_components - REDUCTION_N + bvh.per_node_attributes[best_descend_node.left_idx].gaussians.size() + bvh.per_node_attributes[best_descend_node.right_idx].gaussians.size();
     }
 
     // copy grad to their starting posiion in the tree.
     unsigned read_position = 0;
     for (unsigned i = 0; i < selectedNodes.size(); ++i) {
+//        updateDebug();
         auto node_id = selectedNodes[i];
         typename Bvh::NodeAttributes& destination_attribute = bvh.per_node_attributes[node_id];
 
         for (unsigned j = 0; j < destination_attribute.gaussians.size(); ++j) {
             assert(read_position < config.n_components_fitting);
             destination_attribute.grad.push_back(gpe::gaussian<N_DIMS>(grad_fitting[mixture_id][int(read_position++)]));
+//            updateDebug();
         }
     }
 }
