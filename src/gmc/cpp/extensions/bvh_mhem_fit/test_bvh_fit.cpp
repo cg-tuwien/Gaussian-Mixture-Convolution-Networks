@@ -13,7 +13,6 @@
 
 #include "common.h"
 #include "bvh_mhem_fit/implementation.h"
-#include "bvh_mhem_fit/implementation_autodiff_backward.h"
 #include "evaluate_inversed/parallel_binding.h"
 #include "integrate/binding.h"
 #include "util/mixture.h"
@@ -159,15 +158,7 @@ int main(int argc, char *argv[]) {
             for (uint i = 0; i < CONVOLUTION_LAYER_END - CONVOLUTION_LAYER_START; i++) {
                 assert(i + CONVOLUTION_LAYER_START < 3);
                 auto mixture = container.attr(std::to_string(i + CONVOLUTION_LAYER_START)).toTensor();
-//                mixture = mixture.index({Slice(0,1), Slice(0,1), Slice(0,8), Slice()});
-//                auto mixture = torch::tensor({{0.5f,  5.0f,  5.0f,  4.0f, -0.5f, -0.5f,  4.0f},
-//                                              {0.5f,  8.0f,  8.0f,  4.0f, -2.5f, -2.5f,  4.0f},
-//                                              {0.5f, 20.0f, 10.0f,  5.0f,  0.0f,  0.0f,  7.0f},
-//                                              {0.5f, 20.0f, 20.0f,  5.0f,  0.5f,  0.5f,  7.0f}}).view({1, 1, 4, 7});
-//                auto mixture = torch::tensor({{1.0f,  5.0f,  5.0f,  4.0f, -2.5f, -2.5f,  4.0f},
-//                                              {0.5f,  5.0f,  5.0f,  4.0f, -2.5f, -2.5f,  4.0f},
-//                                              {0.5f, 20.0f, 20.0f,  5.0f,  0.5f,  0.5f,  7.0f},
-//                                              {1.5f, 20.0f, 20.0f,  5.0f,  0.5f,  0.5f,  7.0f}}).view({1, 1, 4, 7});
+
                 mixture = gpe::pack_mixture(torch::abs(gpe::weights(mixture)), gpe::positions(mixture), gpe::covariances(mixture));
                 if (USE_CUDA)
                     mixture = mixture.cuda();

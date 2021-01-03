@@ -148,14 +148,12 @@ set(BVH_MHEM_FIT_HEADERS
     bvh_mhem_fit/implementation.h
     bvh_mhem_fit/implementation_common.h
     bvh_mhem_fit/implementation_template_externs.h
-    bvh_mhem_fit/implementation_autodiff_backward.h
     bvh_mhem_fit/implementation_backward.h
     bvh_mhem_fit/implementation_forward.h
 )
 set(BVH_MHEM_FIT_SOURCES
     bvh_mhem_fit/bindings.cpp
     bvh_mhem_fit/implementation_dispatch.cpp
-    bvh_mhem_fit/implementation_autodiff_backward.cpp
     bvh_mhem_fit/implementation_forward_instances/template_instance_implementation_forward_2_float_2.cpp
     bvh_mhem_fit/implementation_forward_instances/template_instance_implementation_forward_2_float_3.cpp
     bvh_mhem_fit/implementation_forward_instances/template_instance_implementation_forward_2_double_2.cpp

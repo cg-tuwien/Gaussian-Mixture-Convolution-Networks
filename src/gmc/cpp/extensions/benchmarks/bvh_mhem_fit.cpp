@@ -11,7 +11,6 @@
 
 #include "common.h"
 #include "bvh_mhem_fit/implementation.h"
-#include "bvh_mhem_fit/implementation_autodiff_backward.h"
 #include "evaluate_inversed/parallel_binding.h"
 #include "integrate/binding.h"
 #include "util/mixture.h"
