@@ -169,6 +169,40 @@ TEST_CASE( "testing working against alpha reference", "[bvh_mhem_fit]" ) {
             }
         }
 
-        runTest<4, double, 32>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d32GsGrads()}, {mixtures}), 0.0000000000000000001);
+        runTest<4, double, 32>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d32GsGradsWellBehaving(), _collectionOf2d32GsGradsExploding()}, {mixtures}), 0.0000000000000000001);
+    }
+
+    SECTION("32 component fitting double of real world with well behaved gradients") {
+        using namespace torch::indexing;
+        std::vector<torch::Tensor> mixtures;
+        for (int i = 0; i < 1/*10*/; ++i) {
+            torch::jit::script::Module container = torch::jit::load("/home/madam/Documents/work/tuw/gmc_net/data/fitting_input/fitting_input_batch" + std::to_string(i) + ".pt");
+
+            for (uint i = 0; i < 3; i++) {
+                auto mixture = container.attr(std::to_string(i)).toTensor();
+                mixture = mixture.index({Slice(0,2), Slice(0,2), Slice(), Slice()});
+                mixture = gpe::pack_mixture(torch::abs(gpe::weights(mixture)), gpe::positions(mixture), gpe::covariances(mixture));
+                mixtures.push_back(mixture);
+            }
+        }
+
+        runTest<4, float, 32>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d32GsGradsWellBehaving()}, {mixtures}), 0.000005);
+    }
+
+    SECTION("32 component fitting double of real world with exploding gradients") {
+        using namespace torch::indexing;
+        std::vector<torch::Tensor> mixtures;
+        for (int i = 0; i < 1/*10*/; ++i) {
+            torch::jit::script::Module container = torch::jit::load("/home/madam/Documents/work/tuw/gmc_net/data/fitting_input/fitting_input_batch" + std::to_string(i) + ".pt");
+
+            for (uint i = 0; i < 3; i++) {
+                auto mixture = container.attr(std::to_string(i)).toTensor();
+                mixture = mixture.index({Slice(0,2), Slice(0,2), Slice(), Slice()});
+                mixture = gpe::pack_mixture(torch::abs(gpe::weights(mixture)), gpe::positions(mixture), gpe::covariances(mixture));
+                mixtures.push_back(mixture);
+            }
+        }
+
+        runTest<4, float, 32>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d32GsGradsExploding()}, {mixtures}), 0.002);
     }
 }

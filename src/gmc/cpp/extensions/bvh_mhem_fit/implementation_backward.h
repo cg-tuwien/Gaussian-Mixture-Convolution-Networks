@@ -29,6 +29,8 @@
 
 // todo:
 // - in collect_result, run a new fitting with the most important node to fill up the remaining gaussian slots
+// - grad of position can explode into the amplitude (e.g. grad on position == 1 => grad on amplitude == 100)
+// - grad on covariance can explode into grad on position (10x only, compared to above)
 
 namespace bvh_mhem_fit {
 
