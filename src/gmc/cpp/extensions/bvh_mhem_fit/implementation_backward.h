@@ -14,7 +14,6 @@
 #include "lbvh/bvh.h"
 #include "util/glm.h"
 #include "util/scalar.h"
-#define GPE_SINGLE_THREADED_MODE
 #include "parallel_start.h"
 #include "ParallelStack.h"
 #include "util/algorithms.h"
@@ -375,7 +374,9 @@ void trickle_down_grad(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
 //        updateDebug();
 //    #endif
 
-    gpe::ParallelStack<node_index_t, 32 * 32, 0> stack;
+    GPE_SHARED gpe::Array<node_index_t, 32 * 32> stack_data;
+    gpe::ParallelStack<node_index_t, 32 * 32, 0> stack{stack_data};
+//    stack.stack = stack_data;
     {
         gpe::Vector<node_index_t, 32> top_stack;
         top_stack.push_back(0);
@@ -386,49 +387,47 @@ void trickle_down_grad(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
             if (bvh.per_node_attributes[node_id].grad.size() == 0) {
                 top_stack.push_back(bvh.nodes[node_id].left_idx);
                 top_stack.push_back(bvh.nodes[node_id].right_idx);
+                continue;
             }
-            else {
-                stack.push(node_id, gpe_threadIdx.x == 0, gpe_threadIdx.x);
-            }
+            stack.push(node_id, gpe_threadIdx.x == 0, gpe_threadIdx.x);
         }
     }
-
-//    #continue here:
-//    #top down traversal using stack. stop at leaves, then write into target_grad. skip the first few nodes until we see a populated grad field. then backprop through em code.
 
     // go top down through all nodes with grad
     while(stack.contains_elements(gpe_threadIdx.x))
     {
         node_index_t current_index = node_index_t(-1);
-        if (!stack.pop(&current_index, gpe_threadIdx.x))
-            continue;
-
-        const Node* node = &bvh.nodes[current_index];
-        if (current_index >= n_internal_nodes) {
-            // leaf node
-            if (bvh.per_node_attributes[current_index].grad.size() == 1) {  // grad is empty, if the original gaussian was zero. this check can be removed if the node attributes are initialised with zeroes.
-                reinterpret_cast<G&>(target_grad[mixture_id][current_index - n_internal_nodes][0]) = bvh.per_node_attributes[current_index].grad[0];
+        bool active = stack.pop(&current_index, gpe_threadIdx.x);
+        if (active) {
+            const Node* node = &bvh.nodes[current_index];
+            if (current_index >= n_internal_nodes) {
+                // leaf node
+                if (bvh.per_node_attributes[current_index].grad.size() == 1) {
+                    // grad is empty, if the original gaussian was zero. this check can be removed if the node attributes are initialised with zeroes.
+                    reinterpret_cast<G&>(target_grad[mixture_id][current_index - n_internal_nodes][0]) = bvh.per_node_attributes[current_index].grad[0];
+                }
+                active = false; // continue;
             }
-            continue;
+            else {
+//                updateDebug();
+                auto child_gaussians = bvh.collect_child_gaussians(node, gpe::Epsilon<scalar_t>::large);
+                if (child_gaussians.size() > REDUCTION_N) {
+                    auto child_grads = grad_em<REDUCTION_N>(child_gaussians,
+                    bvh.per_node_attributes[current_index].gaussians,
+                    bvh.per_node_attributes[current_index].grad,
+                    bvh.per_node_attributes[current_index].gradient_cache_data,
+                    config);
+                    bvh.distribute_gradient_on_children(node, child_grads, gpe::Epsilon<scalar_t>::large);
+                }
+                else {
+                    bvh.distribute_gradient_on_children(node, bvh.per_node_attributes[current_index].grad, gpe::Epsilon<scalar_t>::large);
+                }
+            }
+//            updateDebug();
         }
 
-//        updateDebug();
-        auto child_gaussians = bvh.collect_child_gaussians(node, gpe::Epsilon<scalar_t>::large);
-        if (child_gaussians.size() > REDUCTION_N) {
-            auto child_grads = grad_em<REDUCTION_N>(child_gaussians,
-                                                    bvh.per_node_attributes[current_index].gaussians,
-                                                    bvh.per_node_attributes[current_index].grad,
-                                                    bvh.per_node_attributes[current_index].gradient_cache_data,
-                                                    config);
-            bvh.distribute_gradient_on_children(node, child_grads, gpe::Epsilon<scalar_t>::large);
-        }
-        else {
-            bvh.distribute_gradient_on_children(node, bvh.per_node_attributes[current_index].grad, gpe::Epsilon<scalar_t>::large);
-        }
-//        updateDebug();
-
-        stack.push(bvh.nodes[current_index].left_idx, true, gpe_threadIdx.x);
-        stack.push(bvh.nodes[current_index].right_idx, true, gpe_threadIdx.x);
+        stack.push(bvh.nodes[current_index].left_idx, active, gpe_threadIdx.x);
+        stack.push(bvh.nodes[current_index].right_idx, active, gpe_threadIdx.x);
     }
 }
 
@@ -581,7 +580,7 @@ at::Tensor backward_impl_t(at::Tensor grad, const ForwardOutput& forward_out, co
 
     {
         // distribute the fitting gradient using the same algorithm amoung the nodes.
-        dim3 dimBlock = dim3(32, 1, 1);
+        dim3 dimBlock = dim3(1, 1, 1);
         dim3 dimGrid = dim3((uint(n_mixtures) + dimBlock.x - 1) / dimBlock.x, 1, 1);
 
         auto fun = [mixture_a, grad_a, nodes_a, aabbs_a, flags_a, node_attributes_a, n, n_mixtures, n_internal_nodes, n_nodes, config]
@@ -611,7 +610,7 @@ at::Tensor backward_impl_t(at::Tensor grad, const ForwardOutput& forward_out, co
                                                              n, n_mixtures, n_internal_nodes, n_nodes,
                                                              config);
         };
-        gpe::start_serial(gpe::device(mixture_view), dimGrid, dimBlock, fun);
+        gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(mixture_view), dimGrid, dimBlock, fun);
     }
 
 

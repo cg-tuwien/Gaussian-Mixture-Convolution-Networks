@@ -83,6 +83,15 @@ __host__ __device__ __forceinline__ void syncthreads(unsigned sync_id) {
 #endif
 }
 
+/// sync_id is used only on cpu side, required to deal with spurious wakeups. every syncthreads needs a unique sync_id.
+__host__ __device__ __forceinline__ void syncwarp(unsigned sync_id) {
+#ifdef __CUDA_ARCH__
+    __syncwarp();
+#else
+    gpe::detail::CpuSynchronisationPoint::synchronise(sync_id);
+#endif
+}
+
 template<typename Assignable1, typename Assignable2>
 __host__ __device__
 inline void swap(Assignable1 &a, Assignable2 &b)

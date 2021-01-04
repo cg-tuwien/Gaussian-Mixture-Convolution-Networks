@@ -15,8 +15,6 @@
 #include "util/glm.h"
 #include "util/scalar.h"
 #include "parallel_start.h"
-#define GPE_SINGLE_THREADED_MODE
-#include "ParallelStack.h"
 #include "util/algorithms.h"
 #include "util/containers.h"
 #include "util/cuda.h"
@@ -374,7 +372,7 @@ void trickle_down_grad(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
         updateDebug();
     #endif
 
-    gpe::ParallelStack<node_index_t, 32 * 32, 0> stack;
+    gpe::Vector<node_index_t, 32 * 32> stack;
     {
         gpe::Vector<node_index_t, 32> top_stack;
         top_stack.push_back(0);
@@ -387,20 +385,15 @@ void trickle_down_grad(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
                 top_stack.push_back(bvh.nodes[node_id].right_idx);
             }
             else {
-                stack.push(node_id, gpe_threadIdx.x == 0, gpe_threadIdx.x);
+                stack.push_back(node_id);
             }
         }
     }
 
-//    #continue here:
-//    #top down traversal using stack. stop at leaves, then write into target_grad. skip the first few nodes until we see a populated grad field. then backprop through em code.
-
     // go top down through all nodes with grad
-    while(stack.contains_elements(gpe_threadIdx.x))
+    while(stack.size())
     {
-        node_index_t current_index = node_index_t(-1);
-        if (!stack.pop(&current_index, gpe_threadIdx.x))
-            continue;
+        node_index_t current_index = stack.pop_back();
 
         const Node* node = &bvh.nodes[current_index];
         if (current_index >= n_internal_nodes) {
@@ -419,13 +412,15 @@ void trickle_down_grad(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
                                                     bvh.per_node_attributes[current_index].gradient_cache_data,
                                                     config);
             bvh.distribute_gradient_on_children(node, child_grads, gpe::Epsilon<scalar_t>::large);
+            updateDebug();
         }
         else {
             bvh.distribute_gradient_on_children(node, bvh.per_node_attributes[current_index].grad, gpe::Epsilon<scalar_t>::large);
+            updateDebug();
         }
 
-        stack.push(bvh.nodes[current_index].left_idx, true, gpe_threadIdx.x);
-        stack.push(bvh.nodes[current_index].right_idx, true, gpe_threadIdx.x);
+        stack.push_back(bvh.nodes[current_index].left_idx);
+        stack.push_back(bvh.nodes[current_index].right_idx);
     }
 }
 
@@ -556,7 +551,7 @@ at::Tensor backward_impl_t(at::Tensor grad, const ForwardOutput& forward_out, co
 
     {
         // distribute the fitting gradient using the same algorithm amoung the nodes.
-        dim3 dimBlock = dim3(32, 1, 1);
+        dim3 dimBlock = dim3(1, 1, 1);
         dim3 dimGrid = dim3((uint(n_mixtures) + dimBlock.x - 1) / dimBlock.x, 1, 1);
 
         auto fun = [mixture_a, grad_a, nodes_a, aabbs_a, flags_a, node_attributes_a, n, n_mixtures, n_internal_nodes, n_nodes, config]
@@ -572,7 +567,7 @@ at::Tensor backward_impl_t(at::Tensor grad, const ForwardOutput& forward_out, co
     auto target_gradient = torch::zeros_like(mixture_view);
     auto target_gradient_a = gpe::accessor<scalar_t, 3>(target_gradient);
     {
-        dim3 dimBlock = dim3(32, 1, 1);
+        dim3 dimBlock = dim3(1, 1, 1);
         dim3 dimGrid = dim3(uint(1),
                             (uint(n_mixtures) + dimBlock.y - 1) / dimBlock.y,
                             (uint(1) + dimBlock.z - 1) / dimBlock.z);

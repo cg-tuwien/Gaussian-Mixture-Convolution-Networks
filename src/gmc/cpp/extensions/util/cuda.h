@@ -9,6 +9,12 @@
 #define EXECUTION_DEVICES
 #endif
 
+#ifdef __CUDA_ARCH__
+#define GPE_SHARED __shared__
+#else
+#define GPE_SHARED static
+#endif
+
 namespace gpe {
 template< class T > struct remove_cv                   { using type = T; };
 template< class T > struct remove_cv<const T>          { using type = T; };

@@ -8,54 +8,39 @@ namespace gpe {
 
 template <typename T, size_t SIZE, unsigned SYNC_ID>
 struct ParallelStack {
-    T stack[SIZE];
-    int32_t head = 0;
+    gpe::Array<T, SIZE>& stack = nullptr;
+    // head is not in shared memory. if you change that, you have to check for thread_id == 0 before writing and sync before reading.
+    uint32_t head = 0;
 
     /// must be called from every thread
-    __host__ __device__ void push(const T& element, bool is_valid, unsigned thread_id) {
-        #ifndef GPE_SINGLE_THREADED_MODE
+    __host__ __device__ void push(const T& element, bool is_valid, uint32_t thread_id) {
         auto vote = gpe::ballot_sync(0xFFFFFFFF, is_valid, thread_id, SYNC_ID + 1000 + 0);
-        #else
-        is_valid = is_valid && thread_id == 0;
-        auto vote = 1;
-        #endif
         auto write_location = gpe::popc(((1 << thread_id) - 1) & vote);
         assert(head + write_location < SIZE);
         if (is_valid)
             stack[head + write_location] = element;
-        #ifndef GPE_SINGLE_THREADED_MODE
-        gpe::syncthreads(SYNC_ID + 1000 + 1);
-        #endif
-        if (thread_id == 0)
-            head += gpe::popc(vote);
-        #ifndef GPE_SINGLE_THREADED_MODE
-        gpe::syncthreads(SYNC_ID + 1000 + 2);
-        #endif
+        gpe::syncwarp(SYNC_ID + 1000 + 1);
+        // head is not in shared memory, all threads make the update.  dunno if that is good perf wise..
+        head += gpe::popc(vote);
+//        gpe::syncwarp(SYNC_ID + 1000 + 2);
     }
 
     /// must be called from every thread
-    __host__ __device__ bool pop(T* element, int32_t thread_id) {
+    __host__ __device__ bool pop(T* element, uint32_t thread_id) {
         auto location = head - 1 - thread_id;
-        bool is_valid = location >= 0;
+        bool is_valid = location < SIZE;
         if (is_valid) {
             *element = stack[location];
         }
-        #ifndef GPE_SINGLE_THREADED_MODE
-        gpe::syncthreads(SYNC_ID + 1000 + 3);
-        if (thread_id == 0)
-            head = gpe::max(int32_t(0), head - 32);
-        gpe::syncthreads(SYNC_ID + 1000 + 4);
-        #else
-        if (thread_id == 0)
-            head--;
-        #endif
+//        gpe::syncwarp(SYNC_ID + 1000 + 3);
+//        if (thread_id == 0)
+        head = gpe::max(uint32_t(32), head) - 32;
+//        gpe::syncwarp(SYNC_ID + 1000 + 4);
         return is_valid;
     }
 
-    __host__ __device__ bool contains_elements(int32_t thread_id) {
-        #ifndef GPE_SINGLE_THREADED_MODE
-        gpe::syncthreads(SYNC_ID + 1000 + 5);
-        #endif
+    __host__ __device__ bool contains_elements(uint32_t thread_id) {
+//        gpe::syncwarp(SYNC_ID + 1000 + 5);
         return head > 0;
     }
 };
