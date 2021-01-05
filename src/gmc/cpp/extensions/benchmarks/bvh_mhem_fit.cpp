@@ -19,7 +19,7 @@ constexpr uint N_BATCHES = 1;
 constexpr uint CONVOLUTION_LAYER_START = 0;
 constexpr uint CONVOLUTION_LAYER_END = 3;
 constexpr uint LIMIT_N_BATCH = 100;
-constexpr bool USE_CUDA = false;
+constexpr bool USE_CUDA = true;
 constexpr bool BACKWARD = false;
 constexpr bool RENDER = true;
 constexpr uint RESOLUTION = 128;
@@ -35,7 +35,7 @@ TEST_CASE("bvh_mhem_fit forward and backward benchmark") {
 
     // test specific configuration:
 #ifndef GPE_LIMIT_N_REDUCTION
-    std::vector<int> reduction_n_options = {16;
+    std::vector<int> reduction_n_options = {16};
 #else
     std::vector<int> reduction_n_options = {4};
 #endif
@@ -85,14 +85,12 @@ TEST_CASE("bvh_mhem_fit forward and backward benchmark") {
             for (uint i = 0; i < CONVOLUTION_LAYER_END - CONVOLUTION_LAYER_START; i++) {
                 assert(i + CONVOLUTION_LAYER_START < 3);
                 auto mixture = container.attr(std::to_string(i + CONVOLUTION_LAYER_START)).toTensor();
-                mixture = mixture.index({Slice(0,10), Slice(), Slice(), Slice()});
+//                mixture = mixture.index({Slice(0,10), Slice(), Slice(), Slice()});
                 mixture = gpe::pack_mixture(torch::abs(gpe::weights(mixture)), gpe::positions(mixture), gpe::covariances(mixture));
                 if (USE_CUDA)
                     mixture = mixture.cuda();
 //                std::cout << "layer " << i + CONVOLUTION_LAYER_START << ": " << mixture.sizes() << " device: " << mixture.device() << std::endl;
 //                auto t0 = std::chrono::high_resolution_clock::now();
-
-                torch::Tensor gt_rendering;
 
 //                cudaDeviceSynchronize();
 

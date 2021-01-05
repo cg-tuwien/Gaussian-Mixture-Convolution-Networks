@@ -4,9 +4,9 @@
 #include <cuda_runtime.h>
 
 #ifdef __CUDACC__
-#define EXECUTION_DEVICES __host__ __device__ /*__forceinline__*/
+#define EXECUTION_DEVICES __host__ __device__ __forceinline__
 #else
-#define EXECUTION_DEVICES
+#define EXECUTION_DEVICES inline
 #endif
 
 #ifdef __CUDA_ARCH__

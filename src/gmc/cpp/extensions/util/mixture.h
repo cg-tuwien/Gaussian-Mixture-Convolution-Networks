@@ -127,7 +127,8 @@ gpe::Array<gpe::Gaussian<N_DIMS, scalar_t>, N> pack_mixture(const gpe::Array<sca
     return r;
 }
 
-inline torch::Tensor mixture_with_inversed_covariances(torch::Tensor mixture) {
+EXECUTION_DEVICES
+torch::Tensor mixture_with_inversed_covariances(torch::Tensor mixture) {
     const auto weights = torch::abs(gpe::weights(mixture));
     const auto positions = gpe::positions(mixture);
     const auto invCovs = gpe::covariances(mixture).inverse().transpose(-1, -2);

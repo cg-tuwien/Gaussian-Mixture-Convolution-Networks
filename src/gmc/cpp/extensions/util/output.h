@@ -49,11 +49,11 @@ std::ostream& operator << (std::ostream& stream, const glm::mat<N_DIMS, N_DIMS, 
 
 namespace gpe {
 
-template<typename scalar_t>
+template<typename scalar_t> EXECUTION_DEVICES
 void printGaussian(const Gaussian<2, scalar_t>& g) {
     printf("g(w=%f, p=%f/%f, c=%f/%f//%f\n", g.weight, g.position.x, g.position.y, g.covariance[0][0], g.covariance[0][1], g.covariance[1][1]);
 }
-template<typename scalar_t>
+template<typename scalar_t> EXECUTION_DEVICES
 void printGaussian(const Gaussian<3, scalar_t>& g) {
     printf("g(w=%f, p=%f/%f/%f, c=%f/%f/%f//%f/%f//%f\n",
            g.weight,

@@ -28,6 +28,7 @@ struct Gaussian {
         }
     }
 
+    EXECUTION_DEVICES
     Gaussian& operator += (const Gaussian& other) {
         weight += other.weight;
         position += other.position;

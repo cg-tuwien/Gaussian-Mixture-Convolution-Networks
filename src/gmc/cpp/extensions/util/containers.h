@@ -7,6 +7,8 @@
 
 #include <cuda_runtime.h>
 
+#include "util/cuda.h"
+
 #ifdef NDEBUG
 #define GPE_CONTAINER_INLINE __forceinline__
 #else
@@ -70,7 +72,7 @@ struct Array {
     }
 };
 
-template<typename T>
+template<typename T> EXECUTION_DEVICES
 Array<T, 1> array(const T& v) {
     return Array<T, 1>{v};
 }

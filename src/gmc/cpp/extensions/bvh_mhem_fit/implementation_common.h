@@ -33,9 +33,6 @@ template <typename scalar_t, int N_FITTING, int N_TARGET>
 struct GradientCacheData {
     using gradless_scalar_t = gpe::remove_grad_t<scalar_t>;
     gpe::Array<gaussian_index_t, N_FITTING> initial_indices;
-    gpe::Array2d<gradless_scalar_t, N_TARGET, N_FITTING> responsibilities_1;
-    gpe::Array2d<gradless_scalar_t, N_TARGET, N_FITTING> responsibilities_2;
-    gpe::Array2d<gradless_scalar_t, N_TARGET, N_FITTING> responsibilities_3;
 };
 
 template<typename scalar_t, int N_DIMS, int REDUCTION_N>

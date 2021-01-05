@@ -2,6 +2,7 @@
 #define PARALLELSTACK_H
 
 #include "cuda_operations.h"
+#include "util/cuda.h"
 #include "util/scalar.h"
 
 namespace gpe {
@@ -13,7 +14,8 @@ struct ParallelStack {
     uint32_t head = 0;
 
     /// must be called from every thread
-    __host__ __device__ void push(const T& element, bool is_valid, uint32_t thread_id) {
+    EXECUTION_DEVICES
+    void push(const T& element, bool is_valid, uint32_t thread_id) {
         auto vote = gpe::ballot_sync(0xFFFFFFFF, is_valid, thread_id, SYNC_ID + 1000 + 0);
         auto write_location = gpe::popc(((1 << thread_id) - 1) & vote);
         assert(head + write_location < SIZE);
@@ -26,7 +28,8 @@ struct ParallelStack {
     }
 
     /// must be called from every thread
-    __host__ __device__ bool pop(T* element, uint32_t thread_id) {
+    EXECUTION_DEVICES
+    bool pop(T* element, uint32_t thread_id) {
         auto location = head - 1 - thread_id;
         bool is_valid = location < SIZE;
         if (is_valid) {
@@ -39,7 +42,8 @@ struct ParallelStack {
         return is_valid;
     }
 
-    __host__ __device__ bool contains_elements(uint32_t thread_id) {
+    EXECUTION_DEVICES
+    bool contains_elements(uint32_t thread_id) {
 //        gpe::syncwarp(SYNC_ID + 1000 + 5);
         return head > 0;
     }

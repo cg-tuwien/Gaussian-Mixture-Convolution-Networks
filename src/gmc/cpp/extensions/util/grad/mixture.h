@@ -3,12 +3,13 @@
 
 #include "util/gaussian.h"
 #include "util/containers.h"
+#include "util/cuda.h"
 
 namespace gpe {
 
 namespace grad {
 
-template <typename scalar_t, int N_DIMS, unsigned N_GAUSSIANS>
+template <typename scalar_t, int N_DIMS, unsigned N_GAUSSIANS> EXECUTION_DEVICES
 void unpackAndAdd(const gpe::Array<gpe::Gaussian<N_DIMS, scalar_t>, N_GAUSSIANS>& grad,
                   gpe::Array<scalar_t, N_GAUSSIANS>* grad_weights,
                   gpe::Array<glm::vec<N_DIMS, scalar_t>, N_GAUSSIANS>* grad_positions,

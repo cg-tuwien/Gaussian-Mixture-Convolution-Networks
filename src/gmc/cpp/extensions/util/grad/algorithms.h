@@ -241,6 +241,7 @@ TwoGrads<Array<T1, N2>, Array2d<T2, N1, N2>> cwise_fun(
 }
 
 template<typename T1, uint32_t N1>
+__host__ __device__ GPE_ALGORITHMS_INLINE
 OneGrad<Array<T1, N1>> sum(const Array<T1, N1>&, T1 grad) {
     OneGrad<Array<T1, N1>> r;
     for (unsigned i = 0; i < N1; ++i) {
@@ -250,6 +251,7 @@ OneGrad<Array<T1, N1>> sum(const Array<T1, N1>&, T1 grad) {
 }
 
 template<typename T1, uint32_t N1, uint32_t N2>
+__host__ __device__ GPE_ALGORITHMS_INLINE
 OneGrad<Array2d<T1, N1, N2>> sum(const Array2d<T1, N1, N2>&, T1 grad) {
     OneGrad<Array2d<T1, N1, N2>> r;
     for (unsigned i = 0; i < N1; ++i) {
@@ -261,6 +263,7 @@ OneGrad<Array2d<T1, N1, N2>> sum(const Array2d<T1, N1, N2>&, T1 grad) {
 }
 
 template<typename T1, uint32_t N1, uint32_t N2>
+__host__ __device__ GPE_ALGORITHMS_INLINE
 OneGrad<Array2d<T1, N1, N2>> sum_rows(const Array2d<T1, N1, N2>&, const Array<T1, N1>& grad) {
     OneGrad<Array2d<T1, N1, N2>> r;
     for (unsigned i = 0; i < N1; ++i) {
@@ -272,6 +275,7 @@ OneGrad<Array2d<T1, N1, N2>> sum_rows(const Array2d<T1, N1, N2>&, const Array<T1
 }
 
 template<typename T1, uint32_t N1, uint32_t N2>
+__host__ __device__ GPE_ALGORITHMS_INLINE
 OneGrad<Array2d<T1, N1, N2>> sum_cols(const Array2d<T1, N1, N2>&, const Array<T1, N2>& grad) {
     OneGrad<Array2d<T1, N1, N2>> r;
     for (unsigned i = 0; i < N1; ++i) {

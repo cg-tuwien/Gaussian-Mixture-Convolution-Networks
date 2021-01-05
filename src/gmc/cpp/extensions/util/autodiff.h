@@ -211,15 +211,6 @@ void propagateGrad(const glm::mat<N_DIMS, N_DIMS, autodiff::Variable<scalar_t>>&
     }
 }
 
-
-#else // __CUDACC__
-
-template <typename T>
-__host__ __device__ __forceinline__
-T removeGrad(const T& v) {
-    return v;
-}
-
 #endif // __CUDACC__
 
 }

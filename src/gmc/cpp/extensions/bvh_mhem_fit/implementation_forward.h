@@ -165,9 +165,8 @@ template <unsigned N_FITTING, typename scalar_t, int N_DIMS, unsigned N_TARGET>
 EXECUTION_DEVICES
 gpe::Array<gaussian_index_t, N_FITTING> fit_initial(const gpe::Array<gpe::Gaussian<N_DIMS, scalar_t>, N_TARGET>& target, const Config& config) {
     using G = gpe::Gaussian<N_DIMS, scalar_t>;
-    using gradless_scalar_t = gpe::remove_grad_t<scalar_t>;
 
-    auto disparity_matrix = gpe::outer_product(target, target, cluster_centroid_distance<gradless_scalar_t, N_DIMS>);
+    auto disparity_matrix = gpe::outer_product(target, target, cluster_centroid_distance<scalar_t, N_DIMS>);
 
     gpe::Vector<gaussian_index_t, N_TARGET> valid_gaussians;
     for (gaussian_index_t i = 0; i < N_TARGET; ++i) {
@@ -193,13 +192,6 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_em(const gpe::Vector
     using G = gpe::Gaussian<N_DIMS, scalar_t>;
     using pos_t = typename G::pos_t;
     using cov_t = typename G::cov_t;
-    using gradless_scalar_t = gpe::remove_grad_t<scalar_t>;
-    using GradlessG = gpe::Gaussian<N_DIMS, gradless_scalar_t>;
-    using gradless_pos_t = typename GradlessG::pos_t;
-    using gradless_cov_t = typename GradlessG::cov_t;
-    #ifndef __CUDACC__
-    static_assert (std::is_same_v<gradless_scalar_t, float> || std::is_same_v<gradless_scalar_t, double>, "gradless should be either float or double");
-    #endif
 
     namespace fun = gpe::functors;
 
@@ -216,11 +208,11 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_em(const gpe::Vector
     const auto target_component_integrals = gpe::transform(target_mixture, gpe::integrate<scalar_t, N_DIMS>);
 
     // todo: fix this for mixtures containing negative weights
-    const scalar_t target_integral = gpe::reduce(target_component_integrals, scalar_t(0), fun::plus<scalar_t, scalar_t, scalar_t>);
+    const scalar_t target_integral = gpe::reduce(target_component_integrals, scalar_t(0), fun::plus<scalar_t>);
     const scalar_t target_clipped_integral = gpe::Epsilon<scalar_t>::clip(target_integral);
 
-    const auto target_int1_weights = gpe::cwise_fun(target_weights, target_clipped_integral, fun::divided_AbyB<scalar_t, scalar_t, scalar_t>);  // target_int1_weights equal grad // target_weights not equal grad
-    const auto initial_indices = fit_initial<N_FITTING>(gpe::removeGrad(target_mixture), config);
+    const auto target_int1_weights = gpe::cwise_fun(target_weights, target_clipped_integral, fun::divided_AbyB<scalar_t>);  // target_int1_weights equal grad // target_weights not equal grad
+    const auto initial_indices = fit_initial<N_FITTING>(target_mixture, config);
     gradient_cache_data->initial_indices = initial_indices;
     const auto initial_mixture = gpe::select(target_mixture, initial_indices);
     const auto initial_weights = gpe::transform(gpe::select(target_weights, initial_indices), [](scalar_t v) { return v; });
@@ -229,24 +221,24 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_em(const gpe::Vector
     const auto initial_component_integrals = gpe::transform(initial_mixture, gpe::integrate<scalar_t, N_DIMS>);
     const auto initial_integral = gpe::reduce(initial_component_integrals, scalar_t(0), fun::plus<scalar_t>);
     const auto initial_clipped_integral = gpe::Epsilon<scalar_t>::clip(initial_integral);
-    const auto initial_int1_weights = gpe::cwise_fun(initial_weights, initial_clipped_integral, fun::divided_AbyB<scalar_t, scalar_t, scalar_t>);
+    const auto initial_int1_weights = gpe::cwise_fun(initial_weights, initial_clipped_integral, fun::divided_AbyB<scalar_t>);
     const auto initial_int1_mixture = gpe::pack_mixture(initial_int1_weights, initial_positions, initial_covariances);
     const auto initial_gaussian_amplitudes = gpe::transform(initial_covariances, gpe::gaussian_amplitude<scalar_t, N_DIMS>);
-    const auto initial_pure_weights = gpe::cwise_fun(initial_int1_weights, initial_gaussian_amplitudes, fun::divided_AbyB<scalar_t, scalar_t, scalar_t>);
+    const auto initial_pure_weights = gpe::cwise_fun(initial_int1_weights, initial_gaussian_amplitudes, fun::divided_AbyB<scalar_t>);
 
     const auto target_int1_mixture = gpe::pack_mixture(target_int1_weights, target_positions, target_covariances);
 
     const auto likelihood_matrix = gpe::outer_product(target_int1_mixture, initial_int1_mixture, gpe::likelihood<scalar_t, N_DIMS>);
-    const auto kldiv_sign_matrix = gpe::outer_product(gpe::removeGrad(target_int1_mixture), gpe::removeGrad(initial_int1_mixture), [](auto target, auto fitting) {
-        return (gpe::sign(fitting.weight) == gpe::sign(target.weight)) ? gpe::kl_divergence<gradless_scalar_t, N_DIMS>(target, fitting) : gradless_scalar_t(0);
+    const auto kldiv_sign_matrix = gpe::outer_product(target_int1_mixture, initial_int1_mixture, [](auto target, auto fitting) {
+        return (gpe::sign(fitting.weight) == gpe::sign(target.weight)) ? gpe::kl_divergence<scalar_t, N_DIMS>(target, fitting) : scalar_t(0);
     });
 
-    auto kl_div_threshold = gradless_scalar_t(config.em_kl_div_threshold);
-    auto clamp_matrix = gpe::transform(kldiv_sign_matrix, [kl_div_threshold](gradless_scalar_t v) { return v < kl_div_threshold ? gradless_scalar_t(1) : gradless_scalar_t(0); });
+    auto kl_div_threshold = scalar_t(config.em_kl_div_threshold);
+    auto clamp_matrix = gpe::transform(kldiv_sign_matrix, [kl_div_threshold](scalar_t v) { return v < kl_div_threshold ? scalar_t(1) : scalar_t(0); });
     for (unsigned target_id = 0; target_id < clamp_matrix.size(); ++target_id) {
         auto& row = kldiv_sign_matrix[target_id];
         unsigned best_fitting_id = unsigned(-1);
-        auto smallest_value = std::numeric_limits<gradless_scalar_t>::infinity();
+        auto smallest_value = std::numeric_limits<scalar_t>::infinity();
         for (unsigned fitting_id = 0; fitting_id < row.size(); ++fitting_id) {
             if (row[fitting_id] < smallest_value) {
                 smallest_value = row[fitting_id];
@@ -254,41 +246,38 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_em(const gpe::Vector
             }
         }
         assert(best_fitting_id < N_FITTING);
-        clamp_matrix[target_id][best_fitting_id] = gradless_scalar_t(1);  // no change if largest value was > kl_div_threshold.
+        clamp_matrix[target_id][best_fitting_id] = scalar_t(1);  // no change if largest value was > kl_div_threshold.
     }
 
-    const auto weighted_likelihood_matrix = gpe::cwise_fun(initial_pure_weights, likelihood_matrix, fun::times<scalar_t, scalar_t, scalar_t>);
+    const auto weighted_likelihood_matrix = gpe::cwise_fun(initial_pure_weights, likelihood_matrix, fun::times<scalar_t>);
     const auto weighted_likelihood_matrix_clipped = gpe::transform(weighted_likelihood_matrix, gpe::Epsilon<scalar_t>::clip);
-    const auto weighted_likelihood_clamped_matrix = gpe::cwise_fun(weighted_likelihood_matrix_clipped, clamp_matrix, fun::times<scalar_t, scalar_t, scalar_t>);
-    const auto weighted_likelihood_sum = gpe::reduce_rows(weighted_likelihood_clamped_matrix, scalar_t(0), fun::plus<scalar_t, scalar_t, scalar_t>);
-    const auto responsibilities_1 = gpe::cwise_fun(weighted_likelihood_clamped_matrix, weighted_likelihood_sum, fun::divided_AbyB<scalar_t, scalar_t, scalar_t>);
+    const auto weighted_likelihood_clamped_matrix = gpe::cwise_fun(weighted_likelihood_matrix_clipped, clamp_matrix, fun::times<scalar_t>);
+    const auto weighted_likelihood_sum = gpe::reduce_rows(weighted_likelihood_clamped_matrix, scalar_t(0), fun::plus<scalar_t>);
+    const auto responsibilities_1 = gpe::cwise_fun(weighted_likelihood_clamped_matrix, weighted_likelihood_sum, fun::divided_AbyB<scalar_t>);
     assert(!has_nan(responsibilities_1));
 
     const auto target_gaussian_amplitudes = gpe::transform(target_covariances, gpe::gaussian_amplitude<scalar_t, N_DIMS>);
-    const auto pure_target_weights = gpe::cwise_fun(target_int1_weights, target_gaussian_amplitudes, fun::divided_AbyB<scalar_t, scalar_t, scalar_t>);
-    const auto responsibilities_2 = gpe::cwise_fun(responsibilities_1, pure_target_weights, fun::times<scalar_t, scalar_t, scalar_t>);
-    gradient_cache_data->responsibilities_2 = gpe::removeGrad(responsibilities_2);
+    const auto pure_target_weights = gpe::cwise_fun(target_int1_weights, target_gaussian_amplitudes, fun::divided_AbyB<scalar_t>);
+    const auto responsibilities_2 = gpe::cwise_fun(responsibilities_1, pure_target_weights, fun::times<scalar_t>);
     assert(!has_nan(responsibilities_2));
 
-    const auto fitting_pure_weights = gpe::reduce_cols(responsibilities_2, scalar_t(0), fun::plus<scalar_t, scalar_t, scalar_t>);
+    const auto fitting_pure_weights = gpe::reduce_cols(responsibilities_2, scalar_t(0), fun::plus<scalar_t>);
     const auto clippedFittingWeights = gpe::transform(fitting_pure_weights, gpe::Epsilon<scalar_t>::clip);
 
-    const auto responsibilities_3 = gpe::cwise_fun(clippedFittingWeights, responsibilities_2, fun::divided_BbyA<scalar_t, scalar_t, scalar_t>);
-    gradient_cache_data->responsibilities_3 = gpe::removeGrad(responsibilities_3);
+    const auto responsibilities_3 = gpe::cwise_fun(clippedFittingWeights, responsibilities_2, fun::divided_BbyA<scalar_t>);
     assert(!has_nan(responsibilities_3));
     assert(!gpe::reduce(responsibilities_3, false, [](bool o, scalar_t v) { return o || v < 0; }));
 
-    const auto weightedPositions = gpe::cwise_fun(responsibilities_3, target_positions, fun::times<scalar_t, pos_t, pos_t>);
-    const auto fittingPositions = gpe::reduce_cols(weightedPositions, pos_t(0), fun::plus<gradless_pos_t, gradless_pos_t, pos_t>);
+    const auto weightedPositions = gpe::cwise_fun(responsibilities_3, target_positions, fun::times<scalar_t, pos_t>);
+    const auto fittingPositions = gpe::reduce_cols(weightedPositions, pos_t(0), fun::plus<pos_t>);
     assert(!has_nan(fittingPositions));
 
     const auto posDiffs = gpe::outer_product(target_positions, fittingPositions, fun::minus<pos_t>);
     const auto posDiffsOuter = gpe::cwise_fun(posDiffs, posDiffs, gpe::outerProduct<scalar_t, N_DIMS>);
-    const auto unweightedCovs = gpe::cwise_fun(posDiffsOuter, target_covariances, fun::plus<cov_t, cov_t, cov_t>);
+    const auto unweightedCovs = gpe::cwise_fun(posDiffsOuter, target_covariances, fun::plus<cov_t>);
+    const auto weightedCovs = gpe::cwise_fun(responsibilities_3, unweightedCovs, fun::times<scalar_t, cov_t>);
 
-    const auto weightedCovs = gpe::cwise_fun(responsibilities_3, unweightedCovs, fun::times<scalar_t, cov_t, cov_t>);
-
-    auto fittingCovariances = gpe::reduce_cols(weightedCovs, cov_t(0), fun::plus<cov_t, cov_t, cov_t>);
+    auto fittingCovariances = gpe::reduce_cols(weightedCovs, cov_t(0), fun::plus<cov_t>);
     fittingCovariances = gpe::cwise_fun(fittingCovariances, fitting_pure_weights, [](cov_t cov, scalar_t w) {  // no influence on gradient.
         if (w < gpe::Epsilon<scalar_t>::large)
             cov += cov_t(1) * scalar_t(gpe::Epsilon<scalar_t>::large);
@@ -297,69 +286,17 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_em(const gpe::Vector
     assert(!has_nan(fittingCovariances));
 
     const auto fitting_normal_amplitudes = gpe::transform(fittingCovariances, gpe::gaussian_amplitude<scalar_t, N_DIMS>);
-    const auto fitting_int1_weights = gpe::cwise_fun(fitting_pure_weights, fitting_normal_amplitudes, fun::times<scalar_t, scalar_t, scalar_t>);
+    const auto fitting_int1_weights = gpe::cwise_fun(fitting_pure_weights, fitting_normal_amplitudes, fun::times<scalar_t>);
 //    const auto finalFittingWeights = gpe::transform(int1_final_fitting_weights, [&abs_integral](scalar_t v) { return scalar_t(v * abs_integral); });
-    const auto fitting_weights = gpe::cwise_fun(fitting_int1_weights, target_clipped_integral, fun::times<scalar_t, scalar_t, scalar_t>);
+    const auto fitting_weights = gpe::cwise_fun(fitting_int1_weights, target_clipped_integral, fun::times<scalar_t>);
 
-//    float grad_weights[] = {0.7f, 1.3f};
-    gradless_scalar_t grad_weights[] = {1.0, 1.0};
-//    for (unsigned i = 0; i < 4; ++i) {
-//        for (unsigned j = 0; j < 2; ++j) {
-//            autodiff::Variable<float>(fittingCovariances[j][0][0]).expr->propagate(1);
-//            autodiff::Variable<float>(fittingCovariances[j][0][1]).expr->propagate(1);
-//            autodiff::Variable<float>(fittingCovariances[j][1][0]).expr->propagate(1);
-//            autodiff::Variable<float>(fittingCovariances[j][1][1]).expr->propagate(1);
-//        }
-//    }
+
     gpe::Vector<G, N_FITTING> result;
     for (unsigned i = 0; i < N_FITTING; ++i) {
         result.push_back(G{fitting_weights[i],
                            fittingPositions[i],
                            fittingCovariances[i]});
-//#ifdef GPE_AUTODIFF
-//            autodiff::Variable<gradless_scalar_t>(fitting_weights[i]).expr->propagate(grad_weights[i]);
-
-////            autodiff::Variable<float>(fittingPositions[i][0]).expr->propagate(grad_weights[i]);
-////            autodiff::Variable<float>(fittingPositions[i][1]).expr->propagate(grad_weights[i]);
-
-////            autodiff::Variable<float>(fittingCovariances[i][0][0]).expr->propagate(grad_weights[i]);
-////            autodiff::Variable<float>(fittingCovariances[i][0][1]).expr->propagate(grad_weights[i]);
-////            autodiff::Variable<float>(fittingCovariances[i][1][0]).expr->propagate(grad_weights[i]);
-////            autodiff::Variable<float>(fittingCovariances[i][1][1]).expr->propagate(grad_weights[i]);
-//#endif
     }
-#ifdef GPE_AUTODIFF
-    auto grad_initial_mixture = gpe::extractGrad(initial_mixture);
-    auto grad_initial_weights = gpe::extractGrad(initial_weights);
-    auto grad_initial_int1_weights = gpe::extractGrad(initial_int1_weights);
-    auto grad_initial_positions = gpe::extractGrad(initial_positions);
-    auto grad_initial_covariances = gpe::extractGrad(initial_covariances);
-    auto grad_target_weights = gpe::extractGrad(target_weights);
-    auto grad_target_int1_weights = gpe::extractGrad(target_int1_weights);
-    auto grad_target_positions = gpe::extractGrad(target_positions);
-    auto grad_target_covariances = gpe::extractGrad(target_covariances);
-    auto grad_target_mixture = gpe::extractGrad(target_mixture);
-    auto grad_target_component_integrals = gpe::extractGrad(target_component_integrals);
-    auto grad_target_int1_mixture = gpe::extractGrad(target_int1_mixture);
-    auto grad_initial_gaussian_amplitudes = gpe::extractGrad(initial_gaussian_amplitudes);
-
-    auto grad_likelihood_matrix = gpe::extractGrad(likelihood_matrix);
-    auto grad_weighted_likelihood_matrix = gpe::extractGrad(weighted_likelihood_matrix);
-    auto grad_weighted_likelihood_sum = gpe::extractGrad(weighted_likelihood_sum);
-    auto grad_responsibilities_1 = gpe::extractGrad(responsibilities_1);
-    auto grad_target_gaussian_amplitudes = gpe::extractGrad(target_gaussian_amplitudes);
-    auto grad_responsibilities_2 = gpe::extractGrad(responsibilities_2);
-    auto grad_fitting_pure_weights = gpe::extractGrad(fitting_pure_weights);
-    auto grad_responsibilities_3 = gpe::extractGrad(responsibilities_3);
-
-    auto grad_fittingPositions = gpe::extractGrad(fittingPositions);
-    auto grad_fittingCovariances = gpe::extractGrad(fittingCovariances);
-    auto grad_weightedCovs = gpe::extractGrad(weightedCovs);
-    auto grad_unweightedCovs = gpe::extractGrad(unweightedCovs);
-    auto grad_posDiffsOuter = gpe::extractGrad(posDiffsOuter);
-    auto grad_fitting_normal_amplitudes = gpe::extractGrad(fitting_normal_amplitudes);
-#endif
-
 
 
 //    if (gpe::abs(abs_integral - gpe::reduce(result, scalar_t(0), [](scalar_t i, const G& g) { return i + gpe::abs(gpe::integrate(g)); })) >= scalar_t(0.0001)) {
@@ -381,7 +318,7 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_em(const gpe::Vector
 //#endif
 //        assert(false);
 //    }
-    assert(gpe::abs(target_clipped_integral - gpe::reduce(result, scalar_t(0), [](scalar_t i, const G& g) { return i + gpe::abs(gpe::integrate(g)); })) < gradless_scalar_t(0.0001));
+    assert(gpe::abs(target_clipped_integral - gpe::reduce(result, scalar_t(0), [](scalar_t i, const G& g) { return i + gpe::abs(gpe::integrate(g)); })) < scalar_t(0.0001));
     return result;
 }
 

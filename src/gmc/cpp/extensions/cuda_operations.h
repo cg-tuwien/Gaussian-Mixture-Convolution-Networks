@@ -93,8 +93,8 @@ __host__ __device__ __forceinline__ void syncwarp(unsigned sync_id) {
 }
 
 template<typename Assignable1, typename Assignable2>
-__host__ __device__
-inline void swap(Assignable1 &a, Assignable2 &b)
+__host__ __device__ __forceinline__
+void swap(Assignable1 &a, Assignable2 &b)
 {
     Assignable1 temp = a;
     a = b;

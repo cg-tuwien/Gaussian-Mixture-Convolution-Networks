@@ -15,8 +15,8 @@
 #include "util/mixture.h"
 #include "unittests/support.h"
 
-template <int N_REDUCTION, typename scalar_t, int N_FITTING_COMPONENTS = N_REDUCTION>
-void runTest(const std::vector<std::pair<torch::Tensor, torch::Tensor>>& testCases, double threshold) {
+template <bool USE_CUDA, int N_REDUCTION, typename scalar_t, int N_FITTING_COMPONENTS = N_REDUCTION>
+void runTestDev(const std::vector<std::pair<torch::Tensor, torch::Tensor>>& testCases, double threshold) {
     using namespace torch::indexing;
 
     // test specific configuration:
@@ -43,6 +43,10 @@ void runTest(const std::vector<std::pair<torch::Tensor, torch::Tensor>>& testCas
             mixture = mixture.to(torch::ScalarType::Double);
             gradient_fitting = gradient_fitting.to(torch::ScalarType::Double);
         }
+        if (USE_CUDA) {
+            mixture = mixture.cuda();
+            gradient_fitting = gradient_fitting.cuda();
+        }
 
         auto forward_out = bvh_mhem_fit::forward_impl(mixture, config);
         auto gradient_target = bvh_mhem_fit::backward_impl(gradient_fitting, forward_out, config);
@@ -50,7 +54,7 @@ void runTest(const std::vector<std::pair<torch::Tensor, torch::Tensor>>& testCas
         auto reference_gradient_target = bvh_mhem_fit_alpha::backward_impl(reference_gradient_fitting, reference_forward_out, reference_config);
 
         {
-            auto gradient = gradient_target.contiguous();
+            auto gradient = gradient_target.contiguous().cpu();
             auto gradient_reference = reference_gradient_target.contiguous();
             auto n_Gs = size_t(gradient_reference.size(-2));
             for (size_t i = 0; i < n_Gs * 7; ++i) {
@@ -71,32 +75,38 @@ void runTest(const std::vector<std::pair<torch::Tensor, torch::Tensor>>& testCas
     }
 }
 
+template <int N_REDUCTION, typename scalar_t, int N_FITTING_COMPONENTS = N_REDUCTION>
+void runTest(const std::vector<std::pair<torch::Tensor, torch::Tensor>>& testCases, double threshold) {
+    runTestDev<false, N_REDUCTION, scalar_t, N_FITTING_COMPONENTS>(testCases, threshold);
+}
+
+constexpr double gpe_double_precision = 1e-12;
 
 TEST_CASE( "testing working against alpha reference", "[bvh_mhem_fit]" ) {
     SECTION("2 component fitting double _collectionOf2dMixtures_with4Gs") {
         runTest<2, double>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d2GsGrads()},
                                                                  {_collectionOf2dMixtures_with4Gs()}),
-                           0.0000000000000000001);
+                           gpe_double_precision);
     }
     SECTION("2 component fitting double _collectionOf2dMixtures_with8GsForQuickAutoDiff") {
         runTest<2, double>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d2GsGrads()},
                                                                  {_collectionOf2dMixtures_with8GsForQuickAutoDiff()}),
-                           0.0000000000000000001);
+                           gpe_double_precision);
     }
     SECTION("2 component fitting double _collectionOf2dMixtures_with8GsForLongAutoDiff") {
         runTest<2, double>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d2GsGrads()},
                                                                  {_collectionOf2dMixtures_with8GsForLongAutoDiff()}),
-                           0.0000000000000000001);
+                           gpe_double_precision);
     }
     SECTION("2 component fitting double _collectionOf2dMixtures_with8GsTooLongForAutodiff") {
         runTest<2, double>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d2GsGrads()},
                                                                  {_collectionOf2dMixtures_with8GsTooLongForAutodiff()}),
-                           0.0000000000000000001);
+                           gpe_double_precision);
     }
     SECTION("2 component fitting double _collectionOf2dMixtures_with16Gs") {
         runTest<2, double>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d2GsGrads()},
                                                                  {_collectionOf2dMixtures_with16Gs()}),
-                           0.0000000000000000001);
+                           gpe_double_precision);
     }
 
     SECTION("2 component fitting float _collectionOf2dMixtures_with4Gs") {
@@ -137,7 +147,7 @@ TEST_CASE( "testing working against alpha reference", "[bvh_mhem_fit]" ) {
                                                                   _collectionOf2dMixtures_with8GsForLongAutoDiff(),
                                                                   _collectionOf2dMixtures_with8GsTooLongForAutodiff(),
                                                                   _collectionOf2dMixtures_with16Gs()}),
-                           0.0000000000000000001);
+                           gpe_double_precision);
     }
 
     SECTION("4 component fitting float") {
@@ -169,7 +179,7 @@ TEST_CASE( "testing working against alpha reference", "[bvh_mhem_fit]" ) {
             }
         }
 
-        runTest<4, double, 32>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d32GsGradsWellBehaving(), _collectionOf2d32GsGradsExploding()}, {mixtures}), 0.0000000000000000001);
+        runTest<4, double, 32>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d32GsGradsWellBehaving(), _collectionOf2d32GsGradsExploding()}, {mixtures}), gpe_double_precision);
     }
 
     SECTION("32 component fitting double of real world with well behaved gradients") {
