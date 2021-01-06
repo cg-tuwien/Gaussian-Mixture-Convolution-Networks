@@ -38,8 +38,8 @@ class EMGenerator(GMMGenerator):
         #       Defines which initialization to use. All options from GMMInitializer are available:
         #       'randnormpos' or 'rand1' = Random by sample mean and cov
         #       'randresp' or 'rand2' = Random responsibilities,
-        #       'fsp' or 'adam1' = furthest point sampling,
-        #       'fspmax' or 'adam2' = furthest point sampling, artifical responsibilities and m-step,
+        #       'fps' or 'adam1' = furthest point sampling,
+        #       'fpsmax' or 'adam2' = furthest point sampling, artifical responsibilities and m-step,
         #       'kmeans-full' = Full kmeans,
         #       'kmeans-fast' or 'kmeans' = Fast kmeans
         #   em_step_gaussian_subbatchsize: int

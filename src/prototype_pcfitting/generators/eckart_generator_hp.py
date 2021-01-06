@@ -1,3 +1,5 @@
+from typing import Tuple
+
 from prototype_pcfitting import GMMGenerator, GMLogger
 from prototype_pcfitting import TerminationCriterion, MaxIterationTerminationCriterion
 from prototype_pcfitting.error_functions import LikelihoodLoss
@@ -26,6 +28,8 @@ class EckartGeneratorHP(GMMGenerator):
                  initialization_method: str = "kmeans",
                  m_step_gaussians_subbatchsize: int = -1,
                  m_step_points_subbatchsize: int = -1,
+                 use_scaling: bool = False,
+                 scaling_interval: Tuple[float, float] = (0.0, 1.0),
                  dtype: torch.dtype = torch.float64,
                  eps: float = 1e-4):
         # Constructor. Creates a new EckartGenerator.
@@ -41,12 +45,13 @@ class EckartGeneratorHP(GMMGenerator):
         #       Defines which initialization to use. All options from GMMInitializer are available:
         #           'randnormpos' or 'rand1' = Random by sample mean and cov
         #           'randresp' or 'rand2' = Random responsibilities (NOT RECOMMENDED)
-        #           'fsp' or 'adam1' = furthest point sampling (NOT RECOMMENDED)
-        #           'fspmax' or 'adam2' = furthest point sampling, artifical responsibilities and m-step,
+        #           'fps' or 'adam1' = furthest point sampling (NOT RECOMMENDED)
+        #           'fpsmax' or 'adam2' = furthest point sampling, artifical responsibilities and m-step,
         #           'kmeans-full' = Full kmeans (NOT RECOMMENDED)
         #           'kmeans-fast' or 'kmeans' = Fast kmeans
         #       Plus some additional methods:
         #           'large-bb': Initialize GMMs on corners of large bounding box of points (with same side lengths)
+        #               Warning: This initialization method is deprecated and currently only works with scaling to [0,1]
         #           'tight-bb': Initialize GMMs on corners of tight bounding box of points (different side lengths)
         #           'eigen': Use Eigen vector decomposition to determine initial positions
         #   m_step_gaussian_subbatchsize: int
@@ -55,6 +60,10 @@ class EckartGeneratorHP(GMMGenerator):
         #   m_step_points_subbatchsize: int
         #       How many points should be processed in the M-Step at once (see _maximization)
         #       -1 means all Points (default)
+        #   use_scaling: bool
+        #       If each Sub-GM should temporarily be scaled to the scaling_interval (might have an effect on accuracy)
+        #   scaling_interval: Tuple[float, float]
+        #       The interval each Sub-GM should be scaled to if use_scaling is True
         #   dtype: torch.dtype
         #       In which data type (precision) the operations should be performed. Default: float32
         #   eps: float
@@ -65,6 +74,8 @@ class EckartGeneratorHP(GMMGenerator):
         self._termination_criterion = termination_criterion
         self._m_step_gaussians_subbatchsize = m_step_gaussians_subbatchsize
         self._m_step_points_subbatchsize = m_step_points_subbatchsize
+        self._use_scaling = use_scaling
+        self._scaling_interval = scaling_interval
         self._dtype = dtype
         self._logger = None
         self._eps = (torch.eye(3, 3, dtype=self._dtype, device='cuda') * eps).view(1, 1, 1, 3, 3)
@@ -117,9 +128,9 @@ class EckartGeneratorHP(GMMGenerator):
             relevant_parents = torch.arange(0, parentcount_for_level, device='cuda')  # (parentcount)
 
             # Scaler, to scale down the sub-pointclouds, and up the resulting sub-gms
-            scaler = LevelScaler()
+            scaler = LevelScaler(active=self._use_scaling, interval=self._scaling_interval)
             scaler.set_pointcloud(pcbatch, parent_per_point, parentcount_for_level)
-            points_scaled = scaler.scale_down_pc(pcbatch)  # (1, np, 3)
+            points_scaled = scaler.scale_pc(pcbatch)  # (1, np, 3)
 
             # Initialize GMs
             if self._initialization_method == 'large-bb':
@@ -183,6 +194,7 @@ class EckartGeneratorHP(GMMGenerator):
         return res_gm, res_gmm
 
     def _initialize_gms_on_unit_cube(self, relevant_parents, parentweights):
+        print("WARNING! THIS INITIALIZATION METHOD IS DEPRECATED!")
         # Initializes new GMs, each on it's respective unit cube
         # relevant_parents: torch.Tensor
         #   List of relevant parent indizes
@@ -589,18 +601,18 @@ class EckartGeneratorHP(GMMGenerator):
             # Usually these would be replaced with their parent. This is not happening.
             # It could therefore even be, that the weights do not sum to 0, so it's only an approximation.
             newpriors, newpositions, newcovariances = \
-                scaler.scale_up_gmm_wpc(self.priors, self.positions, self.covariances)
+                scaler.unscale_gmm_wpc(self.priors, self.positions, self.covariances)
             newamplitudes = newpriors / (newcovariances.det().sqrt() * 15.74960995)
             return gm.pack_mixture(self.parentweights * newamplitudes, newpositions, newcovariances)
 
         def scale_up(self, scaler: LevelScaler):
             # Scales the Gaussian up given the LevelScaler
             self.priors, self.positions, self.covariances = \
-                scaler.scale_up_gmm_wpc(self.priors, self.positions, self.covariances)
+                scaler.unscale_gmm_wpc(self.priors, self.positions, self.covariances)
 
         def pack_scaled_up_mixture(self, scaler:LevelScaler):
             npriors, npositions, ncovariances = \
-                scaler.scale_up_gmm_wpc(self.priors, self.positions, self.covariances)
+                scaler.unscale_gmm_wpc(self.priors, self.positions, self.covariances)
             namplitudes = npriors / (ncovariances.det().sqrt() * 15.74960995)
             return gm.pack_mixture(self.parentweights * namplitudes, npositions, ncovariances)
 

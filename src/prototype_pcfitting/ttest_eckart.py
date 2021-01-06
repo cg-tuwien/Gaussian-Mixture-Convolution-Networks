@@ -1,6 +1,5 @@
 from prototype_pcfitting.generators.level_scaler import LevelScaler
-from prototype_pcfitting.generators.level_scaler2 import LevelScaler2
-from prototype_pcfitting import RelChangeTerminationCriterion
+from prototype_pcfitting import RelChangeTerminationCriterion, Scaler, ScalingMethod
 import torch
 
 pcbatch = torch.tensor([[
@@ -13,6 +12,15 @@ pcbatch = torch.tensor([[
 ]]).cuda()
 parent_per_point = torch.tensor([[0, 0, 0, 1, 1, 2]])
 relevant_parents = torch.tensor([[0, 1]])
+
+scaler = Scaler(active = True, interval=(-10.0, 10.0), scaling_method=ScalingMethod.SMALLEST_SIDE_TO_MAX)
+scaler.set_pointcloud_batch(pcbatch)
+down = scaler.scale_pc(pcbatch)
+print("Min: ", torch.min(down, dim=1)[0])
+print("Max: ", torch.max(down, dim=1)[0])
+pass
+
+# --------------------------------------------------------------------------------------
 
 # scaler = LevelScaler()
 # scaler.set_pointcloud(pcbatch, parent_per_point, relevant_parents)
@@ -66,26 +74,26 @@ relevant_parents = torch.tensor([[0, 1]])
 
 # --------------------------------------------------------------------------------------
 
-criterion = RelChangeTerminationCriterion(0.1, 5)
-print(criterion.may_continue(1, torch.tensor([2.0, 3.0, 5.0])))
-print(criterion.may_continue(2, torch.tensor([1.5, 3.99, 4.8])))
-print(criterion.may_continue(3, torch.tensor([1.3, 3.98, 4.6])))
-print(criterion.may_continue(4, torch.tensor([1.4, 3.97, 4.5])))
-print(criterion.may_continue(5, torch.tensor([1.0, 3.96, 4.45])))
-print(criterion.may_continue(6, torch.tensor([0.98, 3.95, 4.44])))
-print(criterion.may_continue(7, torch.tensor([0.97, 6.7, 4.43])))
-print(criterion.may_continue(8, torch.tensor([0.96, 6.7, 4.42])))
-print(criterion.may_continue(9, torch.tensor([0.95, 6.7, 4.42])))
-print(criterion.may_continue(10, torch.tensor([9.94, 6.7, 4.415])))
-criterion.reset()
-print(criterion.may_continue(1, torch.tensor([2.0, 3.0, 5.0])))
-print(criterion.may_continue(2, torch.tensor([1.5, 3.99, 4.8])))
-print(criterion.may_continue(3, torch.tensor([1.3, 3.98, 4.6])))
-print(criterion.may_continue(4, torch.tensor([1.4, 3.97, 4.5])))
-print(criterion.may_continue(5, torch.tensor([1.0, 3.96, 4.45])))
-print(criterion.may_continue(6, torch.tensor([0.98, 3.95, 4.44])))
-print(criterion.may_continue(7, torch.tensor([0.97, 6.7, 4.43])))
-print(criterion.may_continue(8, torch.tensor([0.96, 6.7, 4.42])))
-print(criterion.may_continue(9, torch.tensor([0.95, 6.7, 4.42])))
-print(criterion.may_continue(10, torch.tensor([9.94, 6.7, 4.415])))
-pass
+# criterion = RelChangeTerminationCriterion(0.1, 5)
+# print(criterion.may_continue(1, torch.tensor([2.0, 3.0, 5.0])))
+# print(criterion.may_continue(2, torch.tensor([1.5, 3.99, 4.8])))
+# print(criterion.may_continue(3, torch.tensor([1.3, 3.98, 4.6])))
+# print(criterion.may_continue(4, torch.tensor([1.4, 3.97, 4.5])))
+# print(criterion.may_continue(5, torch.tensor([1.0, 3.96, 4.45])))
+# print(criterion.may_continue(6, torch.tensor([0.98, 3.95, 4.44])))
+# print(criterion.may_continue(7, torch.tensor([0.97, 6.7, 4.43])))
+# print(criterion.may_continue(8, torch.tensor([0.96, 6.7, 4.42])))
+# print(criterion.may_continue(9, torch.tensor([0.95, 6.7, 4.42])))
+# print(criterion.may_continue(10, torch.tensor([9.94, 6.7, 4.415])))
+# criterion.reset()
+# print(criterion.may_continue(1, torch.tensor([2.0, 3.0, 5.0])))
+# print(criterion.may_continue(2, torch.tensor([1.5, 3.99, 4.8])))
+# print(criterion.may_continue(3, torch.tensor([1.3, 3.98, 4.6])))
+# print(criterion.may_continue(4, torch.tensor([1.4, 3.97, 4.5])))
+# print(criterion.may_continue(5, torch.tensor([1.0, 3.96, 4.45])))
+# print(criterion.may_continue(6, torch.tensor([0.98, 3.95, 4.44])))
+# print(criterion.may_continue(7, torch.tensor([0.97, 6.7, 4.43])))
+# print(criterion.may_continue(8, torch.tensor([0.96, 6.7, 4.42])))
+# print(criterion.may_continue(9, torch.tensor([0.95, 6.7, 4.42])))
+# print(criterion.may_continue(10, torch.tensor([9.94, 6.7, 4.415])))
+# pass

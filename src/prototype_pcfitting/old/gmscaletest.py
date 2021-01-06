@@ -13,8 +13,8 @@ gma = gmc.mixture.read_gm_from_ply('D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit
 gmm = gmc.mixture.convert_amplitudes_to_priors(gma)
 gma_test = gmc.mixture.convert_priors_to_amplitudes(gmm)
 
-gma_down = scaler.scale_down_gm(gma)
-gmm_down = scaler.scale_down_gmm(gmm)
+gma_down = scaler.scale_gm(gma)
+gmm_down = scaler.scale_gmm(gmm)
 gma_down_test = gmc.mixture.convert_priors_to_amplitudes(gmm_down)
 gmm_down_test = gmc.mixture.convert_amplitudes_to_priors(gma_down)
 gma_down_test2 = gmc.mixture.convert_priors_to_amplitudes(gmm_down_test)

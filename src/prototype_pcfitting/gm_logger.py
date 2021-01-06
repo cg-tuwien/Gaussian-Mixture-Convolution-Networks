@@ -18,9 +18,9 @@ class GMLogger:
     # If you stop using one, please call finalize, in order to enable a new one to work properly.
 
     def __init__(self,
-                 names: List[str],
-                 log_prefix: str,
-                 log_path: str,
+                 names: List[str] = None,
+                 log_prefix: str = "",
+                 log_path: str = "",
                  log_positions: int = 0,
                  gm_n_components: int = 0,
                  log_loss_console: int = 0,
@@ -29,6 +29,7 @@ class GMLogger:
                  log_gm: int = 0,
                  pointclouds: torch.Tensor = None,
                  scaler: Scaler = None,
+                 scale_up_losses: bool = True,
                  log_seperate_directories: bool = True):
         # Constructor. Parameters:
         #   names: List[str]
@@ -73,7 +74,7 @@ class GMLogger:
         self._names = names
 
         for i in range(len(names)):
-            names[i] = names[i].replace("/", "-").replace("\\", "-");
+            names[i] = names[i].replace("/", "-").replace("\\", "-")
 
         if log_seperate_directories:
             log_prefix += "/"
@@ -117,6 +118,7 @@ class GMLogger:
                     f.close()
 
         self._scaler = scaler
+        self._scale_up_losses = scale_up_losses
 
     def log(self, iteration: int, losses: torch.Tensor, gmbatch: torch.Tensor, running: torch.Tensor = None):
         # Performs logging.
@@ -127,6 +129,9 @@ class GMLogger:
         #       List of all losses (necessary if loss logging is active)
         #   gmbatch: torch.Tensor
         #       Current Gaussians (necessary for everything except loss logging)
+
+        if self._scale_up_losses:
+            losses = self._scaler.unscale_losses(losses)
 
         if running is None:
             running_idcs = range(len(self._names))
@@ -148,7 +153,7 @@ class GMLogger:
 
         if log_rendering or log_gm or self._log_positions > 0:
             if self._scaler is not None:
-                gm_upscaled = self._scaler.scale_up_gm(gmbatch)
+                gm_upscaled = self._scaler.unscale_gm(gmbatch)
             else:
                 gm_upscaled = gmbatch
 

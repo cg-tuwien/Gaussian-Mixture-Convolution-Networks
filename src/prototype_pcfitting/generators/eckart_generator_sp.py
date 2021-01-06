@@ -37,8 +37,8 @@ class EckartGeneratorSP(GMMGenerator):
         #       Defines which initialization to use. All options from GMMInitializer are available:
         #           'randnormpos' or 'rand1' = Random by sample mean and cov (Weighted)
         #           'randresp' or 'rand2' = Random responsibilities (NOT RECOMMENDED)
-        #           'fsp' or 'adam1' = furthest point sampling (NOT RECOMMENDED)
-        #           'fspmax' or 'adam2' = furthest point sampling, artifical responsibilities and m-step,
+        #           'fps' or 'adam1' = furthest point sampling (NOT RECOMMENDED)
+        #           'fpsmax' or 'adam2' = furthest point sampling, artifical responsibilities and m-step,
         #           'kmeans-full' = Full weighted kmeans (NOT RECOMMENDED)
         #           'kmeans-fast' or 'kmeans' = Fast weighted kmeans
         #       Plus one additional method:
@@ -175,7 +175,7 @@ class EckartGeneratorSP(GMMGenerator):
         res_gm = self._construct_full_gm(gm_data.approximate_whole_mixture(), finished_subgmms)
         res_gmm = gm.convert_amplitudes_to_priors(res_gm)
 
-        print("Final Loss: ", LikelihoodLoss().calculate_score_packed(pcbatch.float(), res_gm).item())
+        print("Final Loss: ", LikelihoodLoss().calculate_score_packed(pcbatch, res_gm).item())
         # print("EckartSP: # of invalid Gaussians: ", torch.sum(gm.weights(res_gmm).eq(0)).item())
         print("Sum of Weights (should be 1)", gm.weights(res_gmm).sum())
 
@@ -360,6 +360,8 @@ class EckartGeneratorSP(GMMGenerator):
 
             # The logarithmized likelihoods of each point for each gaussian. shape: (1, 1, xc)
             likelihood_log[:, :, j_start:j_end] = gmpriors_log_rep - expvalues
+
+        del points_rep, gmpositions_rep, gmicovs_rep, grelpos, expvalues, gmpriors_log_rep
 
         # Logarithmized Likelihood for each point given the GM. shape: (1, 1, np, 1)
         llh_intermediate = torch.zeros(n_sample_points, all_gauss_count, dtype=self._dtype, device='cuda')

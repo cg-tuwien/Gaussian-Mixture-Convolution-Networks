@@ -20,11 +20,11 @@ class GMMInitializer:
         #   Creates a new GMM-initializer.
         #   em_step_gaussian_subbatchsize: int
         #       How many Gaussian Sub-Mixtures should be processed in the E- and M-Step at once (only relevant for
-        #       initialization techniques randresp and fspmax)
+        #       initialization techniques randresp and fpsmax)
         #       -1 means all Gaussians (default)
         #   em_step_points_subbatchsize: int
         #       How many points should be processed in the E- and M-Step at once (only relevant for
-        #       initialization techniques randresp and fspmax)
+        #       initialization techniques randresp and fpsmax)
         #       -1 means all Points (default)
         #   dtype: torch.dtype
         #       In which data type (precision) the operations should be performed. The final gmm is always
@@ -42,8 +42,8 @@ class GMMInitializer:
         # Calls one of the initialization methods by its name
         # Parameters:
         #   method_name: str
-        #       Name of the method to call. Options: 'randnormpos' ('rand1'), 'randresp' ('rand2'), 'fsp' ('adam1'),
-        #       'fspmax' ('adam2'), 'kmeans-full', 'kmeans-fast' ('kmeans')
+        #       Name of the method to call. Options: 'randnormpos' ('rand1'), 'randresp' ('rand2'), 'fps' ('adam1'),
+        #       'fpsmax' ('adam2'), 'kmeans-full', 'kmeans-fast' ('kmeans')
         #   pcbatch: torch.Tensor of size (batch_size, n_points, 3)
         #       Point cloud
         #   n_gaussians: int
@@ -57,10 +57,10 @@ class GMMInitializer:
             return self.initialize_randnormpos(pcbatch, n_gaussians, weights)
         elif method_name == 'randresp' or method_name == 'rand2':
             return self.initialize_randresp(pcbatch, n_gaussians, n_sample_points)
-        elif method_name == 'fsp' or method_name == 'adam1':
-            return self.initialize_fsp(pcbatch, n_gaussians)
-        elif method_name == 'fspmax' or method_name == 'adam2':
-            return self.initialize_fspmax(pcbatch, n_gaussians, n_sample_points)
+        elif method_name == 'fps' or method_name == 'adam1':
+            return self.initialize_fps(pcbatch, n_gaussians)
+        elif method_name == 'fpsmax' or method_name == 'adam2':
+            return self.initialize_fpsmax(pcbatch, n_gaussians, n_sample_points)
         elif method_name == 'kmeans-full':
             return self.initialize_kmeans(pcbatch, n_gaussians, False, weights)
         elif method_name == 'kmeans-fast' or method_name == 'kmeans':
@@ -155,7 +155,7 @@ class GMMInitializer:
                              eps, self._em_step_gaussians_subbatchsize, self._em_step_points_subbatchsize)
         return gm_data.pack_mixture_model().to(self._dtype)
 
-    def initialize_fsp(self, pcbatch: torch.Tensor, n_gaussians: int):
+    def initialize_fps(self, pcbatch: torch.Tensor, n_gaussians: int):
         # Creates a new initial Gaussian Mixture (batch) for a given point cloud (batch).
         # The initialization is done according to Adam's method.
         # Furthest Point Sampling for mean selection, then assigning each point to the closest mean, then performing
@@ -178,7 +178,7 @@ class GMMInitializer:
 
         return gm.pack_mixture(gmpriors, gmpositions, gmcovariances)
 
-    def initialize_fspmax(self, pcbatch: torch.Tensor, n_gaussians: int, n_sample_points: int = -1):
+    def initialize_fpsmax(self, pcbatch: torch.Tensor, n_gaussians: int, n_sample_points: int = -1):
         # Creates a new initial Gaussian Mixture (batch) for a given point cloud (batch).
         # The initialization is done according to Adam's method.
         # Furthest Point Sampling for mean selection, then assigning each point to the closest mean, then performing
@@ -201,7 +201,7 @@ class GMMInitializer:
         eps = (torch.eye(3, 3, dtype=self._dtype, device='cuda') * self._epsvar).view(1, 1, 1, 3, 3) \
             .expand(batch_size, 1, n_gaussians, 3, 3)
 
-        mix = self.initialize_fsp(pcbatch, n_gaussians)
+        mix = self.initialize_fps(pcbatch, n_gaussians)
 
         gm_data = EMTools.TrainingData(batch_size, n_gaussians, self._dtype, eps)
         running = torch.ones(batch_size, dtype=torch.bool)

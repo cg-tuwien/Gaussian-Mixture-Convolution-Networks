@@ -163,11 +163,11 @@ class EMTools:
                     .sum(dim=2)  # shape: (1, 1, J, 3)
                 del matrices_from_points, relevant_points
 
+            new_priors[:, :, j_start:j_end] = t_0 / n_sample_points
             new_positions[:, :, j_start:j_end] = t_1 / t_0.unsqueeze(3)  # (bs, 1, ng, 3)
             new_covariances[:, :, j_start:j_end] = t_2 / t_0.unsqueeze(3).unsqueeze(4) - \
                 (new_positions[:, :, j_start:j_end].unsqueeze(4) * new_positions[:, :, j_start:j_end].unsqueeze(4)
                  .transpose(-1, -2)) + eps[running]
-            new_priors[:, :, j_start:j_end] = t_0 / n_sample_points
             del t_0, t_1, t_2
 
         # Handling of invalid Gaussians! If all responsibilities of a Gaussian are zero, the previous code will
