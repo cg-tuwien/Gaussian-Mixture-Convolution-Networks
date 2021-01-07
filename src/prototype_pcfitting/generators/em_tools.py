@@ -173,6 +173,8 @@ class EMTools:
         # Handling of invalid Gaussians! If all responsibilities of a Gaussian are zero, the previous code will
         # set the prior of it to zero and the covariances and positions to NaN
         # To avoid NaNs, we will then replace those invalid values with 0 (pos) and eps (cov).
+        if (new_priors == 0).sum() > 0:
+            print("detected ", (new_priors == 0).sum().item(), "0-priors!")
         new_positions[new_priors == 0] = torch.tensor([0.0, 0.0, 0.0], dtype=dtype, device='cuda')
         new_covariances[new_priors == 0] = eps[0, 0, 0, :, :]
 
@@ -203,13 +205,32 @@ class EMTools:
         def set_covariances(self, covariances, running):
             # running indicates which batch entries should be replaced
             # If changing the covariance would lead them to have uncalculable sqrt-det, they will not be changed
-            relcovs = ~torch.isnan(covariances.det().sqrt())
+
+            # Det-Ditching
+            invcovs = mat_tools.inverse(covariances).contiguous()
+            relcovs = ~(torch.isnan(covariances.det().sqrt()) | covariances[:,:,:,0:2,0:2].det().lt(0)
+                        | covariances[:,:,:,0,0].lt(0) | invcovs.det().lt(0) |
+                        invcovs[:,:,:,0:2,0:2].det().lt(0) | invcovs[:,:,:,0,0].lt(0))
+            if (~relcovs).sum() != 0:
+                print("ditching ", (~relcovs).sum().item(), " items")
             runningcovs = self._covariances[running]
             runningcovs[relcovs] = covariances[relcovs]
             self._covariances[running] = runningcovs
             runningicovs = self._inversed_covariances[running]
-            runningicovs[relcovs] = mat_tools.inverse(covariances[relcovs]).contiguous()
+            runningicovs[relcovs] = invcovs[relcovs]
             self._inversed_covariances[running] = runningicovs
+            # print(self._covariances.det().min().item())
+
+            # Det-Enlargement
+            # tau = 1e-16
+            # tinydet = covariances.det().lt(tau)
+            # if tinydet.sum() != 0:
+            #     print("enlarging ", tinydet.sum().item(), " items")
+            # covariances[tinydet] *= (tau / covariances[tinydet].det().unsqueeze(-1).unsqueeze(-1)) ** (1 / 3)
+            # self._covariances[running] = covariances
+            # self._inversed_covariances[running] = mat_tools.inverse(covariances).contiguous()
+
+
 
         def set_amplitudes(self, amplitudes, running):
             # running indicates which batch entries should be replaced
