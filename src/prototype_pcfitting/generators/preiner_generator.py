@@ -78,7 +78,7 @@ class PreinerGenerator(GMMGenerator):
         # the 0th layer, only has one (fictional) Gaussian, whose index is assumed to be 0
         parent_per_point[:, :] = 0
 
-        llh_loss_calc = LikelihoodLoss()
+        llh_loss_calc = LikelihoodLoss(False)
 
         # hierarchy: list of combined mixtures, one for each level
         gm_ref = self._initialize_gm_on_lowest_level(pcbatch)

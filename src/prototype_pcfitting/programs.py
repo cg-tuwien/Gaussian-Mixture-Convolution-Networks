@@ -15,7 +15,7 @@ def execute_fitting(training_name: str, model_path: str, genpc_path: str, gengmm
                     scaling_interval: Tuple[float, float] = (-50.0, 50.0),
                     log_positions: int = 0, log_loss_console: int = 0,
                     log_loss_tb: int = 0, log_rendering_tb: int = 0, log_gm: int = 0,
-                    log_seperate_directories: bool = True):
+                    log_seperate_directories: bool = True, continuing = True):
     # ---- GMM FITTING ----
 
     # Create Dataset Iterator and Scaler
@@ -41,6 +41,10 @@ def execute_fitting(training_name: str, model_path: str, genpc_path: str, gengmm
             print(generator_identifiers[j], "on", names)
 
             gen_id = training_name + "/" + generator_identifiers[j]
+
+            if continuing and os.path.exists(os.path.join(gengmm_path, gen_id, f"{names[-1]}.gma.ply")):
+                print("Skipped - already exists!")
+                continue
 
             # Create Logger
             logger = GMLogger(names=names, log_prefix=gen_id, log_path=log_path,

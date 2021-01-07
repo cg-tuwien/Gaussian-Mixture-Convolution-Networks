@@ -52,7 +52,7 @@ class GradientDescentGenerator(GMMGenerator):
         self._learn_rate_pos = learn_rate_pos
         self._learn_rate_cov = learn_rate_cov
         self._learn_rate_weights = learn_rate_weights
-        self._loss = LikelihoodLoss()
+        self._loss = LikelihoodLoss(True)
         self._logger = None
 
     def set_logging(self,
@@ -172,12 +172,12 @@ class GradientDescentGenerator(GMMGenerator):
         elif self._initialization_method == 2:
             # furthest point sampling from positions, covs by artificial EM-step, fixed weights
             initializer = EMGenerator(self._n_gaussians, 20000)
-            gmbatch = initializer.initialize_adam2(pcbatch)
+            gmbatch = initializer.initialize_adam2(pcbatch) # ToDo: Update to GMMInitializer
             return gm.convert_priors_to_amplitudes(gmbatch)
         else:
             # Random by sample mean and cov
             initializer = EMGenerator(self._n_gaussians, point_count)
-            gmbatch = initializer.initialize_rand1(pcbatch)
+            gmbatch = initializer.initialize_rand1(pcbatch) # ToDo: Update to GMMInitializer
             return gm.convert_priors_to_amplitudes(gmbatch)
 
     class TrainingData:

@@ -102,7 +102,7 @@ class EckartGeneratorSP(GMMGenerator):
         # weights of the parents of each point. initialized with one (fictional 0th layer has only one Gaussian)
         parentweights = torch.ones(1, 1, self._n_gaussians_per_node, dtype=self._dtype, device='cuda')
 
-        llh_loss_calc = LikelihoodLoss()
+        llh_loss_calc = LikelihoodLoss(False)
         gm_data = None
 
         absiteration = 0  # Iteration index overall
@@ -174,10 +174,6 @@ class EckartGeneratorSP(GMMGenerator):
         # Calculate final GMs
         res_gm = self._construct_full_gm(gm_data.approximate_whole_mixture(), finished_subgmms)
         res_gmm = gm.convert_amplitudes_to_priors(res_gm)
-
-        print("Final Loss: ", LikelihoodLoss().calculate_score_packed(pcbatch, res_gm).item())
-        # print("EckartSP: # of invalid Gaussians: ", torch.sum(gm.weights(res_gmm).eq(0)).item())
-        print("Sum of Weights (should be 1)", gm.weights(res_gmm).sum())
 
         return res_gm, res_gmm
 
@@ -495,14 +491,10 @@ class EckartGeneratorSP(GMMGenerator):
             self.covariances[:, :, j_start:j_end] = runningcovs
 
         def approximate_whole_mixture(self) -> torch.Tensor:
-            # Scales the mixtures up and multiplies the priors with their parents priors
-            # to generate a (more or less) valid Gaussian Mixture (with amplitudes).
+            # Generates a (more or less) valid Gaussian Mixture (with amplitudes).
             # It's not completely accurate, as all children of a Gaussian can have priors 0.
             # Usually these would be replaced with their parent. This is not happening.
             # It could therefore even be, that the weights do not sum to 0, so it's only an approximation.
-            # newpriors, newpositions, newcovariances = \
-            #     scaler.scale_up_gmm_wpc(self.priors, self.positions, self.covariances)
-            # newamplitudes = newpriors / (newcovariances.det().sqrt() * 15.74960995)
             return gm.pack_mixture(self.parentweights * self.calculate_amplitudes(), self.positions, self.covariances)
 
         def __len__(self):

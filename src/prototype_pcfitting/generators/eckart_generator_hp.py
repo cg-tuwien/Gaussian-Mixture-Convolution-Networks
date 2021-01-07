@@ -112,7 +112,7 @@ class EckartGeneratorHP(GMMGenerator):
         # the 0th layer, only has one (fictional) Gaussian, whose index is assumed to be 0
         parent_per_point[:, :] = 0
 
-        llh_loss_calc = LikelihoodLoss()
+        llh_loss_calc = LikelihoodLoss(False)
         mixture = None
 
         finished_gaussians = torch.tensor([], dtype=torch.long, device='cuda')
@@ -187,9 +187,6 @@ class EckartGeneratorHP(GMMGenerator):
         # Calculate final GMs
         res_gm = self._construct_full_gm(mixture, finished_subgmms)
         res_gmm = gm.convert_amplitudes_to_priors(res_gm)
-
-        print("Final Loss: ", LikelihoodLoss().calculate_score_packed(pcbatch, res_gm).item())
-        # print("EckartHP: # of invalid Gaussians: ", torch.sum(gm.weights(res_gmm).eq(0)).item())
 
         return res_gm, res_gmm
 
