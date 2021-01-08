@@ -404,11 +404,6 @@ std::vector<torch::Tensor> _collectionOf2dMixtures_with4Gs() {
                                          {0.5f, 20.0f, 10.0f,  5.0f,  0.0f,  0.0f,  7.0f},
                                          {0.5f, 20.0f, 20.0f,  5.0f,  0.5f,  0.5f,  7.0f}}).view({1, 1, 4, 7}));
 
-    mixtures.emplace_back(torch::tensor({{1.0f,  0.0f,  0.0f,  4.0f, -2.5f, -2.5f,  4.0f},
-                                         {0.5f, 20.0f, 20.0f,  2.0f, -1.5f, -1.5f,  3.0f},
-                                         {0.5f, 40.0f, 40.0f,  4.0f,  0.5f,  0.5f,  4.0f},
-                                         {1.5f, 60.0f, 60.0f,  5.0f, -0.5f, -0.5f,  4.0f}}).view({1, 1, 4, 7}));
-
     mixtures.emplace_back(torch::tensor({{1.0f, -0.5f, -0.5f,  4.0f, -1.0f, -1.0f,  4.0f},
                                          {0.5f,  0.5f,  0.5f,  4.0f, -0.8f, -0.8f,  4.0f},
                                          {0.5f, -0.5f,  0.5f,  5.0f,  0.5f,  0.5f,  7.0f},
