@@ -356,31 +356,39 @@ void iterate_over_nodes(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
     };
 
     // go bottom up through all nodes
-    while(current_leaf < end_leaf)
+    bool leaf_done = true;
+    const Node* node = nullptr;
+    while(current_leaf < end_leaf || !leaf_done)
     {
-        const auto leaf_node_id = node_index_t(current_leaf + n_internal_nodes);
-        assert(leaf_node_id < n_nodes);
-        const Node* node = &bvh.nodes[leaf_node_id];
+        if (leaf_done) {
+            const auto leaf_node_id = node_index_t(current_leaf + n_internal_nodes);
+            assert(leaf_node_id < n_nodes);
+            node = &bvh.nodes[leaf_node_id];
 
-        const G& leaf_gaussian = bvh.gaussians[current_leaf];
-        bvh.per_node_attributes[leaf_node_id].gaussians.push_back(leaf_gaussian);
-        bvh.per_node_attributes[leaf_node_id].n_child_leaves = 1;
-        bvh.per_node_attributes[leaf_node_id].gm_integral = gpe::integrate(leaf_gaussian);
-        current_leaf++;
+            const G& leaf_gaussian = bvh.gaussians[current_leaf];
+            bvh.per_node_attributes[leaf_node_id].gaussians.push_back(leaf_gaussian);
+            bvh.per_node_attributes[leaf_node_id].n_child_leaves = 1;
+            bvh.per_node_attributes[leaf_node_id].gm_integral = gpe::integrate(leaf_gaussian);
+            current_leaf++;
+            leaf_done = false;
+        }
+        assert(node != nullptr);
 
-        while (node->parent_idx != node_index_t(0xFFFFFFFF) && is_second_thread(node->parent_idx)) {
-            auto node_id = node->parent_idx;
-            node = &bvh.nodes[node_id];
-            bvh.per_node_attributes[node_id].n_child_leaves = bvh.per_node_attributes[node->left_idx].n_child_leaves + bvh.per_node_attributes[node->right_idx].n_child_leaves;
-            bvh.per_node_attributes[node_id].gm_integral = bvh.per_node_attributes[node->left_idx].gm_integral + bvh.per_node_attributes[node->right_idx].gm_integral;
+        auto node_id = node->parent_idx;
+        leaf_done = node_id == node_index_t(0xFFFFFFFF) || !is_second_thread(node_id);
+        if (leaf_done)
+            continue;
 
-            auto child_gaussians = bvh.collect_child_gaussians(node, gpe::Epsilon<scalar_t>::large);
-            if (child_gaussians.size() > REDUCTION_N) {
-                bvh.per_node_attributes[node_id].gaussians = fit_em<REDUCTION_N>(child_gaussians, &(bvh.per_node_attributes[node_id].gradient_cache_data), config);
-            }
-            else {
-                bvh.per_node_attributes[node_id].gaussians.push_back(child_gaussians);
-            }
+        node = &bvh.nodes[node_id];
+        bvh.per_node_attributes[node_id].n_child_leaves = bvh.per_node_attributes[node->left_idx].n_child_leaves + bvh.per_node_attributes[node->right_idx].n_child_leaves;
+        bvh.per_node_attributes[node_id].gm_integral = bvh.per_node_attributes[node->left_idx].gm_integral + bvh.per_node_attributes[node->right_idx].gm_integral;
+
+        auto child_gaussians = bvh.collect_child_gaussians(node, gpe::Epsilon<scalar_t>::large);
+        if (child_gaussians.size() > REDUCTION_N) {
+            bvh.per_node_attributes[node_id].gaussians = fit_em<REDUCTION_N>(child_gaussians, &(bvh.per_node_attributes[node_id].gradient_cache_data), config);
+        }
+        else {
+            bvh.per_node_attributes[node_id].gaussians.push_back(child_gaussians);
         }
     }
 }
