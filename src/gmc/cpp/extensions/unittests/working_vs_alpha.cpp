@@ -1,8 +1,11 @@
 #include <iostream>
 #include <string>
+#include <type_traits>
+
 
 #include <catch2/catch.hpp>
 #include <cuda_runtime.h>
+#include <QString>
 #include <torch/torch.h>
 #include <torch/script.h>
 
@@ -15,8 +18,16 @@
 #include "util/mixture.h"
 #include "unittests/support.h"
 
+struct use_cuda_type {
+    constexpr static bool value = true;
+};
+
+struct use_cpu_type {
+    constexpr static bool value = false;
+};
+
 template <bool USE_CUDA, int N_REDUCTION, typename scalar_t, int N_FITTING_COMPONENTS = N_REDUCTION>
-void runTestDev(const std::vector<std::pair<torch::Tensor, torch::Tensor>>& testCases, double threshold) {
+void runTest(const std::vector<std::pair<torch::Tensor, torch::Tensor>>& test_cases, double threshold) {
     using namespace torch::indexing;
 
     // test specific configuration:
@@ -34,7 +45,21 @@ void runTestDev(const std::vector<std::pair<torch::Tensor, torch::Tensor>>& test
 
 //    std::cout << "test error threshold is " << threshold << std::endl;
 
-    for (const auto& test_case : testCases) {
+    double rrmse_forward = 0;
+    double rrmse_backward = 0;
+    double max_error_forward = 0;
+    double max_error_backward = 0;
+    if (USE_CUDA)
+        std::cout << "cuda, ";
+    else
+        std::cout << "cpu,  ";
+
+    if (sizeof (scalar_t) == 4)
+        std::cout << "float,  ";
+    else
+        std::cout << "double, ";
+
+    for (const auto& test_case : test_cases) {
         torch::Tensor mixture = test_case.first;
         torch::Tensor gradient_fitting = test_case.second.repeat({mixture.size(0), mixture.size(1), 1, 1});
         auto reference_mixture = mixture.to(torch::ScalarType::Double);
@@ -54,118 +79,172 @@ void runTestDev(const std::vector<std::pair<torch::Tensor, torch::Tensor>>& test
         auto reference_gradient_target = bvh_mhem_fit_alpha::backward_impl(reference_gradient_fitting, reference_forward_out, reference_config);
 
         {
+            auto fitting = forward_out.fitting.contiguous().cpu();
+            auto fitting_reference = reference_forward_out.fitting.contiguous();
+            REQUIRE(fitting_reference.size(-2) == config.n_components_fitting);
+            double forward_error = 0;
+            for (size_t i = 0; i < config.n_components_fitting * 7; ++i) {
+                const auto a = fitting_reference.data_ptr<double>()[i];
+                const auto b = double(fitting.data_ptr<scalar_t>()[i]);
+                const auto e = (a - b) * (a - b) / std::max(a * a, 1.);
+                forward_error += e;
+                max_error_forward = std::max(max_error_forward, e);
+
+                auto similar = are_similar(a, b, threshold);
+                if (!similar) {
+//                    std::cout << "fitting: " << forward_out.fitting << std::endl;
+//                    std::cout << "reference: " << reference_forward_out.fitting << std::endl;
+//                    std::cout << "i = " << i << "; difference: " << a << " - " << b << " = " << a - b << std::endl;
+//                    WARN(std::string("forward difference: ") + std::to_string(a) + " - " + std::to_string(b) + " = " + std::to_string(a - b));
+//                    WARN(QString("forward difference: %1 - %2 = %3").arg(a).arg(b).arg(a-b).toStdString());
+                }
+//                REQUIRE(similar);
+            }
+            forward_error /= config.n_components_fitting * 7;
+            rrmse_forward += forward_error;
+
             auto gradient = gradient_target.contiguous().cpu();
             auto gradient_reference = reference_gradient_target.contiguous();
             auto n_Gs = size_t(gradient_reference.size(-2));
+            double backward_error = 0;
             for (size_t i = 0; i < n_Gs * 7; ++i) {
-                auto similar = are_similar(gradient_reference.data_ptr<double>()[i], double(gradient.data_ptr<scalar_t>()[i]), threshold);
+                const auto a = gradient_reference.data_ptr<double>()[i];
+                const auto b = double(gradient.data_ptr<scalar_t>()[i]);
+                const auto e = (a - b) * (a - b) / std::max(a * a, 1.);
+                backward_error += e;
+                max_error_backward = std::max(max_error_backward, e);
+
+
+                auto similar = are_similar(a, b, threshold);
                 if (!similar) {
-                    std::cout << "target: " << mixture << std::endl;
-                    std::cout << "fitting: " << forward_out.fitting << std::endl;
-                    std::cout << "gradient target: " << gradient << std::endl;
-                    std::cout << "gradient target (reference): " << gradient_reference << std::endl;
-                    std::cout << "gradient_fitting: " << gradient_fitting << std::endl;
-                    std::cout << "i = " << i << "; difference: " << gradient_reference.data_ptr<double>()[i] - double(gradient.data_ptr<scalar_t>()[i]) << std::endl;
-//                    WARN(std::string("grad = ") + std::to_string(gradient.data_ptr<scalar_t>()[i]) + "; ref: " + std::to_string(gradient_reference.data_ptr<double>()[i]));
-//                    WARN(std::string("i = ") + std::to_string(i) + "; difference: " + std::to_string(gradient_reference.data_ptr<double>()[i] - double(gradient.data_ptr<scalar_t>()[i])));
+//                    std::cout << "target: " << mixture << std::endl;
+//                    std::cout << "fitting: " << forward_out.fitting << std::endl;
+//                    std::cout << "gradient target: " << gradient << std::endl;
+//                    std::cout << "gradient target (reference): " << gradient_reference << std::endl;
+//                    std::cout << "gradient_fitting: " << gradient_fitting << std::endl;
+//                    std::cout << "i = " << i << "; difference: " << a << " - " << b << " = " << a - b << std::endl;
+//                    WARN(QString("backward difference: %1 - %2 = %3").arg(a).arg(b).arg(a-b).toStdString());
+//                    WARN(std::string("backward difference: ") + std::to_string(a) + " - " + std::to_string(b) + " = " + std::to_string(a - b));
                 }
-                REQUIRE(similar);
+//                REQUIRE(similar);
             }
+            backward_error /= double(n_Gs * 7);
+            rrmse_backward += backward_error;
         }
     }
+    rrmse_forward /= double(test_cases.size());
+    rrmse_backward /= double(test_cases.size());
+    std::cout << QString("   forward rrmse: %1,  max: %2,   backward rrmse: %3,  max: %4")
+                 .arg(std::sqrt(rrmse_forward), 8, 'e', 2)
+                 .arg(std::sqrt(max_error_forward), 8, 'e', 2)
+                 .arg(std::sqrt(rrmse_backward), 8, 'e', 2)
+                 .arg(std::sqrt(max_error_backward), 8, 'e', 2)
+                 .toStdString() << std::endl;
 }
 
-template <int N_REDUCTION, typename scalar_t, int N_FITTING_COMPONENTS = N_REDUCTION>
-void runTest(const std::vector<std::pair<torch::Tensor, torch::Tensor>>& testCases, double threshold) {
-    runTestDev<false, N_REDUCTION, scalar_t, N_FITTING_COMPONENTS>(testCases, threshold);
-}
-
+constexpr double gpe_float_exploding_precision = 2e-3;
+constexpr double gpe_float_precision = 1e-4;
 constexpr double gpe_double_precision = 1e-12;
 
-TEST_CASE( "testing working against alpha reference", "[bvh_mhem_fit]" ) {
-    SECTION("2 component fitting double _collectionOf2dMixtures_with4Gs") {
-        runTest<2, double>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d2GsGrads()},
+TEMPLATE_TEST_CASE( "testing working against alpha reference", "[bvh_mhem_fit]", /*use_cuda_type, */use_cpu_type) {
+    std::cout << "01. ";
+//    SECTION("2 component fitting double _collectionOf2dMixtures_with4Gs") {
+        runTest<TestType::value, 2, double>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d2GsGrads()},
                                                                  {_collectionOf2dMixtures_with4Gs()}),
                            gpe_double_precision);
-    }
-    SECTION("2 component fitting double _collectionOf2dMixtures_with8GsForQuickAutoDiff") {
-        runTest<2, double>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d2GsGrads()},
+//    }
+    std::cout << "02. ";
+//    SECTION("2 component fitting double _collectionOf2dMixtures_with8GsForQuickAutoDiff") {
+        runTest<TestType::value, 2, double>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d2GsGrads()},
                                                                  {_collectionOf2dMixtures_with8GsForQuickAutoDiff()}),
                            gpe_double_precision);
-    }
-    SECTION("2 component fitting double _collectionOf2dMixtures_with8GsForLongAutoDiff") {
-        runTest<2, double>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d2GsGrads()},
+//    }
+    std::cout << "03. ";
+//    SECTION("2 component fitting double _collectionOf2dMixtures_with8GsForLongAutoDiff") {
+        runTest<TestType::value, 2, double>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d2GsGrads()},
                                                                  {_collectionOf2dMixtures_with8GsForLongAutoDiff()}),
                            gpe_double_precision);
-    }
-    SECTION("2 component fitting double _collectionOf2dMixtures_with8GsTooLongForAutodiff") {
-        runTest<2, double>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d2GsGrads()},
+//    }
+    std::cout << "04. ";
+//    SECTION("2 component fitting double _collectionOf2dMixtures_with8GsTooLongForAutodiff") {
+        runTest<TestType::value, 2, double>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d2GsGrads()},
                                                                  {_collectionOf2dMixtures_with8GsTooLongForAutodiff()}),
                            gpe_double_precision);
-    }
-    SECTION("2 component fitting double _collectionOf2dMixtures_with16Gs") {
-        runTest<2, double>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d2GsGrads()},
+//    }
+    std::cout << "05. ";
+//    SECTION("2 component fitting double _collectionOf2dMixtures_with16Gs") {
+        runTest<TestType::value, 2, double>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d2GsGrads()},
                                                                  {_collectionOf2dMixtures_with16Gs()}),
                            gpe_double_precision);
-    }
+//    }
 
-    SECTION("2 component fitting float _collectionOf2dMixtures_with4Gs") {
-        runTest<2, float>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d2GsGrads()},
+    std::cout << "06. ";
+//    SECTION("2 component fitting float _collectionOf2dMixtures_with4Gs") {
+        runTest<TestType::value, 2, float>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d2GsGrads()},
                                                                  {_collectionOf2dMixtures_with4Gs()}),
-                           0.00002);
-    }
-    SECTION("2 component fitting float _collectionOf2dMixtures_with8GsForQuickAutoDiff") {
-        runTest<2, float>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d2GsGrads()},
+                           gpe_float_precision);
+//    }
+    std::cout << "07. ";
+//    SECTION("2 component fitting float _collectionOf2dMixtures_with8GsForQuickAutoDiff") {
+        runTest<TestType::value, 2, float>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d2GsGrads()},
                                                                  {_collectionOf2dMixtures_with8GsForQuickAutoDiff()}),
-                           0.00002);
-    }
-    SECTION("2 component fitting float _collectionOf2dMixtures_with8GsForLongAutoDiff") {
-        runTest<2, float>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d2GsGrads()},
+                           gpe_float_precision);
+//    }
+    std::cout << "08. ";
+//    SECTION("2 component fitting float _collectionOf2dMixtures_with8GsForLongAutoDiff") {
+        runTest<TestType::value, 2, float>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d2GsGrads()},
                                                                  {_collectionOf2dMixtures_with8GsForLongAutoDiff()}),
-                           0.00002);
-    }
-    SECTION("2 component fitting float _collectionOf2dMixtures_with8GsTooLongForAutodiff") {
-        runTest<2, float>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d2GsGrads()},
+                           gpe_float_precision);
+//    }
+    std::cout << "09. ";
+//    SECTION("2 component fitting float _collectionOf2dMixtures_with8GsTooLongForAutodiff") {
+        runTest<TestType::value, 2, float>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d2GsGrads()},
                                                                  {_collectionOf2dMixtures_with8GsTooLongForAutodiff()}),
-                           0.00002);
-    }
-    SECTION("2 component fitting float _collectionOf2dMixtures_with16Gs") {
-        runTest<2, float>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d2GsGrads()},
+                           gpe_float_precision);
+//    }
+    std::cout << "10. ";
+//    SECTION("2 component fitting float _collectionOf2dMixtures_with16Gs") {
+        runTest<TestType::value, 2, float>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d2GsGrads()},
                                                                  {_collectionOf2dMixtures_with16Gs()}),
-                           0.00003);
-    }
+                           gpe_float_precision);
+//    }
 
-    SECTION("2 component fitting float _collectionOf2dMixtures_causingNumericalProblems") {
-        runTest<2, float>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d2GsGrads()},
+    std::cout << "11. ";
+//    SECTION("2 component fitting float _collectionOf2dMixtures_causingNumericalProblems") {
+        runTest<TestType::value, 2, float>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d2GsGrads()},
                                                                 {_collectionOf2dMixtures_causingNumericalProblems()}),
-                          0.002);
-    }
+                          gpe_float_exploding_precision);
+//    }
 
-    SECTION("4 component fitting double") {
-        runTest<4, double>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d4GsGrads()},
+    std::cout << "12. ";
+//    SECTION("4 component fitting double") {
+        runTest<TestType::value, 4, double>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d4GsGrads()},
                                                                  {_collectionOf2dMixtures_with8GsForQuickAutoDiff(),
                                                                   _collectionOf2dMixtures_with8GsForLongAutoDiff(),
                                                                   _collectionOf2dMixtures_with8GsTooLongForAutodiff(),
                                                                   _collectionOf2dMixtures_with16Gs()}),
                            gpe_double_precision);
-    }
+//    }
 
-    SECTION("4 component fitting float") {
-        runTest<4, float>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d4GsGrads()},
+    std::cout << "13. ";
+//    SECTION("4 component fitting float") {
+        runTest<TestType::value, 4, float>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d4GsGrads()},
                                                                 {_collectionOf2dMixtures_with8GsForQuickAutoDiff(),
                                                                  _collectionOf2dMixtures_with8GsForLongAutoDiff(),
                                                                  _collectionOf2dMixtures_with8GsTooLongForAutodiff(),
                                                                  _collectionOf2dMixtures_with16Gs()}),
-                          0.00001);
-    }
+                          gpe_float_precision);
+//    }
 
-    SECTION("4 component fitting float with numerical problems") {
-        runTest<4, float>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d4GsGrads()},
+    std::cout << "14. ";
+//    SECTION("4 component fitting float with numerical problems") {
+        runTest<TestType::value, 4, float>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d4GsGrads()},
                                                                 {_collectionOf2dMixtures_causingNumericalProblems()}),
-                          0.002);
-    }
+                          gpe_float_exploding_precision);
+//    }
 
-    SECTION("32 component fitting double of real world") {
+    std::cout << "15. ";
+    /*SECTION("32 component fitting double of real world")*/ {
         using namespace torch::indexing;
         std::vector<torch::Tensor> mixtures;
         for (int i = 0; i < 1/*10*/; ++i) {
@@ -179,10 +258,11 @@ TEST_CASE( "testing working against alpha reference", "[bvh_mhem_fit]" ) {
             }
         }
 
-        runTest<4, double, 32>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d32GsGradsWellBehaving(), _collectionOf2d32GsGradsExploding()}, {mixtures}), gpe_double_precision);
+        runTest<TestType::value, 4, double, 32>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d32GsGradsWellBehaving(), _collectionOf2d32GsGradsExploding()}, {mixtures}), gpe_double_precision);
     }
 
-    SECTION("32 component fitting double of real world with well behaved gradients") {
+    std::cout << "16. ";
+    /*SECTION("32 component fitting float of real world with well behaved gradients")*/ {
         using namespace torch::indexing;
         std::vector<torch::Tensor> mixtures;
         for (int i = 0; i < 1/*10*/; ++i) {
@@ -196,10 +276,11 @@ TEST_CASE( "testing working against alpha reference", "[bvh_mhem_fit]" ) {
             }
         }
 
-        runTest<4, float, 32>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d32GsGradsWellBehaving()}, {mixtures}), 0.000005);
+        runTest<TestType::value, 4, float, 32>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d32GsGradsWellBehaving()}, {mixtures}), gpe_float_precision);
     }
 
-    SECTION("32 component fitting double of real world with exploding gradients") {
+    std::cout << "17. ";
+    /*SECTION("32 component fitting float of real world with exploding gradients", "[]")*/ {
         using namespace torch::indexing;
         std::vector<torch::Tensor> mixtures;
         for (int i = 0; i < 1/*10*/; ++i) {
@@ -213,6 +294,6 @@ TEST_CASE( "testing working against alpha reference", "[bvh_mhem_fit]" ) {
             }
         }
 
-        runTest<4, float, 32>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d32GsGradsExploding()}, {mixtures}), 0.002);
+        runTest<TestType::value, 4, float, 32>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d32GsGradsExploding()}, {mixtures}), gpe_float_exploding_precision);
     }
 }
