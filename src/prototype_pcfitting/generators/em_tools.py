@@ -147,7 +147,6 @@ class EMTools:
             # Positions/Covariances/Priors are calculated from these (see Eckart-Paper)
             t_0 = torch.zeros(n_running, 1, actual_gauss_subbatch_size, dtype=dtype, device='cuda')
             t_1 = torch.zeros(n_running, 1, actual_gauss_subbatch_size, 3, dtype=dtype, device='cuda')
-            t_2 = torch.zeros(n_running, 1, actual_gauss_subbatch_size, 3, 3, dtype=dtype, device='cuda')
 
             # Iterate over Point-Subbatches
             for i_start in range(0, n_sample_points, point_subbatch_size):
@@ -155,20 +154,33 @@ class EMTools:
                 relevant_responsibilities = responsibilities[running, :, i_start:i_end, j_start:j_end]
                 # actual_point_subbatch_size = relevant_responsibilities.shape[2]
                 relevant_points = points_rep[running, :, i_start:i_end, j_start:j_end, :]
-                matrices_from_points = relevant_points.unsqueeze(5) * relevant_points.unsqueeze(5).transpose(-1, -2)
                 # Fill T-Variables      # t_2 shape: (1, 1, J, 3, 3)
-                t_2 += (matrices_from_points * relevant_responsibilities.unsqueeze(4).unsqueeze(5)).sum(dim=2)
                 t_0 += relevant_responsibilities.sum(dim=2)  # shape: (1, 1, J)
                 t_1 += (relevant_points * relevant_responsibilities.unsqueeze(4)) \
                     .sum(dim=2)  # shape: (1, 1, J, 3)
-                del matrices_from_points, relevant_points
+                del relevant_points
 
             new_priors[:, :, j_start:j_end] = t_0 / n_sample_points
             new_positions[:, :, j_start:j_end] = t_1 / t_0.unsqueeze(3)  # (bs, 1, ng, 3)
-            new_covariances[:, :, j_start:j_end] = t_2 / t_0.unsqueeze(3).unsqueeze(4) - \
-                (new_positions[:, :, j_start:j_end].unsqueeze(4) * new_positions[:, :, j_start:j_end].unsqueeze(4)
-                 .transpose(-1, -2)) + eps[running]
-            del t_0, t_1, t_2
+
+            del t_1
+            t_2 = torch.zeros(n_running, 1, actual_gauss_subbatch_size, 3, 3, dtype=dtype, device='cuda')
+
+            for i_start in range(0, n_sample_points, point_subbatch_size):
+                i_end = i_start + point_subbatch_size
+                relevant_responsibilities = responsibilities[running, :, i_start:i_end, j_start:j_end]
+                actual_point_subbatch_size = relevant_responsibilities.shape[2]
+                relevant_relative_points = points_rep[running, :, i_start:i_end, j_start:j_end, :] \
+                    - new_positions[:, :, j_start:j_end].unsqueeze(2).expand(n_running, 1, actual_point_subbatch_size, actual_gauss_subbatch_size, 3)
+                matrices_from_points = relevant_relative_points.unsqueeze(5) * relevant_relative_points.unsqueeze(5).transpose(-1, -2)
+                t_2 += (matrices_from_points * relevant_responsibilities.unsqueeze(4).unsqueeze(5)).sum(dim=2)
+                del matrices_from_points, relevant_relative_points
+
+            new_covariances[:, :, j_start:j_end] = t_2 / t_0.unsqueeze(3).unsqueeze(4) + eps[running]
+            del t_0, t_2
+
+        # covdiag = new_covariances.diagonal(0, -1, -2)
+        # covdiag[covdiag.lt(eps[0,0,0,0,0])] = eps[0,0,0,0,0]
 
         # Handling of invalid Gaussians! If all responsibilities of a Gaussian are zero, the previous code will
         # set the prior of it to zero and the covariances and positions to NaN
