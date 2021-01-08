@@ -33,14 +33,10 @@ void runTest(const std::vector<std::pair<torch::Tensor, torch::Tensor>>& test_ca
     // test specific configuration:
     auto config = bvh_mhem_fit::Config{N_REDUCTION,
                                    lbvh::Config{lbvh::Config::MortonCodeAlgorithm::Old},
-                                   bvh_mhem_fit::Config::FitInitialDisparityMethod::CentroidDistance,
-                                   bvh_mhem_fit::Config::FitInitialClusterMergeMethod::MaxWeight,
                                    1.5f,
                                    N_FITTING_COMPONENTS};
     auto reference_config = bvh_mhem_fit_alpha::Config{
             config.reduction_n, config.bvh_config,
-            bvh_mhem_fit_alpha::Config::FitInitialDisparityMethod(int(config.fit_initial_disparity_method)),
-            bvh_mhem_fit_alpha::Config::FitInitialClusterMergeMethod(int(config.fit_initial_cluster_merge_method)),
             config.em_kl_div_threshold, config.n_components_fitting};
 
 //    std::cout << "test error threshold is " << threshold << std::endl;

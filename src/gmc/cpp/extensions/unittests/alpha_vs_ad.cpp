@@ -16,8 +16,6 @@ template <int N_REDUCTION, typename scalar_t>
 void runTest(scalar_t threshold) {
     auto alpha_config = bvh_mhem_fit_alpha::Config{N_REDUCTION,
                                    lbvh::Config{lbvh::Config::MortonCodeAlgorithm::Old},
-                                   bvh_mhem_fit_alpha::Config::FitInitialDisparityMethod::CentroidDistance,
-                                   bvh_mhem_fit_alpha::Config::FitInitialClusterMergeMethod::MaxWeight,
                                    20.5f,
                                    N_REDUCTION};
 

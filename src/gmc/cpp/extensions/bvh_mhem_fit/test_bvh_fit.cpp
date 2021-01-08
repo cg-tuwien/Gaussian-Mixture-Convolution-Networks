@@ -113,42 +113,25 @@ int main(int argc, char *argv[]) {
     std::vector<lbvh::Config::MortonCodeAlgorithm> morton_code_options = {
         lbvh::Config::MortonCodeAlgorithm::Old
     };
-    std::vector<bvh_mhem_fit::Config::FitInitialDisparityMethod> fit_initial_disparity_options = {
-        bvh_mhem_fit::Config::FitInitialDisparityMethod::CentroidDistance
-    };
-    std::vector<bvh_mhem_fit::Config::FitInitialClusterMergeMethod> fit_initial_cluster_merge_options = {
-        bvh_mhem_fit::Config::FitInitialClusterMergeMethod::MaxWeight
-    };
     std::vector<float> em_kl_div_threshold_options {0.5f};
 
 
     std::vector<std::pair<std::string, bvh_mhem_fit::Config>> configs;
     for (auto reduction_n : reduction_n_options) {
         for (auto morton_code_algorithm : morton_code_options) {
-            for (auto fit_initial_disparity_method : fit_initial_disparity_options) {
-                for (auto fit_initial_cluster_merge_method : fit_initial_cluster_merge_options) {
-                    for (auto em_kl_div_threshold : em_kl_div_threshold_options) {
-//                        configs.emplace_back("red_" + std::to_string(reduction_n) +
-//                                             "_morton_" + std::to_string(int(morton_code_algorithm)) +
-//                                             "_fidispr_" + std::to_string(int(fit_initial_disparity_method)) +
-//                                             "_ficlstrm_" + std::to_string(int(fit_initial_cluster_merge_method)) +
-//                                             "_emkldivth_" + std::to_string(em_kl_div_threshold),
-//                                             bvh_mhem_fit::Config{reduction_n, lbvh::Config{morton_code_algorithm}, fit_initial_disparity_method, fit_initial_cluster_merge_method, em_kl_div_threshold});
-                        configs.emplace_back(std::to_string(reduction_n) +
-                                             ", " + std::to_string(int(morton_code_algorithm)) +
-                                             ", " + std::to_string(int(fit_initial_disparity_method)) +
-                                             ", " + std::to_string(int(fit_initial_cluster_merge_method)) +
-                                             ", " + std::to_string(int(em_kl_div_threshold * 10)),
-                                             bvh_mhem_fit::Config{reduction_n, lbvh::Config{morton_code_algorithm}, fit_initial_disparity_method, fit_initial_cluster_merge_method, em_kl_div_threshold, N_FITTING_COMPONENTS});
-//                        goto outoutoutoutout;
-                    }
-                }
+            for (auto em_kl_div_threshold : em_kl_div_threshold_options) {
+//                configs.emplace_back("red_" + std::to_string(reduction_n) +
+//                                     "_morton_" + std::to_string(int(morton_code_algorithm)) +
+//                                     "_emkldivth_" + std::to_string(em_kl_div_threshold),
+//                                     bvh_mhem_fit::Config{reduction_n, lbvh::Config{morton_code_algorithm}, em_kl_div_threshold});
+                configs.emplace_back(std::to_string(reduction_n) +
+                                     ", " + std::to_string(int(morton_code_algorithm)) +
+                                     ", " + std::to_string(int(em_kl_div_threshold * 10)),
+                                     bvh_mhem_fit::Config{reduction_n, lbvh::Config{morton_code_algorithm}, em_kl_div_threshold, N_FITTING_COMPONENTS});
             }
-
         }
     }
-//    outoutoutoutout:
-    std::cout << "n_red, morton, fi_dispr, fi_clstrm, em_kldiv, layer_0, time_0, layer_1, time_1, layer_2, time_2" << std::endl;
+    std::cout << "n_red, morton, em_kldiv, layer_0, time_0, layer_1, time_1, layer_2, time_2" << std::endl;
 
     for (const auto& named_config : configs) {
         for (uint i = 0; i < N_BATCHES; ++i) {
