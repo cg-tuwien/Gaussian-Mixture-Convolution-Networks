@@ -1,3 +1,5 @@
+from typing import Union
+
 import torch
 from sklearn.cluster import KMeans
 
@@ -15,8 +17,7 @@ class GMMInitializer:
     def __init__(self,
                  em_step_gaussians_subbatchsize: int = -1,
                  em_step_points_subbatchsize: int = -1,
-                 dtype: torch.dtype = torch.float32,
-                 eps: float = 1e-4):
+                 dtype: torch.dtype = torch.float32):
         #   Creates a new GMM-initializer.
         #   em_step_gaussian_subbatchsize: int
         #       How many Gaussian Sub-Mixtures should be processed in the E- and M-Step at once (only relevant for
@@ -35,11 +36,10 @@ class GMMInitializer:
         self._em_step_gaussians_subbatchsize = em_step_gaussians_subbatchsize
         self._em_step_points_subbatchsize = em_step_points_subbatchsize
         self._dtype = dtype
-        self._epsvar = eps
 
     def initialize_by_method_name(self, method_name: str, pcbatch: torch.Tensor, n_gaussians: int,
-                                  n_sample_points: int = -1, weights: torch.Tensor = None):
-        # Calls one of the initialization methods by its name
+                                  n_sample_points: int = -1, weights: torch.Tensor = None, epsilons: Union[torch.Tensor, float] = 1e-4):
+        # Calls one of the initialization methods by its name and returns the result (a gaussian mixture model (priors as weights))
         # Parameters:
         #   method_name: str
         #       Name of the method to call. Options: 'randnormpos' ('rand1'), 'randresp' ('rand2'), 'fps' ('adam1'),
@@ -54,23 +54,23 @@ class GMMInitializer:
         #       Additional weights for the points. Only used by randnormpos and kmeans-methods
 
         if method_name == 'randnormpos' or method_name == 'rand1':
-            return self.initialize_randnormpos(pcbatch, n_gaussians, weights)
+            return self.initialize_randnormpos(pcbatch, n_gaussians, weights, epsilons)
         elif method_name == 'randresp' or method_name == 'rand2':
-            return self.initialize_randresp(pcbatch, n_gaussians, n_sample_points)
+            return self.initialize_randresp(pcbatch, n_gaussians, n_sample_points, epsilons)
         elif method_name == 'fps' or method_name == 'adam1':
-            return self.initialize_fps(pcbatch, n_gaussians)
+            return self.initialize_fps(pcbatch, n_gaussians, epsilons)
         elif method_name == 'fpsmax' or method_name == 'adam2':
-            return self.initialize_fpsmax(pcbatch, n_gaussians, n_sample_points)
+            return self.initialize_fpsmax(pcbatch, n_gaussians, n_sample_points, epsilons)
         elif method_name == 'kmeans-full':
-            return self.initialize_kmeans(pcbatch, n_gaussians, False, weights)
+            return self.initialize_kmeans(pcbatch, n_gaussians, False, weights, epsilons)
         elif method_name == 'kmeans-fast' or method_name == 'kmeans':
-            return self.initialize_kmeans(pcbatch, n_gaussians, True, weights)
+            return self.initialize_kmeans(pcbatch, n_gaussians, True, weights, epsilons)
         else:
             raise Exception("Invalid Initialization Method for GMMInitializer")
 
-    def initialize_randnormpos(self, pcbatch: torch.Tensor, n_gaussians: int, weights: torch.Tensor = None) \
+    def initialize_randnormpos(self, pcbatch: torch.Tensor, n_gaussians: int, weights: torch.Tensor = None, epsilons: Union[torch.Tensor, float] = 1e-4) \
             -> torch.Tensor:
-        # Creates a new initial Gaussian Mixture (batch) for a given point cloud (batch).
+        # Creates a new initial Gaussian Mixture Model (batch, prior-weights) for a given point cloud (batch).
         # The initialization is done according to McLachlan and Peel "Finite Mixture Models" (2000), Chapter 2.12.2
         # The positions are sampled from a normal distribution based on the empirical mean and covariances
         # of the point cloud. The covariances of the Gaussians are equal to the empirical covariances of the
@@ -102,8 +102,8 @@ class GMMInitializer:
         # Calculated mean prior.
         meanweight = 1.0 / n_gaussians
 
-        eps = (torch.eye(3, 3, dtype=dtype, device='cuda') * self._epsvar).view(1, 1, 1, 3, 3) \
-            .expand(batch_size, 1, n_gaussians, 3, 3)
+        eps = (torch.eye(3, 3, dtype=dtype, device='cuda')).view(1, 1, 1, 3, 3) \
+            .expand(batch_size, 1, 1, 3, 3) * epsilons.view(-1, 1, 1, 1, 1)
 
         # Sample positions from Gaussian -> shape: (bs, 1, ng, 3)
         positions = torch.zeros(batch_size, 1, n_gaussians, 3, dtype=dtype, device='cuda')
@@ -120,8 +120,8 @@ class GMMInitializer:
         # pack gmm-mixture
         return gm.pack_mixture(weights, positions, covariances).to(dtype)
 
-    def initialize_randresp(self, pcbatch: torch.Tensor, n_gaussians: int, n_sample_points: int = -1) -> torch.Tensor:
-        # Creates a new initial Gaussian Mixture (batch) for a given point cloud (batch).
+    def initialize_randresp(self, pcbatch: torch.Tensor, n_gaussians: int, n_sample_points: int = -1, epsilons: Union[torch.Tensor, float] = 1e-4) -> torch.Tensor:
+        # Creates a new initial Gaussian Mixture Model (batch, prior-weights) for a given point cloud (batch).
         # The initialization is done according to McLachlan and Peel "Finite Mixture Models" (2000), Chapter 2.12.2
         # The responsibilities are created somewhat randomly and from these the M step calculates the Gaussians.
         # Parameters:
@@ -139,8 +139,10 @@ class GMMInitializer:
         else:
             sample_points = pcbatch
 
-        eps = (torch.eye(3, 3, dtype=dtype, device='cuda') * self._epsvar).view(1, 1, 1, 3, 3) \
-            .expand(batch_size, 1, n_gaussians, 3, 3)
+        if type(epsilons) is not torch.Tensor:
+            epsilons = torch.tensor(epsilons, dtype=pcbatch.dtype, device='cuda')
+        eps = (torch.eye(3, 3, dtype=dtype, device='cuda')).view(1, 1, 1, 3, 3) \
+            .expand(batch_size, 1, 1, 3, 3) * epsilons.view(-1, 1, 1, 1, 1)
 
         assignments = torch.randint(low=0, high=n_gaussians, size=(batch_size * n_sample_points,))
         point_indizes = torch.arange(0, n_sample_points).repeat(batch_size)
@@ -155,8 +157,8 @@ class GMMInitializer:
                              eps, self._em_step_gaussians_subbatchsize, self._em_step_points_subbatchsize)
         return gm_data.pack_mixture_model().to(self._dtype)
 
-    def initialize_fps(self, pcbatch: torch.Tensor, n_gaussians: int):
-        # Creates a new initial Gaussian Mixture (batch) for a given point cloud (batch).
+    def initialize_fps(self, pcbatch: torch.Tensor, n_gaussians: int, epsilons: Union[torch.Tensor, float] = 1e-4):
+        # Creates a new initial Gaussian Mixture Model (batch, prior-weights) for a given point cloud (batch).
         # The initialization is done according to Adam's method.
         # Furthest Point Sampling for mean selection, then assigning each point to the closest mean, then performing
         # an M step.
@@ -165,8 +167,10 @@ class GMMInitializer:
         #   n_gaussians: int (number of Gaussians)
         batch_size = pcbatch.shape[0]
 
-        eps = (torch.eye(3, 3, dtype=self._dtype, device='cuda') * self._epsvar).view(1, 1, 1, 3, 3) \
-            .expand(batch_size, 1, n_gaussians, 3, 3)
+        if type(epsilons) is not torch.Tensor:
+            epsilons = torch.tensor(epsilons, dtype=pcbatch.dtype, device='cuda')
+        eps = (torch.eye(3, 3, dtype=self._dtype, device='cuda')).view(1, 1, 1, 3, 3) \
+            .expand(batch_size, 1, 1, 3, 3) * epsilons.view(-1, 1, 1, 1, 1)
 
         sampled = furthest_point_sampling.apply(pcbatch.float(), n_gaussians).to(torch.long).reshape(-1)
         batch_indizes = torch.arange(0, batch_size).repeat(n_gaussians, 1).transpose(-1, -2).reshape(-1)
@@ -178,8 +182,8 @@ class GMMInitializer:
 
         return gm.pack_mixture(gmpriors, gmpositions, gmcovariances)
 
-    def initialize_fpsmax(self, pcbatch: torch.Tensor, n_gaussians: int, n_sample_points: int = -1):
-        # Creates a new initial Gaussian Mixture (batch) for a given point cloud (batch).
+    def initialize_fpsmax(self, pcbatch: torch.Tensor, n_gaussians: int, n_sample_points: int = -1, epsilons: Union[torch.Tensor, float] = 1e-4):
+        # Creates a new initial Gaussian Mixture Model (batch, prior-weights) for a given point cloud (batch).
         # The initialization is done according to Adam's method.
         # Furthest Point Sampling for mean selection, then assigning each point to the closest mean, then performing
         # an M step
@@ -198,8 +202,10 @@ class GMMInitializer:
         else:
             sample_points = pcbatch
 
-        eps = (torch.eye(3, 3, dtype=self._dtype, device='cuda') * self._epsvar).view(1, 1, 1, 3, 3) \
-            .expand(batch_size, 1, n_gaussians, 3, 3)
+        if type(epsilons) is not torch.Tensor:
+            epsilons = torch.tensor(epsilons, dtype=pcbatch.dtype, device='cuda')
+        eps = (torch.eye(3, 3, dtype=self._dtype, device='cuda')).view(1, 1, 1, 3, 3) \
+            .expand(batch_size, 1, 1, 3, 3) * epsilons.view(-1, 1, 1, 1, 1)
 
         mix = self.initialize_fps(pcbatch, n_gaussians)
 
@@ -228,8 +234,8 @@ class GMMInitializer:
                              self._em_step_points_subbatchsize)
         return gm_data.pack_mixture_model().to(self._dtype)
 
-    def initialize_kmeans(self, pcbatch: torch.Tensor, n_gaussians: int, fast: bool = True, weights: torch.Tensor = None) -> torch.Tensor:
-        # Creates a new initial Gaussian Mixture (batch) for a given point cloud (batch).
+    def initialize_kmeans(self, pcbatch: torch.Tensor, n_gaussians: int, fast: bool = True, weights: torch.Tensor = None, epsilons: Union[torch.Tensor, float] = 1e-4) -> torch.Tensor:
+        # Creates a new initial Gaussian Mixture Model (batch, prior-weights) for a given point cloud (batch).
         # Calculates the initial Gaussian positions using KMeans.
         # Parameters:
         #   pcbatch: torch.Tensor(batch_size, n_points, 3)
@@ -245,8 +251,10 @@ class GMMInitializer:
         covariances = torch.zeros(batch_size, 1, n_gaussians, 3, 3, dtype=self._dtype, device='cuda')
         priors = torch.zeros(batch_size, 1, n_gaussians, dtype=self._dtype, device='cuda')
 
-        eps = (torch.eye(3, 3, dtype=self._dtype, device='cuda') * self._epsvar).view(1, 1, 1, 3, 3) \
-            .expand(batch_size, 1, n_gaussians, 3, 3)
+        if type(epsilons) is not torch.Tensor:
+            epsilons = torch.tensor(epsilons, dtype=pcbatch.dtype, device='cuda')
+        eps = (torch.eye(3, 3, dtype=self._dtype, device='cuda')).view(1, 1, 1, 3, 3) \
+            .expand(batch_size, 1, 1, 3, 3) * epsilons.view(-1, 1, 1, 1, 1)
 
         if weights is not None:
             weights /= weights.sum(dim=1, keepdim=True)

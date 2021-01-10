@@ -22,7 +22,8 @@ class EMGenerator(GMMGenerator):
                  em_step_gaussians_subbatchsize: int = -1,
                  em_step_points_subbatchsize: int = -1,
                  dtype: torch.dtype = torch.float64,
-                 eps: float = 1e-4):
+                 eps: float = 1e-9,
+                 eps_is_relative: bool = True):
         # Constructor. Creates a new EMGenerator.
         # Parameters:
         #   n_gaussians: int
@@ -61,8 +62,10 @@ class EMGenerator(GMMGenerator):
         self._em_step_points_subbatchsize = em_step_points_subbatchsize
         self._logger = None
         self._epsvar = eps
+        if eps < 1e-9:
+            print("Warning! Very small eps! Might cause numerical issues!")
+        self._eps_is_relative = eps_is_relative
         self._dtype = dtype
-        self._initializer = GMMInitializer(em_step_gaussians_subbatchsize, em_step_points_subbatchsize, dtype, eps)
 
     def set_logging(self, logger: GMLogger = None):
         # Sets logging options
@@ -97,22 +100,36 @@ class EMGenerator(GMMGenerator):
 
         assert (point_count > self._n_gaussians)
 
+        epsilons = torch.ones(batch_size, dtype=self._dtype, device='cuda') * self._epsvar
+        if self._eps_is_relative:
+            extends = pcbatch.max(dim=1)[0] - pcbatch.min(dim=1)[0]
+            epsilons *= extends.min(dim=1)[0] ** 2
+            epsilons[epsilons < 1e-9] = 1e-9
+
         # eps is a small multiple of the identity matrix which is added to the cov-matrizes
         # in order to avoid singularities
-        eps = (torch.eye(3, 3, dtype=self._dtype, device='cuda') * self._epsvar).view(1, 1, 1, 3, 3) \
-            .expand(batch_size, 1, self._n_gaussians, 3, 3)
+        eps = (torch.eye(3, 3, dtype=self._dtype, device='cuda')).view(1, 1, 1, 3, 3) \
+            .expand(batch_size, 1, 1, 3, 3) * epsilons.view(-1, 1, 1, 1, 1)
 
         # running defines which batches are still being trained
         running = torch.ones(batch_size, dtype=torch.bool)
 
         # Initialize mixture data
         if gmbatch is None:
-            gmbatch = self._initializer.initialize_by_method_name(self._initialization_method, pcbatch,
-                                                                  self._n_gaussians, self._n_sample_points)
+            initializer = GMMInitializer(self._em_step_gaussians_subbatchsize, self._em_step_points_subbatchsize, self._dtype)
+            gmbatch_init = initializer.initialize_by_method_name(self._initialization_method, pcbatch,
+                                                                  self._n_gaussians, self._n_sample_points, None, epsilons)
+        else:
+            gmbatch_init = gmbatch
         gm_data = EMTools.TrainingData(batch_size, self._n_gaussians, self._dtype, eps)
-        gm_data.set_positions(gm.positions(gmbatch), running)
-        gm_data.set_covariances(gm.covariances(gmbatch), running)
-        gm_data.set_amplitudes(gm.weights(gmbatch), running)
+        gm_data.set_positions(gm.positions(gmbatch_init), running)
+        gm_data.set_covariances(gm.covariances(gmbatch_init), running)
+        if gmbatch is None:
+            gm_data.set_priors(gm.weights(gmbatch_init), running)
+        else:
+            gm_data.set_amplitudes(gm.weights(gmbatch_init), running)
+
+        del epsilons
 
         iteration = 0
 

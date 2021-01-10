@@ -100,8 +100,7 @@ class Scaler:
         return gm.pack_mixture(amplitudes, positions, covariances)
 
     def scale_gmm(self, gmmbatch: torch.Tensor) -> torch.Tensor:
-        # Scales the given GMMs (with priors as weights!) from the scales extracted in set_pointcloud_batch to the
-        # original scale.
+        # Scales the given GMMs (with priors as weights!)  to the scales extracted in set_pointcloud_batch.
         # The scaled GMs are returned.
         if len(self._scaleP.shape) != 4:
             self._scaleP = self._scaleP.view(-1, 1, 1, 1)

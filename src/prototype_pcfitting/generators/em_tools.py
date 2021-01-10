@@ -195,6 +195,25 @@ class EMTools:
         gm_data.set_covariances(new_covariances, running)
         gm_data.set_priors(new_priors, running)
 
+    @staticmethod
+    def findValidMatrices(covariances: torch.Tensor, invcovs: torch.Tensor) -> torch.Tensor:
+        relcovs = ~(torch.isnan(covariances.det().sqrt()) | covariances[:, :, :, 0:2, 0:2].det().lt(0)
+                    | covariances[:, :, :, 0, 0].lt(0) | invcovs.det().lt(0) |
+                    invcovs[:, :, :, 0:2, 0:2].det().lt(0) | invcovs[:, :, :, 0, 0].lt(0))
+        # More reliable way to check!
+        asd = relcovs.clone()
+        for i in range(covariances.shape[0]):
+            for j in range(covariances.shape[2]):
+                relcovs[i, :, j] &= ~covariances[i, :, j].det().sqrt().isnan().any()
+                relcovs[i, :, j] &= ~covariances[i, :, j, 0:2, 0:2].det().lt(0).any()
+                relcovs[i, :, j] &= ~covariances[i, :, j, 0, 0].lt(0).any()
+                relcovs[i, :, j] &= ~invcovs[i, :, j].det().sqrt().isnan().any()
+                relcovs[i, :, j] &= ~invcovs[i, :, j, 0:2, 0:2].det().lt(0).any()
+                relcovs[i, :, j] &= ~invcovs[i, :, j, 0, 0].lt(0).any()
+        if not asd.eq(relcovs).all():
+            print("strong ditching was active!")
+        return relcovs
+
     class TrainingData:
         # Helper class. Capsules all relevant training data of the current GM batch.
         # positions, covariances and priors are stored as-is and can be set.
@@ -203,12 +222,12 @@ class EMTools:
         # Note that priors or amplitudes should always be set after the covariances are set,
         # otherwise the conversion is not correct anymore.
 
-        def __init__(self, batch_size, n_gaussians, dtype, eps):
+        def __init__(self, batch_size, n_gaussians, dtype, epsilons):
             self._positions = torch.zeros(batch_size, 1, n_gaussians, 3, dtype=dtype, device='cuda')
             self._logamplitudes = torch.zeros(batch_size, 1, n_gaussians, dtype=dtype, device='cuda')
             self._priors = torch.zeros(batch_size, 1, n_gaussians, dtype=dtype, device='cuda')
-            self._covariances = eps.clone()
-            self._inversed_covariances = torch.zeros(batch_size, 1, n_gaussians, 3, 3, dtype=dtype, device='cuda')
+            self._covariances = torch.eye(3, 3, dtype=dtype, device='cuda').view(1, 1, 1, 3, 3).repeat(batch_size, 1, n_gaussians, 1, 1) * epsilons
+            self._inversed_covariances = mat_tools.inverse(self._covariances).contiguous()
 
         def set_positions(self, positions, running):
             # running indicates which batch entries should be replaced
@@ -220,9 +239,10 @@ class EMTools:
 
             # Det-Ditching
             invcovs = mat_tools.inverse(covariances).contiguous()
-            relcovs = ~(torch.isnan(covariances.det().sqrt()) | covariances[:,:,:,0:2,0:2].det().lt(0)
-                        | covariances[:,:,:,0,0].lt(0) | invcovs.det().lt(0) |
-                        invcovs[:,:,:,0:2,0:2].det().lt(0) | invcovs[:,:,:,0,0].lt(0))
+            # relcovs = ~(torch.isnan(covariances.det().sqrt()) | covariances[:,:,:,0:2,0:2].det().lt(0)
+            #             | covariances[:,:,:,0,0].lt(0) | invcovs.det().lt(0) |
+            #             invcovs[:,:,:,0:2,0:2].det().lt(0) | invcovs[:,:,:,0,0].lt(0))
+            relcovs = EMTools.findValidMatrices(covariances, invcovs)
             if (~relcovs).sum() != 0:
                 print("ditching ", (~relcovs).sum().item(), " items")
             runningcovs = self._covariances[running]
