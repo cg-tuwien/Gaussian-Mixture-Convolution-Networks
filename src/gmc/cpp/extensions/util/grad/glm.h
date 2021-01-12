@@ -1,7 +1,7 @@
 #ifndef GPE_UTIL_GRAD_GLM_H
 #define GPE_UTIL_GRAD_GLM_H
 
-#include "util/glm.h""
+#include "util/glm.h"
 #include "util/cuda.h"
 
 namespace gpe {

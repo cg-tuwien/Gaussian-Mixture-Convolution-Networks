@@ -7,9 +7,9 @@ def default_gmcn_config() -> prototype_convolution.config:
 
     gmcn_config.mnist_n_in_g = 25
     gmcn_config.mnist_n_layers_1 = 8
-    gmcn_config.mnist_n_out_g_1 = 20
+    gmcn_config.mnist_n_out_g_1 = 32
     gmcn_config.mnist_n_layers_2 = 10
-    gmcn_config.mnist_n_out_g_2 = 10
+    gmcn_config.mnist_n_out_g_2 = 32
     gmcn_config.mnist_n_out_g_3 = -1
 
     gmcn_config.bn_mean_over_layers = False

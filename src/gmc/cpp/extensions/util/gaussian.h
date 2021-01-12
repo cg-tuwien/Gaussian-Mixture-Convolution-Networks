@@ -45,7 +45,7 @@ static_assert (sizeof (Gaussian<3, float>) == 13*4, "Something wrong with Gaussi
 static_assert (sizeof (Gaussian<2, double>) == 7*8, "Something wrong with Gaussian");
 static_assert (sizeof (Gaussian<3, double>) == 13*8, "Something wrong with Gaussian");
 
-#ifndef __CUDACC__
+#ifdef GPE_AUTODIFF
 template <int N_DIMS, typename scalar_t>
 gpe::Gaussian<N_DIMS, scalar_t> removeGrad(const gpe::Gaussian<N_DIMS, autodiff::Variable<scalar_t>>& g) {
     gpe::Gaussian<N_DIMS, scalar_t> r;

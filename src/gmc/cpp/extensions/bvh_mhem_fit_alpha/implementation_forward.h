@@ -8,20 +8,20 @@
 
 #include "bvh_mhem_fit_alpha/implementation_common.h"
 #include "common.h"
-#include "cuda_qt_creator_definitinos.h"
 #include "cuda_operations.h"
+#include "cuda_qt_creator_definitinos.h"
 #include "hacked_accessor.h"
 #include "lbvh/aabb.h"
 #include "lbvh/bvh.h"
-#include "util/glm.h"
-#include "util/scalar.h"
 #include "parallel_start.h"
 #include "util/algorithms.h"
 #include "util/autodiff.h"
 #include "util/containers.h"
 #include "util/cuda.h"
-#include "util/mixture.h"
 #include "util/gaussian.h"
+#include "util/glm.h"
+#include "util/mixture.h"
+#include "util/scalar.h"
 
 // todo:
 // - in collect_result, run a new fitting with the most important node to fill up the remaining gaussian slots
@@ -311,15 +311,12 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_em(const gpe::Vector
 //            autodiff::Variable<float>(fittingCovariances[j][1][1]).expr->propagate(1);
 //        }
 //    }
-#ifdef GPE_AUTODIFF
     bool test_propagate_grad = false;
-#endif
     gpe::Vector<G, N_FITTING> result;
     for (unsigned i = 0; i < N_FITTING; ++i) {
         result.push_back(G{fitting_weights[i],
                            fittingPositions[i],
                            fittingCovariances[i]});
-#ifdef GPE_AUTODIFF
         if (test_propagate_grad) {
             autodiff::Variable<gradless_scalar_t>(fitting_weights[i]).expr->propagate(1);
 
@@ -331,39 +328,38 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_em(const gpe::Vector
             autodiff::Variable<gradless_scalar_t>(fittingCovariances[i][1][0]).expr->propagate(1);
             autodiff::Variable<gradless_scalar_t>(fittingCovariances[i][1][1]).expr->propagate(1);
         }
-#endif
     }
-#ifdef GPE_AUTODIFF
-    auto grad_initial_mixture = gpe::extractGrad(initial_mixture);
-    auto grad_initial_weights = gpe::extractGrad(initial_weights);
-    auto grad_initial_int1_weights = gpe::extractGrad(initial_int1_weights);
-    auto grad_initial_positions = gpe::extractGrad(initial_positions);
-    auto grad_initial_covariances = gpe::extractGrad(initial_covariances);
-    auto grad_target_weights = gpe::extractGrad(target_weights);
-    auto grad_target_int1_weights = gpe::extractGrad(target_int1_weights);
-    auto grad_target_positions = gpe::extractGrad(target_positions);
-    auto grad_target_covariances = gpe::extractGrad(target_covariances);
-    auto grad_target_mixture = gpe::extractGrad(target_mixture);
-    auto grad_target_component_integrals = gpe::extractGrad(target_component_integrals);
-    auto grad_target_int1_mixture = gpe::extractGrad(target_int1_mixture);
-    auto grad_initial_gaussian_amplitudes = gpe::extractGrad(initial_gaussian_amplitudes);
+//#ifdef GPE_AUTODIFF
+//    auto grad_initial_mixture = gpe::extractGrad(initial_mixture);
+//    auto grad_initial_weights = gpe::extractGrad(initial_weights);
+//    auto grad_initial_int1_weights = gpe::extractGrad(initial_int1_weights);
+//    auto grad_initial_positions = gpe::extractGrad(initial_positions);
+//    auto grad_initial_covariances = gpe::extractGrad(initial_covariances);
+//    auto grad_target_weights = gpe::extractGrad(target_weights);
+//    auto grad_target_int1_weights = gpe::extractGrad(target_int1_weights);
+//    auto grad_target_positions = gpe::extractGrad(target_positions);
+//    auto grad_target_covariances = gpe::extractGrad(target_covariances);
+//    auto grad_target_mixture = gpe::extractGrad(target_mixture);
+//    auto grad_target_component_integrals = gpe::extractGrad(target_component_integrals);
+//    auto grad_target_int1_mixture = gpe::extractGrad(target_int1_mixture);
+//    auto grad_initial_gaussian_amplitudes = gpe::extractGrad(initial_gaussian_amplitudes);
 
-    auto grad_likelihood_matrix = gpe::extractGrad(likelihood_matrix);
-    auto grad_weighted_likelihood_matrix = gpe::extractGrad(weighted_likelihood_matrix);
-    auto grad_weighted_likelihood_sum = gpe::extractGrad(weighted_likelihood_sum);
-    auto grad_responsibilities_1 = gpe::extractGrad(responsibilities_1);
-    auto grad_target_gaussian_amplitudes = gpe::extractGrad(target_gaussian_amplitudes);
-    auto grad_responsibilities_2 = gpe::extractGrad(responsibilities_2);
-    auto grad_fitting_pure_weights = gpe::extractGrad(fitting_pure_weights);
-    auto grad_responsibilities_3 = gpe::extractGrad(responsibilities_3);
+//    auto grad_likelihood_matrix = gpe::extractGrad(likelihood_matrix);
+//    auto grad_weighted_likelihood_matrix = gpe::extractGrad(weighted_likelihood_matrix);
+//    auto grad_weighted_likelihood_sum = gpe::extractGrad(weighted_likelihood_sum);
+//    auto grad_responsibilities_1 = gpe::extractGrad(responsibilities_1);
+//    auto grad_target_gaussian_amplitudes = gpe::extractGrad(target_gaussian_amplitudes);
+//    auto grad_responsibilities_2 = gpe::extractGrad(responsibilities_2);
+//    auto grad_fitting_pure_weights = gpe::extractGrad(fitting_pure_weights);
+//    auto grad_responsibilities_3 = gpe::extractGrad(responsibilities_3);
 
-    auto grad_fittingPositions = gpe::extractGrad(fittingPositions);
-    auto grad_fittingCovariances = gpe::extractGrad(fittingCovariances);
-    auto grad_weightedCovs = gpe::extractGrad(weightedCovs);
-    auto grad_unweightedCovs = gpe::extractGrad(unweightedCovs);
-    auto grad_posDiffsOuter = gpe::extractGrad(posDiffsOuter);
-    auto grad_fitting_normal_amplitudes = gpe::extractGrad(fitting_normal_amplitudes);
-#endif
+//    auto grad_fittingPositions = gpe::extractGrad(fittingPositions);
+//    auto grad_fittingCovariances = gpe::extractGrad(fittingCovariances);
+//    auto grad_weightedCovs = gpe::extractGrad(weightedCovs);
+//    auto grad_unweightedCovs = gpe::extractGrad(unweightedCovs);
+//    auto grad_posDiffsOuter = gpe::extractGrad(posDiffsOuter);
+//    auto grad_fitting_normal_amplitudes = gpe::extractGrad(fitting_normal_amplitudes);
+//#endif
 
 
 

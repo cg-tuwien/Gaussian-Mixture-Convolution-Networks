@@ -1,16 +1,7 @@
 #ifndef GPE_UTIL_AUTODIFF_H
 #define GPE_UTIL_AUTODIFF_H
 
-#include <cuda_runtime.h>
 
-#ifndef __CUDACC__
-#include <type_traits>
-
-#include <autodiff/reverse.hpp>
-#endif
-
-#include "util/containers.h"
-#include "util/glm.h"
 
 namespace gpe {
 template <typename scalar>
@@ -18,8 +9,21 @@ struct remove_grad {
     using type = scalar;
 };
 
+template <typename scalar>
+using remove_grad_t = typename remove_grad<scalar>::type;
+}
 
-#ifndef __CUDACC__
+
+#ifdef GPE_AUTODIFF
+#include <type_traits>
+
+#include <autodiff/reverse.hpp>
+#include <cuda_runtime.h>
+
+#include "util/containers.h"
+#include "util/glm.h"
+
+namespace gpe {
 template<>
 struct remove_grad<autodiff::Variable<float>>{
     using type = float;
@@ -29,13 +33,7 @@ template<>
 struct remove_grad<autodiff::Variable<double>>{
     using type = double;
 };
-#endif // __CUDACC__
 
-template <typename scalar>
-using remove_grad_t = typename remove_grad<scalar>::type;
-
-
-#ifndef __CUDACC__
 template<typename T>
 T removeGrad(const T& v) {
     static_assert (std::is_floating_point<T>::value, "should be a basic float or double type");
@@ -211,8 +209,8 @@ void propagateGrad(const glm::mat<N_DIMS, N_DIMS, autodiff::Variable<scalar_t>>&
     }
 }
 
-#endif // __CUDACC__
-
 }
+#endif // GPE_AUTODIFF
+
 
 #endif // GPE_UTIL_AUTODIFF_H

@@ -5,9 +5,9 @@
 
 namespace bvh_mhem_fit {
 struct Config {
-    const int reduction_n = 4;
+    int reduction_n = 4;
     lbvh::Config bvh_config = {};
-    float em_kl_div_threshold = 2.0f;
+    float em_kl_div_threshold = 0.5f;
     unsigned n_components_fitting = 32;
 };
 

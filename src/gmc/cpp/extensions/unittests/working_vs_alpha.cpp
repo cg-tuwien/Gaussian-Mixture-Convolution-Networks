@@ -2,21 +2,19 @@
 #include <string>
 #include <type_traits>
 
-
 #include <catch2/catch.hpp>
 #include <cuda_runtime.h>
 #include <QString>
 #include <torch/torch.h>
 #include <torch/script.h>
 
-
 #include "bvh_mhem_fit/implementation.h"
 #include "bvh_mhem_fit_alpha/implementation.h"
 #include "common.h"
 #include "evaluate_inversed/parallel_binding.h"
 #include "integrate/binding.h"
-#include "util/mixture.h"
 #include "unittests/support.h"
+#include "util/mixture.h"
 
 struct use_cuda_type {
     constexpr static bool value = true;

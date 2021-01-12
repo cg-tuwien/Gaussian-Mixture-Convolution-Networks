@@ -56,13 +56,13 @@ def add_measurement(name: str, value: float):
         measurements_n[name] += 1
 
 
-for batch_idx in range(0, 1):  # max 10
+for batch_idx in range(0, 10):  # max 10
     start_time = time.perf_counter()
     # for the next experiment, make an numpy array, write into it and visualise directly..
     # for kl_thresh in [0.6, 0.8, 1.0, 1.2, 1.4, 1.6, 1.8, 2.0, 2.2]:
     for kl_thresh in [1.5]:
         # for n_fitted_c in [6, 8, 10, 15, 20, 24, 32, 48]:
-        for n_fitted_c in [20]:
+        for n_fitted_c in [32]:
             print(f"========= kl_thresh: {kl_thresh}, n_fitted_c:{n_fitted_c} =========")
             measurements = dict()
             measurements_n = dict()
@@ -70,7 +70,7 @@ for batch_idx in range(0, 1):  # max 10
             config.representative_select_mode = fitting.Config.REPRESENTATIVE_SELECT_MODE_FPS_TOP
             for layer_id in range(3):
                 # for bias in [-1, -0.5, -0.1, -0.005, 0, 0.005, 0.1, 0.5, 1]:
-                for bias in [-0.5, 0.0, 0.5]:
+                for bias in [-0.5, 0.0]:
                     m = gm.load(f"fitting_input/fitting_input_batch{batch_idx}_netlayer{layer_id}")[0]
                     m = m[0:20, :, :, :]
                     # m = torch.tensor([[[[1, -0.8, -0.8, 0.25, 0.04, 0.04, 0.05], [1, 0.8, 0.8, 0.05, -0.04, -0.04, 0.25]]]])
@@ -93,7 +93,7 @@ for batch_idx in range(0, 1):  # max 10
                     # m.requires_grad = True
                     start = time.perf_counter()
                     fitted_m, new_bias, fitting_steps = fitting.fixed_point_and_mhem(m, bias_tensor, n_fitted_c, config)
-                    # add_measurement(f"time[layer{layer_id}]", time.perf_counter() - start)
+                    add_measurement(f"time[layer{layer_id}]", time.perf_counter() - start)
 
                     mse = fitting.mse(m, bias_tensor, fitted_m, new_bias, 4000)
                     add_measurement(f"mse [layer{layer_id}]", mse)

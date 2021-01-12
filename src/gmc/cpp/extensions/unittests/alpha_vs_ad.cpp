@@ -8,9 +8,9 @@
 #include "common.h"
 #include "evaluate_inversed/parallel_binding.h"
 #include "integrate/binding.h"
+#include "unittests/support.h"
 #include "util/mixture.h"
 
-#include "support.h"
 
 template <int N_REDUCTION, typename scalar_t>
 void runTest(scalar_t threshold) {

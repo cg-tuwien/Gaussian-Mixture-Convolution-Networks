@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 if(NOT DEFINED CMAKE_CUDA_STANDARD)
-    set(CMAKE_CUDA_STANDARD 14)
+    set(CMAKE_CUDA_STANDARD 17)
     set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 endif()
 set(CMAKE_CUDA_ARCHITECTURES 75)
@@ -238,6 +238,7 @@ set(BVH_MHEM_FIT_ALPHA_SOURCES
 )
 add_library(bvh_mhem_fit_alpha ${BVH_MHEM_FIT_ALPHA_HEADERS} ${BVH_MHEM_FIT_ALPHA_SOURCES})
 target_link_libraries(bvh_mhem_fit_alpha PUBLIC OpenMP::OpenMP_CXX torch math lbvh common)
+target_compile_definitions(bvh_mhem_fit_alpha PUBLIC GPE_AUTODIFF)
 
 
 # https://gitlab.kitware.com/cmake/cmake/-/issues/16915
@@ -255,6 +256,15 @@ target_link_libraries(0_test_evaluate_inversed PUBLIC OpenMP::OpenMP_CXX torch Q
 add_executable(0_test_bvh_fit bvh_mhem_fit/test_bvh_fit.cpp)
 target_link_libraries(0_test_bvh_fit PUBLIC OpenMP::OpenMP_CXX torch Qt5::Widgets bvh_mhem_fit integrate evaluate_inversed math lbvh common)
 
+set(MATRIX_INVERSE_HEADERS
+)
+set(MATRIX_INVERSE_SOURCES
+    math/matrix_inverse_cuda.cpp
+    math/matrix_inverse_cuda.cu
+)
+add_library(matrix_inverse ${MATRIX_INVERSE_HEADERS} ${MATRIX_INVERSE_SOURCES})
+target_link_libraries(matrix_inverse PUBLIC OpenMP::OpenMP_CXX torch)
+
 
 #unit tests:
 #add_executable(0_unittests bvh_mhem_fit_alpha/unit_test_support.h bvh_mhem_fit_alpha/unittest_mixture_grad.cpp bvh_mhem_fit_alpha/unittest_algorithms_grad.cpp bvh_mhem_fit_alpha/unittest_all.cpp)
@@ -271,6 +281,7 @@ set(UNITTESTS_SOURCES
 )
 add_executable(0_unittests ${UNITTESTS_SOURCES} ${UNITTESTS_HEADERS})
 target_link_libraries(0_unittests PUBLIC Catch2::Catch2 OpenMP::OpenMP_CXX torch Qt5::Widgets bvh_mhem_fit_alpha bvh_mhem_fit integrate evaluate_inversed math lbvh common)
+target_compile_definitions(0_unittests PUBLIC GPE_AUTODIFF)
 
 include(CTest)
 include(Catch)

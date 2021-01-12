@@ -5,52 +5,37 @@ from gmc.cpp.extensions.compile_flags import *
 
 source_dir = os.path.dirname(__file__)
 
-cuda = load('evaluate_inversed_cuda_parallel', [source_dir + '/cuda_parallel.cpp', source_dir + '/cuda_parallel.cu'],
-                                extra_include_paths=extra_include_paths,
-                                verbose=True, extra_cflags=cuda_extra_cflags, extra_cuda_cflags=cuda_extra_cuda_cflags, extra_ldflags=["-lpthread"])
 
-cuda_bvh = load('evaluate_inversed_cuda_bvh', [source_dir + '/cuda_bvh.cpp', source_dir + '/cuda_bvh.cu',
-                                               source_dir + '/../math/symeig_cuda.cpp', source_dir + '/../math/symeig_cuda.cu'],
-                                extra_include_paths=extra_include_paths,
-                                verbose=True, extra_cflags=cuda_extra_cflags, extra_cuda_cflags=cuda_extra_cuda_cflags, extra_ldflags=["-lpthread"])
-cpu = load('evaluate_inversed_cpu_parallel', [source_dir + '/cpu_parallel.cpp'],
-                                extra_include_paths=extra_include_paths,
-                                verbose=True, extra_cflags=cpp_extra_cflags, extra_ldflags=["-lpthread"])
+source_files = [source_dir + '/bindings.cpp', source_dir + '/implementation_dispatch.cpp', source_dir + '/../lbvh/bvh.cu', source_dir + '/../CpuSynchronisationPoint.cpp']
+for dtype in ['float', 'double']:
+    for reduction_n in [2, 4, 8, 16]:
+        for ndims in [2, 3]:
+            for direction in ['forward', 'backward']:
+                source_files.append(source_dir + f"/implementation_{direction}_instances/template_instance_implementation_{direction}_{reduction_n}_{dtype}_{ndims}.cu")
 
-class EvaluateInversed(torch.autograd.Function):
+cpp_binding = load('bvh_mhem_fit', source_files,
+                   extra_include_paths=extra_include_paths,
+                   verbose=True, extra_cflags=cuda_extra_cflags, extra_cuda_cflags=cuda_extra_cuda_cflags, extra_ldflags=["-lpthread"])
+
+
+class BvhMhemFit(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, mixture: torch.Tensor, xes: torch.Tensor):
-        if not mixture.is_contiguous():
-            mixture = mixture.contiguous()
+    def forward(ctx, target_mixture: torch.Tensor, n_components_fitting: int, reduction_n: int):
+        if not target_mixture.is_contiguous():
+            mixture = target_mixture.contiguous()
 
-        if not xes.is_contiguous():
-            xes = xes.contiguous()
-
-        if mixture.is_cuda:
-            output, bvh_nodes, aabbs = cuda_bvh.forward(mixture, xes)
-            ctx.save_for_backward(mixture, bvh_nodes, aabbs, xes)
-            # output = cuda.forward(mixture, xes)
-            # ctx.save_for_backward(mixture, xes)
-        else:
-            output = cpu.forward(mixture, xes)
-            ctx.save_for_backward(mixture, xes)
-
-        return output
+        fitting_mixture, bvh_mixture, bvh_nodes, bvh_aabbs, bvh_attribs = cpp_binding.forward(target_mixture, n_components_fitting, reduction_n)
+        ctx.save_for_backward(target_mixture, fitting_mixture, bvh_mixture, bvh_nodes, bvh_aabbs, bvh_attribs, torch.tensor(n_components_fitting), torch.tensor(reduction_n))
+        return fitting_mixture
 
     @staticmethod
     def backward(ctx, grad_output):
         if not grad_output.is_contiguous():
             grad_output = grad_output.contiguous()
 
-        if grad_output.is_cuda:
-            mixture, bvh_nodes, aabbs, xes = ctx.saved_tensors
-            grad_mixture, grad_xes = cuda_bvh.backward(grad_output, mixture, bvh_nodes, aabbs, xes, ctx.needs_input_grad[0], ctx.needs_input_grad[1])
-            # mixture, xes = ctx.saved_tensors
-            # grad_mixture, grad_xes = cuda.backward(grad_output, mixture, xes, ctx.needs_input_grad[0], ctx.needs_input_grad[1])
-        else:
-            mixture, xes = ctx.saved_tensors
-            grad_mixture, grad_xes = cpu.backward(grad_output, mixture, xes, ctx.needs_input_grad[0], ctx.needs_input_grad[1])
-        return grad_mixture, grad_xes
+        target_mixture, fitting_mixture, bvh_mixture, bvh_nodes, bvh_aabbs, bvh_attribs, n_components_fitting, reduction_n = ctx.saved_tensors
+        grad_target_mixture = cpp_binding.backward(grad_output, fitting_mixture, target_mixture, bvh_mixture, bvh_nodes, bvh_aabbs, bvh_attribs, n_components_fitting.item(), reduction_n.item())
+        return grad_target_mixture, None, None
 
 
-apply = EvaluateInversed.apply
+apply = BvhMhemFit.apply

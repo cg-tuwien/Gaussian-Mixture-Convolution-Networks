@@ -7,6 +7,7 @@
 #include <catch2/catch.hpp>
 #include <torch/types.h>
 
+#include "util/autodiff.h"
 #include "util/gaussian.h"
 #include "util/glm.h"
 

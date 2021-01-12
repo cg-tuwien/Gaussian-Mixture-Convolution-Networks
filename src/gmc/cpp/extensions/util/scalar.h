@@ -158,7 +158,7 @@ inline bool isnan(T x) {
     return std::isnan(x);
 }
 
-#ifndef __CUDACC__
+#ifdef GPE_AUTODIFF
 template <typename scalar_t>
 using AutoDiffExpr = autodiff::reverse::ExprPtr<scalar_t>;
 template <typename scalar_t>
@@ -231,7 +231,7 @@ template <typename scalar_t>
 inline bool isnan(AutoDiffVariable<scalar_t> x) {
     return std::isnan(x.expr->val);
 }
-#endif //__CUDACC__
+#endif //GPE_AUTODIFF
 #endif //not __CUDA_ARCH__
 
 template <typename scalar_t>

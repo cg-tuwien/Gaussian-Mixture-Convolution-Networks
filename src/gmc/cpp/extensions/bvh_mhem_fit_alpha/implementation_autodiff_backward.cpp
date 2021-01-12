@@ -1,5 +1,4 @@
 #include "implementation_autodiff_backward.h"
-#define GPE_AUTODIFF
 #include "implementation_forward.h"
 
 #include "util/autodiff.h"

@@ -8,7 +8,7 @@
 #include "util/glm.h"
 #include "util/grad/algorithms.h"
 #include "util/grad/glm.h"
-#include "util/grad/scalar.h"'
+#include "util/grad/scalar.h"
 #include "util/scalar.h"
 
 namespace gpe {

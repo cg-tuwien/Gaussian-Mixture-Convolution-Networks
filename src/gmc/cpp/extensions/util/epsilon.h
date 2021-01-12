@@ -14,8 +14,8 @@ struct Epsilon {
     static EXECUTION_DEVICES scalar_t grad_clip(scalar_t v, scalar_t incoming_grad) { return (v > small) ? incoming_grad : 0; }
 };
 
+#ifdef GPE_AUTODIFF
 
-#ifndef __CUDACC__
 template<>
 struct Epsilon<autodiff::Variable<float>> {
     static constexpr float small = 0.00000000000000000000000000001;
@@ -32,7 +32,9 @@ struct Epsilon<autodiff::Variable<double>> {
         return gpe::max(v, autodiff::Variable<double>(small));
     }
 };
+
 #endif
+
 }
 
 #endif // GPE_UTIL_EPSILON_H
