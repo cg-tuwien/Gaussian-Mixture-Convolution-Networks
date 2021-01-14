@@ -3,10 +3,9 @@
 
 #include <thrust/tuple.h>
 
-#include <glm/glm.hpp>
+#include "util/glm.h"
 
-#include "math/scalar.h"
-#include "math/matrix.h"
+#include "util/scalar.h"
 
 namespace gpe {
 
@@ -29,17 +28,17 @@ __forceinline__ __host__ __device__ thrust::tuple<glm::vec<2, scalar_t>, glm::ma
     // L1 is always larger, because sqrt is positive and L1 = T/2 + sqrt
     // of the 2 formulas in [2], the one subtracting the smaller of a and d is more stable (gives the larger number for normalisation)
 
-    auto T = gpe::trace(matrix);
-    auto D = glm::determinant(matrix);
+    const scalar_t T = gpe::trace(matrix);
+    const scalar_t D = glm::determinant(matrix);
 //    std::cout << "D=" << D << std::endl;
-    const auto a = matrix[0][0];
-    const auto b = matrix[1][0];
-    const auto d = matrix[1][1];
+    const scalar_t a = matrix[0][0];
+    const scalar_t b = matrix[1][0];
+    const scalar_t d = matrix[1][1];
 //    std::cout << "a=" << a << " b=" << b << " d=" << d << std::endl;
-    auto f1 = T / scalar_t(2.0);
-    auto f2 = gpe::sqrt(T*T / scalar_t(4.0) - D);
+    const scalar_t f1 = T / scalar_t(2.0);
+    const scalar_t f2 = gpe::sqrt(gpe::abs(T*T / scalar_t(4.0) - D));
 //    std::cout << "f1=" << f1 << " f2=" << f2 << std::endl;
-    auto eigenvalues = vec(f1 - f2, f1 + f2);
+    const auto eigenvalues = vec(f1 - f2, f1 + f2);
 //    std::cout << "eigenvalues=" << eigenvalues[0] << "/" << eigenvalues[1] << std::endl;
     if (b == scalar_t(0)) {
         return thrust::make_tuple(eigenvalues, mat(1, 0, 0, 1));

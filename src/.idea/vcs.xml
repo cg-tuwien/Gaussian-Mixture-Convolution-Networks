@@ -2,9 +2,12 @@
 <project version="4">
   <component name="VcsDirectoryMappings">
     <mapping directory="$PROJECT_DIR$/.." vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/gmc/cpp/autodiff" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/gmc/cpp/cub" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/gmc/cpp/gcem" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/gmc/cpp/glm" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/gmc/cpp/gm_vis" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/gmc/cpp/lbvh" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/gmc/cpp/yamc" vcs="Git" />
   </component>
 </project>

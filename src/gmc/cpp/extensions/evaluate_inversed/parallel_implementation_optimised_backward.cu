@@ -9,12 +9,12 @@
 #include <vector>
 #include <algorithm>
 
-#include "common.h"
-#include "parallel_start.h"
-#include "hacked_accessor.h"
-#include "mixture.h"
-#include "math/scalar.h"
 #include "cuda_qt_creator_definitinos.h"
+#include "common.h"
+#include "hacked_accessor.h"
+#include "util/scalar.h"
+#include "parallel_start.h"
+#include "util/mixture.h"
 
 namespace {
 

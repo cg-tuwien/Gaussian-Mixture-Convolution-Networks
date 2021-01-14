@@ -32,7 +32,7 @@ def my_index_select(tensor: Tensor, index: Tensor) -> Tensor:
 
 def inverse(tensor: Tensor) -> Tensor:
     """faster version of inverse (compared to pytorch) for 2x2 and 3x3 matrices"""
-    return cppExtensionsMathMatrixInverse.apply(tensor)
+    return cppExtensionsMathMatrixInverse.apply(tensor)  # .transpose(-1, -2)
 
 
 def flatten_index(tensor: Tensor, shape: torch.Size) -> Tensor:

@@ -10,11 +10,11 @@
 #include <algorithm>
 
 #include "common.h"
-#include "parallel_start.h"
-#include "mixture.h"
-#include "hacked_accessor.h"
-#include "math/scalar.h"
 #include "cuda_qt_creator_definitinos.h"
+#include "hacked_accessor.h"
+#include "util/scalar.h"
+#include "parallel_start.h"
+#include "util/mixture.h"
 
 namespace {
 
@@ -46,7 +46,7 @@ void forward(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
         const auto& c_weight = gpe::weight(mixture_a[batch_index][layer_index][component_index]);
         const auto& c_pos = gpe::position<DIMS>(mixture_a[batch_index][layer_index][component_index]);
         const auto& c_cov = gpe::covariance<DIMS>(mixture_a[batch_index][layer_index][component_index]);
-        const auto w = gpe::evaluate_gaussian(x_pos, c_weight, c_pos, c_cov);
+        const auto w = gpe::evaluate_inversed(x_pos, c_weight, c_pos, c_cov);
 
         sum_a[batch_index][layer_index][xes_index] += w;
     }
@@ -60,9 +60,8 @@ at::Tensor parallel_forward_optimised_impl(const torch::Tensor& mixture, const t
 
     torch::Tensor sum = torch::zeros({n.batch, n.layers, n.xes}, torch::dtype(mixture.dtype()).device(mixture.device()));
 
-    TORCH_CHECK(mixture.device() == xes.device(), "mixture and xes must be on the same device");
-    TORCH_CHECK(n.batch * n.layers < 65535, "n_batch x n_layers must be smaller than 65535 for CUDA");
-    TORCH_CHECK(n.xes < 65535, "number of xes must be smaller than 65535 for CUDA");
+    TORCH_CHECK(mixture.device() == xes.device(), "mixture and xes must be on the same device")
+    TORCH_CHECK(n.batch * n.layers < 65535, "n_batch x n_layers must be smaller than 65535 for CUDA")
 
 
     dim3 dimBlock = dim3(128, 1, 1);

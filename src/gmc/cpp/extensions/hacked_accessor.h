@@ -166,9 +166,11 @@ public:
         const index_t* strides_)
         : TensorAccessorBase<T, 1, PtrTraits, index_t>(data_,sizes_,strides_) {}
     C10_HOST_DEVICE T & operator[](index_t i) {
+        assert(i < this->size(0));
         return this->data_[this->strides_[0]*i];
     }
     C10_HOST_DEVICE const T & operator[](index_t i) const {
+        assert(i < this->size(0));
         return this->data_[this->strides_[0]*i];
     }
 };
@@ -246,12 +248,14 @@ public:
     C10_HOST_DEVICE TensorAccessor<T, N - 1, PtrTraits, index_t> operator[](index_t i) {
         index_t* new_sizes = this->sizes_ + 1;
         index_t* new_strides = this->strides_ + 1;
+        assert(i < this->size(0));
         return TensorAccessor<T,N-1,PtrTraits,index_t>(this->data_ + this->strides_[0]*i, new_sizes, new_strides);
     }
 
     C10_HOST_DEVICE const TensorAccessor<T, N - 1, PtrTraits, index_t> operator[](index_t i) const {
         const index_t* new_sizes = this->sizes_ + 1;
         const index_t* new_strides = this->strides_ + 1;
+        assert(i < this->size(0));
         return TensorAccessor<T,N-1,PtrTraits,index_t>(this->data_ + this->strides_[0]*i, new_sizes, new_strides);
     }
 };
@@ -275,9 +279,11 @@ public:
         : GenericPackedTensorAccessorBase<T, 1, PtrTraits, index_t>(data_, sizes_, strides_) {}
 
     C10_HOST_DEVICE T & operator[](index_t i) {
+        assert(i < this->size(0));
         return this->data_[this->strides_[0] * i];
     }
     C10_HOST_DEVICE const T& operator[](index_t i) const {
+        assert(i < this->size(0));
         return this->data_[this->strides_[0]*i];
     }
 };
@@ -290,10 +296,59 @@ using PackedTensorAccessor64 = GenericPackedTensorAccessor<T, N, PtrTraits, int6
 
 
 template<typename scalar_t, size_t N>
-C10_HOST const auto accessor(const torch::Tensor& tensor) {
+C10_HOST auto accessor(const torch::Tensor& tensor) {
     auto torch_accessor = tensor.packed_accessor32<scalar_t, N, gpe::RestrictPtrTraits>();
     return PackedTensorAccessor32<scalar_t, N, gpe::RestrictPtrTraits>(*reinterpret_cast<PackedTensorAccessor32<scalar_t, N, gpe::RestrictPtrTraits>*>(&torch_accessor));
 }
+template<typename struct_t, size_t N, typename tensor_type>
+C10_HOST auto struct_accessor(const torch::Tensor& tensor) {
+    static_assert(sizeof(struct_t) % sizeof(tensor_type) == 0, "struct_t size must be divisible by tensor_type size");
+    assert(tensor.dim() == N + 1);
+    assert(tensor.dtype().itemsize() == sizeof(tensor_type));
+    assert(tensor.size(-1) == sizeof(struct_t) / sizeof(tensor_type));
+    auto torch_accessor = tensor.packed_accessor32<tensor_type, N + 1, gpe::RestrictPtrTraits>();
+    assert(torch_accessor.stride(N) == 1);
+    assert(torch_accessor.size(N) == sizeof(struct_t) / sizeof(tensor_type));
+    using index_t = decltype(torch_accessor.size(0));
+
+    std::array<index_t, N> strides;
+    std::array<index_t, N> sizes;
+    for (unsigned i = 0; i < N; ++i) {
+        strides[i] = torch_accessor.stride(i) / (sizeof(struct_t) / sizeof(tensor_type));
+        sizes[i] = torch_accessor.size(i);
+    }
+
+    return PackedTensorAccessor32<struct_t, N, gpe::RestrictPtrTraits>(reinterpret_cast<struct_t*>(torch_accessor.data()), sizes.data(), strides.data());
+}
+
+template<typename data_t, size_t N, typename index_t = int32_t>
+C10_HOST auto accessor(const std::vector<data_t>& vector, const std::array<index_t, N>& sizes) {
+    std::array<index_t, N> strides;
+    index_t numel = 1;
+    for (unsigned i = N-1; i < N; --i) {
+        strides[i] = numel;
+        numel *= sizes[i];
+    }
+    assert(numel == vector.size());
+
+    return GenericPackedTensorAccessor<data_t, N, gpe::RestrictPtrTraits, index_t>(vector.data(), sizes.data(), strides.data());
+}
+
+template<typename data_t, size_t N, typename index_t = int32_t>
+C10_HOST auto accessor(std::vector<data_t>& vector, const std::array<index_t, N>& sizes) {
+    std::array<index_t, N> strides;
+    index_t numel = 1;
+    for (unsigned i = N-1; i < N; --i) {
+        strides[i] = numel;
+        numel *= sizes[i];
+    }
+    assert(numel == vector.size());
+
+    return GenericPackedTensorAccessor<data_t, N, gpe::RestrictPtrTraits, index_t>(vector.data(), sizes.data(), strides.data());
+}
+
+template<typename T, size_t N>
+using Accessor32 = TensorAccessor<T, N, RestrictPtrTraits, int32_t>;
 
 //template<typename scalar_t, size_t N>
 //auto accessor(torch::Tensor& tensor) {

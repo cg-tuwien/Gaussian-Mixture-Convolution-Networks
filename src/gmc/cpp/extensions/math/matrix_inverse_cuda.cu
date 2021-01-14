@@ -12,12 +12,12 @@
 
 #include "common.h"
 #include "cuda_qt_creator_definitinos.h"
-#include "math/matrix.h"
-#include "math/symeig_detail.h"
+#include "util/mixture.h"
+#include "hacked_accessor.h"
 
 template <typename scalar_t, int DIMS>
-__global__ void kernel_forward(const torch::PackedTensorAccessor32<scalar_t, 3, torch::RestrictPtrTraits> matrices,
-                               torch::PackedTensorAccessor32<scalar_t, 3, torch::RestrictPtrTraits> inversed_matrices,
+__global__ void kernel_forward(const torch::PackedTensorAccessor32<scalar_t, 3, gpe::RestrictPtrTraits> matrices,
+                               torch::PackedTensorAccessor32<scalar_t, 3, gpe::RestrictPtrTraits> inversed_matrices,
                                const uint n_batch) {
     using Mat = glm::mat<DIMS, DIMS, scalar_t>;
 
@@ -49,8 +49,8 @@ torch::Tensor matrix_inverse_cuda_forward_impl(const torch::Tensor& matrices) {
 //    std::cout << "dimBlock=" << dimBlock.x << "/" << dimBlock.y << "/" << dimBlock.z << "  dimGrid=" << dimGrid.x << "/" << dimGrid.y << "/" << dimGrid.z << std::endl;
 
     AT_DISPATCH_FLOATING_TYPES(matrices.scalar_type(), "matrix_inverse_cuda", ([&] {
-        const auto matrices_a = flattened_matrices.packed_accessor32<scalar_t, 3, torch::RestrictPtrTraits>();
-        const auto inversed_matrices_a = inversed_matrices.packed_accessor32<scalar_t, 3, torch::RestrictPtrTraits>();
+        const auto matrices_a = flattened_matrices.packed_accessor32<scalar_t, 3, gpe::RestrictPtrTraits>();
+        const auto inversed_matrices_a = inversed_matrices.packed_accessor32<scalar_t, 3, gpe::RestrictPtrTraits>();
 
         if (n_dims == 2)
             kernel_forward<scalar_t, 2><<<dimGrid, dimBlock>>>(matrices_a, inversed_matrices_a, n_batch);

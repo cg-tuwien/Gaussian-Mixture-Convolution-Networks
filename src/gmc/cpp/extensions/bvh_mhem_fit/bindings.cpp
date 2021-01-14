@@ -6,24 +6,42 @@
 
 #include "bindings.h"
 #include "implementation.h"
+#include "bvh_mhem_fit/Config.h"
 
-std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> cuda_bvh_forward(const torch::Tensor& mixture, const torch::Tensor& xes) {
-    const at::cuda::OptionalCUDAGuard device_guard(device_of(mixture));
-    return bvh_mhem_fit::cuda_bvh_forward_impl(mixture, xes);
+std::vector<torch::Tensor> bvh_mhem_fit_forward(const torch::Tensor& mixture, int n_components_fitting, int reduction_n) {
+    at::cuda::OptionalCUDAGuard device_guard;
+    if (mixture.is_cuda()) {
+        assert (device_of(mixture).has_value());
+        device_guard.set_device(device_of(mixture).value());
+    }
+    bvh_mhem_fit::Config config = {};
+    config.n_components_fitting = unsigned(n_components_fitting);
+    config.reduction_n = reduction_n;
+    auto result = bvh_mhem_fit::forward_impl(mixture, config);
+    return {result.fitting, result.bvh_mixture, result.bvh_nodes, result.bvh_aabbs, result.bvh_attributes};
 }
 
+torch::Tensor bvh_mhem_fit_backward(const torch::Tensor& grad,
+                                    const torch::Tensor& fitting_mixture,
+                                    const torch::Tensor& target_mixture,
+                                    const torch::Tensor& bvh_mixture_inversed, const torch::Tensor& bvh_nodes, const torch::Tensor& bvh_aabbs, const torch::Tensor& bvh_attribs,
+                                    int n_components_fitting, int reduction_n) {
+    at::cuda::OptionalCUDAGuard device_guard;
+    if (grad.is_cuda()) {
+        assert (device_of(grad).has_value());
+        device_guard.set_device(device_of(grad).value());
+    }
 
-std::tuple<torch::Tensor, torch::Tensor> cuda_bvh_backward(const torch::Tensor& grad_output,
-                                                           const torch::Tensor& mixture, const torch::Tensor& bvh_nodes, const torch::Tensor& aabbs,
-                                                           const torch::Tensor& xes,
-                                                           bool requires_grad_mixture, bool requires_grad_xes) {
-    const at::cuda::OptionalCUDAGuard device_guard(device_of(mixture));
-    return bvh_mhem_fit::cuda_bvh_backward_impl(grad_output, mixture, bvh_nodes, aabbs, xes, requires_grad_mixture, requires_grad_xes);
+    bvh_mhem_fit::Config config = {};
+    config.n_components_fitting = unsigned(n_components_fitting);
+    config.reduction_n = reduction_n;
+
+    return bvh_mhem_fit::backward_impl(grad, bvh_mhem_fit::ForwardOutput{fitting_mixture, target_mixture, bvh_mixture_inversed, bvh_nodes, bvh_aabbs, bvh_attribs}, config);
 }
 
 #ifndef GMC_CMAKE_TEST_BUILD
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
-  m.def("forward", &cuda_bvh_forward, "cuda_bvh_forward (CUDA)");
-  m.def("backward", &cuda_bvh_backward, "cuda_bvh_backward (CUDA)");
+  m.def("forward", &bvh_mhem_fit_forward, "bvh_mhem_fit_forward");
+  m.def("backward", &bvh_mhem_fit_backward, "bvh_mhem_fit_backward");
 }
 #endif

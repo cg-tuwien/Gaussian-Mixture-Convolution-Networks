@@ -37,10 +37,9 @@ void query_device_with_fun(const detail::basic_device_bvh<scalar_t, Objects, IsC
 
         if(predicate(bvh.aabbs[L_idx]))
         {
-            const auto obj_idx = bvh.nodes[L_idx].object_idx;
-            if(obj_idx != node_index_type(0xFFFFFFFF))
+            if(bvh.nodes[L_idx].left_idx == node_index_type(-1))
             {
-                fun(obj_idx);
+                fun(bvh.nodes[L_idx].object_idx);
             }
             else // the node is not a leaf.
             {
@@ -49,10 +48,9 @@ void query_device_with_fun(const detail::basic_device_bvh<scalar_t, Objects, IsC
         }
         if(predicate(bvh.aabbs[R_idx]))
         {
-            const auto obj_idx = bvh.nodes[R_idx].object_idx;
-            if(obj_idx != node_index_type(0xFFFFFFFF))
+            if(bvh.nodes[R_idx].left_idx == node_index_type(-1))
             {
-                fun(obj_idx);
+                fun(bvh.nodes[R_idx].object_idx);
             }
             else // the node is not a leaf.
             {

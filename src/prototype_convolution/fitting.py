@@ -8,6 +8,7 @@ from torch.utils.tensorboard import SummaryWriter as TensorboardWriter
 import gmc.mixture as gm
 import gmc.mat_tools as mat_tools
 import gmc.cpp.extensions.furthest_point_sampling as furthest_point_sampling
+from gmc.cpp.extensions.bvh_mhem_fit import binding as cppBvhMhemFit
 
 
 class Config:
@@ -52,6 +53,48 @@ def fixed_point_and_mhem(mixture: Tensor, constant: Tensor, n_components: int, c
         tensorboard.add_scalar(f"50.4 fitting {mixture.shape} -> {n_components} mhem_fit_a_to_b time=", t4 - t3, 0)
 
     return fitting, ret_const, [initial_fitting, fp_fitting, reduced_fitting]
+
+
+def fixed_point_and_bvh_mhem(mixture: Tensor, constant: Tensor, n_components: int, config: Config = Config(), tensorboard: TensorboardWriter = None) -> typing.Tuple[Tensor, Tensor, typing.List[Tensor]]:
+    if n_components < 0:
+        initial_fitting = initial_approx_to_relu(mixture, constant)
+        fitting, ret_const = fixed_point_iteration_to_relu(mixture, constant, initial_fitting)
+        return fitting, ret_const, [initial_fitting]
+
+    if tensorboard is not None:
+        torch.cuda.synchronize()
+        t0 = time.perf_counter()
+    initial_fitting = initial_approx_to_relu(mixture, constant)
+    if tensorboard is not None:
+        torch.cuda.synchronize()
+        t1 = time.perf_counter()
+        tensorboard.add_scalar(f"50.1 fitting {mixture.shape} -> {n_components} initial_approx_to_relu time =", t1 - t0, 0)
+    fp_fitting, ret_const = fixed_point_iteration_to_relu(mixture, constant, initial_fitting)
+    if tensorboard is not None:
+        torch.cuda.synchronize()
+        t2 = time.perf_counter()
+        tensorboard.add_scalar(f"50.2 fitting {mixture.shape} -> {n_components} fixed_point_iteration_to_relu time =", t2 - t1, 0)
+
+    fitting = cppBvhMhemFit.apply(fp_fitting, n_components, 8)
+
+    if tensorboard is not None:
+        torch.cuda.synchronize()
+        t3 = time.perf_counter()
+        tensorboard.add_scalar(f"50.5 fitting {mixture.shape} -> {n_components} bvh_mhem_fit time=", t3 - t2, 0)
+
+    return fitting, ret_const, [initial_fitting, fp_fitting]
+
+def cpp_debug(config: Config = Config(), tensorboard: TensorboardWriter = None) -> typing.Tuple[Tensor, Tensor, typing.List[Tensor]]:
+    mixture = torch.tensor([[[[0.5,  5.0,  5.0, 4.0, -0.5, -0.5,  4.0],
+                              [0.5,  8.0,  8.0, 4.0, -2.5, -2.5,  4.0],
+                              [0.5, 20.0, 10.0, 5.0,  0.0,  0.0,  7.0],
+                              [0.5, 20.0, 20.0, 5.0,  0.5,  0.5,  7.0]]]])
+    # mixture = mixture.cuda()
+    initial_fitting = torch.tensor([[[[0.5,  6.5,  6.5, 4.0, -1.5, -1.5, 4.0],
+                                      [0.5, 20.0, 15.0, 5.0, 0.25, 0.25, 7.0]]]])
+    # initial_fitting = initial_fitting.cuda()
+
+    fitting = mhem_fit_a_to_b(initial_fitting, mixture, config, tensorboard)
 
 
 def fixed_point_only(mixture: Tensor, constant: Tensor, n_components: int, config: Config = Config()) -> typing.Tuple[Tensor, Tensor, typing.List[Tensor]]:
@@ -134,7 +177,7 @@ def calc_likelihoods(target: Tensor, fitting: Tensor) -> Tensor:
     n_target_components = gm.n_components(target)
     n_fitting_components = gm.n_components(fitting)
     n_dims = gm.n_dimensions(target)
-    n_virtual_points = n_fitting_components
+    n_virtual_points = 20
 
     target_weights = gm.weights(target).abs()
     target_positions = gm.positions(target)
@@ -151,8 +194,9 @@ def calc_likelihoods(target: Tensor, fitting: Tensor) -> Tensor:
 
     # preiner equation 9
     gaussian_values = gm.evaluate_componentwise(gm.pack_mixture(fitting_normal_amplitudes, fitting_positions, fitting_covariances), target_positions)
-    exp_values = torch.exp(-0.5 * mat_tools.batched_trace(mat_tools.inverse(fitting_covariances).view(n_batch, n_layers, 1, n_fitting_components, n_dims, n_dims) @
-                                                          target_covariances.view(n_batch, n_layers, n_target_components, 1, n_dims, n_dims)))
+    c = mat_tools.inverse(fitting_covariances).view(n_batch, n_layers, 1, n_fitting_components, n_dims, n_dims) \
+        @ target_covariances.view(n_batch, n_layers, n_target_components, 1, n_dims, n_dims)
+    exp_values = torch.exp(-0.5 * mat_tools.batched_trace(c))
 
     almost_likelihoods = gaussian_values * exp_values
 
@@ -171,10 +215,11 @@ def calc_KL_divergence(target: Tensor, fitting: Tensor) -> Tensor:
     fitting_covariances_inversed = mat_tools.inverse(fitting_covariances)
 
     p_diff = target_positions - fitting_positions
-    mahalanobis_distance = torch.sqrt(p_diff.unsqueeze(-2) @ fitting_covariances_inversed @ p_diff.unsqueeze(-1)).squeeze(dim=-1).squeeze(dim=-1)
+    # mahalanobis_factor = mahalanobis distance squared
+    mahalanobis_factor = (p_diff.unsqueeze(-2) @ fitting_covariances_inversed @ p_diff.unsqueeze(-1)).squeeze(dim=-1).squeeze(dim=-1)
     trace = mat_tools.batched_trace(fitting_covariances_inversed @ target_covariances)
     logarithm = torch.log(target_covariances.det() / fitting_covariances.det())
-    KL_divergence = 0.5 * (mahalanobis_distance + trace - gm.n_dimensions(target) - logarithm)
+    KL_divergence = 0.5 * (mahalanobis_factor + trace - gm.n_dimensions(target) - logarithm)
 
     return KL_divergence
 
