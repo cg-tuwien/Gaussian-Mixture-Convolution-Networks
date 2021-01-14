@@ -22,7 +22,7 @@ class EMGenerator(GMMGenerator):
                  em_step_gaussians_subbatchsize: int = -1,
                  em_step_points_subbatchsize: int = -1,
                  dtype: torch.dtype = torch.float64,
-                 eps: float = 1e-9,
+                 eps: float = 1e-7,
                  eps_is_relative: bool = True):
         # Constructor. Creates a new EMGenerator.
         # Parameters:
@@ -103,7 +103,7 @@ class EMGenerator(GMMGenerator):
         epsilons = torch.ones(batch_size, dtype=self._dtype, device='cuda') * self._epsvar
         if self._eps_is_relative:
             extends = pcbatch.max(dim=1)[0] - pcbatch.min(dim=1)[0]
-            epsilons *= extends.min(dim=1)[0] ** 2
+            epsilons *= extends.max(dim=1)[0] ** 2
             epsilons[epsilons < 1e-9] = 1e-9
 
         # eps is a small multiple of the identity matrix which is added to the cov-matrizes
@@ -116,9 +116,9 @@ class EMGenerator(GMMGenerator):
 
         # Initialize mixture data
         if gmbatch is None:
-            initializer = GMMInitializer(self._em_step_gaussians_subbatchsize, self._em_step_points_subbatchsize, self._dtype)
+            initializer = GMMInitializer(self._em_step_gaussians_subbatchsize, self._em_step_points_subbatchsize, self._dtype, epsilons)
             gmbatch_init = initializer.initialize_by_method_name(self._initialization_method, pcbatch,
-                                                                  self._n_gaussians, self._n_sample_points, None, epsilons)
+                                                                  self._n_gaussians, self._n_sample_points, None)
         else:
             gmbatch_init = gmbatch
         gm_data = EMTools.TrainingData(batch_size, self._n_gaussians, self._dtype, eps)

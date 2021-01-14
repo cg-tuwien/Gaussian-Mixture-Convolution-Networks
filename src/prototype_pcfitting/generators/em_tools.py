@@ -196,23 +196,33 @@ class EMTools:
         gm_data.set_priors(new_priors, running)
 
     @staticmethod
-    def findValidMatrices(covariances: torch.Tensor, invcovs: torch.Tensor) -> torch.Tensor:
+    def findValidMatrices(covariances: torch.Tensor, invcovs: torch.Tensor, strong: bool = False) -> torch.Tensor:
         relcovs = ~(torch.isnan(covariances.det().sqrt()) | covariances[:, :, :, 0:2, 0:2].det().lt(0)
                     | covariances[:, :, :, 0, 0].lt(0) | invcovs.det().lt(0) |
                     invcovs[:, :, :, 0:2, 0:2].det().lt(0) | invcovs[:, :, :, 0, 0].lt(0))
-        # More reliable way to check!
-        asd = relcovs.clone()
-        for i in range(covariances.shape[0]):
-            for j in range(covariances.shape[2]):
-                relcovs[i, :, j] &= ~covariances[i, :, j].det().sqrt().isnan().any()
-                relcovs[i, :, j] &= ~covariances[i, :, j, 0:2, 0:2].det().lt(0).any()
-                relcovs[i, :, j] &= ~covariances[i, :, j, 0, 0].lt(0).any()
-                relcovs[i, :, j] &= ~invcovs[i, :, j].det().sqrt().isnan().any()
-                relcovs[i, :, j] &= ~invcovs[i, :, j, 0:2, 0:2].det().lt(0).any()
-                relcovs[i, :, j] &= ~invcovs[i, :, j, 0, 0].lt(0).any()
-        if not asd.eq(relcovs).all():
-            print("strong ditching was active!")
+        # # More reliable way to check!
+        if strong:
+            asd = relcovs.clone()
+            for i in range(covariances.shape[0]):
+                for j in range(covariances.shape[2]):
+                    relcovs[i, :, j] &= ~covariances[i, :, j].det().sqrt().isnan().any()
+                    relcovs[i, :, j] &= ~covariances[i, :, j, 0:2, 0:2].det().lt(0).any()
+                    relcovs[i, :, j] &= ~covariances[i, :, j, 0, 0].lt(0).any()
+                    relcovs[i, :, j] &= ~invcovs[i, :, j].det().sqrt().isnan().any()
+                    relcovs[i, :, j] &= ~invcovs[i, :, j, 0:2, 0:2].det().lt(0).any()
+                    relcovs[i, :, j] &= ~invcovs[i, :, j, 0, 0].lt(0).any()
+            if not asd.eq(relcovs).all():
+                print("strong ditching was active!")
         return relcovs
+
+    @staticmethod
+    def replaceInvalidMatrices(covariances: torch.Tensor, invcovs: torch.Tensor, defaultcov: torch.Tensor, defaulticov: torch.Tensor = None, strong: bool = False) -> torch.Tensor:
+        relcovs = EMTools.findValidMatrices(covariances, invcovs, strong)
+        defaultcov_expand = defaultcov.expand(covariances.size())
+        covariances[~relcovs] = defaultcov_expand[~relcovs]
+        if defaulticov is not None:
+            defaulticov_expand = defaulticov.expand(invcovs.size())
+            invcovs[~relcovs] = defaulticov_expand[~relcovs]
 
     class TrainingData:
         # Helper class. Capsules all relevant training data of the current GM batch.
@@ -251,17 +261,6 @@ class EMTools:
             runningicovs = self._inversed_covariances[running]
             runningicovs[relcovs] = invcovs[relcovs]
             self._inversed_covariances[running] = runningicovs
-            # print(self._covariances.det().min().item())
-
-            # Det-Enlargement
-            # tau = 1e-16
-            # tinydet = covariances.det().lt(tau)
-            # if tinydet.sum() != 0:
-            #     print("enlarging ", tinydet.sum().item(), " items")
-            # covariances[tinydet] *= (tau / covariances[tinydet].det().unsqueeze(-1).unsqueeze(-1)) ** (1 / 3)
-            # self._covariances[running] = covariances
-            # self._inversed_covariances[running] = mat_tools.inverse(covariances).contiguous()
-
 
 
         def set_amplitudes(self, amplitudes, running):
