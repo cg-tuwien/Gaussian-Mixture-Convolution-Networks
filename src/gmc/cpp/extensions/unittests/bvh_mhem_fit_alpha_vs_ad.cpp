@@ -12,6 +12,7 @@
 #include "util/mixture.h"
 
 
+namespace {
 template <int N_REDUCTION, typename scalar_t>
 void runTest(scalar_t threshold) {
     auto alpha_config = bvh_mhem_fit_alpha::Config{N_REDUCTION,
@@ -63,6 +64,7 @@ void runTest(scalar_t threshold) {
         }
     }
 }
+} // anonymous namespace
 
 TEST_CASE( "testing alpha against autodiff" ) {
     using namespace torch::indexing;

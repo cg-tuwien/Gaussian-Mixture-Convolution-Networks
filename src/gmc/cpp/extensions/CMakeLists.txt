@@ -16,7 +16,7 @@ set(CMAKE_CUDA_ARCHITECTURES 75)
 string(APPEND CMAKE_CUDA_FLAGS " -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --expt-extended-lambda --expt-relaxed-constexpr")
 string(APPEND CMAKE_CUDA_FLAGS " -Xcompiler '-fPIC,-fopenmp,-ffast-math,-fno-finite-math-only'  --use_fast_math")
 string(APPEND CMAKE_CUDA_FLAGS_RELEASE " --generate-line-info -Xcompiler '-O4,-march=native'")
-string(APPEND CMAKE_CUDA_FLAGS_DEBUG " -g -G")
+#string(APPEND CMAKE_CUDA_FLAGS_DEBUG " -g -G")
 
 # ASan:
 #string(APPEND CMAKE_CUDA_FLAGS " -Xcompiler -fsanitize=address -Xcompiler -fno-omit-frame-pointer")
@@ -272,12 +272,13 @@ set(UNITTESTS_HEADERS
     unittests/support.h
 )
 set(UNITTESTS_SOURCES
-    unittests/main.cpp
     unittests/algorithms.cpp
-    unittests/alpha_vs_ad.cpp
+    unittests/bvh_mhem_fit_alpha_vs_ad.cpp
+    unittests/bvh_mhem_fit_working_vs_alpha.cpp
+    unittests/bvh_mhem_fit_working_vs_binding.cpp
     unittests/grad_algorithms.cpp
     unittests/grad_mixture.cpp
-    unittests/working_vs_alpha.cpp
+    unittests/main.cpp
 )
 add_executable(0_unittests ${UNITTESTS_SOURCES} ${UNITTESTS_HEADERS})
 target_link_libraries(0_unittests PUBLIC Catch2::Catch2 OpenMP::OpenMP_CXX torch Qt5::Widgets bvh_mhem_fit_alpha bvh_mhem_fit integrate evaluate_inversed math lbvh common)

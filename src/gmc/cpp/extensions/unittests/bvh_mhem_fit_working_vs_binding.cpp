@@ -9,13 +9,14 @@
 #include <torch/script.h>
 
 #include "bvh_mhem_fit/implementation.h"
-#include "bvh_mhem_fit_alpha/implementation.h"
+#include "bvh_mhem_fit/bindings.h"
 #include "common.h"
 #include "evaluate_inversed/parallel_binding.h"
 #include "integrate/binding.h"
 #include "unittests/support.h"
 #include "util/mixture.h"
 
+namespace bvh_mhem_fit_working_vs_bindings{
 struct use_cuda_type {
     constexpr static bool value = true;
 };
@@ -29,13 +30,9 @@ void runTest(const std::vector<std::pair<torch::Tensor, torch::Tensor>>& test_ca
     using namespace torch::indexing;
 
     // test specific configuration:
-    auto config = bvh_mhem_fit::Config{N_REDUCTION,
-                                   lbvh::Config{lbvh::Config::MortonCodeAlgorithm::Old},
-                                   1.5f,
-                                   N_FITTING_COMPONENTS};
-    auto reference_config = bvh_mhem_fit_alpha::Config{
-            config.reduction_n, config.bvh_config,
-            config.em_kl_div_threshold, config.n_components_fitting};
+    auto config = bvh_mhem_fit::Config{};
+    config.reduction_n = N_REDUCTION;
+    config.n_components_fitting = N_FITTING_COMPONENTS;
 
 //    std::cout << "test error threshold is " << threshold << std::endl;
 
@@ -56,8 +53,6 @@ void runTest(const std::vector<std::pair<torch::Tensor, torch::Tensor>>& test_ca
     for (const auto& test_case : test_cases) {
         torch::Tensor mixture = test_case.first;
         torch::Tensor gradient_fitting = test_case.second.repeat({mixture.size(0), mixture.size(1), 1, 1});
-        auto reference_mixture = mixture.to(torch::ScalarType::Double);
-        auto reference_gradient_fitting = gradient_fitting.to(torch::ScalarType::Double);
         if (sizeof(scalar_t) > 4) {
             mixture = mixture.to(torch::ScalarType::Double);
             gradient_fitting = gradient_fitting.to(torch::ScalarType::Double);
@@ -67,42 +62,45 @@ void runTest(const std::vector<std::pair<torch::Tensor, torch::Tensor>>& test_ca
             gradient_fitting = gradient_fitting.cuda();
         }
 
-        auto forward_out = bvh_mhem_fit::forward_impl(mixture, config);
-        auto gradient_target = bvh_mhem_fit::backward_impl(gradient_fitting, forward_out, config);
-        auto reference_forward_out = bvh_mhem_fit_alpha::forward_impl(reference_mixture, reference_config);
-        auto reference_gradient_target = bvh_mhem_fit_alpha::backward_impl(reference_gradient_fitting, reference_forward_out, reference_config);
+        auto forward_out = bvh_mhem_fit::forward_impl(mixture.clone(), config);
+        auto binding_forward_out = bvh_mhem_fit_forward(mixture.clone(), int(config.n_components_fitting), config.reduction_n);
 
         {
             auto fitting = forward_out.fitting.contiguous().cpu();
-            auto fitting_reference = reference_forward_out.fitting.contiguous();
-            REQUIRE(fitting_reference.size(-2) == config.n_components_fitting);
+            auto fitting_binding = binding_forward_out[0].contiguous().cpu();
+
+            REQUIRE(fitting_binding.size(-2) == config.n_components_fitting);
             double forward_error = 0;
             for (size_t i = 0; i < config.n_components_fitting * 7; ++i) {
-                const auto a = fitting_reference.data_ptr<double>()[i];
+                const auto a = double(fitting_binding.data_ptr<scalar_t>()[i]);
                 const auto b = double(fitting.data_ptr<scalar_t>()[i]);
-                const auto e = (a - b) * (a - b) / std::max(a * a, 1.);
+                const auto e = (a - b) * (a - b) / std::max(a * a, 1.0);
                 forward_error += e;
                 max_error_forward = std::max(max_error_forward, e);
 
                 auto similar = are_similar(a, b, threshold);
                 if (!similar) {
-//                    std::cout << "fitting: " << forward_out.fitting << std::endl;
-//                    std::cout << "reference: " << reference_forward_out.fitting << std::endl;
-//                    std::cout << "i = " << i << "; difference: " << a << " - " << b << " = " << a - b << std::endl;
+                    std::cout << "fitting_binding: " << fitting_binding << std::endl;
+                    std::cout << "fitting: " << fitting << std::endl;
+                    std::cout << "i = " << i << "; difference: " << a << " - " << b << " = " << a - b << std::endl;
                     WARN(std::string("forward difference: ") + std::to_string(a) + " - " + std::to_string(b) + " = " + std::to_string(a - b));
-//                    WARN(QString("forward difference: %1 - %2 = %3").arg(a).arg(b).arg(a-b).toStdString());
                 }
                 REQUIRE(similar);
             }
             forward_error /= config.n_components_fitting * 7;
             rrmse_forward += forward_error;
-
+        }
+        {
+            auto gradient_target = bvh_mhem_fit::backward_impl(gradient_fitting.clone(), forward_out, config);
+            auto binding_gradient_target = bvh_mhem_fit_backward(gradient_fitting.clone(), binding_forward_out[0], mixture.clone(),
+                    binding_forward_out[1], binding_forward_out[2], binding_forward_out[3], binding_forward_out[4],
+                    int(config.n_components_fitting), config.reduction_n);
             auto gradient = gradient_target.contiguous().cpu();
-            auto gradient_reference = reference_gradient_target.contiguous();
-            auto n_Gs = size_t(gradient_reference.size(-2));
+            auto gradient_binding = binding_gradient_target.contiguous().cpu();
+            auto n_Gs = size_t(gradient_binding.size(-2));
             double backward_error = 0;
             for (size_t i = 0; i < n_Gs * 7; ++i) {
-                const auto a = gradient_reference.data_ptr<double>()[i];
+                const auto a = double(gradient_binding.data_ptr<scalar_t>()[i]);
                 const auto b = double(gradient.data_ptr<scalar_t>()[i]);
                 const auto e = (a - b) * (a - b) / std::max(a * a, 1.);
                 backward_error += e;
@@ -111,14 +109,14 @@ void runTest(const std::vector<std::pair<torch::Tensor, torch::Tensor>>& test_ca
 
                 auto similar = are_similar(a, b, threshold);
                 if (!similar) {
-//                    std::cout << "target: " << mixture << std::endl;
-//                    std::cout << "fitting: " << forward_out.fitting << std::endl;
-//                    std::cout << "gradient target: " << gradient << std::endl;
-//                    std::cout << "gradient target (reference): " << gradient_reference << std::endl;
-//                    std::cout << "gradient_fitting: " << gradient_fitting << std::endl;
-//                    std::cout << "i = " << i << "; difference: " << a << " - " << b << " = " << a - b << std::endl;
+                    //                    std::cout << "target: " << mixture << std::endl;
+                    //                    std::cout << "fitting: " << forward_out.fitting << std::endl;
+                    //                    std::cout << "gradient target: " << gradient << std::endl;
+                    //                    std::cout << "gradient target (reference): " << gradient_reference << std::endl;
+                    //                    std::cout << "gradient_fitting: " << gradient_fitting << std::endl;
+                    //                    std::cout << "i = " << i << "; difference: " << a << " - " << b << " = " << a - b << std::endl;
                     WARN(QString("backward difference: %1 - %2 = %3").arg(a).arg(b).arg(a-b).toStdString());
-//                    WARN(std::string("backward difference: ") + std::to_string(a) + " - " + std::to_string(b) + " = " + std::to_string(a - b));
+                    //                    WARN(std::string("backward difference: ") + std::to_string(a) + " - " + std::to_string(b) + " = " + std::to_string(a - b));
                 }
                 REQUIRE(similar);
             }
@@ -135,12 +133,13 @@ void runTest(const std::vector<std::pair<torch::Tensor, torch::Tensor>>& test_ca
 //                 .arg(std::sqrt(max_error_backward), 8, 'e', 2)
 //                 .toStdString() << std::endl;
 }
+} // anonymouso namespace
 
-constexpr double gpe_float_exploding_precision = 4e-3;
-constexpr double gpe_float_precision = 4e-5;
+constexpr double gpe_float_precision = 4e-6;
 constexpr double gpe_double_precision = 1e-11;
 
-TEMPLATE_TEST_CASE( "testing working against alpha reference", "[bvh_mhem_fit]", use_cuda_type, use_cpu_type) {
+TEMPLATE_TEST_CASE( "testing working against binding", "[bvh_mhem_fit]", bvh_mhem_fit_working_vs_bindings::use_cuda_type, bvh_mhem_fit_working_vs_bindings::use_cpu_type) {
+    using namespace bvh_mhem_fit_working_vs_bindings;
 //    std::cout << "01. ";
     SECTION("2 component fitting double _collectionOf2dMixtures_with4Gs") {
         runTest<TestType::value, 2, double>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d2GsGrads()},
@@ -207,7 +206,7 @@ TEMPLATE_TEST_CASE( "testing working against alpha reference", "[bvh_mhem_fit]",
     SECTION("2 component fitting float _collectionOf2dMixtures_causingNumericalProblems") {
         runTest<TestType::value, 2, float>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d2GsGrads()},
                                                                 {_collectionOf2dMixtures_causingNumericalProblems()}),
-                          gpe_float_exploding_precision);
+                          gpe_float_precision);
     }
 
 //    std::cout << "12. ";
@@ -234,7 +233,7 @@ TEMPLATE_TEST_CASE( "testing working against alpha reference", "[bvh_mhem_fit]",
     SECTION("4 component fitting float with numerical problems") {
         runTest<TestType::value, 4, float>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d4GsGrads()},
                                                                 {_collectionOf2dMixtures_causingNumericalProblems()}),
-                          gpe_float_exploding_precision);
+                          gpe_float_precision);
     }
 
 //    std::cout << "15. ";
@@ -288,6 +287,6 @@ TEMPLATE_TEST_CASE( "testing working against alpha reference", "[bvh_mhem_fit]",
             }
         }
 
-        runTest<TestType::value, 4, float, 32>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d32GsGradsExploding()}, {mixtures}), gpe_float_exploding_precision);
+        runTest<TestType::value, 4, float, 32>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d32GsGradsExploding()}, {mixtures}), gpe_float_precision);
     }
 }

@@ -129,6 +129,7 @@ gpe::Array<gpe::Gaussian<N_DIMS, scalar_t>, N> pack_mixture(const gpe::Array<sca
 inline torch::Tensor mixture_with_inversed_covariances(torch::Tensor mixture) {
     const auto weights = torch::abs(gpe::weights(mixture));
     const auto positions = gpe::positions(mixture);
+    // todo: use quicker glm/inverse from matrix_inverse (needs refactoring).
     const auto invCovs = gpe::covariances(mixture).inverse().transpose(-1, -2);
     return gpe::pack_mixture(weights, positions, invCovs.contiguous());
 }

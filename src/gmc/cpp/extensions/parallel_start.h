@@ -154,10 +154,8 @@ struct CudaStarter {
         GPE_UNUSED(function)
 #ifdef __CUDACC__
         detail::gpe_generic_cuda_kernel<<<gridDim, blockDim>>>(function);
-#if not defined(GPE_NO_CUDA_ERROR_CHECKING) and not defined(NDEBUG)
         detail::gpu_assert(cudaPeekAtLastError());
         detail::gpu_assert(cudaDeviceSynchronize());
-#endif
 #else
         std::cerr << "gpe::start_parallel with device CUDA but no CUDA support!" << std::endl;
         exit(1);
