@@ -14,16 +14,18 @@
 #include "lbvh/bvh.h"
 #include "util/glm.h"
 #include "util/scalar.h"
-#include "parallel_start.h"
-#include "ParallelStack.h"
 #include "util/algorithms.h"
 #include "util/containers.h"
 #include "util/cuda.h"
+#include "util/gaussian.h"
+#include "util/gaussian_mixture.h"
 #include "util/grad/algorithms.h"
 #include "util/grad/glm.h"
 #include "util/grad/gaussian.h"
 #include "util/grad/mixture.h"
 #include "util/mixture.h"
+#include "parallel_start.h"
+#include "ParallelStack.h"
 
 
 // todo:

@@ -12,7 +12,7 @@
 
 #include "common.h"
 #include "cuda_qt_creator_definitinos.h"
-#include "util/mixture.h"
+#include "util/gaussian_mixture.h"
 #include "hacked_accessor.h"
 
 template <typename scalar_t, int DIMS>

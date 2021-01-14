@@ -105,6 +105,7 @@ set(UTIL_HEADERS
     util/cuda.h
     util/epsilon.h
     util/gaussian.h
+    util/gaussian_mixture.h
     util/glm.h
     util/grad/algorithms.h
     util/grad/common.h
@@ -142,6 +143,20 @@ set(INTEGRATE_SOURCES
 )
 add_library(integrate ${INTEGRATE_HEADERS} ${INTEGRATE_SOURCES})
 target_link_libraries(integrate PUBLIC OpenMP::OpenMP_CXX torch math lbvh common)
+
+
+set(PIECES_HEADERS
+    pieces/bindings.h
+    pieces/integrate.h
+    pieces/matrix_inverse.h
+)
+set(PIECES_SOURCES
+    pieces/bindings.cpp
+    pieces/integrate.cu
+    pieces/matrix_inverse.cu
+)
+add_library(pieces ${PIECES_HEADERS} ${PIECES_SOURCES})
+target_link_libraries(pieces PUBLIC OpenMP::OpenMP_CXX torch math lbvh common)
 
 set(BVH_MHEM_FIT_HEADERS
     bvh_mhem_fit/Config.h
@@ -189,7 +204,7 @@ set(BVH_MHEM_FIT_SOURCES
     bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_16_double_3.cu
 )
 add_library(bvh_mhem_fit ${BVH_MHEM_FIT_HEADERS} ${BVH_MHEM_FIT_SOURCES})
-target_link_libraries(bvh_mhem_fit PUBLIC OpenMP::OpenMP_CXX torch math lbvh common)
+target_link_libraries(bvh_mhem_fit PUBLIC OpenMP::OpenMP_CXX torch math lbvh common pieces)
 
 set(BVH_MHEM_FIT_ALPHA_HEADERS
     bvh_mhem_fit_alpha/Config.h

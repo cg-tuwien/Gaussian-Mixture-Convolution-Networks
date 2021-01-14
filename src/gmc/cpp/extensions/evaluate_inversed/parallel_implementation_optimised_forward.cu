@@ -12,8 +12,10 @@
 #include "common.h"
 #include "cuda_qt_creator_definitinos.h"
 #include "hacked_accessor.h"
-#include "util/scalar.h"
 #include "parallel_start.h"
+#include "util/scalar.h"
+#include "util/gaussian.h"
+#include "util/gaussian_mixture.h"
 #include "util/mixture.h"
 
 namespace {
@@ -69,8 +71,6 @@ at::Tensor parallel_forward_optimised_impl(const torch::Tensor& mixture, const t
                               uint(n.layers),
                               uint(n.batch));
     //    std::cout << "forward: dimBlock=" << dimBlock.x << "/" << dimBlock.y << "/" << dimBlock.z << ", dimGrid=" << dimGrid.x << "/" << dimGrid.y << "/" << dimGrid.z << std::endl;
-
-    auto s = mixture.sizes();
 
     AT_DISPATCH_FLOATING_TYPES(mixture.scalar_type(), "cuda_parallel_forward_impl", ([&] {
                                    auto sum_a = gpe::accessor<scalar_t, 3>(sum);

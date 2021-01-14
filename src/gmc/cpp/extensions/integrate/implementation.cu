@@ -15,6 +15,7 @@
 #include "util/scalar.h"
 #include "parallel_start.h"
 #include "util/mixture.h"
+#include "util/gaussian_mixture.h"
 
 namespace integrate {
 namespace {

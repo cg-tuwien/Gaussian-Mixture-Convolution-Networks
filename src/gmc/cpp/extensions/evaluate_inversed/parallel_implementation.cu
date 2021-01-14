@@ -14,6 +14,7 @@
 #include "hacked_accessor.h"
 #include "util/scalar.h"
 #include "parallel_start.h"
+#include "util/gaussian_mixture.h"
 #include "util/mixture.h"
 
 namespace {
@@ -125,8 +126,8 @@ at::Tensor parallel_forward_impl(const torch::Tensor& mixture, const torch::Tens
 
     torch::Tensor sum = torch::zeros({n.batch, n.layers, n.xes}, torch::dtype(mixture.dtype()).device(mixture.device()));
 
-    TORCH_CHECK(mixture.device() == xes.device(), "mixture and xes must be on the same device");
-    TORCH_CHECK(n.batch * n.layers < 65535, "n_batch x n_layers must be smaller than 65535 for CUDA");
+    TORCH_CHECK(mixture.device() == xes.device(), "mixture and xes must be on the same device")
+    TORCH_CHECK(n.batch * n.layers < 65535, "n_batch x n_layers must be smaller than 65535 for CUDA")
 
 
     dim3 dimBlock = dim3(128, 1, 1);
@@ -164,10 +165,10 @@ std::tuple<torch::Tensor, torch::Tensor> parallel_backward_impl(const torch::Ten
     gpe::check_mixture(mixture);
     auto n = gpe::check_input_and_get_ns(mixture, xes);
 
-    TORCH_CHECK(grad_output.dim() == 3, "grad_output has wrong number of dimensions");
-    TORCH_CHECK(grad_output.size(0) == n.batch, "grad_output has wrong batch dimension");
-    TORCH_CHECK(grad_output.size(1) == n.layers, "grad_output has wrong layer dimension");
-    TORCH_CHECK(grad_output.size(2) == n.xes, "grad_output has wrong xes dimension");
+    TORCH_CHECK(grad_output.dim() == 3, "grad_output has wrong number of dimensions")
+    TORCH_CHECK(grad_output.size(0) == n.batch, "grad_output has wrong batch dimension")
+    TORCH_CHECK(grad_output.size(1) == n.layers, "grad_output has wrong layer dimension")
+    TORCH_CHECK(grad_output.size(2) == n.xes, "grad_output has wrong xes dimension")
     TORCH_CHECK(grad_output.dtype() == mixture.dtype(), "grad_output dtype does not match with mixture dtype")
 
 

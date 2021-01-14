@@ -1,40 +1,11 @@
 #ifndef GPE_UTIL_MIXTURE_H
 #define GPE_UTIL_MIXTURE_H
-#include <vector>
-#include <type_traits>
-
-#include <gcem.hpp>
 #include <torch/types.h>
 
-#include "util/containers.h"
 #include "util/cuda.h"
-#include "util/gaussian.h"
-#include "util/glm.h"
-#include "util/scalar.h"
+#include "pieces/bindings.h"
 
 namespace gpe {
-
-template <int DIMS, typename scalar_t>
-EXECUTION_DEVICES glm::vec<DIMS, scalar_t>&
-vec(scalar_t& memory_location) {
-    return reinterpret_cast<glm::vec<DIMS, scalar_t>&>(memory_location);
-}
-
-template <int DIMS, typename scalar_t>
-EXECUTION_DEVICES const glm::vec<DIMS, scalar_t>&
-vec(const scalar_t& memory_location) {
-    return reinterpret_cast<const glm::vec<DIMS, scalar_t>&>(memory_location);
-}
-
-template <int DIMS, typename scalar_t>
-EXECUTION_DEVICES const glm::mat<DIMS, DIMS, scalar_t>& mat(const scalar_t& memory_location) {
-    return reinterpret_cast<const glm::mat<DIMS, DIMS, scalar_t>&>(memory_location);
-}
-
-template <int DIMS, typename scalar_t>
-EXECUTION_DEVICES glm::mat<DIMS, DIMS, scalar_t>& mat(scalar_t& memory_location) {
-    return reinterpret_cast<glm::mat<DIMS, DIMS, scalar_t>&>(memory_location);
-}
 
 struct MixtureAndXesNs {
     int batch = 0;
@@ -112,49 +83,12 @@ inline torch::Tensor pack_mixture(const torch::Tensor weights, const torch::Tens
     return torch::cat({weights.view({n_batch, n_layers, n_components, 1}), positions, covariances.view({n_batch, n_layers, n_components, n_dims * n_dims})}, 3);
 }
 
-template<int N_DIMS, typename scalar_t, unsigned N>
-EXECUTION_DEVICES
-gpe::Array<gpe::Gaussian<N_DIMS, scalar_t>, N> pack_mixture(const gpe::Array<scalar_t, N>& weights,
-                                                            const gpe::Array<glm::vec<N_DIMS, scalar_t>, N>& positions,
-                                                            const gpe::Array<glm::mat<N_DIMS, N_DIMS, scalar_t>, N>& covariances) {
-    gpe::Array<gpe::Gaussian<N_DIMS, scalar_t>, N> r;
-    for (unsigned i = 0; i < N; ++i) {
-        r[i].weight = weights[i];
-        r[i].position = positions[i];
-        r[i].covariance = covariances[i];
-    }
-    return r;
-}
-
 inline torch::Tensor mixture_with_inversed_covariances(torch::Tensor mixture) {
     const auto weights = torch::abs(gpe::weights(mixture));
     const auto positions = gpe::positions(mixture);
-    // todo: use quicker glm/inverse from matrix_inverse (needs refactoring).
-    const auto invCovs = gpe::covariances(mixture).inverse().transpose(-1, -2);
+//    const auto invCovs = gpe::covariances(mixture).inverse().transpose(-1, -2);
+    const auto invCovs = pieces::matrix_inverse(gpe::covariances(mixture));
     return gpe::pack_mixture(weights, positions, invCovs.contiguous());
-}
-
-template <typename TensorAccessor>
-EXECUTION_DEVICES auto weight(TensorAccessor&& gaussian) -> decltype (gaussian[0]) {
-    return gaussian[0];
-}
-
-template <int DIMS, typename TensorAccessor>
-EXECUTION_DEVICES auto position(TensorAccessor&& gaussian) -> decltype (gpe::vec<DIMS>(gaussian[1])) {
-    return gpe::vec<DIMS>(gaussian[1]);
-}
-
-template <int DIMS, typename TensorAccessor>
-EXECUTION_DEVICES auto covariance(TensorAccessor&& gaussian) -> decltype (gpe::mat<DIMS>(gaussian[1 + DIMS])) {
-    return gpe::mat<DIMS>(gaussian[1 + DIMS]);
-}
-template <int DIMS, typename TensorAccessor>
-EXECUTION_DEVICES auto gaussian(TensorAccessor&& gaussian) -> Gaussian<DIMS, gpe::remove_cvref_t<decltype (gaussian[0])>>& {
-    return reinterpret_cast<Gaussian<DIMS, gpe::remove_cvref_t<decltype (gaussian[0])>>&>(gaussian[0]);
-}
-template <int DIMS, typename TensorAccessor>
-EXECUTION_DEVICES auto gaussian(const TensorAccessor&& gaussian) -> const Gaussian<DIMS, gpe::remove_cvref_t<decltype (gaussian[0])>>& {
-    return reinterpret_cast<const Gaussian<DIMS, gpe::remove_cvref_t<decltype (gaussian[0])>>&>(gaussian[0]);
 }
 
 inline void check_mixture(torch::Tensor mixture) {

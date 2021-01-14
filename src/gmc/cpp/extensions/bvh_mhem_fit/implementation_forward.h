@@ -20,8 +20,9 @@
 #include "util/autodiff.h"
 #include "util/containers.h"
 #include "util/cuda.h"
-#include "util/mixture.h"
 #include "util/gaussian.h"
+#include "util/gaussian_mixture.h"
+#include "util/mixture.h"
 
 // todo:
 // - in collect_result, run a new fitting with the most important node to fill up the remaining gaussian slots

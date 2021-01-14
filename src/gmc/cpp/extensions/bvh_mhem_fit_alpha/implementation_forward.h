@@ -19,6 +19,7 @@
 #include "util/containers.h"
 #include "util/cuda.h"
 #include "util/gaussian.h"
+#include "util/gaussian_mixture.h"
 #include "util/glm.h"
 #include "util/mixture.h"
 #include "util/scalar.h"

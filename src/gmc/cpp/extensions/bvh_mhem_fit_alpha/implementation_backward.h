@@ -18,6 +18,8 @@
 #include "util/algorithms.h"
 #include "util/containers.h"
 #include "util/cuda.h"
+#include "util/gaussian.h"
+#include "util/gaussian_mixture.h"
 #include "util/grad/algorithms.h"
 #include "util/grad/glm.h"
 #include "util/grad/gaussian.h"
