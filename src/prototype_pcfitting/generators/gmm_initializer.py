@@ -118,7 +118,6 @@ class GMMInitializer:
                 np.random.multivariate_normal(meanpos[i, :].cpu(), meancov[i, :, :].cpu(), n_gaussians), device='cuda')
         # Repeat covariances for each Gaussian -> shape: (bs, 1, ng, 3, 3)
         covariances = meancov.view(batch_size, 1, 1, 3, 3).expand(batch_size, 1, n_gaussians, 3, 3) + eps
-        covariances[:, :, :, 0, 0] = 0
         invcovariances = mat_tools.inverse(covariances).contiguous()
         EMTools.replaceInvalidMatrices(covariances, invcovariances, eps)
 
@@ -181,7 +180,8 @@ class GMMInitializer:
         batch_indizes = torch.arange(0, batch_size).repeat(n_gaussians, 1).transpose(-1, -2).reshape(-1)
         gmpositions = pcbatch[batch_indizes, sampled, :].view(batch_size, 1, n_gaussians, 3)
         gmcovariances = torch.zeros(batch_size, 1, n_gaussians, 3, 3, dtype=self._dtype, device='cuda') + eps
-        gmcovariances[:, :, :] = torch.eye(3, dtype=self._dtype, device='cuda') # This is not scale invariant
+        maxextends = torch.max(pcbatch.max(dim=1)[0] - pcbatch.min(dim=1)[0], dim=1)[0].view(-1, 1)
+        gmcovariances[:, :, :] = torch.eye(3, dtype=self._dtype, device='cuda') * (maxextends**2)
         gmpriors = torch.zeros(batch_size, 1, n_gaussians, dtype=self._dtype, device='cuda')
         gmpriors[:, :, :] = 1 / n_gaussians
 

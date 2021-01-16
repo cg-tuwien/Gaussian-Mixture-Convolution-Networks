@@ -172,6 +172,9 @@ class EckartGeneratorHP(GMMGenerator):
                 mixture = self._construct_full_gm(mixture, finished_subgmms)
                 loss = llh_loss_calc.calculate_score_packed(pcbatch, mixture)
 
+                # if loss.isinf().any():
+                #     self._expectation(points, gm_data, parent_per_point)
+
                 if self._logger:
                     self._logger.log(absiteration - 1, loss, mixture)
                     del mixture
@@ -336,7 +339,7 @@ class EckartGeneratorHP(GMMGenerator):
         gmdata.covariances = 0.1 * torch.eye(3, dtype=self._dtype, device='cuda').unsqueeze(0).unsqueeze(0).unsqueeze(0). \
             repeat(1, 1, self._n_gaussians_per_node * gmcount, 1, 1)
         gmdata.covariances[0, 0, :, :, :] *= bbs_rep[:, 1, :].unsqueeze(2) ** 2
-        gmdata.inverse_covariances = mat_tools.inverse(gmdata.covariances)
+        gmdata.inverse_covariances = mat_tools.inverse(gmdata.covariances).contiguous()
         EMTools.replaceInvalidMatrices(gmdata.covariances, gmdata.inverse_covariances, eps, mat_tools.inverse(eps))
         gmdata.priors = torch.zeros(1, 1, self._n_gaussians_per_node * gmcount, dtype=self._dtype, device='cuda')
         gmdata.priors[:, :, :] = 1 / self._n_gaussians_per_node
@@ -397,7 +400,7 @@ class EckartGeneratorHP(GMMGenerator):
                 meanweight = 1.0 / self._n_gaussians_per_node
                 eigenvalues, eigenvectors = torch.symeig(meancov, True)
                 eigenvalues_sorted, indices = torch.sort(eigenvalues[:], dim=0, descending=True)
-                eigenvectors_sorted = 4 * eigenvalues_sorted.unsqueeze(0).repeat(3,1) * eigenvectors[:, indices]
+                eigenvectors_sorted = eigenvalues_sorted.unsqueeze(0).repeat(3,1).sqrt() * eigenvectors[:, indices]
                 if self._n_gaussians_per_node <= 8:
                     if eigenvalues_sorted[2] > 1e-8:
                         gmdata.positions[0, 0, gidx_start:gidx_end] = position_templates3d[0:self._n_gaussians_per_node]
@@ -551,7 +554,7 @@ class EckartGeneratorHP(GMMGenerator):
                 actual_point_subbatch_size = relevant_responsibilities.shape[2]
                 relevant_points = points[:, :, i_start:i_end] \
                     .expand(1, 1, actual_point_subbatch_size, actual_gauss_subbatch_size, 3)
-                relevant_relative_points = relevant_points[:, :, :, j_start:j_end, :] \
+                relevant_relative_points = relevant_points \
                                            - gm_data.positions[:, :, j_start:j_end].unsqueeze(2).expand(1, 1,
                                                                                                     actual_point_subbatch_size,
                                                                                                     actual_gauss_subbatch_size,
