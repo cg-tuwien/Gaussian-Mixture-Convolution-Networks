@@ -3,7 +3,7 @@
 #include <torch/types.h>
 
 #include "util/cuda.h"
-#include "pieces/bindings.h"
+#include "pieces/pieces.h"
 
 namespace gpe {
 

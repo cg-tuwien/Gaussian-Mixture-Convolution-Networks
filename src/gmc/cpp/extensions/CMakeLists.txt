@@ -146,12 +146,12 @@ target_link_libraries(integrate PUBLIC OpenMP::OpenMP_CXX torch math lbvh common
 
 
 set(PIECES_HEADERS
-    pieces/bindings.h
+    pieces/pieces.h
     pieces/integrate.h
     pieces/matrix_inverse.h
 )
 set(PIECES_SOURCES
-    pieces/bindings.cpp
+    pieces/pieces.cpp
     pieces/integrate.cu
     pieces/matrix_inverse.cu
 )
