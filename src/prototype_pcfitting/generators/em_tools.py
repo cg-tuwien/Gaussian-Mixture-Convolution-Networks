@@ -2,6 +2,7 @@ import gmc.mixture as gm
 import torch
 from gmc import mat_tools
 
+
 class EMTools:
     # This class capsules the core EM functionality, which is used by both
     # EMGenerator and GMMInitializer (which is why we move them into their own class)
@@ -115,7 +116,7 @@ class EMTools:
         #       The current GM-object (will be changed)
         #   running: torch.Tensor of shape (batch_size), dtype=bool
         #       Gives information on which GMs are still running (true) or finished (false).
-        #   eps: torch.Tensor of shape (batch_size, 1, n_gaussians, 3, 3)
+        #   eps: torch.Tensor of shape (batch_size, 1, 1, 3, 3)
         #       Small-valued matrix to add to all the calculated covariance matrices to avoid numerical problems
         #   em_gaussian_subbatchsize: int
         #       How many Gaussian Sub-Mixtures should be processed at once
@@ -171,16 +172,15 @@ class EMTools:
                 relevant_responsibilities = responsibilities[running, :, i_start:i_end, j_start:j_end]
                 actual_point_subbatch_size = relevant_responsibilities.shape[2]
                 relevant_relative_points = points_rep[running, :, i_start:i_end, j_start:j_end, :] \
-                    - new_positions[:, :, j_start:j_end].unsqueeze(2).expand(n_running, 1, actual_point_subbatch_size, actual_gauss_subbatch_size, 3)
-                matrices_from_points = relevant_relative_points.unsqueeze(5) * relevant_relative_points.unsqueeze(5).transpose(-1, -2)
+                    - new_positions[:, :, j_start:j_end].unsqueeze(2)\
+                    .expand(n_running, 1, actual_point_subbatch_size, actual_gauss_subbatch_size, 3)
+                matrices_from_points = relevant_relative_points.unsqueeze(5) * relevant_relative_points.unsqueeze(5)\
+                    .transpose(-1, -2)
                 t_2 += (matrices_from_points * relevant_responsibilities.unsqueeze(4).unsqueeze(5)).sum(dim=2)
                 del matrices_from_points, relevant_relative_points
 
             new_covariances[:, :, j_start:j_end] = t_2 / t_0.unsqueeze(3).unsqueeze(4) + eps[running]
             del t_0, t_2
-
-        # covdiag = new_covariances.diagonal(0, -1, -2)
-        # covdiag[covdiag.lt(eps[0,0,0,0,0])] = eps[0,0,0,0,0]
 
         # Handling of invalid Gaussians! If all responsibilities of a Gaussian are zero, the previous code will
         # set the prior of it to zero and the covariances and positions to NaN
@@ -196,7 +196,19 @@ class EMTools:
         gm_data.set_priors(new_priors, running)
 
     @staticmethod
-    def findValidMatrices(covariances: torch.Tensor, invcovs: torch.Tensor, strong: bool = False) -> torch.Tensor:
+    def find_valid_matrices(covariances: torch.Tensor, invcovs: torch.Tensor, strong: bool = False) -> torch.Tensor:
+        # Returns a boolean tensor describing which of the given covariances are valid positice definite matrices.
+        # Parameters:
+        #   covariances: torch.Tensor of size (bs, 1, ng, 3, 3)
+        #       Tensor of covariances.
+        #   invcovs: torch.Tensor of size (bs, 1, ng, 3, 3)
+        #       Inverses of covariances. These need to be checked too as numerical instabilities might result in
+        #       invalid inverses.
+        #   strong: bool = False
+        #       Usually, all matrices are checked at once. If strong is true, each matrix is checked individually.
+        #       This shouldn't make a difference in most cases. There are only very rare cases where the results
+        #       are different. However, this option takes much longer, so it is not very usable in practice.
+        # returns a bool-tensor of size (bs, 1, ng)
         relcovs = ~(torch.isnan(covariances.det().sqrt()) | covariances[:, :, :, 0:2, 0:2].det().lt(0)
                     | covariances[:, :, :, 0, 0].lt(0) | invcovs.det().lt(0) |
                     invcovs[:, :, :, 0:2, 0:2].det().lt(0) | invcovs[:, :, :, 0, 0].lt(0))
@@ -216,8 +228,24 @@ class EMTools:
         return relcovs
 
     @staticmethod
-    def replaceInvalidMatrices(covariances: torch.Tensor, invcovs: torch.Tensor, defaultcov: torch.Tensor, defaulticov: torch.Tensor = None, strong: bool = False) -> torch.Tensor:
-        relcovs = EMTools.findValidMatrices(covariances, invcovs, strong)
+    def replace_invalid_matrices(covariances: torch.Tensor, invcovs: torch.Tensor, defaultcov: torch.Tensor,
+                                 defaulticov: torch.Tensor = None, strong: bool = False):
+        # Replaces all given non-positive-definite matrices by a default matrix.
+        # If a matrix's inverse is not positive-definite both the inverse and the original matrix itself is replaced
+        # and vice versa (as long as defaulticov is given).
+        # Parameters:
+        #   covariances: torch.Tensor of size (bs, 1, ng, 3, 3)
+        #       Covariance-Matrices to check and potentially replace
+        #   invcovs: torch.Tensor of size (bs,1 , ng, 3, 3)
+        #       Inverses of covariances
+        #   defaultcov: torch.Tensor of size (bs, 1, 1, 3, 3)
+        #       Default covariance matrix to replace invalid ones with (per batch)
+        #   defaulticov: torch.Tensor of size (bs, 1, 1, 3, 3) = None
+        #       Default inverse covariance matrix to replace invalid ones with (per batch)
+        #       If this is None, the inverse covariances are not replaced.
+        #   strong: bool = False
+        #       See findValidMatrices for info.
+        relcovs = EMTools.find_valid_matrices(covariances, invcovs, strong)
         defaultcov_expand = defaultcov.expand(covariances.size())
         covariances[~relcovs] = defaultcov_expand[~relcovs]
         if defaulticov is not None:
@@ -236,7 +264,8 @@ class EMTools:
             self._positions = torch.zeros(batch_size, 1, n_gaussians, 3, dtype=dtype, device='cuda')
             self._logamplitudes = torch.zeros(batch_size, 1, n_gaussians, dtype=dtype, device='cuda')
             self._priors = torch.zeros(batch_size, 1, n_gaussians, dtype=dtype, device='cuda')
-            self._covariances = torch.eye(3, 3, dtype=dtype, device='cuda').view(1, 1, 1, 3, 3).repeat(batch_size, 1, n_gaussians, 1, 1) * epsilons
+            self._covariances = torch.eye(3, 3, dtype=dtype, device='cuda').view(1, 1, 1, 3, 3)\
+                .repeat(batch_size, 1, n_gaussians, 1, 1) * epsilons
             self._inversed_covariances = mat_tools.inverse(self._covariances).contiguous()
 
         def set_positions(self, positions, running):
@@ -245,14 +274,11 @@ class EMTools:
 
         def set_covariances(self, covariances, running):
             # running indicates which batch entries should be replaced
-            # If changing the covariance would lead them to have uncalculable sqrt-det, they will not be changed
+            # If changing the covariance would lead them to loose their positive definiteness, they will not be changed
+            # (Det-Ditching)
 
-            # Det-Ditching
             invcovs = mat_tools.inverse(covariances).contiguous()
-            # relcovs = ~(torch.isnan(covariances.det().sqrt()) | covariances[:,:,:,0:2,0:2].det().lt(0)
-            #             | covariances[:,:,:,0,0].lt(0) | invcovs.det().lt(0) |
-            #             invcovs[:,:,:,0:2,0:2].det().lt(0) | invcovs[:,:,:,0,0].lt(0))
-            relcovs = EMTools.findValidMatrices(covariances, invcovs)
+            relcovs = EMTools.find_valid_matrices(covariances, invcovs)
             if (~relcovs).sum() != 0:
                 print("ditching ", (~relcovs).sum().item(), " items")
             runningcovs = self._covariances[running]
@@ -261,7 +287,6 @@ class EMTools:
             runningicovs = self._inversed_covariances[running]
             runningicovs[relcovs] = invcovs[relcovs]
             self._inversed_covariances[running] = runningicovs
-
 
         def set_amplitudes(self, amplitudes, running):
             # running indicates which batch entries should be replaced

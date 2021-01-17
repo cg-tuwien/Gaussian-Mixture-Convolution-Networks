@@ -32,8 +32,9 @@ class GMMInitializer:
         #   dtype: torch.dtype
         #       In which data type (precision) the operations should be performed. The final gmm is always
         #       converted to float32 though. Default: torch.float32
-        #   eps: float
-        #       Small value to be added to the Covariances for numerical stability. Default: 1e-4
+        #   epsilons: torch.Tensor of size (bs) or single float
+        #       Small value to be added to the Covariances for numerical stability. This is either a single value
+        #       for all batches or a tensor giving one value per batch.
         #
         self._em_step_gaussians_subbatchsize = em_step_gaussians_subbatchsize
         self._em_step_points_subbatchsize = em_step_points_subbatchsize
@@ -45,7 +46,8 @@ class GMMInitializer:
 
     def initialize_by_method_name(self, method_name: str, pcbatch: torch.Tensor, n_gaussians: int,
                                   n_sample_points: int = -1, weights: torch.Tensor = None):
-        # Calls one of the initialization methods by its name and returns the result (a gaussian mixture model (priors as weights))
+        # Calls one of the initialization methods by its name and returns the result as
+        # a gaussian mixture model (priors as weights)
         # Parameters:
         #   method_name: str
         #       Name of the method to call. Options: 'randnormpos' ('rand1'), 'randresp' ('rand2'), 'fps' ('adam1'),
@@ -119,7 +121,7 @@ class GMMInitializer:
         # Repeat covariances for each Gaussian -> shape: (bs, 1, ng, 3, 3)
         covariances = meancov.view(batch_size, 1, 1, 3, 3).expand(batch_size, 1, n_gaussians, 3, 3) + eps
         invcovariances = mat_tools.inverse(covariances).contiguous()
-        EMTools.replaceInvalidMatrices(covariances, invcovariances, eps)
+        EMTools.replace_invalid_matrices(covariances, invcovariances, eps)
 
         # Set weight for each Gaussian -> shape: (bs, 1, ng)
         weights = torch.zeros(batch_size, 1, n_gaussians, dtype=dtype, device='cuda')
@@ -237,7 +239,8 @@ class GMMInitializer:
                              self._em_step_points_subbatchsize)
         return gm_data.pack_mixture_model().to(self._dtype)
 
-    def initialize_kmeans(self, pcbatch: torch.Tensor, n_gaussians: int, fast: bool = True, weights: torch.Tensor = None) -> torch.Tensor:
+    def initialize_kmeans(self, pcbatch: torch.Tensor, n_gaussians: int, fast: bool = True,
+                          weights: torch.Tensor = None) -> torch.Tensor:
         # Creates a new initial Gaussian Mixture Model (batch, prior-weights) for a given point cloud (batch).
         # Calculates the initial Gaussian positions using KMeans.
         # Parameters:
@@ -262,9 +265,11 @@ class GMMInitializer:
 
         for batch in range(batch_size):
             if fast:
-                km = KMeans(n_gaussians, n_init=1, max_iter=20).fit(pcbatch[batch].cpu(), sample_weight=weights[batch].cpu() if weights is not None else None)
+                km = KMeans(n_gaussians, n_init=1, max_iter=20)\
+                    .fit(pcbatch[batch].cpu(), sample_weight=weights[batch].cpu() if weights is not None else None)
             else:
-                km = KMeans(n_gaussians).fit(pcbatch[batch].cpu(), sample_weight=weights[batch].cpu() if weights is not None else None)
+                km = KMeans(n_gaussians)\
+                    .fit(pcbatch[batch].cpu(), sample_weight=weights[batch].cpu() if weights is not None else None)
             positions[batch, 0] = torch.tensor(km.cluster_centers_, device='cuda')
             labels = torch.tensor(km.labels_, device='cuda')
             allidcs = torch.tensor(range(n_gaussians), device='cuda')
@@ -272,7 +277,7 @@ class GMMInitializer:
             mask = labels.eq(allidcs.view(-1, 1))
             count_per_cluster = mask.sum(1)
             # points_rep: (ng, np, 3)
-            points_rep = pcbatch[batch].unsqueeze(0).repeat(n_gaussians,1,1)
+            points_rep = pcbatch[batch].unsqueeze(0).repeat(n_gaussians, 1, 1)
             points_rep = (points_rep - positions[batch, 0].unsqueeze(1).expand(n_gaussians, point_count, 3))\
                 .unsqueeze(3)
             points_rep[~mask] = 0
@@ -282,9 +287,10 @@ class GMMInitializer:
             else:
                 weights_mask = mask * weights[batch].unsqueeze(0).expand(n_gaussians, point_count)
                 weight_sum = weights_mask.sum(1).view(-1, 1, 1)
-                covariances[batch, 0] = (weights_mask.unsqueeze(2).unsqueeze(3) * (points_rep * points_rep.transpose(-1, -2))).sum(1) / weight_sum + eps
+                covariances[batch, 0] = (weights_mask.unsqueeze(2).unsqueeze(3) *
+                                         (points_rep * points_rep.transpose(-1, -2))).sum(1) / weight_sum + eps
             invcovariances = mat_tools.inverse(covariances)
-            EMTools.replaceInvalidMatrices(covariances, invcovariances, eps)
+            EMTools.replace_invalid_matrices(covariances, invcovariances, eps)
             priors[batch, 0, :] = 1 / n_gaussians
 
         return gm.pack_mixture(priors, positions, covariances)
