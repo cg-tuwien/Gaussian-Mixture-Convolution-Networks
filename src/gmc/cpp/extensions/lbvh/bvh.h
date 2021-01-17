@@ -129,7 +129,7 @@ public:
     void construct();
     torch::Tensor compute_aabbs();
     template<int MORTON_CODE_ALGORITHM = 0>
-    torch::Tensor compute_morton_codes(const torch::Tensor& aabbs, const torch::Tensor& aabb_whole) const;
+    torch::Tensor compute_morton_codes(const torch::Tensor& aabb_whole) const;
     std::tuple<torch::Tensor, torch::Tensor> sort_morton_codes(const torch::Tensor& morton_codes, const torch::Tensor& object_aabbs) const;
     torch::Tensor create_leaf_nodes(const torch::Tensor& morton_codes);
     void create_internal_nodes(const torch::Tensor& morton_codes);

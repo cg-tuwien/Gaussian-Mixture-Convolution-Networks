@@ -173,11 +173,11 @@ void Bvh<N_DIMS, scalar_t>::construct()
         //            timepoint = std::chrono::high_resolution_clock::now();
     };
     watch_stop();
-    auto object_aabbs = this->compute_aabbs();
+    torch::Tensor object_aabbs = this->compute_aabbs();
     watch_stop("compute_aabbs");
 
     //        std::cout << "object_aabbs:" << object_aabbs << std::endl;
-    const auto aabb_whole = compute_aabb_whole(object_aabbs);
+    const torch::Tensor aabb_whole = compute_aabb_whole(object_aabbs);
     watch_stop("compute_aabb_whole");
     //        std::cout << "aabb_whole:" << aabb_whole << std::endl;
 
@@ -188,19 +188,19 @@ void Bvh<N_DIMS, scalar_t>::construct()
     torch::Tensor morton_codes;
     switch (m_config.morton_code_algorithm) {
     case lbvh::Config::MortonCodeAlgorithm::Old:
-        morton_codes= compute_morton_codes<0>(object_aabbs, aabb_whole);
+        morton_codes= compute_morton_codes<0>(aabb_whole);
         break;
     case lbvh::Config::MortonCodeAlgorithm::Cov1_12p36pc16i:
-        morton_codes= compute_morton_codes<1>(object_aabbs, aabb_whole);
+        morton_codes= compute_morton_codes<1>(aabb_whole);
         break;
     case lbvh::Config::MortonCodeAlgorithm::Cov2_54pc10i:
-        morton_codes= compute_morton_codes<2>(object_aabbs, aabb_whole);
+        morton_codes= compute_morton_codes<2>(aabb_whole);
         break;
     case lbvh::Config::MortonCodeAlgorithm::Cov3_27p27c10i:
-        morton_codes= compute_morton_codes<3>(object_aabbs, aabb_whole);
+        morton_codes= compute_morton_codes<3>(aabb_whole);
         break;
     case lbvh::Config::MortonCodeAlgorithm::Cov4_27c27p10i:
-        morton_codes= compute_morton_codes<4>(object_aabbs, aabb_whole);
+        morton_codes= compute_morton_codes<4>(aabb_whole);
         break;
     }
 
@@ -335,21 +335,19 @@ glm::vec<3, scalar_t> make_vec3(const glm::vec<2, scalar_t>& v) { return glm::ve
 
 template<int N_DIMS, typename scalar_t>
 template<int MORTON_CODE_ALGORITHM>
-at::Tensor Bvh<N_DIMS, scalar_t>::compute_morton_codes(const at::Tensor& aabbs, const at::Tensor& aabb_whole) const {
+at::Tensor Bvh<N_DIMS, scalar_t>::compute_morton_codes(const at::Tensor& aabb_whole) const {
     using namespace torch::indexing;
-    const auto aabbs_view = aabbs.view({-1, m_n.components, 8});
     const auto aabb_whole_view = aabb_whole.view({-1, 8});
-    const auto aabb_a = gpe::accessor<scalar_t, 3>(aabbs_view);
     const auto aabb_whole_a = gpe::accessor<scalar_t, 2>(aabb_whole_view);
+    const auto mixture_view = m_mixture.view({-1, m_n.components, m_mixture.size(-1)});
 
-    const auto n_mixtures = aabbs_view.size(0);
+    const auto n_mixtures = mixture_view.size(0);
     const auto n_components = int(m_n_leaf_nodes);
     assert(n_mixtures == m_n.batch * m_n.layers);
 
-    auto morton_codes = torch::empty({n_mixtures, m_n_leaf_nodes}, torch::TensorOptions(aabbs.device()).dtype(detail::TorchTypeMapper<morton_torch_t>::id()));
+    auto morton_codes = torch::empty({n_mixtures, m_n_leaf_nodes}, torch::TensorOptions(m_mixture.device()).dtype(detail::TorchTypeMapper<morton_torch_t>::id()));
     auto morton_codes_a = gpe::accessor<morton_torch_t, 2>(morton_codes);
 
-    auto mixture_view = m_mixture.view({n_mixtures, m_n.components, -1});
     auto mixture_a = gpe::accessor<scalar_t, 3>(mixture_view);
     auto cov_max = std::get<0>(gpe::covariances(mixture_view).diagonal(0, -2, -1).max(-2));
     auto cov_max_a = gpe::accessor<scalar_t, 2>(cov_max);
@@ -358,7 +356,7 @@ at::Tensor Bvh<N_DIMS, scalar_t>::compute_morton_codes(const at::Tensor& aabbs, 
     dim3 dimBlock = dim3(1, 128, 1);
     dim3 dimGrid = dim3((unsigned(n_mixtures) + dimBlock.x - 1) / dimBlock.x,
                         (unsigned(m_n_leaf_nodes) + dimBlock.y - 1) / dimBlock.y);
-    auto fun = [morton_codes_a, aabb_a, aabb_whole_a, n_mixtures, n_components, mixture_a, cov_max_a] __host__ __device__
+    auto fun = [morton_codes_a, aabb_whole_a, n_mixtures, n_components, mixture_a, cov_max_a] __host__ __device__
             (const dim3& gpe_gridDim, const dim3& gpe_blockDim, const dim3& gpe_blockIdx, const dim3& gpe_threadIdx) mutable {
                 GPE_UNUSED(gpe_gridDim)
 
@@ -372,11 +370,10 @@ at::Tensor Bvh<N_DIMS, scalar_t>::compute_morton_codes(const at::Tensor& aabbs, 
                 const auto cov_diag_nd = gpe::diagonal(gaussian.covariance) / cov_max;
                 const auto cov_diag_3d = make_vec3(cov_diag_nd);
 
-                const auto& aabb = reinterpret_cast<const Aabb<scalar_t>&>(aabb_a[mixture_id][component_id][0]);
                 const auto& whole = reinterpret_cast<const Aabb<scalar_t>&>(aabb_whole_a[mixture_id][0]);
                 auto& morton_code = reinterpret_cast<morton_cuda_t&>(morton_codes_a[mixture_id][component_id]);
 
-                auto p = centroid(aabb);
+                auto p = make_glmvec3_of(gaussian.position);
                 p.x -= whole.lower.x;
                 p.y -= whole.lower.y;
                 p.z -= whole.lower.z;
@@ -386,7 +383,7 @@ at::Tensor Bvh<N_DIMS, scalar_t>::compute_morton_codes(const at::Tensor& aabbs, 
 
 
                 assert(component_id < 65535);
-                morton_code = lbvh::morton_code<MORTON_CODE_ALGORITHM>(uint16_t(component_id), glm::vec<3, scalar_t>(p.x, p.y, p.z), cov_diag_3d);
+                morton_code = lbvh::morton_code<MORTON_CODE_ALGORITHM>(uint16_t(component_id), p, cov_diag_3d);
 
 //                morton_code = lbvh::morton_code(p);
 //                morton_code <<= 32;
@@ -449,7 +446,7 @@ std::tuple<at::Tensor, at::Tensor> Bvh<N_DIMS, scalar_t>::sort_morton_codes(cons
     }
     else {
         // this is most likely not the fastest possible solution, but quick to implement and only cpu code and not perf bottleneck to my knowledge (test if in doubt!)
-//        #pragma omp parallel for num_threads(omp_get_num_procs())
+        #pragma omp parallel for num_threads(omp_get_num_procs())
         for (int i = 0; i < num_segments; ++i) {
             std::map<morton_cuda_t, const Aabb<scalar_t>*> map;
             for (int j = 0; j < num_components; ++j) {

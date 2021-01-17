@@ -101,8 +101,8 @@ void runTest(const std::vector<std::pair<torch::Tensor, torch::Tensor>>& test_ca
             auto gradient = gradient_target.contiguous().cpu();
             auto gradient_reference = reference_gradient_target.contiguous();
             auto n_Gs = size_t(gradient_reference.size(-2));
-            std::cout << "gradient target (reference): " << gradient_reference << std::endl;
-            std::cout << "gradient_fitting: " << gradient_fitting << std::endl;
+//            std::cout << "gradient target (reference): " << gradient_reference << std::endl;
+//            std::cout << "gradient_fitting: " << gradient_fitting << std::endl;
             double backward_error = 0;
             for (size_t i = 0; i < n_Gs * 7; ++i) {
                 const auto a = gradient_reference.data_ptr<double>()[i];

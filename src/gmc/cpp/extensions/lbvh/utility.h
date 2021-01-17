@@ -23,6 +23,16 @@ typename vector_of<scalar_t>::type make_vector_of(const glm::vec<3, scalar_t>& g
     return {glm_vec.x, glm_vec.y, glm_vec.z, scalar_t(0)};
 }
 
+template <typename scalar_t> __host__ __device__
+typename glm::vec<3, scalar_t> make_glmvec3_of(const glm::vec<3, scalar_t>& glm_vec) {
+    return {glm_vec.x, glm_vec.y, glm_vec.z};
+}
+
+template <typename scalar_t> __host__ __device__
+typename glm::vec<3, scalar_t> make_glmvec3_of(const glm::vec<2, scalar_t>& glm_vec) {
+    return {glm_vec.x, glm_vec.y, scalar_t(0)};
+}
+
 template<typename T>
 using vector_of_t = typename vector_of<T>::type;
 

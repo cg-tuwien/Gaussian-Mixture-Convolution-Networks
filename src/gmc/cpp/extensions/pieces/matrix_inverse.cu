@@ -45,7 +45,6 @@ at::Tensor forward(const torch::Tensor& matrices) {
     using namespace torch::indexing;
     TORCH_CHECK(matrices.sizes().size() >= 2)
     TORCH_CHECK((matrices.size(-1) == 2 || matrices.size(-1) == 3) && matrices.size(-2) == matrices.size(-1))
-    TORCH_CHECK(matrices.device().is_cuda(), "this one is just for cuda..")
 
     const auto original_shape = matrices.sizes().vec();
     const auto n_dims = original_shape.back();
