@@ -125,6 +125,8 @@ def train(args, model: experiment_gm_mnist_model.Net, device: torch.device, trai
             print(f'Training kernels: {epoch}/{step} [{batch_idx}/{len(train_loader)} '
                   f'({100. * batch_idx / len(train_loader):.0f}%)]\tClassification loss: {loss.item():.6f} (accuracy: {100 * correct / len(data)})')
 
+            print(f'Cuda memory allocated: {torch.cuda.memory_allocated() / 1e9}')
+            print(f'Cuda memory reserved: {torch.cuda.memory_reserved() / 1e9}')
             if args.save_model:
                 model.save_model()
             # print(f"experiment_gm_mnist.tain: saving optimiser state to {model.storage_path}.optimiser")

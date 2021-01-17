@@ -20,4 +20,4 @@ def default_gmcn_config() -> prototype_convolution.config:
 
 def run_with(device, name, gmcn_config):
     prototype_convolution.experiment_gm_mnist.experiment(device=device, n_epochs=50, desc_string=f"M3pp_{name}_bnCCzero_gPosiOnly", kernel_learning_rate=0.001, learn_covariances_after=200,
-                                                         learn_positions_after=200, log_interval=5000, gmcn_config=gmcn_config)
+                                                         learn_positions_after=200, log_interval=500, gmcn_config=gmcn_config)
