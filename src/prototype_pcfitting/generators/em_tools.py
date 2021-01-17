@@ -45,6 +45,8 @@ class EMTools:
         n_sample_points = points.shape[2]
         dtype = points.dtype
 
+        has_noise = gm_data.has_noise_cluster()
+
         # This uses the fact that
         # log(a * exp(-0.5 * M(x))) = log(a) + log(exp(-0.5 * M(x))) = log(a) - 0.5 * M(x)
 
@@ -56,7 +58,7 @@ class EMTools:
             point_subbatch_size = n_sample_points
 
         likelihood_log = \
-            torch.zeros(running_batch_size, 1, n_sample_points, n_gaussians, dtype=dtype, device='cuda')
+            torch.zeros(running_batch_size, 1, n_sample_points, n_gaussians + has_noise, dtype=dtype, device='cuda')
         gmpos = gm_data.get_positions()
         gmicov = gm_data.get_inversed_covariances()
         gmloga = gm_data.get_logarithmized_amplitudes()
@@ -85,6 +87,12 @@ class EMTools:
                     .expand(running_batch_size, 1, actual_point_subbatch_size, actual_gauss_subbatch_size)
                 # The logarithmized likelihoods of each point for each gaussian. shape: (bs, 1, np, ng)
                 likelihood_log[:, :, i_start:i_end, j_start:j_end] = gmpriors_log_rep - expvalues
+        if has_noise:
+            for i_start in range(0, n_sample_points, point_subbatch_size):
+                i_end = i_start + point_subbatch_size
+                actual_point_subbatch_size = min(n_sample_points, i_end) - i_start
+                likelihood_log[:, :, i_start:i_end, -1] = gm_data.get_noise_loglikelihood()\
+                    .unsqueeze(1).unsqueeze(2).expand(running_batch_size, 1, actual_point_subbatch_size)
 
         # Logarithmized Likelihood for each point given the GM. shape: (bs, 1, np, ng)
         llh_sum = torch.logsumexp(likelihood_log, dim=3, keepdim=True)
@@ -93,7 +101,8 @@ class EMTools:
             losses = torch.zeros(batch_size, dtype=dtype, device='cuda')
         losses[running] = -llh_sum.mean(dim=2).view(running_batch_size)
         # Calculating responsibilities
-        responsibilities = torch.zeros(batch_size, 1, n_sample_points, n_gaussians, dtype=dtype, device='cuda')
+        responsibilities = torch.zeros(batch_size, 1, n_sample_points, n_gaussians + has_noise, dtype=dtype,
+                                       device='cuda')
         responsibilities[running] = torch.exp(likelihood_log - llh_sum)
 
         # Calculating responsibilities and returning them and the mean loglikelihoods
@@ -139,6 +148,7 @@ class EMTools:
         new_positions = gm_data.get_positions()[running].clone()
         new_covariances = gm_data.get_covariances()[running].clone()
         new_priors = gm_data.get_priors()[running].clone()
+        new_noise_weight = gm_data.get_noise_weight()[running]
 
         # Iterate over Gauss-Subbatches
         for j_start in range(0, n_gaussians, gauss_subbatch_size):
@@ -182,6 +192,9 @@ class EMTools:
             new_covariances[:, :, j_start:j_end] = t_2 / t_0.unsqueeze(3).unsqueeze(4) + eps[running]
             del t_0, t_2
 
+        if gm_data.has_noise_cluster():
+            new_noise_weight[running] = responsibilities[running, 0, :, -1].sum() / n_sample_points
+
         # Handling of invalid Gaussians! If all responsibilities of a Gaussian are zero, the previous code will
         # set the prior of it to zero and the covariances and positions to NaN
         # To avoid NaNs, we will then replace those invalid values with 0 (pos) and eps (cov).
@@ -194,6 +207,7 @@ class EMTools:
         gm_data.set_positions(new_positions, running)
         gm_data.set_covariances(new_covariances, running)
         gm_data.set_priors(new_priors, running)
+        gm_data.set_noise_weight(new_noise_weight, running)
 
     @staticmethod
     def find_valid_matrices(covariances: torch.Tensor, invcovs: torch.Tensor, strong: bool = False) -> torch.Tensor:
@@ -267,6 +281,8 @@ class EMTools:
             self._covariances = torch.eye(3, 3, dtype=dtype, device='cuda').view(1, 1, 1, 3, 3)\
                 .repeat(batch_size, 1, n_gaussians, 1, 1) * epsilons
             self._inversed_covariances = mat_tools.inverse(self._covariances).contiguous()
+            self._noise_weight = torch.zeros(batch_size, dtype=dtype, device='cuda')
+            self._noise_val = torch.zeros(batch_size, dtype=dtype, device='cuda')
 
         def set_positions(self, positions, running):
             # running indicates which batch entries should be replaced
@@ -316,6 +332,28 @@ class EMTools:
 
         def get_logarithmized_amplitudes(self):
             return self._logamplitudes
+
+        def has_noise_cluster(self) -> bool:
+            return self._noise_weight.gt(0).all().item()
+
+        def get_noise_weight(self):
+            return self._noise_weight
+
+        def get_noise_value(self):
+            return self._noise_val
+
+        def get_noise_loglikelihood(self):
+            return torch.log(self._noise_weight) + torch.log(self._noise_val)
+
+        def set_noise(self, noise_weight, noise_val):
+            self._noise_weight = noise_weight
+            self._noise_val = noise_val
+
+        def set_noise_weight(self, noise_weight, running):
+            self._noise_weight[running] = noise_weight
+
+        def set_noise_val(self, noise_val):
+            self._noise_val = noise_val
 
         def pack_mixture(self):
             return gm.pack_mixture(torch.exp(self._logamplitudes), self._positions, self._covariances)

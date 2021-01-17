@@ -25,7 +25,7 @@ class EckartGeneratorHP(GMMGenerator):
                  initialization_method: str = "tight-bb",
                  m_step_gaussians_subbatchsize: int = -1,
                  m_step_points_subbatchsize: int = -1,
-                 dtype: torch.dtype = torch.float64,
+                 dtype: torch.dtype = torch.float32,
                  eps: float = 1e-7,
                  eps_is_relative: bool = True):
         # Constructor. Creates a new EckartGenerator.

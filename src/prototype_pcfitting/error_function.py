@@ -8,7 +8,8 @@ class ErrorFunction(ABC):
 
     @abstractmethod
     def calculate_score(self, pcbatch: torch.Tensor, gmpositions: torch.Tensor, gmcovariances: torch.Tensor,
-                        gminvcovariances: torch.Tensor, gmamplitudes: torch.Tensor) -> torch.Tensor:
+                        gminvcovariances: torch.Tensor, gmamplitudes: torch.Tensor,
+                        noisecontribution: torch.Tensor = None) -> torch.Tensor:
         # Gets a point cloud batch of size [m,n,3] where m is the batch size
         # and n is the point count, as well as a Gaussian mixture containing
         # g Gaussians, given by their positions [m,1,g,3], covariances [m,1,g,3,3],
@@ -17,9 +18,11 @@ class ErrorFunction(ABC):
         # score / loss
         pass
 
-    def calculate_score_packed(self, pcbatch: torch.Tensor, gmabatch: torch.Tensor):
+    def calculate_score_packed(self, pcbatch: torch.Tensor, gmabatch: torch.Tensor,
+                               noisecontribution: torch.Tensor = None) -> torch.Tensor:
         gmpositions = mixture.positions(gmabatch)
         gmcovariances = mixture.covariances(gmabatch)
         gminvcovariances = mat_tools.inverse(gmcovariances).contiguous()
         gmamplitudes = mixture.weights(gmabatch)
-        return self.calculate_score(pcbatch, gmpositions, gmcovariances, gminvcovariances, gmamplitudes)
+        return self.calculate_score(pcbatch, gmpositions, gmcovariances, gminvcovariances, gmamplitudes,
+                                    noisecontribution)

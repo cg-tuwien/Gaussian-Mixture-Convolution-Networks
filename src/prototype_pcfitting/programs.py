@@ -118,7 +118,8 @@ def execute_fitting_on_single_pcbatch(training_name: str, pcbatch: torch.Tensor,
 
         sumweights = mixture.weights(gmmbatch).sum(dim=2).squeeze(1)
         ones = sumweights.gt(0.99) & sumweights.lt(1.01)
-        assert ones.all(), "Generator created an invalid mixture (sum of weights not 1)!"
+        if not ones.all():
+            print("Generator created an incomplete mixture (sum of weights not 1)!")
 
         # Terminate Logging
         logger.finalize()

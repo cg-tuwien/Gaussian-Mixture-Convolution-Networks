@@ -16,7 +16,8 @@ class EMGenerator(GMMGenerator):
                  initialization_method: str = 'randnormpos',
                  em_step_gaussians_subbatchsize: int = -1,
                  em_step_points_subbatchsize: int = -1,
-                 dtype: torch.dtype = torch.float64,
+                 use_noise_cluster: bool = True,
+                 dtype: torch.dtype = torch.float32,
                  eps: float = 1e-7,
                  eps_is_relative: bool = True):
         # Constructor. Creates a new EMGenerator.
@@ -44,6 +45,8 @@ class EMGenerator(GMMGenerator):
         #   em_step_points_subbatchsize: int
         #       How many points should be processed in the E- and M-Step at once
         #       -1 means all Points (default)
+        #   use_noise_cluster: bool
+        #       If true, a noise cluster is used, meaning a weighted uniform distribution over the boudning box
         #   dtype: torch.dtype
         #       In which data type (precision) the operations should be performed. Default: torch.float32
         #   eps: float
@@ -59,6 +62,7 @@ class EMGenerator(GMMGenerator):
         self._termination_criterion = termination_criterion
         self._em_step_gaussians_subbatchsize = em_step_gaussians_subbatchsize
         self._em_step_points_subbatchsize = em_step_points_subbatchsize
+        self._use_noise_cluster = use_noise_cluster
         self._logger = None
         self._epsvar = eps
         if eps < 1e-9:
@@ -99,6 +103,11 @@ class EMGenerator(GMMGenerator):
 
         assert (point_count > self._n_gaussians)
 
+        initnoisevalues = None
+        if self._use_noise_cluster:
+            extends = pcbatch.max(dim=1)[0] - pcbatch.min(dim=1)[0]
+            initnoisevalues = 1 / torch.prod(extends, dim=1)
+
         epsilons = torch.ones(batch_size, dtype=self._dtype, device='cuda') * self._epsvar
         if self._eps_is_relative:
             extends = pcbatch.max(dim=1)[0] - pcbatch.min(dim=1)[0]
@@ -118,7 +127,8 @@ class EMGenerator(GMMGenerator):
             initializer = GMMInitializer(self._em_step_gaussians_subbatchsize, self._em_step_points_subbatchsize,
                                          self._dtype, epsilons)
             gmbatch_init = initializer.initialize_by_method_name(self._initialization_method, pcbatch,
-                                                                 self._n_gaussians, self._n_sample_points, None)
+                                                                 self._n_gaussians, self._n_sample_points, None,
+                                                                 initnoisevalues)
         else:
             gmbatch_init = gmbatch
         gm_data = EMTools.TrainingData(batch_size, self._n_gaussians, self._dtype, eps)
@@ -128,6 +138,8 @@ class EMGenerator(GMMGenerator):
             gm_data.set_priors(gm.weights(gmbatch_init), running)
         else:
             gm_data.set_amplitudes(gm.weights(gmbatch_init), running)
+        if self._use_noise_cluster:
+            gm_data.set_noise(1 - gm.weights(gmbatch_init).sum().view(-1), initnoisevalues)
 
         del epsilons
 
@@ -169,6 +181,8 @@ class EMGenerator(GMMGenerator):
             # Maximization -> update GM-data
             EMTools.maximization(points_rep, responsibilities, gm_data, running, eps,
                                  self._em_step_gaussians_subbatchsize, self._em_step_points_subbatchsize)
+
+            print("Noise Weight: ", gm_data.get_noise_weight())
 
         # Create final mixtures
         final_gm = gm_data.pack_mixture()

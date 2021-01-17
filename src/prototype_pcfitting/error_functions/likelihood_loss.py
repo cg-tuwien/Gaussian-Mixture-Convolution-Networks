@@ -15,7 +15,8 @@ class LikelihoodLoss(ErrorFunction):
         self._eps = eps
 
     def calculate_score(self, pcbatch: torch.Tensor, gmpositions: torch.Tensor, gmcovariances: torch.Tensor,
-                        gminvcovariances: torch.Tensor, gmamplitudes: torch.Tensor) -> torch.Tensor:
+                        gminvcovariances: torch.Tensor, gmamplitudes: torch.Tensor,
+                        noisecontribution: torch.Tensor = None) -> torch.Tensor:
         batch_size = pcbatch.shape[0]
         points = pcbatch.view(batch_size, 1, -1, 3)
         point_count = points.shape[2]
@@ -27,6 +28,7 @@ class LikelihoodLoss(ErrorFunction):
             startidx = p * subbatch_pointcount
             endidx = min((p + 1) * subbatch_pointcount, point_count)
             output[:, startidx:endidx] = \
-                gm.evaluate_inversed(mixture_with_inversed_cov, points[:, :, startidx:endidx, :]).view(batch_size, -1)
+                gm.evaluate_inversed(mixture_with_inversed_cov, points[:, :, startidx:endidx, :]).view(batch_size, -1) \
+                + noisecontribution.view(batch_size, 1)
         res = -torch.mean(torch.log(output + (self._eps if self._avoidinf else 0)), dim=1)
         return res
