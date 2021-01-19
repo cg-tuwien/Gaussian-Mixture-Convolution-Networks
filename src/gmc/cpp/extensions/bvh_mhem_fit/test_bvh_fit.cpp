@@ -13,19 +13,19 @@
 
 #include "common.h"
 #include "bvh_mhem_fit/implementation.h"
-#include "evaluate_inversed/parallel_binding.h"
+#include "evaluate_inversed/evaluate_inversed.h"
 #include "integrate/binding.h"
 #include "util/mixture.h"
 
-constexpr uint N_BATCHES = 1;
+constexpr uint N_BATCHES = 10;
 constexpr uint CONVOLUTION_LAYER_START = 0;
 constexpr uint CONVOLUTION_LAYER_END = 3;
 constexpr uint LIMIT_N_BATCH = 100;
 constexpr bool USE_CUDA = false;
 constexpr bool BACKWARD = false;
-constexpr bool RENDER = true;
+constexpr bool RENDER = false;
 constexpr uint RESOLUTION = 128;
-constexpr bool DO_STATS = false;
+constexpr bool DO_STATS = true;
 constexpr uint N_FITTING_COMPONENTS = 32;
 
 torch::Tensor render(torch::Tensor mixture, const int resolution, const int n_batch_limit) {
@@ -52,7 +52,7 @@ torch::Tensor render(torch::Tensor mixture, const int resolution, const int n_ba
     auto yv = mesh[1];
     auto xes = torch::cat({xv.reshape({-1, 1}), yv.reshape({-1, 1})}, 1).view({1, 1, -1, 2});
 
-    return parallel_forward(mixture, xes).cpu().view({n_batch, n_layers, resolution, resolution});
+    return std::get<0>(evaluate_inversed::parallel_forward(mixture, xes)).cpu().view({n_batch, n_layers, resolution, resolution});
 }
 
 void show(torch::Tensor rendering, const int resolution, const int n_batch_limit) {
@@ -106,7 +106,7 @@ int main(int argc, char *argv[]) {
 
     // test specific configuration:
 #ifndef GPE_LIMIT_N_REDUCTION
-    std::vector<int> reduction_n_options = {16};
+    std::vector<int> reduction_n_options = {4, 8, 16};
 #else
     std::vector<int> reduction_n_options = {4};
 #endif

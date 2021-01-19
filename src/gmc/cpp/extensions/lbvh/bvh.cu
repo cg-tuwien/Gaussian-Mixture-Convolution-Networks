@@ -26,6 +26,13 @@ inline torch::Tensor compute_aabb_whole(const torch::Tensor& aabbs) {
     const auto lower = std::get<0>(aabbs.index({Ellipsis, Slice(4, None)}).min(-2));
     return torch::cat({upper, lower}, -1).contiguous();
 }
+inline torch::Tensor compute_aabb_whole_from_positions(const torch::Tensor& positions) {
+    using namespace torch::indexing;
+    const auto upper = std::get<0>(positions.max(-2));
+    const auto lower = std::get<0>(positions.min(-2));
+    const auto zeroes = torch::zeros({positions.size(0), positions.size(1), 4 - positions.size(3)}, torch::TensorOptions(positions.device()).dtype(positions.dtype()));
+    return torch::cat({upper, zeroes, lower, zeroes}, -1).contiguous();
+}
 }
 
 namespace kernels
@@ -173,13 +180,17 @@ void Bvh<N_DIMS, scalar_t>::construct()
         //            timepoint = std::chrono::high_resolution_clock::now();
     };
     watch_stop();
-    torch::Tensor object_aabbs = this->compute_aabbs();
-    watch_stop("compute_aabbs");
+    torch::Tensor object_aabbs;
+    torch::Tensor aabb_whole;
+    if (m_config.make_aabbs) {
+        object_aabbs = this->compute_aabbs();
+//        std::cout << "object_aabbs: " << object_aabbs << std::endl;
+        watch_stop("compute_aabbs");
+    }
 
-    //        std::cout << "object_aabbs:" << object_aabbs << std::endl;
-    const torch::Tensor aabb_whole = compute_aabb_whole(object_aabbs);
+    aabb_whole = compute_aabb_whole_from_positions(gpe::positions(m_mixture));
     watch_stop("compute_aabb_whole");
-    //        std::cout << "aabb_whole:" << aabb_whole << std::endl;
+//    std::cout << "aabb_whole:" << aabb_whole << std::endl;
 
     auto device = m_mixture.device();
 
@@ -207,18 +218,24 @@ void Bvh<N_DIMS, scalar_t>::construct()
     watch_stop("compute_morton_codes");
 
     // --------------------------------------------------------------------
-    std::tie(morton_codes, object_aabbs) = sort_morton_codes(morton_codes, object_aabbs);
-    watch_stop("sort_morton_codes");
-    //        print_morton_codes(morton_codes);
+    if (m_config.make_aabbs) {
+        std::tie(morton_codes, object_aabbs) = sort_morton_codes(morton_codes, object_aabbs);
+        watch_stop("sort_morton_codes");
+        //        print_morton_codes(morton_codes);
 
-    //        std::cout << "sorted object_aabbs:" << object_aabbs << std::endl;
+        //        std::cout << "sorted object_aabbs:" << object_aabbs << std::endl;
 
-    // assemble aabb array
-    const auto internal_aabbs = torch::zeros({m_n.batch, m_n.layers, m_n_internal_nodes, 8}, torch::TensorOptions(device).dtype(object_aabbs.dtype()));
-    //        std::cout << "internal: " << internal_aabbs.sizes() << "  object: " << object_aabbs.sizes() << std::endl;
-    m_aabbs = torch::cat({internal_aabbs, object_aabbs}, 2).contiguous();
-    //        std::cout << "m_aabbs:" << m_aabbs << std::endl;
-    watch_stop("assemble aabb array");
+        // assemble aabb array
+        const auto internal_aabbs = torch::zeros({m_n.batch, m_n.layers, m_n_internal_nodes, 8}, torch::TensorOptions(device).dtype(object_aabbs.dtype()));
+        //        std::cout << "internal: " << internal_aabbs.sizes() << "  object: " << object_aabbs.sizes() << std::endl;
+        m_aabbs = torch::cat({internal_aabbs, object_aabbs}, 2).contiguous();
+        //        std::cout << "m_aabbs:" << m_aabbs << std::endl;
+        watch_stop("assemble aabb array");
+    }
+    else {
+        morton_codes = sort_morton_codes(morton_codes);
+        watch_stop("sort_morton_codes");
+    }
 
     // construct nodes and create leaf nodes
     m_nodes = torch::ones({m_n.batch, m_n.layers, m_n_nodes, 4}, torch::TensorOptions(device).dtype(torch::ScalarType::Short)) * -1;
@@ -233,9 +250,11 @@ void Bvh<N_DIMS, scalar_t>::construct()
     //        print_nodes();
 
     // create AABB for each node by bottom-up strategy
-    this->create_aabbs_for_internal_nodes();
-    watch_stop("create_internal_nodes");
-    //        std::cout << "m_aabbs:" << m_aabbs << std::endl;
+    if (m_config.make_aabbs) {
+        this->create_aabbs_for_internal_nodes();
+        watch_stop("create_internal_nodes");
+//        std::cout << "m_aabbs:" << m_aabbs << std::endl;
+    }
 }
 
 
@@ -462,6 +481,63 @@ std::tuple<at::Tensor, at::Tensor> Bvh<N_DIMS, scalar_t>::sort_morton_codes(cons
     }
 
     return std::make_tuple(sorted_morton_codes, sorted_aabbs);
+}
+
+template<int N_DIMS, typename scalar_t>
+at::Tensor Bvh<N_DIMS, scalar_t>::sort_morton_codes(const at::Tensor& morton_codes) const {
+    int num_segments = m_n.batch * m_n.layers;                    // e.g., 4
+    int num_components = m_n.components;                          // 2
+    auto sorted_morton_codes = morton_codes.clone();
+    const morton_cuda_t* d_keys_in = reinterpret_cast<const morton_cuda_t*>(morton_codes.data_ptr<morton_torch_t>());   // e.g., [8, 6, 7, 5, 3, 0, 9, 8]
+    morton_cuda_t* d_keys_out = reinterpret_cast<morton_cuda_t*>(sorted_morton_codes.data_ptr<morton_torch_t>());       // e.g., [-, -, -, -, -, -, -, -]
+
+    if (morton_codes.is_cuda()) {
+        // Declare, allocate, and initialize device-accessible pointers for sorting data
+        int num_items = int(morton_codes.numel());                         // e.g., 8
+        const auto offsets = torch::arange(0, num_segments + 1, torch::TensorOptions(morton_codes.device()).dtype(torch::ScalarType::Int)) * num_components;
+        //        std::cout << "offsets: " << offsets << std::endl;
+        int* d_offsets = offsets.data_ptr<int>();                           // e.g., [0, 2, 4, 6, 8]
+
+        // Determine temporary device storage requirements
+        void     *d_temp_storage = nullptr;
+        size_t   temp_storage_bytes = 0;
+        cub::DeviceSegmentedRadixSort::SortKeys(
+            d_temp_storage, temp_storage_bytes,
+            d_keys_in, d_keys_out,
+            num_items, num_segments,
+            d_offsets, d_offsets + 1);
+
+        GPE_CUDA_ASSERT(cudaPeekAtLastError());
+        GPE_CUDA_ASSERT(cudaDeviceSynchronize());
+
+        // Allocate temporary storage
+        cudaMalloc(&d_temp_storage, temp_storage_bytes);
+
+        GPE_CUDA_ASSERT(cudaPeekAtLastError());
+        GPE_CUDA_ASSERT(cudaDeviceSynchronize());
+        // Run sorting operation
+        cub::DeviceSegmentedRadixSort::SortKeys(
+            d_temp_storage, temp_storage_bytes,
+            d_keys_in, d_keys_out,
+            num_items, num_segments,
+            d_offsets, d_offsets + 1);
+        // d_keys_out            <-- [6, 8, 5, 7, 0, 3, 8, 9]
+        // d_values_out          <-- [1, 0, 3, 2, 5, 4, 7, 6]
+
+        GPE_CUDA_ASSERT(cudaPeekAtLastError());
+        GPE_CUDA_ASSERT(cudaDeviceSynchronize());
+
+        cudaFree(d_temp_storage);
+    }
+    else {
+        // this is most likely not the fastest possible solution, but quick to implement and only cpu code and not perf bottleneck to my knowledge (test if in doubt!)
+        #pragma omp parallel for num_threads(omp_get_num_procs())
+        for (int i = 0; i < num_segments; ++i) {
+            std::sort(d_keys_out + i*num_components, d_keys_out + (i + 1) * num_components);
+        }
+    }
+
+    return sorted_morton_codes;
 }
 
 template<int N_DIMS, typename scalar_t>

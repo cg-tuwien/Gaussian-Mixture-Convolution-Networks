@@ -18,13 +18,13 @@ std::vector<torch::Tensor> bvh_mhem_fit_forward(const torch::Tensor& mixture, in
     config.n_components_fitting = unsigned(n_components_fitting);
     config.reduction_n = reduction_n;
     auto result = bvh_mhem_fit::forward_impl(mixture, config);
-    return {result.fitting, result.bvh_mixture, result.bvh_nodes, result.bvh_aabbs, result.bvh_attributes};
+    return {result.fitting, result.bvh_mixture, result.bvh_nodes, result.bvh_attributes};
 }
 
 torch::Tensor bvh_mhem_fit_backward(const torch::Tensor& grad,
                                     const torch::Tensor& fitting_mixture,
                                     const torch::Tensor& target_mixture,
-                                    const torch::Tensor& bvh_mixture_inversed, const torch::Tensor& bvh_nodes, const torch::Tensor& bvh_aabbs, const torch::Tensor& bvh_attribs,
+                                    const torch::Tensor& bvh_mixture_inversed, const torch::Tensor& bvh_nodes, const torch::Tensor& bvh_attribs,
                                     int n_components_fitting, int reduction_n) {
     at::cuda::OptionalCUDAGuard device_guard;
     if (grad.is_cuda()) {
@@ -36,7 +36,7 @@ torch::Tensor bvh_mhem_fit_backward(const torch::Tensor& grad,
     config.n_components_fitting = unsigned(n_components_fitting);
     config.reduction_n = reduction_n;
 
-    return bvh_mhem_fit::backward_impl(grad, bvh_mhem_fit::ForwardOutput{fitting_mixture, target_mixture, bvh_mixture_inversed, bvh_nodes, bvh_aabbs, bvh_attribs}, config);
+    return bvh_mhem_fit::backward_impl(grad, bvh_mhem_fit::ForwardOutput{fitting_mixture, target_mixture, bvh_mixture_inversed, bvh_nodes, bvh_attribs}, config);
 }
 
 #ifndef GMC_CMAKE_TEST_BUILD

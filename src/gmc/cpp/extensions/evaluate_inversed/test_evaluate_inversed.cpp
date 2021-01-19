@@ -12,29 +12,23 @@
 #include <cuda_runtime.h>
 
 #include "common.h"
-#include "parallel_binding.h"
+#include "evaluate_inversed/evaluate_inversed.h"
 #include "util/mixture.h"
 
-std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> cuda_bvh_forward(const torch::Tensor& mixture, const torch::Tensor& xes);
-
-torch::Tensor cuda_bvh_forward_wrapper(const torch::Tensor& mixture, const torch::Tensor& xes) {
-    torch::Tensor sum, nodes, aabbs;
-    std::tie(sum, nodes, aabbs) = cuda_bvh_forward(mixture, xes);
-    return sum;
-}
 
 auto eval_function(const torch::Tensor& tensor) {
     GPE_UNUSED(tensor)
-    return &cuda_bvh_forward_wrapper;
-//    return &parallel_forward;
-//    return tensor.is_cuda() ? &cuda_bvh_forward_wrapper : &parallel_forward;
+    return &evaluate_inversed::parallel_forward;
+//    return &evaluate_inversed::cuda_bvh_forward;
+//    return tensor.is_cuda() ? &evaluate_inversed::cuda_bvh_forward_wrapper : &evaluate_inversed::parallel_forward;
 }
 
 
 auto eval_function_backward(const torch::Tensor& tensor) {
     GPE_UNUSED(tensor)
-    return &parallel_backward;
-//    return tensor.is_cuda() ? &cuda_bvh_forward_wrapper : &parallel_forward;
+    return &evaluate_inversed::parallel_backward;
+//    return &evaluate_inversed::cuda_bvh_backward;
+//    return tensor.is_cuda() ? &evaluate_inversed::cuda_bvh_forward_wrapper : &evaluate_inversed::parallel_forward;
 }
 
 constexpr uint N_BATCHES = 2;
@@ -67,7 +61,7 @@ void show(torch::Tensor mixture, const int resolution, const int n_batch_limit) 
 
     cudaDeviceSynchronize();
     auto start = std::chrono::steady_clock::now();
-    auto rendering = eval_function(mixture)(mixture, xes).cpu().view({n_batch, n_layers, resolution, resolution});
+    auto rendering = std::get<0>(eval_function(mixture)(mixture, xes)).cpu().view({n_batch, n_layers, resolution, resolution});
     cudaDeviceSynchronize();
     auto end = std::chrono::steady_clock::now();
     std::cout << "elapsed time (rendering): " << std::chrono::duration_cast<std::chrono::milliseconds>(end-start).count() << "ms\n";
@@ -114,18 +108,18 @@ int main(int argc, char *argv[]) {
             cudaDeviceSynchronize();
 
             auto start = std::chrono::high_resolution_clock::now();
-            auto eval_values = eval_function(mixture)(mixture, positions.contiguous());
+            auto forward_out = eval_function(mixture)(mixture, positions.contiguous());
             cudaDeviceSynchronize();
             auto end = std::chrono::high_resolution_clock::now();
             std::cout << "elapsed time (forward): " << std::chrono::duration_cast<std::chrono::milliseconds>(end-start).count() << "ms\n";
 
             if (BACKWARD) {
                 torch::Tensor positions_clone = gpe::positions(mixture).clone();
-                auto grad_out = torch::rand_like(eval_values);
+                auto grad_out = torch::rand_like(std::get<0>(forward_out));
 
                 cudaDeviceSynchronize();
                 auto start = std::chrono::high_resolution_clock::now();
-                auto grads = eval_function_backward(mixture)(grad_out, mixture, positions_clone, true, true);
+                auto grads = eval_function_backward(mixture)(grad_out, mixture, positions_clone, forward_out, true, true);
                 cudaDeviceSynchronize();
                 auto end = std::chrono::high_resolution_clock::now();
                 std::cout << "elapsed time (backward): " << std::chrono::duration_cast<std::chrono::milliseconds>(end-start).count() << "ms\n";

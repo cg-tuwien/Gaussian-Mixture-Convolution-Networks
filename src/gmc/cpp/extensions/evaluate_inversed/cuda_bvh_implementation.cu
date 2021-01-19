@@ -225,11 +225,11 @@ std::tuple<torch::Tensor, torch::Tensor> cuda_bvh_backward_impl(const torch::Ten
     auto n = gpe::check_input_and_get_ns(mixture, xes);
 
     TORCH_CHECK(mixture.device().is_cuda(), "mixture must be a CUDA tensor")
-    TORCH_CHECK(grad_output.device().is_cuda(), "grad_output must be a CUDA tensor");
-    TORCH_CHECK(grad_output.dim() == 3, "grad_output has wrong number of dimensions");
-    TORCH_CHECK(grad_output.size(0) == n.batch, "grad_output has wrong batch dimension");
-    TORCH_CHECK(grad_output.size(1) == n.layers, "grad_output has wrong layer dimension");
-    TORCH_CHECK(grad_output.size(2) == n.xes, "grad_output has wrong xes dimension");
+    TORCH_CHECK(grad_output.device().is_cuda(), "grad_output must be a CUDA tensor")
+    TORCH_CHECK(grad_output.dim() == 3, "grad_output has wrong number of dimensions")
+    TORCH_CHECK(grad_output.size(0) == n.batch, "grad_output has wrong batch dimension")
+    TORCH_CHECK(grad_output.size(1) == n.layers, "grad_output has wrong layer dimension")
+    TORCH_CHECK(grad_output.size(2) == n.xes, "grad_output has wrong xes dimension")
     TORCH_CHECK(grad_output.dtype() == mixture.dtype(), "grad_output dtype does not match with mixture dtype")
 
     auto bvh = LBVH(mixture, bvh_nodes, aabbs);

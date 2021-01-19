@@ -329,21 +329,20 @@ void iterate_over_nodes(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
                         const dim3& gpe_blockIdx, const dim3& gpe_threadIdx,
                         const gpe::PackedTensorAccessor32<gpe::Gaussian<N_DIMS, scalar_t>, 2> mixture,
                         const gpe::PackedTensorAccessor32<node_index_torch_t, 3> nodes,
-                        const gpe::PackedTensorAccessor32<scalar_t, 3> aabbs,
                         gpe::PackedTensorAccessor32<int, 2> flags,
                         gpe::PackedTensorAccessor32<typename AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>::NodeAttributes, 2> node_attributes,
                         const gpe::MixtureNs n, const int n_mixtures, const unsigned n_internal_nodes, const unsigned n_nodes,
                         const Config& config) {
     GPE_UNUSED(gpe_gridDim)
     using G = gpe::Gaussian<N_DIMS, scalar_t>;
-    using Bvh = AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>;
+    using Tree = AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>;
 
     assert(gpe_blockDim.y == 1);
     assert(gpe_blockDim.z == 1);
     const auto mixture_id = int(gpe_blockIdx.y);
     assert(mixture_id < n_mixtures);
 
-    Bvh bvh = Bvh(mixture_id, nodes, aabbs, mixture, node_attributes, n, n_internal_nodes, n_nodes);
+    Tree bvh = Tree(mixture_id, nodes, mixture, node_attributes, n, n_internal_nodes, n_nodes);
 
     const unsigned leaves_per_thread = (unsigned(n.components) + gpe_blockDim.x - 1) / gpe_blockDim.x;
     const unsigned begin_leaf = leaves_per_thread * gpe_threadIdx.x;
@@ -400,7 +399,6 @@ EXECUTION_DEVICES void collect_result(const dim3& gpe_gridDim, const dim3& gpe_b
                                       const gpe::PackedTensorAccessor32<gpe::Gaussian<N_DIMS, scalar_t>, 2> mixture,
                                       gpe::PackedTensorAccessor32<gpe::Gaussian<N_DIMS, scalar_t>, 2> out_mixture,
                                       const gpe::PackedTensorAccessor32<node_index_torch_t, 3> nodes,
-                                      const gpe::PackedTensorAccessor32<scalar_t, 3> aabbs,
                                       gpe::PackedTensorAccessor32<int, 2> flags,
                                       gpe::PackedTensorAccessor32<typename AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>::NodeAttributes, 2> node_attributes,
                                       const gpe::MixtureNs n, const int n_mixtures, const unsigned n_internal_nodes, const unsigned n_nodes,
@@ -409,7 +407,7 @@ EXECUTION_DEVICES void collect_result(const dim3& gpe_gridDim, const dim3& gpe_b
     GPE_UNUSED(gpe_gridDim)
     GPE_UNUSED(flags)
     using G = gpe::Gaussian<N_DIMS, scalar_t>;
-    using Bvh = AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>;
+    using Tree = AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>;
 
     assert(config.n_components_fitting % REDUCTION_N == 0);
     assert(config.n_components_fitting <= N_MAX_TARGET_COMPS);
@@ -419,7 +417,7 @@ EXECUTION_DEVICES void collect_result(const dim3& gpe_gridDim, const dim3& gpe_b
     if (mixture_id >= n_mixtures)
         return;
 
-    Bvh bvh = AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>(mixture_id, nodes, aabbs, mixture, node_attributes, n, n_internal_nodes, n_nodes);
+    auto bvh = Tree(mixture_id, nodes, mixture, node_attributes, n, n_internal_nodes, n_nodes);
 
     gpe::Vector<scalar_t, N_MAX_TARGET_COMPS> selectedNodesRating;
     gpe::Vector<node_index_t, N_MAX_TARGET_COMPS> selectedNodes;
@@ -474,7 +472,7 @@ EXECUTION_DEVICES void collect_result(const dim3& gpe_gridDim, const dim3& gpe_b
     unsigned write_position = 0;
     for (unsigned i = 0; i < selectedNodes.size(); ++i) {
         auto node_id = selectedNodes[i];
-        typename Bvh::NodeAttributes& destination_attribute = bvh.per_node_attributes[node_id];
+        typename Tree::NodeAttributes& destination_attribute = bvh.per_node_attributes[node_id];
 
         for (unsigned j = 0; j < destination_attribute.gaussians.size(); ++j) {
             assert(write_position < config.n_components_fitting);
@@ -493,7 +491,7 @@ EXECUTION_DEVICES void collect_result(const dim3& gpe_gridDim, const dim3& gpe_b
 template<int REDUCTION_N = 4, typename scalar_t, unsigned N_DIMS>
 ForwardOutput forward_impl_t(at::Tensor mixture, const Config& config) {
     using namespace torch::indexing;
-    using LBVH = lbvh::Bvh<N_DIMS, scalar_t>;
+    using Tree = lbvh::Bvh<N_DIMS, scalar_t>;
 
     // todo: flatten mixture for kernel, i.g. nbatch/nlayers/ncomponents/7 => nmixture/ncomponents/7
 
@@ -506,12 +504,13 @@ ForwardOutput forward_impl_t(at::Tensor mixture, const Config& config) {
     TORCH_CHECK(mixture.dtype() == caffe2::TypeMeta::Make<scalar_t>(), "something wrong with dispatch, or maybe this float type is not supported.")
 
     const auto n_mixtures = n.batch * n.layers;
-    const LBVH bvh = LBVH(gpe::mixture_with_inversed_covariances(mixture).contiguous(), config.bvh_config);
+    auto bvh_config = config.bvh_config;
+    bvh_config.make_aabbs = false;
+    const Tree bvh = Tree(gpe::mixture_with_inversed_covariances(mixture).contiguous(), bvh_config);
     const auto n_internal_nodes = bvh.m_n_internal_nodes;
     const auto n_nodes = bvh.m_n_nodes;
     mixture = mixture.view({n_mixtures, n.components, -1}).contiguous();
     auto flat_bvh_nodes = bvh.m_nodes.view({n_mixtures, n_nodes, -1});
-    auto flat_bvh_aabbs = bvh.m_aabbs.view({n_mixtures, n_nodes, -1});
     auto flag_container = torch::zeros({n_mixtures, n_internal_nodes}, torch::TensorOptions(mixture.device()).dtype(torch::ScalarType::Int));
 
     auto flags_a = gpe::accessor<int, 2>(flag_container);
@@ -519,7 +518,6 @@ ForwardOutput forward_impl_t(at::Tensor mixture, const Config& config) {
 
     auto mixture_a = gpe::struct_accessor<typename gpe::Gaussian<N_DIMS, scalar_t>, 2, scalar_t>(mixture);
     auto nodes_a = gpe::accessor<lbvh::detail::Node::index_type_torch, 3>(flat_bvh_nodes);
-    auto aabbs_a = gpe::accessor<scalar_t, 3>(flat_bvh_aabbs);
     auto node_attributes_a = gpe::struct_accessor<typename AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>::NodeAttributes, 2, uint8_t>(node_attributes);
 
     {
@@ -528,10 +526,10 @@ ForwardOutput forward_impl_t(at::Tensor mixture, const Config& config) {
                             (uint(n_mixtures) + dimBlock.y - 1) / dimBlock.y,
                             (uint(1) + dimBlock.z - 1) / dimBlock.z);
 
-        auto fun = [mixture_a, nodes_a, aabbs_a, flags_a, node_attributes_a, n, n_mixtures, n_internal_nodes, n_nodes, config] __host__ __device__
+        auto fun = [mixture_a, nodes_a, flags_a, node_attributes_a, n, n_mixtures, n_internal_nodes, n_nodes, config] __host__ __device__
                 (const dim3& gpe_gridDim, const dim3& gpe_blockDim, const dim3& gpe_blockIdx, const dim3& gpe_threadIdx) {
             iterate_over_nodes<scalar_t, N_DIMS, REDUCTION_N>(gpe_gridDim, gpe_blockDim, gpe_blockIdx, gpe_threadIdx,
-                                                              mixture_a, nodes_a, aabbs_a, flags_a, node_attributes_a,
+                                                              mixture_a, nodes_a, flags_a, node_attributes_a,
                                                               n, n_mixtures, n_internal_nodes, n_nodes,
                                                               config);
         };
@@ -546,11 +544,11 @@ ForwardOutput forward_impl_t(at::Tensor mixture, const Config& config) {
         dim3 dimBlock = dim3(32, 1, 1);
         dim3 dimGrid = dim3((uint(n_mixtures) + dimBlock.x - 1) / dimBlock.x, 1, 1);
 
-        auto fun = [mixture_a, out_mixture_a, nodes_a, aabbs_a, flags_a, node_attributes_a, n, n_mixtures, n_internal_nodes, n_nodes, config]
+        auto fun = [mixture_a, out_mixture_a, nodes_a, flags_a, node_attributes_a, n, n_mixtures, n_internal_nodes, n_nodes, config]
                 __host__ __device__
                 (const dim3& gpe_gridDim, const dim3& gpe_blockDim, const dim3& gpe_blockIdx, const dim3& gpe_threadIdx) {
             collect_result<scalar_t, N_DIMS, REDUCTION_N>(gpe_gridDim, gpe_blockDim, gpe_blockIdx, gpe_threadIdx,
-                                                          mixture_a, out_mixture_a, nodes_a, aabbs_a, flags_a, node_attributes_a,
+                                                          mixture_a, out_mixture_a, nodes_a, flags_a, node_attributes_a,
                                                           n, n_mixtures, n_internal_nodes, n_nodes,
                                                           config);
         };
@@ -559,7 +557,7 @@ ForwardOutput forward_impl_t(at::Tensor mixture, const Config& config) {
 
     return ForwardOutput{out_mixture.view({n.batch, n.layers, config.n_components_fitting, -1}),
                          mixture.view({n.batch, n.layers, n.components, -1}),
-                         bvh.m_mixture, bvh.m_nodes, bvh.m_aabbs, node_attributes};
+                         bvh.m_mixture, bvh.m_nodes, node_attributes};
 }
 
 

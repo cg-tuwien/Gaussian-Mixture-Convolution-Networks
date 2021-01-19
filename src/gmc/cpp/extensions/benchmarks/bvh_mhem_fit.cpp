@@ -11,7 +11,7 @@
 
 #include "common.h"
 #include "bvh_mhem_fit/implementation.h"
-#include "evaluate_inversed/parallel_binding.h"
+#include "evaluate_inversed/evaluate_inversed.h"
 #include "integrate/binding.h"
 #include "util/mixture.h"
 
@@ -35,7 +35,7 @@ TEST_CASE("bvh_mhem_fit forward and backward benchmark") {
 
     // test specific configuration:
 #ifndef GPE_LIMIT_N_REDUCTION
-    std::vector<int> reduction_n_options = {16};
+    std::vector<int> reduction_n_options = {8};
 #else
     std::vector<int> reduction_n_options = {4};
 #endif

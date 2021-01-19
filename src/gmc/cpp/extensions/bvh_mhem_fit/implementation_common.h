@@ -80,6 +80,20 @@ struct AugmentedBvh
     {
     }
 
+    EXECUTION_DEVICES
+    AugmentedBvh(int mixture_id,
+                 const gpe::PackedTensorAccessor32<node_index_torch_t, 3> nodes,
+                 gpe::PackedTensorAccessor32<Gaussian_type, 2> mixture,
+                 gpe::PackedTensorAccessor32<NodeAttributes, 2> node_attributes,
+                 const gpe::MixtureNs n, const unsigned n_internal_nodes, const unsigned n_nodes)
+        : n_internal_nodes(n_internal_nodes), n_leaves(unsigned(n.components)), n_nodes(n_nodes),
+          nodes(reinterpret_cast<const Node*>(&nodes[mixture_id][0][0])),
+          aabbs(nullptr),
+          gaussians(&mixture[mixture_id][0]),
+          per_node_attributes(&node_attributes[mixture_id][0])
+    {
+    }
+
     EXECUTION_DEVICES gpe::Vector<Gaussian_type, REDUCTION_N * 2> collect_child_gaussians(const lbvh::detail::Node* node, scalar_t weight_threshold) const {
         assert(node->left_idx != node_index_t(-1));
         assert(node->right_idx != node_index_t(-1));

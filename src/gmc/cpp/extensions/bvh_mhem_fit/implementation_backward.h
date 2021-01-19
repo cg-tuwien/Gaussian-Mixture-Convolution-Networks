@@ -10,7 +10,6 @@
 #include "cuda_qt_creator_definitinos.h"
 #include "cuda_operations.h"
 #include "hacked_accessor.h"
-#include "lbvh/aabb.h"
 #include "lbvh/bvh.h"
 #include "util/glm.h"
 #include "util/scalar.h"
@@ -349,7 +348,6 @@ void trickle_down_grad(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
                        gpe::PackedTensorAccessor32<scalar_t, 3> target_grad,
                        gpe::PackedTensorAccessor32<gpe::Gaussian<N_DIMS, scalar_t>, 2> mixture,
                        const gpe::PackedTensorAccessor32<node_index_torch_t, 3> nodes,
-                       const gpe::PackedTensorAccessor32<scalar_t, 3> aabbs,
                        gpe::PackedTensorAccessor32<int, 2> flags,
                        gpe::PackedTensorAccessor32<typename AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>::NodeAttributes, 2> node_attributes,
                        const gpe::MixtureNs n, const int n_mixtures, const unsigned n_internal_nodes, const unsigned n_nodes,
@@ -363,7 +361,7 @@ void trickle_down_grad(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
     const auto mixture_id = int(gpe_blockIdx.y);
     assert(mixture_id < n_mixtures);
 
-    Bvh bvh = AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>(mixture_id, nodes, aabbs, mixture, node_attributes, n, n_internal_nodes, n_nodes);
+    Bvh bvh = AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>(mixture_id, nodes, mixture, node_attributes, n, n_internal_nodes, n_nodes);
 //    #ifndef __CUDA_ARCH__
 //        std::vector<typename AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>::NodeAttributes> node_attributes_debug;
 //        std::vector<Node> nodes_debug;
@@ -445,7 +443,6 @@ EXECUTION_DEVICES void distribute_grad(const dim3& gpe_gridDim, const dim3& gpe_
                                       const gpe::PackedTensorAccessor32<gpe::Gaussian<N_DIMS, scalar_t>, 2> mixture,
                                       gpe::PackedTensorAccessor32<scalar_t, 3> grad_fitting,
                                       const gpe::PackedTensorAccessor32<node_index_torch_t, 3> nodes,
-                                      const gpe::PackedTensorAccessor32<scalar_t, 3> aabbs,
                                       gpe::PackedTensorAccessor32<int, 2> flags,
                                       gpe::PackedTensorAccessor32<typename AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>::NodeAttributes, 2> node_attributes,
                                       const gpe::MixtureNs n, const int n_mixtures, const unsigned n_internal_nodes, const unsigned n_nodes,
@@ -454,7 +451,7 @@ EXECUTION_DEVICES void distribute_grad(const dim3& gpe_gridDim, const dim3& gpe_
     GPE_UNUSED(gpe_gridDim)
     GPE_UNUSED(flags)
     using G = gpe::Gaussian<N_DIMS, scalar_t>;
-    using Bvh = AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>;
+    using Tree = AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>;
 
     assert(config.n_components_fitting % REDUCTION_N == 0);
     assert(config.n_components_fitting <= N_MAX_TARGET_COMPS);
@@ -464,7 +461,7 @@ EXECUTION_DEVICES void distribute_grad(const dim3& gpe_gridDim, const dim3& gpe_
     if (mixture_id >= n_mixtures)
         return;
 
-    Bvh bvh = Bvh(mixture_id, nodes, aabbs, mixture, node_attributes, n, n_internal_nodes, n_nodes);
+    Tree bvh = Tree(mixture_id, nodes, mixture, node_attributes, n, n_internal_nodes, n_nodes);
 
     gpe::Vector<scalar_t, N_MAX_TARGET_COMPS> selectedNodesRating;
     gpe::Vector<node_index_t, N_MAX_TARGET_COMPS> selectedNodes;
@@ -536,7 +533,7 @@ EXECUTION_DEVICES void distribute_grad(const dim3& gpe_gridDim, const dim3& gpe_
     for (unsigned i = 0; i < selectedNodes.size(); ++i) {
 //        updateDebug();
         auto node_id = selectedNodes[i];
-        typename Bvh::NodeAttributes& destination_attribute = bvh.per_node_attributes[node_id];
+        typename Tree::NodeAttributes& destination_attribute = bvh.per_node_attributes[node_id];
 
         for (unsigned j = 0; j < destination_attribute.gaussians.size(); ++j) {
             assert(read_position < config.n_components_fitting);
@@ -553,7 +550,7 @@ EXECUTION_DEVICES void distribute_grad(const dim3& gpe_gridDim, const dim3& gpe_
 template<int REDUCTION_N = 4, typename scalar_t, unsigned N_DIMS>
 at::Tensor backward_impl_t(at::Tensor grad, const ForwardOutput& forward_out, const Config& config) {
     using namespace torch::indexing;
-    using LBVH = lbvh::Bvh<N_DIMS, scalar_t>;
+    using Tree = lbvh::Bvh<N_DIMS, scalar_t>;
 
     // todo: flatten mixture for kernel, i.g. nbatch/nlayers/ncomponents/7 => nmixture/ncomponents/7
 
@@ -566,13 +563,12 @@ at::Tensor backward_impl_t(at::Tensor grad, const ForwardOutput& forward_out, co
     TORCH_CHECK(grad.dtype() == caffe2::TypeMeta::Make<scalar_t>(), "something wrong with dispatch, or maybe this float type is not supported.")
 
     const auto n_mixtures = n.batch * n.layers;
-    const auto bvh = LBVH(gpe::mixture_with_inversed_covariances(forward_out.bvh_mixture).contiguous(), forward_out.bvh_nodes, forward_out.bvh_aabbs);
+    const auto bvh = Tree(gpe::mixture_with_inversed_covariances(forward_out.bvh_mixture).contiguous(), forward_out.bvh_nodes, {});
     const auto n_internal_nodes = bvh.m_n_internal_nodes;
     const auto n_nodes = bvh.m_n_nodes;
     const auto mixture_view = forward_out.target.view({n_mixtures, n.components, -1}).contiguous();
     const auto grad_view = grad.view({n_mixtures, config.n_components_fitting, -1}).contiguous();
     auto flat_bvh_nodes = bvh.m_nodes.view({n_mixtures, n_nodes, -1});
-    auto flat_bvh_aabbs = bvh.m_aabbs.view({n_mixtures, n_nodes, -1});
     auto flag_container = torch::zeros({n_mixtures, n_internal_nodes}, torch::TensorOptions(mixture_view.device()).dtype(torch::ScalarType::Int));
 
     auto flags_a = gpe::accessor<int, 2>(flag_container);
@@ -581,7 +577,6 @@ at::Tensor backward_impl_t(at::Tensor grad, const ForwardOutput& forward_out, co
     auto mixture_a = gpe::struct_accessor<gpe::Gaussian<N_DIMS, scalar_t>, 2, scalar_t>(mixture_view);
     auto grad_a = gpe::accessor<scalar_t, 3>(grad_view);
     auto nodes_a = gpe::accessor<lbvh::detail::Node::index_type_torch, 3>(flat_bvh_nodes);
-    auto aabbs_a = gpe::accessor<scalar_t, 3>(flat_bvh_aabbs);
     auto node_attributes_a = gpe::struct_accessor<typename AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>::NodeAttributes, 2, uint8_t>(node_attributes);
 
     {
@@ -589,11 +584,11 @@ at::Tensor backward_impl_t(at::Tensor grad, const ForwardOutput& forward_out, co
         dim3 dimBlock = dim3(32, 1, 1);
         dim3 dimGrid = dim3((uint(n_mixtures) + dimBlock.x - 1) / dimBlock.x, 1, 1);
 
-        auto fun = [mixture_a, grad_a, nodes_a, aabbs_a, flags_a, node_attributes_a, n, n_mixtures, n_internal_nodes, n_nodes, config]
+        auto fun = [mixture_a, grad_a, nodes_a, flags_a, node_attributes_a, n, n_mixtures, n_internal_nodes, n_nodes, config]
                 __host__ __device__
                 (const dim3& gpe_gridDim, const dim3& gpe_blockDim, const dim3& gpe_blockIdx, const dim3& gpe_threadIdx) {
             distribute_grad<scalar_t, N_DIMS, REDUCTION_N>(gpe_gridDim, gpe_blockDim, gpe_blockIdx, gpe_threadIdx,
-                                                          mixture_a, grad_a, nodes_a, aabbs_a, flags_a, node_attributes_a,
+                                                          mixture_a, grad_a, nodes_a, flags_a, node_attributes_a,
                                                           n, n_mixtures, n_internal_nodes, n_nodes,
                                                           config);
         };
@@ -608,11 +603,11 @@ at::Tensor backward_impl_t(at::Tensor grad, const ForwardOutput& forward_out, co
                             (uint(n_mixtures) + dimBlock.y - 1) / dimBlock.y,
                             (uint(1) + dimBlock.z - 1) / dimBlock.z);
 
-        auto fun = [target_gradient_a, mixture_a, nodes_a, aabbs_a, flags_a, node_attributes_a, n, n_mixtures, n_internal_nodes, n_nodes, config] __host__ __device__
+        auto fun = [target_gradient_a, mixture_a, nodes_a, flags_a, node_attributes_a, n, n_mixtures, n_internal_nodes, n_nodes, config] __host__ __device__
                 (const dim3& gpe_gridDim, const dim3& gpe_blockDim, const dim3& gpe_blockIdx, const dim3& gpe_threadIdx) {
             trickle_down_grad<scalar_t, N_DIMS, REDUCTION_N>(gpe_gridDim, gpe_blockDim, gpe_blockIdx, gpe_threadIdx,
                                                              target_gradient_a,
-                                                             mixture_a, nodes_a, aabbs_a, flags_a, node_attributes_a,
+                                                             mixture_a, nodes_a, flags_a, node_attributes_a,
                                                              n, n_mixtures, n_internal_nodes, n_nodes,
                                                              config);
         };

@@ -119,16 +119,15 @@ set(UTIL_HEADERS
 add_library(util ${UTIL_HEADERS} util/dummy.cpp)
 
 set(EVALUATE_INVERSED_HEADERS
-    evaluate_inversed/parallel_implementation.h
-    evaluate_inversed/parallel_binding.h
+    evaluate_inversed/implementations.h
+    evaluate_inversed/evaluate_inversed.h
 )
 set(EVALUATE_INVERSED_SOURCES
     evaluate_inversed/parallel_implementation.cu
     evaluate_inversed/parallel_implementation_optimised_forward.cu
     evaluate_inversed/parallel_implementation_optimised_backward.cu
-    evaluate_inversed/parallel_binding.cpp
-    evaluate_inversed/cuda_bvh.cpp
-    evaluate_inversed/cuda_bvh.cu
+    evaluate_inversed/evaluate_inversed.cpp
+    evaluate_inversed/cuda_bvh_implementation.cu
 )
 add_library(evaluate_inversed ${EVALUATE_INVERSED_HEADERS} ${EVALUATE_INVERSED_SOURCES})
 target_link_libraries(evaluate_inversed PUBLIC OpenMP::OpenMP_CXX torch math lbvh common)
@@ -308,6 +307,7 @@ set(BENCHMARK_HEADERS
 set(BENCHMARK_SOURCES
     benchmarks/main.cpp
     benchmarks/bvh_mhem_fit.cpp
+    benchmarks/evaluate_inversed.cpp
 )
 add_executable(0_benchmarks ${BENCHMARK_SOURCES} ${BENCHMARK_HEADERS})
 target_link_libraries(0_benchmarks PUBLIC Catch2::Catch2 OpenMP::OpenMP_CXX torch Qt5::Widgets bvh_mhem_fit integrate evaluate_inversed math lbvh common)

@@ -17,4 +17,11 @@ std::tuple<torch::Tensor, torch::Tensor> parallel_backward_optimised_impl(const 
                                                                           const torch::Tensor& xes,
                                                                           bool requires_grad_mixture, bool requires_grad_xes);
 
+// CUDA forward declarations
+std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> cuda_bvh_forward_impl(const torch::Tensor& mixture, const torch::Tensor& xes);
+std::tuple<torch::Tensor, torch::Tensor> cuda_bvh_backward_impl(const torch::Tensor& grad_output,
+                                                                const torch::Tensor& mixture, const torch::Tensor& bvh_nodes, const torch::Tensor& aabbs,
+                                                                const torch::Tensor& xes,
+                                                                bool requires_grad_mixture, bool requires_grad_xes);
+
 #endif // EVALUATE_INVERSED_PARALLEL_IMPLEMENTATION_H

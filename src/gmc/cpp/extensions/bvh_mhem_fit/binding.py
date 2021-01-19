@@ -24,8 +24,8 @@ class BvhMhemFit(torch.autograd.Function):
         if not target_mixture.is_contiguous():
             mixture = target_mixture.contiguous()
 
-        fitting_mixture, bvh_mixture, bvh_nodes, bvh_aabbs, bvh_attribs = cpp_binding.forward(target_mixture, n_components_fitting, reduction_n)
-        ctx.save_for_backward(fitting_mixture, target_mixture, bvh_mixture, bvh_nodes, bvh_aabbs, bvh_attribs, torch.tensor(n_components_fitting), torch.tensor(reduction_n))
+        fitting_mixture, bvh_mixture, bvh_nodes, bvh_attribs = cpp_binding.forward(target_mixture, n_components_fitting, reduction_n)
+        ctx.save_for_backward(fitting_mixture, target_mixture, bvh_mixture, bvh_nodes, bvh_attribs, torch.tensor(n_components_fitting), torch.tensor(reduction_n))
         return fitting_mixture
 
     @staticmethod
@@ -33,8 +33,8 @@ class BvhMhemFit(torch.autograd.Function):
         if not grad_output.is_contiguous():
             grad_output = grad_output.contiguous()
 
-        fitting_mixture, target_mixture, bvh_mixture, bvh_nodes, bvh_aabbs, bvh_attribs, n_components_fitting, reduction_n = ctx.saved_tensors
-        grad_target_mixture = cpp_binding.backward(grad_output, fitting_mixture, target_mixture, bvh_mixture, bvh_nodes, bvh_aabbs, bvh_attribs, n_components_fitting.item(), reduction_n.item())
+        fitting_mixture, target_mixture, bvh_mixture, bvh_nodes, bvh_attribs, n_components_fitting, reduction_n = ctx.saved_tensors
+        grad_target_mixture = cpp_binding.backward(grad_output, fitting_mixture, target_mixture, bvh_mixture, bvh_nodes, bvh_attribs, n_components_fitting.item(), reduction_n.item())
         return grad_target_mixture, None, None
 
 
