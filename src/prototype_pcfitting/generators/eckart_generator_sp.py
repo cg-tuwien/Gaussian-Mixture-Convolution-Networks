@@ -18,7 +18,7 @@ class EckartGeneratorSP(GMMGenerator):
     def __init__(self,
                  n_gaussians_per_node: int,
                  n_levels: int,
-                 partition_treshold: float,
+                 partition_threshold: float,
                  termination_criterion: TerminationCriterion = MaxIterationTerminationCriterion(20),
                  initialization_method: str = 'randnormpos',
                  e_step_pair_subbatchsize: int = -1,
@@ -64,7 +64,7 @@ class EckartGeneratorSP(GMMGenerator):
         #       eps_abs = eps_rel * (maxextend^2)
         self._n_gaussians_per_node = n_gaussians_per_node
         self._n_levels = n_levels
-        self._partition_threshold = partition_treshold
+        self._partition_threshold = partition_threshold
         self._termination_criterion = termination_criterion
         self._initialization_method = initialization_method
         self._e_step_pair_subbatchsize = e_step_pair_subbatchsize
@@ -602,7 +602,7 @@ class EckartGeneratorSP(GMMGenerator):
 
         def set_covariances_where_valid(self, j_start: int, j_end: int, covariances: torch.Tensor):
             # Checks if given covariances are valid, only then they are taken over
-            invcovs = mat_tools.inverse(self.covariances).contiguous()
+            invcovs = mat_tools.inverse(covariances).contiguous()
             relcovs = EMTools.find_valid_matrices(covariances, invcovs)
             if (~relcovs).sum() != 0:
                 print("ditching ", (~relcovs).sum().item(), " items")

@@ -193,7 +193,7 @@ class EMTools:
             del t_0, t_2
 
         if gm_data.has_noise_cluster():
-            new_noise_weight[running] = responsibilities[running, 0, :, -1].sum() / n_sample_points
+            new_noise_weight[running] = responsibilities[running, 0, :, -1].sum(dim=1) / n_sample_points
 
         # Handling of invalid Gaussians! If all responsibilities of a Gaussian are zero, the previous code will
         # set the prior of it to zero and the covariances and positions to NaN
@@ -334,7 +334,7 @@ class EMTools:
             return self._logamplitudes
 
         def has_noise_cluster(self) -> bool:
-            return self._noise_weight.gt(0).all().item()
+            return self._noise_weight.gt(0).any().item()
 
         def get_noise_weight(self):
             return self._noise_weight

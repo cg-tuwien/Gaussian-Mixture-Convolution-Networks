@@ -22,7 +22,7 @@ class EckartGeneratorHP(GMMGenerator):
                  n_gaussians_per_node: int,
                  n_levels: int,
                  termination_criterion: TerminationCriterion = MaxIterationTerminationCriterion(20),
-                 initialization_method: str = "tight-bb",
+                 initialization_method: str = "bb",
                  m_step_gaussians_subbatchsize: int = -1,
                  m_step_points_subbatchsize: int = -1,
                  dtype: torch.dtype = torch.float32,
@@ -420,6 +420,8 @@ class EckartGeneratorHP(GMMGenerator):
         mask_indizes[:, :, 1::2] += torch.arange(0, self._n_gaussians_per_node, dtype=torch.long, device='cuda')
         mask_indizes = mask_indizes.view(n_sample_points * self._n_gaussians_per_node, 2)
 
+        # Every point belongs to exactly self._n_gaussians_per_node gaussians, therefore we can work with (npxng)
+        # matrices, allthough it depends on the point which gaussians we are talking about
         # GM-Positions, expanded for each PC point. shape: (1, 1, np, ng, 3)
         gmpositions_rep = gm_data.positions.unsqueeze(2).expand(1, 1, n_sample_points, all_gauss_count, 3)
         gmpositions_rep = gmpositions_rep[:, :, mask_indizes[:, 0], mask_indizes[:, 1]]\
@@ -505,6 +507,7 @@ class EckartGeneratorHP(GMMGenerator):
 
             # formulas taken from eckart paper. cov formula replaced by original em formula for better stability.
             gm_data.positions[:, :, j_start:j_end] = t_1 / t_0.unsqueeze(3)  # (1, 1, J, 3)
+            # This calculation is fine because we process all parents children at once
             relevant_point_count = t_0.view(1, -1, self._n_gaussians_per_node).sum(dim=2) \
                 .repeat(1, self._n_gaussians_per_node, 1).transpose(-1, -2).reshape(1, -1)
             gm_data.priors[:, :, j_start:j_end] = t_0 / relevant_point_count
@@ -574,7 +577,7 @@ class EckartGeneratorHP(GMMGenerator):
             return cl
 
         def set_covariances_where_valid(self, j_start: int, j_end: int, covariances: torch.Tensor):
-            invcovs = mat_tools.inverse(self.covariances).contiguous()
+            invcovs = mat_tools.inverse(covariances).contiguous()
             relcovs = EMTools.find_valid_matrices(covariances, invcovs)
             if (~relcovs).sum() != 0:
                 print("ditching ", (~relcovs).sum().item(), " items")
