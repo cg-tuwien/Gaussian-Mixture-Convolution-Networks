@@ -140,7 +140,7 @@ void runTest(const std::vector<std::pair<torch::Tensor, torch::Tensor>>& test_ca
 }
 } // anonymous namespace
 
-constexpr double gpe_float_exploding_precision = 4e-3;
+constexpr double gpe_float_exploding_precision = 5e-2;
 constexpr double gpe_float_precision = 4e-5;
 constexpr double gpe_double_precision = 1e-11;
 
