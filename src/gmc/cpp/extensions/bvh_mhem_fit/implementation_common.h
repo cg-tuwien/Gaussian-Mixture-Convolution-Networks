@@ -15,13 +15,13 @@ namespace bvh_mhem_fit {
 
 using node_index_torch_t = lbvh::detail::Node::index_type_torch;
 using node_index_t = lbvh::detail::Node::index_type;
-using gaussian_index_t = uint16_t;
-using gaussian_index_torch_t = int16_t;
+using small_index_t = uchar;
 using Node  = lbvh::detail::Node;
 
 template <typename scalar_t>
 struct UIntOfSize {
     using type = uint32_t;
+    static_assert (sizeof (type) == sizeof (scalar_t), "specialisation missing");
 };
 
 template <>
@@ -31,9 +31,10 @@ struct UIntOfSize<double> {
 
 template <typename scalar_t, int N_FITTING, int N_TARGET>
 struct GradientCacheData {
-    using gradless_scalar_t = gpe::remove_grad_t<scalar_t>;
-    gpe::Array<gaussian_index_t, N_FITTING> initial_indices;
+    gpe::Array<small_index_t, N_FITTING> initial_indices;
 };
+static_assert (sizeof (GradientCacheData<float, 4, 8>) == 4, "Gradient cache data is larger than expected.");
+static_assert (sizeof (GradientCacheData<float, 8, 16>) == 8, "Gradient cache data is larger than expected.");
 
 template<typename scalar_t, int N_DIMS, int REDUCTION_N>
 struct AugmentedBvh

@@ -140,7 +140,8 @@ void runTest(const std::vector<std::pair<torch::Tensor, torch::Tensor>>& test_ca
 }
 } // anonymous namespace
 
-constexpr double gpe_float_exploding_precision = 5e-2;
+constexpr double gpe_float_exploding_precision = 4e-3;
+constexpr double gpe_float_explosion_size = 8e-2;
 constexpr double gpe_float_precision = 4e-5;
 constexpr double gpe_double_precision = 1e-11;
 
@@ -292,6 +293,6 @@ TEMPLATE_TEST_CASE( "testing working against alpha reference", "[bvh_mhem_fit]",
             }
         }
 
-        runTest<TestType::value, 4, float, 32>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d32GsGradsExploding()}, {mixtures}), gpe_float_exploding_precision);
+        runTest<TestType::value, 4, float, 32>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d32GsGradsExploding()}, {mixtures}), gpe_float_explosion_size);
     }
 }
