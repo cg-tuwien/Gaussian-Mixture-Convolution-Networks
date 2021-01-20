@@ -146,101 +146,101 @@ constexpr double gpe_float_precision = 4e-5;
 constexpr double gpe_double_precision = 1e-11;
 
 TEMPLATE_TEST_CASE( "testing working against alpha reference", "[bvh_mhem_fit]", use_cuda_type, use_cpu_type) {
-////    std::cout << "01. ";
-//    SECTION("2 component fitting double _collectionOf2dMixtures_with4Gs") {
-//        runTest<TestType::value, 2, double>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d2GsGrads()},
-//                                                                 {_collectionOf2dMixtures_with4Gs()}),
-//                           gpe_double_precision);
-//    }
-////    std::cout << "02. ";
-//    SECTION("2 component fitting double _collectionOf2dMixtures_with8GsForQuickAutoDiff") {
-//        runTest<TestType::value, 2, double>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d2GsGrads()},
-//                                                                 {_collectionOf2dMixtures_with8GsForQuickAutoDiff()}),
-//                           gpe_double_precision);
-//    }
-////    std::cout << "03. ";
-//    SECTION("2 component fitting double _collectionOf2dMixtures_with8GsForLongAutoDiff") {
-//        runTest<TestType::value, 2, double>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d2GsGrads()},
-//                                                                 {_collectionOf2dMixtures_with8GsForLongAutoDiff()}),
-//                           gpe_double_precision);
-//    }
-////    std::cout << "04. ";
-//    SECTION("2 component fitting double _collectionOf2dMixtures_with8GsTooLongForAutodiff") {
-//        runTest<TestType::value, 2, double>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d2GsGrads()},
-//                                                                 {_collectionOf2dMixtures_with8GsTooLongForAutodiff()}),
-//                           gpe_double_precision);
-//    }
-////    std::cout << "05. ";
-//    SECTION("2 component fitting double _collectionOf2dMixtures_with16Gs") {
-//        runTest<TestType::value, 2, double>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d2GsGrads()},
-//                                                                 {_collectionOf2dMixtures_with16Gs()}),
-//                           gpe_double_precision);
-//    }
+//    std::cout << "01. ";
+    SECTION("2 component fitting double _collectionOf2dMixtures_with4Gs") {
+        runTest<TestType::value, 2, double>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d2GsGrads()},
+                                                                 {_collectionOf2dMixtures_with4Gs()}),
+                           gpe_double_precision);
+    }
+//    std::cout << "02. ";
+    SECTION("2 component fitting double _collectionOf2dMixtures_with8GsForQuickAutoDiff") {
+        runTest<TestType::value, 2, double>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d2GsGrads()},
+                                                                 {_collectionOf2dMixtures_with8GsForQuickAutoDiff()}),
+                           gpe_double_precision);
+    }
+//    std::cout << "03. ";
+    SECTION("2 component fitting double _collectionOf2dMixtures_with8GsForLongAutoDiff") {
+        runTest<TestType::value, 2, double>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d2GsGrads()},
+                                                                 {_collectionOf2dMixtures_with8GsForLongAutoDiff()}),
+                           gpe_double_precision);
+    }
+//    std::cout << "04. ";
+    SECTION("2 component fitting double _collectionOf2dMixtures_with8GsTooLongForAutodiff") {
+        runTest<TestType::value, 2, double>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d2GsGrads()},
+                                                                 {_collectionOf2dMixtures_with8GsTooLongForAutodiff()}),
+                           gpe_double_precision);
+    }
+//    std::cout << "05. ";
+    SECTION("2 component fitting double _collectionOf2dMixtures_with16Gs") {
+        runTest<TestType::value, 2, double>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d2GsGrads()},
+                                                                 {_collectionOf2dMixtures_with16Gs()}),
+                           gpe_double_precision);
+    }
 
-////    std::cout << "06. ";
-//    SECTION("2 component fitting float _collectionOf2dMixtures_with4Gs") {
-//        runTest<TestType::value, 2, float>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d2GsGrads()},
-//                                                                 {_collectionOf2dMixtures_with4Gs()}),
-//                           gpe_float_precision);
-//    }
-////    std::cout << "07. ";
-//    SECTION("2 component fitting float _collectionOf2dMixtures_with8GsForQuickAutoDiff") {
-//        runTest<TestType::value, 2, float>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d2GsGrads()},
-//                                                                 {_collectionOf2dMixtures_with8GsForQuickAutoDiff()}),
-//                           gpe_float_precision);
-//    }
-////    std::cout << "08. ";
-//    SECTION("2 component fitting float _collectionOf2dMixtures_with8GsForLongAutoDiff") {
-//        runTest<TestType::value, 2, float>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d2GsGrads()},
-//                                                                 {_collectionOf2dMixtures_with8GsForLongAutoDiff()}),
-//                           gpe_float_precision);
-//    }
-////    std::cout << "09. ";
-//    SECTION("2 component fitting float _collectionOf2dMixtures_with8GsTooLongForAutodiff") {
-//        runTest<TestType::value, 2, float>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d2GsGrads()},
-//                                                                 {_collectionOf2dMixtures_with8GsTooLongForAutodiff()}),
-//                           gpe_float_precision);
-//    }
-////    std::cout << "10. ";
-//    SECTION("2 component fitting float _collectionOf2dMixtures_with16Gs") {
-//        runTest<TestType::value, 2, float>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d2GsGrads()},
-//                                                                 {_collectionOf2dMixtures_with16Gs()}),
-//                           gpe_float_precision);
-//    }
+//    std::cout << "06. ";
+    SECTION("2 component fitting float _collectionOf2dMixtures_with4Gs") {
+        runTest<TestType::value, 2, float>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d2GsGrads()},
+                                                                 {_collectionOf2dMixtures_with4Gs()}),
+                           gpe_float_precision);
+    }
+//    std::cout << "07. ";
+    SECTION("2 component fitting float _collectionOf2dMixtures_with8GsForQuickAutoDiff") {
+        runTest<TestType::value, 2, float>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d2GsGrads()},
+                                                                 {_collectionOf2dMixtures_with8GsForQuickAutoDiff()}),
+                           gpe_float_precision);
+    }
+//    std::cout << "08. ";
+    SECTION("2 component fitting float _collectionOf2dMixtures_with8GsForLongAutoDiff") {
+        runTest<TestType::value, 2, float>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d2GsGrads()},
+                                                                 {_collectionOf2dMixtures_with8GsForLongAutoDiff()}),
+                           gpe_float_precision);
+    }
+//    std::cout << "09. ";
+    SECTION("2 component fitting float _collectionOf2dMixtures_with8GsTooLongForAutodiff") {
+        runTest<TestType::value, 2, float>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d2GsGrads()},
+                                                                 {_collectionOf2dMixtures_with8GsTooLongForAutodiff()}),
+                           gpe_float_precision);
+    }
+//    std::cout << "10. ";
+    SECTION("2 component fitting float _collectionOf2dMixtures_with16Gs") {
+        runTest<TestType::value, 2, float>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d2GsGrads()},
+                                                                 {_collectionOf2dMixtures_with16Gs()}),
+                           gpe_float_precision);
+    }
 
-////    std::cout << "11. ";
-//    SECTION("2 component fitting float _collectionOf2dMixtures_causingNumericalProblems") {
-//        runTest<TestType::value, 2, float>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d2GsGrads()},
-//                                                                {_collectionOf2dMixtures_causingNumericalProblems()}),
-//                          gpe_float_exploding_precision);
-//    }
+//    std::cout << "11. ";
+    SECTION("2 component fitting float _collectionOf2dMixtures_causingNumericalProblems") {
+        runTest<TestType::value, 2, float>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d2GsGrads()},
+                                                                {_collectionOf2dMixtures_causingNumericalProblems()}),
+                          gpe_float_exploding_precision);
+    }
 
-////    std::cout << "12. ";
-//    SECTION("4 component fitting double") {
-//        runTest<TestType::value, 4, double>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d4GsGrads()},
-//                                                                 {_collectionOf2dMixtures_with8GsForQuickAutoDiff(),
-//                                                                  _collectionOf2dMixtures_with8GsForLongAutoDiff(),
-//                                                                  _collectionOf2dMixtures_with8GsTooLongForAutodiff(),
-//                                                                  _collectionOf2dMixtures_with16Gs()}),
-//                           gpe_double_precision);
-//    }
+//    std::cout << "12. ";
+    SECTION("4 component fitting double") {
+        runTest<TestType::value, 4, double>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d4GsGrads()},
+                                                                 {_collectionOf2dMixtures_with8GsForQuickAutoDiff(),
+                                                                  _collectionOf2dMixtures_with8GsForLongAutoDiff(),
+                                                                  _collectionOf2dMixtures_with8GsTooLongForAutodiff(),
+                                                                  _collectionOf2dMixtures_with16Gs()}),
+                           gpe_double_precision);
+    }
 
-////    std::cout << "13. ";
-//    SECTION("4 component fitting float") {
-//        runTest<TestType::value, 4, float>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d4GsGrads()},
-//                                                                {_collectionOf2dMixtures_with8GsForQuickAutoDiff(),
-//                                                                 _collectionOf2dMixtures_with8GsForLongAutoDiff(),
-//                                                                 _collectionOf2dMixtures_with8GsTooLongForAutodiff(),
-//                                                                 _collectionOf2dMixtures_with16Gs()}),
-//                          gpe_float_precision);
-//    }
+//    std::cout << "13. ";
+    SECTION("4 component fitting float") {
+        runTest<TestType::value, 4, float>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d4GsGrads()},
+                                                                {_collectionOf2dMixtures_with8GsForQuickAutoDiff(),
+                                                                 _collectionOf2dMixtures_with8GsForLongAutoDiff(),
+                                                                 _collectionOf2dMixtures_with8GsTooLongForAutodiff(),
+                                                                 _collectionOf2dMixtures_with16Gs()}),
+                          gpe_float_precision);
+    }
 
-////    std::cout << "14. ";
-//    SECTION("4 component fitting float with numerical problems") {
-//        runTest<TestType::value, 4, float>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d4GsGrads()},
-//                                                                {_collectionOf2dMixtures_causingNumericalProblems()}),
-//                          gpe_float_exploding_precision);
-//    }
+//    std::cout << "14. ";
+    SECTION("4 component fitting float with numerical problems") {
+        runTest<TestType::value, 4, float>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d4GsGrads()},
+                                                                {_collectionOf2dMixtures_causingNumericalProblems()}),
+                          gpe_float_exploding_precision);
+    }
 
 //    std::cout << "15. ";
     SECTION("32 component fitting double of real world") {
