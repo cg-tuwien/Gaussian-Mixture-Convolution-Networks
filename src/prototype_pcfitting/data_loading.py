@@ -60,3 +60,15 @@ def save_gms(gmbatch: torch.Tensor, gmmbatch: torch.Tensor, basepath: str, names
     for i in range(gmbatch.shape[0]):
         write_gm_to_ply(gmw, gmp, gmc, i, f"{basepath}/{names[i]}.gmm.ply")
         write_gm_to_ply(gma, gmp, gmc, i, f"{basepath}/{names[i]}.gma.ply")
+
+def add_noise(pcbatch: torch.Tensor, n_noisepoints: int):
+    batch_size = pcbatch.shape[0]
+    point_count = pcbatch.shape[1]
+    samples = torch.rand(batch_size, n_noisepoints, 3, dtype=pcbatch.dtype, device='cuda')
+    for b in range(batch_size):
+        min = pcbatch[b].min(dim=0)[0]
+        max = pcbatch[b].max(dim=0)[0]
+        ext = max - min
+        samples[b] *= ext
+        samples[b] += min
+    return torch.cat((pcbatch, samples), dim=1)

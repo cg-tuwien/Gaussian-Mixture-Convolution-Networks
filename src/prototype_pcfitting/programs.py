@@ -5,8 +5,9 @@ import time
 import torch
 from typing import List, Tuple
 
-from gmc import mixture
+from gmc import mixture, mat_tools
 from prototype_pcfitting import GMMGenerator, PCDatasetIterator, Scaler, GMLogger, ErrorFunction, data_loading
+from prototype_pcfitting.generators.em_tools import EMTools
 
 
 def execute_fitting(training_name: str, model_path: str, genpc_path: str, gengmm_path: str, log_path: str,
@@ -94,6 +95,8 @@ def execute_fitting_on_single_pcbatch(training_name: str, pcbatch: torch.Tensor,
     for j in range(len(generators)):
         gen_id = training_name + "/" + str(t) + "-" + generator_identifiers[j]
 
+        print(gen_id)
+
         # Create Logger
         logger = GMLogger(names=names, log_prefix=gen_id, log_path=log_path,
                           log_positions=log_positions, gm_n_components=n_gaussians,
@@ -115,7 +118,8 @@ def execute_fitting_on_single_pcbatch(training_name: str, pcbatch: torch.Tensor,
 
         sumweights = mixture.weights(gmmbatch).sum(dim=2).squeeze(1)
         ones = sumweights.gt(0.99) & sumweights.lt(1.01)
-        assert ones.all(), "Generator created an invalid mixture (sum of weights not 1)!"
+        if not ones.all():
+            print("Generator created an incomplete mixture (sum of weights not 1)!")
 
         # Terminate Logging
         logger.finalize()
@@ -159,6 +163,10 @@ def execute_evaluation(training_name: str, model_path: str, genpc_path: str, gen
                 for j in range(len(error_functions)):
                     loss = error_functions[j].calculate_score_packed(pc_scaled, gm).item()
                     print("  ", error_function_identifiers[j], ": ", loss)
+                covariances = mixture.covariances(gm)
+                invcovs = mat_tools.inverse(covariances).contiguous()
+                irelcovs = ~EMTools.find_valid_matrices(covariances, invcovs, True)
+                print("Broken Covariances: ", (irelcovs.sum().item()))
                 print("   Invalid Gaussians: ", (mixture.weights(gm).eq(0)).sum().item())
                 print("   Valid Gaussians: ", (~mixture.weights(gm).eq(0)).sum().item())
                 print("   Sum of Weights: ", (mixture.weights(mixture.convert_amplitudes_to_priors(gm)).sum()).item())
@@ -181,6 +189,10 @@ def quick_evaluation(pc_path: str, gm_path: str, is_model: bool, error_function:
     gm = mixture.read_gm_from_ply(gm_path, is_model).cuda()
     if is_model:
         gm = mixture.convert_priors_to_amplitudes(gm)
+    covariances = mixture.covariances(gm)
+    invcovs = mat_tools.inverse(covariances).contiguous()
+    irelcovs = ~EMTools.find_valid_matrices(covariances, invcovs, True)
+    print("Broken Covariances: ", (irelcovs.sum().item()))
     print("Invalid Gaussians: ", (mixture.weights(gm).eq(0)).sum().item())
     gm = scaler.scale_gm(gm)
 

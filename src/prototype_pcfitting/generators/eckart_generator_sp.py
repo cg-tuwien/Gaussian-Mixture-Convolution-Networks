@@ -6,6 +6,7 @@ import gmc.mixture as gm
 from gmc import mat_tools
 import math
 from .gmm_initializer import GMMInitializer
+from .em_tools import EMTools
 
 
 class EckartGeneratorSP(GMMGenerator):
@@ -17,14 +18,15 @@ class EckartGeneratorSP(GMMGenerator):
     def __init__(self,
                  n_gaussians_per_node: int,
                  n_levels: int,
-                 partition_treshold: float,
+                 partition_threshold: float,
                  termination_criterion: TerminationCriterion = MaxIterationTerminationCriterion(20),
-                 initialization_method: str = 'kmeans',
+                 initialization_method: str = 'randnormpos',
                  e_step_pair_subbatchsize: int = -1,
                  m_step_gaussians_subbatchsize: int = -1,
                  m_step_points_subbatchsize: int = -1,
-                 dtype: torch.dtype = torch.float64,
-                 eps: float = 1e-4):
+                 dtype: torch.dtype = torch.float32,
+                 eps: float = 1e-7,
+                 eps_is_relative: bool = True):
         # Constructor. Creates a new EckartGenerator.
         # Parameters:
         #   n_gaussians_per_node: int
@@ -55,10 +57,14 @@ class EckartGeneratorSP(GMMGenerator):
         #   dtype: torch.dtype
         #       In which data type (precision) the oepration should be performed. Default: float32
         #   eps: float
-        #       Small value to be added to the Covariances for numerical stability
+        #       Small value to be added to the covariances' diagonals for numerical stability
+        #   eps_is_relative: bool
+        #       If false, eps is added as is to the covariances. If true (default), this eps is relative
+        #       to the longest side of the pc's bounding box (recommended for scaling invariance).
+        #       eps_abs = eps_rel * (maxextend^2)
         self._n_gaussians_per_node = n_gaussians_per_node
         self._n_levels = n_levels
-        self._partition_threshold = partition_treshold
+        self._partition_threshold = partition_threshold
         self._termination_criterion = termination_criterion
         self._initialization_method = initialization_method
         self._e_step_pair_subbatchsize = e_step_pair_subbatchsize
@@ -66,8 +72,11 @@ class EckartGeneratorSP(GMMGenerator):
         self._m_step_points_subbatchsize = m_step_points_subbatchsize
         self._dtype = dtype
         self._logger = None
-        self._eps = (torch.eye(3, 3, dtype=self._dtype, device='cuda') * eps).view(1, 1, 1, 3, 3)
-        self._gmminitializer = GMMInitializer(m_step_gaussians_subbatchsize, m_step_points_subbatchsize, dtype, eps)
+        if eps < 1e-9:
+            print("Warning! Very small eps! Might cause numerical issues!")
+        self._epsvar = eps
+        self._eps_is_relative = eps_is_relative
+        self._gmminitializer = None
 
     def set_logging(self, logger: GMLogger = None):
         # Sets logging options. Note that logging increases the execution time,
@@ -94,6 +103,15 @@ class EckartGeneratorSP(GMMGenerator):
         point_count = pcbatch.shape[1]
         pcbatch = pcbatch.to(self._dtype).cuda()
 
+        epsilon = self._epsvar
+        if self._eps_is_relative:
+            extends = pcbatch[0].max(dim=0)[0] - pcbatch[0].min(dim=0)[0]
+            epsilon *= extends.max(dim=0)[0].item() ** 2
+            epsilon = max(epsilon, 1e-9)
+        eps = (torch.eye(3, 3, dtype=self._dtype, device='cuda') * epsilon).view(1, 1, 1, 3, 3)
+        self._gmminitializer = GMMInitializer(self._m_step_gaussians_subbatchsize, self._m_step_points_subbatchsize,
+                                              self._dtype, epsilon)
+
         # the p_ik. How much influence each point has to each parent. sum for each point is 1
         point_weighting_factors = torch.ones(point_count, 1, dtype=self._dtype, device='cuda')
 
@@ -118,9 +136,14 @@ class EckartGeneratorSP(GMMGenerator):
             # Initialize GMs
             if self._initialization_method == 'bb':
                 bbs = self.extract_bbs(pcbatch, point_weighting_factors)  # (K,2,3)
-                gm_data = self._initialize_gms_on_bounding_box(bbs, relevant_parents, parentweights, pwf_per_gaussian)
+                gm_data = self._initialize_gms_on_bounding_box(bbs, relevant_parents, parentweights, pwf_per_gaussian,
+                                                               eps)
+            elif self._initialization_method == 'eigen':
+                gm_data = self._initialize_on_eigen_vectors(relevant_parents, parentweights, point_weighting_factors,
+                                                            pcbatch, eps)
             else:
-                gm_data = self._initialize_per_subgm(relevant_parents, parentweights, point_weighting_factors, pcbatch)
+                gm_data = self._initialize_per_subgm(relevant_parents, parentweights, point_weighting_factors, pcbatch,
+                                                     eps)
 
             self._termination_criterion.reset()
 
@@ -161,7 +184,7 @@ class EckartGeneratorSP(GMMGenerator):
                     break
 
                 # M-Step
-                self._maximization(points, weighted_responsibilities, pwf_per_gaussian, gm_data)
+                self._maximization(points, weighted_responsibilities, pwf_per_gaussian, gm_data, eps)
 
             finished_gaussians = point_weighting_factors.sum(0).eq(0)
             if level + 1 != self._n_levels:
@@ -203,7 +226,7 @@ class EckartGeneratorSP(GMMGenerator):
         return result
 
     def _initialize_gms_on_bounding_box(self, bbs: torch.Tensor, relevant_parents: torch.Tensor,
-                                        parentweights: torch.Tensor, pwf_per_gaussian: torch.Tensor):
+                                        parentweights: torch.Tensor, pwf_per_gaussian: torch.Tensor, eps: torch.Tensor):
         # Initializes new GMs, each on the corners of its points respective bounding boxes
         # bbs: torch.Tensor (K,2,3)
         #   As returned by extract_bbs
@@ -239,9 +262,11 @@ class EckartGeneratorSP(GMMGenerator):
             gmdata.positions = gmdata.positions[:, :, 0:self._n_gaussians_per_node, :].repeat(1, 1, gmcount, 1)
         gmdata.positions[0, 0, :, :] *= bbs_rep[:, 1, :]
         gmdata.positions[0, 0, :, :] += bbs_rep[:, 0, :]
-        gmdata.covariances = 0.1 * torch.eye(3, dtype=self._dtype, device='cuda').unsqueeze(0).unsqueeze(0).unsqueeze(0). \
-            repeat(1, 1, self._n_gaussians_per_node * gmcount, 1, 1)
+        gmdata.covariances = 0.1 * torch.eye(3, dtype=self._dtype, device='cuda').unsqueeze(0).unsqueeze(0).\
+            unsqueeze(0).repeat(1, 1, self._n_gaussians_per_node * gmcount, 1, 1)
         gmdata.covariances[0, 0, :, :, :] *= bbs_rep[:, 1, :].unsqueeze(2) ** 2
+        gmdata.inverse_covariances = mat_tools.inverse(gmdata.covariances).contiguous()
+        EMTools.replace_invalid_matrices(gmdata.covariances, gmdata.inverse_covariances, eps, mat_tools.inverse(eps))
         gmdata.priors = torch.zeros(1, 1, self._n_gaussians_per_node * gmcount, dtype=self._dtype, device='cuda')
         gmdata.priors[:, :, :] = 1 / self._n_gaussians_per_node
         gmdata.priors[:, :, finished_gaussians] = 0
@@ -251,7 +276,7 @@ class EckartGeneratorSP(GMMGenerator):
         return gmdata
 
     def _initialize_per_subgm(self, relevant_parents: torch.Tensor, parentweights: torch.Tensor,
-                              point_weighting_factors: torch.Tensor, pcbatch: torch.Tensor):
+                              point_weighting_factors: torch.Tensor, pcbatch: torch.Tensor, eps: torch.Tensor):
         # Initializes new GMs, each individually according to the chosen method
         gmcount = relevant_parents.shape[0]
         gausscount = gmcount * self._n_gaussians_per_node
@@ -268,10 +293,11 @@ class EckartGeneratorSP(GMMGenerator):
             pcount = pwfp_relevant[:, i].sum()
             if pcount < self._n_gaussians_per_node:
                 gmdata.positions[0, 0, gidx_start:gidx_end] = 0.0
-                gmdata.covariances[0, 0, gidx_start:gidx_end] = self._eps
+                gmdata.covariances[0, 0, gidx_start:gidx_end] = eps
                 gmdata.priors[0, 0, gidx_start:gidx_end] = 0.0
                 gmdata.positions[0, 0, gidx_start:gidx_start + pcount] = rel_points
-                gmdata.covariances[0, 0, gidx_start:gidx_start + pcount] = 0.1 * torch.eye(3, dtype=self._dtype, device='cuda')
+                gmdata.covariances[0, 0, gidx_start:gidx_start + pcount] = 0.1 * torch.eye(3, dtype=self._dtype,
+                                                                                           device='cuda')
                 gmdata.priors[0, 0, gidx_start:gidx_start + pcount] = 1 / pcount
             else:
                 if self._initialization_method == "kmeans-unw":
@@ -289,6 +315,88 @@ class EckartGeneratorSP(GMMGenerator):
                 gmdata.covariances[0, 0, gidx_start:gidx_end] = gm.covariances(subgm)
                 gmdata.priors[0, 0, gidx_start:gidx_end] = gm.weights(subgm)
 
+        gmdata.inverse_covariances = mat_tools.inverse(gmdata.covariances)
+        EMTools.replace_invalid_matrices(gmdata.covariances, gmdata.inverse_covariances, eps, mat_tools.inverse(eps))
+        gmdata.parentweights = parentweights
+
+        return gmdata
+
+    def _initialize_on_eigen_vectors(self, relevant_parents: torch.Tensor, parentweights: torch.Tensor,
+                                     point_weighting_factors: torch.Tensor, pcbatch: torch.Tensor, eps: torch.Tensor):
+        gmcount = relevant_parents.shape[0]
+        gausscount = gmcount * self._n_gaussians_per_node
+        gmdata = self.GMLevelTrainingData(self._dtype)
+        gmdata.positions = torch.zeros(1, 1, gausscount, 3, dtype=self._dtype, device='cuda')
+        gmdata.covariances = torch.zeros(1, 1, gausscount, 3, 3, dtype=self._dtype, device='cuda')
+        gmdata.priors = torch.zeros(1, 1, gausscount, dtype=self._dtype, device='cuda')
+
+        position_templates3d = torch.tensor([
+            [-1, -1, -1],
+            [1, 1, 1],
+            [-1, 1, -1],
+            [1, -1, 1],
+            [-1, -1, 1],
+            [1, 1, -1],
+            [-1, 1, 1],
+            [1, -1, -1]
+        ], dtype=self._dtype, device='cuda')
+        position_templates2d = torch.tensor([
+            [-1, -1, 0],
+            [1, 1, 0],
+            [-1, 1, 0],
+            [1, -1, 0],
+            [1, 0, 0],
+            [-1, 0, 0],
+            [0, 1, 0],
+            [0, -1, 0]
+        ], dtype=self._dtype, device='cuda')
+
+        pwfp_relevant = point_weighting_factors > 0  # (np, K)
+
+        for i in relevant_parents:
+            gidx_start = i * self._n_gaussians_per_node
+            gidx_end = gidx_start + self._n_gaussians_per_node
+            relpoints = pcbatch[0, pwfp_relevant[:, i], :]
+            pweights = point_weighting_factors[pwfp_relevant[:, i], i]
+            pcount = pwfp_relevant[:, i].sum()
+            pweights = (pweights / pweights.sum()).unsqueeze(1)
+            if pcount < self._n_gaussians_per_node:
+                gmdata.positions[0, 0, gidx_start:gidx_end] = 0.0
+                gmdata.covariances[0, 0, gidx_start:gidx_end] = eps
+                gmdata.priors[0, 0, gidx_start:gidx_end] = 0.0
+                gmdata.positions[0, 0, gidx_start:gidx_start + pcount] = relpoints
+                gmdata.covariances[0, 0, gidx_start:gidx_start + pcount] = 0.1 * torch.eye(3, dtype=self._dtype,
+                                                                                           device='cuda')
+                gmdata.priors[0, 0, gidx_start:gidx_start + pcount] = 1 / pcount
+            else:
+                # meanpos = relpoints.mean(dim=0, keepdim=True)
+                meanpos = (pweights * relpoints).sum(dim=0)
+                diffs = (relpoints - meanpos.expand(pcount, 3)).unsqueeze(2)
+                meancov = (pweights.unsqueeze(2) * (diffs * diffs.transpose(-1, -2))).sum(dim=0)
+                meanweight = 1.0 / self._n_gaussians_per_node
+                eigenvalues, eigenvectors = torch.symeig(meancov, True)
+                eigenvalues_sorted, indices = torch.sort(eigenvalues[:], dim=0, descending=True)
+                eigenvectors_sorted = eigenvalues_sorted.unsqueeze(0).repeat(3, 1).sqrt() * eigenvectors[:, indices]
+                if self._n_gaussians_per_node <= 8:
+                    if eigenvalues_sorted[2] > 1e-8:
+                        gmdata.positions[0, 0, gidx_start:gidx_end] = position_templates3d[0:self._n_gaussians_per_node]
+                    else:
+                        gmdata.positions[0, 0, gidx_start:gidx_end] = position_templates2d[0:self._n_gaussians_per_node]
+                else:
+                    if eigenvalues_sorted[2] > 1e-8:
+                        gmdata.positions = position_templates3d.repeat(math.ceil(self._n_gaussians_per_node / 8))[
+                                           0:self._n_gaussians_per_node]
+                    else:
+                        gmdata.positions = position_templates2d.repeat(math.ceil(self._n_gaussians_per_node / 8))[
+                                           0:self._n_gaussians_per_node]
+                gmdata.positions[0, 0, gidx_start:gidx_end] = \
+                    torch.matmul(eigenvectors_sorted, gmdata.positions[0, 0, gidx_start:gidx_end].transpose(-1, -2)).\
+                    transpose(-1, -2) + meanpos.squeeze()
+                gmdata.covariances[0, 0, gidx_start:gidx_end] = meancov + eps
+                gmdata.priors[0, 0, gidx_start:gidx_end] = meanweight
+
+        gmdata.inverse_covariances = mat_tools.inverse(gmdata.covariances)
+        EMTools.replace_invalid_matrices(gmdata.covariances, gmdata.inverse_covariances, eps, mat_tools.inverse(eps))
         gmdata.parentweights = parentweights
 
         return gmdata
@@ -344,7 +452,7 @@ class EckartGeneratorSP(GMMGenerator):
             gmpositions_rep[0, 0, :, :] = gm_data.positions[0, 0, mask_indizes[j_start:j_end, 1], :]
             # GM-Inverse Covariances, expanded for each PC point. shape: (1, 1, xc, 3, 3)
             gmicovs_rep = torch.zeros(1, 1, actual_pair_subbatch_size, 3, 3, dtype=self._dtype, device='cuda')
-            gmicovs_rep[0, 0, :, :, :] = gm_data.calculate_inversed_covariances()[0, 0, mask_indizes[j_start:j_end, 1], :, :]
+            gmicovs_rep[0, 0, :, :, :] = gm_data.inverse_covariances[0, 0, mask_indizes[j_start:j_end, 1], :, :]
             # Tensor of {PC-point minus GM-position}-vectors. shape: (1, 1, xc, 3, 1)
             grelpos = (points_rep - gmpositions_rep).unsqueeze(4)
             # Tensor of 0.5 times the Mahalanobis distances of PC points to Gaussians. shape: (1, 1, xc)
@@ -366,7 +474,8 @@ class EckartGeneratorSP(GMMGenerator):
         llh_intermediate = llh_intermediate.reshape(n_sample_points, parent_count, self._n_gaussians_per_node)
         llh_sum = torch.logsumexp(llh_intermediate, dim=2).view(1, 1, n_sample_points, parent_count)
         llh_sum = llh_sum.unsqueeze(4) \
-            .expand(1, 1, n_sample_points, parent_count, self._n_gaussians_per_node).reshape(1, 1, n_sample_points, all_gauss_count)
+            .expand(1, 1, n_sample_points, parent_count, self._n_gaussians_per_node)\
+            .reshape(1, 1, n_sample_points, all_gauss_count)
         # del llh_intermediate
 
         # Responsibilities_flat: (1, 1, xc)
@@ -379,7 +488,7 @@ class EckartGeneratorSP(GMMGenerator):
         return responsibilities_matr
 
     def _maximization(self, points: torch.Tensor, weighted_responsibilities: torch.Tensor,
-                      pwf_per_gaussian: torch.Tensor, gm_data):
+                      pwf_per_gaussian: torch.Tensor, gm_data, eps: torch.Tensor):
         # This performs the Maximization step of the EM Algorithm.
         # Updates the GM-Model given the responsibilities which resulted from the E-Step.
         # Per default, all points and Gaussians are processed at once.
@@ -412,7 +521,6 @@ class EckartGeneratorSP(GMMGenerator):
             # Positions/Covariances/Priors are calculated from these (see Eckart-Paper)
             t_0 = torch.zeros(1, 1, actual_gauss_subbatch_size, dtype=self._dtype, device='cuda')
             t_1 = torch.zeros(1, 1, actual_gauss_subbatch_size, 3, dtype=self._dtype, device='cuda')
-            t_2 = torch.zeros(1, 1, actual_gauss_subbatch_size, 3, 3, dtype=self._dtype, device='cuda')
 
             # Iterate over Point-Subbatches
             for i_start in range(0, n_sample_points, point_subbatch_size):
@@ -421,34 +529,45 @@ class EckartGeneratorSP(GMMGenerator):
                 actual_gauss_subbatch_size = relevant_responsibilities.shape[3]
                 actual_point_subbatch_size = relevant_responsibilities.shape[2]
 
-                points_rep = points[:, :, i_start:i_end]\
+                relevant_points = points[:, :, i_start:i_end]\
                     .expand(1, 1, actual_point_subbatch_size, actual_gauss_subbatch_size, 3)
-                matrices_from_points = points_rep.unsqueeze(5) * points_rep.unsqueeze(5).transpose(-1, -2)
-
-                # Fill T-Variables
-                t_2 += (matrices_from_points[:, :, :, 0:actual_gauss_subbatch_size]
-                        * relevant_responsibilities.unsqueeze(4).unsqueeze(5)).sum(dim=2)  # shape: (1, 1, J, 3, 3)
                 t_0 += relevant_responsibilities.sum(dim=2)  # shape: (1, 1, J)
-                t_1 += (points_rep[:, :, :, 0:actual_gauss_subbatch_size] * relevant_responsibilities.unsqueeze(4))\
-                    .sum(dim=2)  # shape: (1, 1, J, 3)
-                del matrices_from_points
+                t_1 += (relevant_points * relevant_responsibilities.unsqueeze(4)).sum(dim=2)  # shape: (1, 1, J, 3)
 
             # formulas taken from eckart paper
             gm_data.positions[:, :, j_start:j_end] = t_1 / t_0.unsqueeze(3)  # (1, 1, J, 3)
-            gm_data.set_covariances_where_valid(j_start, j_end, t_2 / t_0.unsqueeze(3).unsqueeze(4) -
-                                                (gm_data.positions[:, :, j_start:j_end].unsqueeze(4) *
-                                                gm_data.positions[:, :, j_start:j_end].unsqueeze(4).transpose(-1, -2))
-                                                + self._eps.expand_as(t_2))
             relevant_point_count = pwf_per_gaussian[:, j_start:j_end].sum(dim=0).view(1, -1)  # (1, J)
             gm_data.priors[:, :, j_start:j_end] = t_0 / relevant_point_count
-            del t_0, t_1, t_2
+            del t_1
+
+            t_2 = torch.zeros(1, 1, actual_gauss_subbatch_size, 3, 3, dtype=self._dtype, device='cuda')
+
+            for i_start in range(0, n_sample_points, point_subbatch_size):
+                i_end = i_start + point_subbatch_size
+                relevant_responsibilities = weighted_responsibilities[:, :, i_start:i_end, j_start:j_end]
+                actual_gauss_subbatch_size = relevant_responsibilities.shape[3]
+                actual_point_subbatch_size = relevant_responsibilities.shape[2]
+
+                relevant_points = points[:, :, i_start:i_end]\
+                    .expand(1, 1, actual_point_subbatch_size, actual_gauss_subbatch_size, 3)
+                relevant_relative_points = relevant_points - gm_data.positions[:, :, j_start:j_end].unsqueeze(2).expand(
+                    1, 1, actual_point_subbatch_size, actual_gauss_subbatch_size, 3)
+                matrices_from_points = relevant_relative_points.unsqueeze(5) \
+                    * relevant_relative_points.unsqueeze(5).transpose(-1, -2)
+                # Fill T2-Variables, shape: (1, 1, J, 3, 3)
+                t_2 += (matrices_from_points * relevant_responsibilities.unsqueeze(4).unsqueeze(5)).sum(dim=2)
+                del relevant_points, relevant_relative_points, matrices_from_points
+
+            gm_data.set_covariances_where_valid(j_start, j_end,
+                                                t_2 / t_0.unsqueeze(3).unsqueeze(4) + eps.expand_as(t_2))
+            del t_0, t_2
 
         # Handling of invalid Gaussians! If all responsibilities of a Gaussian are zero, the previous code will
         # set the prior of it to zero and the covariances and positions to NaN
         # To avoid NaNs, we will then replace those invalid values with 0 (pos) and eps (cov).
         nans = torch.isnan(gm_data.priors) | (gm_data.priors == 0)
         gm_data.positions[nans] = torch.tensor([0.0, 0.0, 0.0], dtype=self._dtype, device='cuda')
-        gm_data.covariances[nans] = self._eps[0, 0, 0, :, :]
+        gm_data.covariances[nans] = eps[0, 0, 0, :, :]
         gm_data.priors[nans] = 0
 
     @staticmethod
@@ -470,11 +589,9 @@ class EckartGeneratorSP(GMMGenerator):
             self.positions: torch.Tensor = torch.tensor([], dtype=dtype)
             self.priors: torch.Tensor = torch.tensor([], dtype=dtype)
             self.covariances: torch.Tensor = torch.tensor([], dtype=dtype)
+            self.inverse_covariances: torch.Tensor = torch.tensor([], dtype=dtype)
             self.parents = torch.tensor([], dtype=dtype)  # (1, 1, g) Indizes of parent Gaussians on parent Level
             self.parentweights = torch.tensor([], dtype=dtype)  # (1, 1, g) Combined prior-weights of all parents
-
-        def calculate_inversed_covariances(self) -> torch.Tensor:
-            return mat_tools.inverse(self.covariances).contiguous()
 
         def get_premultiplied_priors(self) -> torch.Tensor:
             # Returns the priors multiplied with all their parents priors
@@ -485,10 +602,16 @@ class EckartGeneratorSP(GMMGenerator):
 
         def set_covariances_where_valid(self, j_start: int, j_end: int, covariances: torch.Tensor):
             # Checks if given covariances are valid, only then they are taken over
-            relcovs = ~torch.isnan(covariances.det().sqrt())
-            runningcovs = self.covariances[:, :, j_start:j_end]
-            runningcovs[relcovs] = covariances[relcovs]
-            self.covariances[:, :, j_start:j_end] = runningcovs
+            invcovs = mat_tools.inverse(covariances).contiguous()
+            relcovs = EMTools.find_valid_matrices(covariances, invcovs)
+            if (~relcovs).sum() != 0:
+                print("ditching ", (~relcovs).sum().item(), " items")
+            jcovariances = self.covariances[:, :, j_start:j_end]
+            jcovariances[relcovs] = covariances[relcovs]
+            self.covariances[:, :, j_start:j_end] = jcovariances
+            jinvcovariances = self.inverse_covariances[:, :, j_start:j_end]
+            jinvcovariances[relcovs] = invcovs[relcovs]
+            self.inverse_covariances[:, :, j_start:j_end] = jinvcovariances
 
         def approximate_whole_mixture(self) -> torch.Tensor:
             # Generates a (more or less) valid Gaussian Mixture (with amplitudes).
