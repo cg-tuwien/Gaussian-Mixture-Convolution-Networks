@@ -722,10 +722,10 @@ std::vector<torch::Tensor> _collectionOf2dMixtures_with16Gs() {
                                          {0.0f, -0.7f,  0.3f,  5.0f,  0.5f,  0.5f,  6.0f},
                                          {1.3f,  0.3f, -0.7f,  3.0f,  0.5f,  0.5f,  7.0f}}).view({1, 1, 16, 7}));
 
-    mixtures.emplace_back(torch::tensor({{0.5f,  0.0f,  0.0f,  2.0f,  0.0f,  0.0f,  2.0f},
+    mixtures.emplace_back(torch::tensor({{0.5f,  0.1f,  0.0f,  2.0f,  0.0f,  0.0f,  2.0f},
                                          {0.0f,  0.0f,  0.0f,  2.0f,  0.0f,  0.0f,  2.0f},
                                          {0.5f,  0.0f,  0.0f,  2.0f,  0.0f,  0.0f,  2.0f},
-                                         {0.5f, 10.0f, 10.0f,  1.0f,  0.0f,  0.0f,  1.0f},
+                                         {0.5f, 10.1f, 10.0f,  1.0f,  0.0f,  0.0f,  1.0f},
                                          {0.0f,  0.0f,  0.0f,  2.0f,  0.0f,  0.0f,  2.0f},
                                          {0.0f, 10.0f, 10.0f,  1.0f,  0.0f,  0.0f,  1.0f},
                                          {0.5f, 10.0f, 10.0f,  1.0f,  0.0f,  0.0f,  1.0f},
