@@ -21,6 +21,7 @@ inline void gpeGpuAssert(cudaError_t code, const char *file, int line, bool abor
 #endif
 
 using uint = unsigned int;
+using uchar = unsigned char;
 
 
 #endif // COMMON_H

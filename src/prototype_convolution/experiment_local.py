@@ -12,4 +12,4 @@ gmcn_config.bn_place = gmcn_config.BN_PLACE_BEFORE_GMC
 gmcn_config.fitting_method = prototype_convolution.fitting.fixed_point_and_bvh_mhem
 gmcn_config.fitting_config.representative_select_mode = prototype_convolution.fitting.Config.REPRESENTATIVE_SELECT_MODE_TOP_INTEGRALS
 
-cluster.run_with(device, "bvhFit_cpp17dNDebug_withoutAABBs_notEvenCompAABBs", gmcn_config)
+cluster.run_with(device, "bvhFit_uchar_indices", gmcn_config)

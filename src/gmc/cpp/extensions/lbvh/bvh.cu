@@ -188,6 +188,7 @@ void Bvh<N_DIMS, scalar_t>::construct()
         watch_stop("compute_aabbs");
     }
 
+//    aabb_whole = compute_aabb_whole(object_aabbs);    // previous, discretisation of positions is less precise due to larger box.
     aabb_whole = compute_aabb_whole_from_positions(gpe::positions(m_mixture));
     watch_stop("compute_aabb_whole");
 //    std::cout << "aabb_whole:" << aabb_whole << std::endl;
