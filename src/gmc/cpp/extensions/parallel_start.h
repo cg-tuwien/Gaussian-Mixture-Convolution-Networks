@@ -97,7 +97,7 @@ inline void gpe_start_cpu_parallel(const dim3& gridDim, const dim3& blockDim, Fu
     gpe::detail::CpuSynchronisationPoint::setThreadCount(thread_count);
 
     #pragma omp parallel for num_threads(thread_count)
-    for (unsigned i = 0; i < n; ++i) {
+    for (int i = 0; i < n; ++i) {
         dim3 threadIdx = to3dIdx(blockDim, i);
         for (unsigned blockIdxZ = 0; blockIdxZ < gridDim.z; ++blockIdxZ) {
             for (unsigned blockIdxY = 0; blockIdxY < gridDim.y; ++blockIdxY) {
