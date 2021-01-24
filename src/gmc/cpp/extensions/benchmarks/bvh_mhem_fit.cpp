@@ -78,7 +78,7 @@ TEST_CASE("bvh_mhem_fit forward and backward benchmark") {
 
 //                cudaDeviceSynchronize();
 
-                BENCHMARK("forward") {
+                BENCHMARK("forward layer " + std::to_string(i)) {
                     auto forward_out = bvh_mhem_fit::forward_impl(mixture, named_config.second);
                     cudaDeviceSynchronize();
                     return forward_out;
@@ -87,7 +87,7 @@ TEST_CASE("bvh_mhem_fit forward and backward benchmark") {
                 auto gradient_fitting = torch::ones_like(forward_out.fitting);
                 cudaDeviceSynchronize();
 
-                BENCHMARK("backward") {
+                BENCHMARK("backward layer " + std::to_string(i)) {
                     auto gradient_target = bvh_mhem_fit::backward_impl(gradient_fitting, forward_out.clone(), named_config.second);
                     cudaDeviceSynchronize();
                     return gradient_target;
