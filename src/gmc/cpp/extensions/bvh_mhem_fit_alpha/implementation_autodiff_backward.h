@@ -20,6 +20,8 @@ extern template ForwardBackWardOutput implementation_autodiff_backward<2, float,
 extern template ForwardBackWardOutput implementation_autodiff_backward<2, double, 2>(at::Tensor mixture, const torch::Tensor& gradient_fitting, const Config& config);
 extern template ForwardBackWardOutput implementation_autodiff_backward<4, float, 2>(at::Tensor mixture, const torch::Tensor& gradient_fitting, const Config& config);
 extern template ForwardBackWardOutput implementation_autodiff_backward<4, double, 2>(at::Tensor mixture, const torch::Tensor& gradient_fitting, const Config& config);
+extern template ForwardBackWardOutput implementation_autodiff_backward<8, float, 2>(at::Tensor mixture, const torch::Tensor& gradient_fitting, const Config& config);
+extern template ForwardBackWardOutput implementation_autodiff_backward<8, double, 2>(at::Tensor mixture, const torch::Tensor& gradient_fitting, const Config& config);
 }
 
 #endif // GPE_BVH_MHEM_FIT_ALPHA_IMPLEMENTATION_AUTODIFF_BACKWARD_H

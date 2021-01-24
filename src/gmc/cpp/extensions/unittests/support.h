@@ -215,6 +215,30 @@ std::vector<torch::Tensor> _collectionOf2d4GsGrads () {
     return grads;
 }
 
+inline
+std::vector<torch::Tensor> _collectionOf2d8GsGrads () {
+    std::vector<torch::Tensor> grads;
+    grads.emplace_back(torch::tensor({{1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f},
+                                      {1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f},
+                                      {1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f},
+                                      {1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f},
+                                      {1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f},
+                                      {1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f},
+                                      {1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f},
+                                      {1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f}}).view({1, 1, 8, 7}));
+
+    grads.emplace_back(torch::tensor({{-1.1f,   1.2f,  -1.3f,   1.4f,  -0.5f,  -0.5f,   1.7f},
+                                      { 1.8f,  -1.9f,   0.1f,  -0.2f,   0.4f,   0.4f,  -5.5f},
+                                      {-0.7f,   0.9f,  -1.2f,   1.3f,  -0.5f,  -0.5f,   0.7f},
+                                      { 1.0f,  -1.1f,   1.6f,  -1.4f,   0.4f,   0.4f,  -1.2f},
+                                      {-1.1f,   1.2f,  -1.3f,   1.4f,  -0.1f,  -0.1f,   1.7f},
+                                      { 1.8f,  -1.9f,   0.1f,  -0.2f,   0.4f,   0.4f,  -5.5f},
+                                      {-0.7f,   0.9f,  -1.2f,   1.3f,  -0.5f,  -0.5f,   0.7f},
+                                      { 1.0f,  -1.1f,   1.6f,  -1.4f,   0.2f,   0.2f,  -1.2f}}).view({1, 1, 8, 7}));
+
+    grads.emplace_back(torch::zeros({1, 1, 8, 7}));
+    return grads;
+}
 
 
 inline
@@ -792,6 +816,136 @@ std::vector<torch::Tensor> _collectionOf2dMixtures_with16Gs() {
     return mixtures;
 }
 
+inline
+std::vector<torch::Tensor> _collectionOf2dMixtures_with128Gs_red2() {
+    using namespace torch::indexing;
+    std::vector<torch::Tensor> mixtures;
+
+    {
+        auto t = torch::rand({128, 7});
+        t.index_put_({Slice(), 0}, 0);
+        t.index_put_({Slice(), 4}, 0);
+        t.index_put_({Slice(), 5}, 0);
+        mixtures.emplace_back(t.view({1, 1, 128, 7}));
+    }
+    {
+        auto t = torch::rand({128, 7});
+        t.index_put_({Slice(), 0}, 0);
+        t.index_put_({Slice(), 4}, 0);
+        t.index_put_({Slice(), 5}, 0);
+        t.index_put_({0, 0}, 1.5);
+        t.index_put_({1, 0}, 0.5);
+        t.index_put_({3, 0}, 1.1);
+        mixtures.emplace_back(t.view({1, 1, 128, 7}));
+    }
+
+    {
+        auto t = torch::rand({128, 7});
+        t.index_put_({Slice(), 0}, 0);
+        t.index_put_({Slice(), 4}, 0);
+        t.index_put_({Slice(), 5}, 0);
+        for (auto i = 0; i < 8; ++i) {
+            for (auto j = 0; j < 16; ++j) {
+                t.index_put_({i * 16 + j, 1}, float(i));
+                t.index_put_({i * 16 + j, 2}, float(j));
+
+            }
+        }
+        t.index_put_({0, 0}, 1.0);
+        t.index_put_({3*16+14, 0}, 1.4);
+        mixtures.emplace_back(t.view({1, 1, 128, 7}));
+    }
+
+    return mixtures;
+}
+inline
+std::vector<torch::Tensor> _collectionOf2dMixtures_with128Gs_red4() {
+    using namespace torch::indexing;
+    std::vector<torch::Tensor> mixtures;
+
+    {
+        auto t = torch::rand({128, 7});
+        t.index_put_({Slice(), 0}, 0);
+        t.index_put_({Slice(), 4}, 0);
+        t.index_put_({Slice(), 5}, 0);
+        t.index_put_({0, 0}, 1.5);
+        t.index_put_({1, 0}, 0.5);
+        t.index_put_({2, 0}, 0.8);
+        t.index_put_({3, 0}, 1.1);
+        mixtures.emplace_back(t.view({1, 1, 128, 7}));
+    }
+    {
+        auto t = torch::rand({128, 7});
+        t.index_put_({Slice(), 0}, 0);
+        t.index_put_({Slice(), 4}, 0);
+        t.index_put_({Slice(), 5}, 0);
+        for (auto i = 0; i < 8; ++i) {
+            for (auto j = 0; j < 16; ++j) {
+                t.index_put_({i * 16 + j, 1}, float(i));
+                t.index_put_({i * 16 + j, 2}, float(j));
+
+            }
+        }
+        t.index_put_({0, 0}, 1.0);
+        t.index_put_({3*16+2, 0}, 1.5);
+        t.index_put_({5*16+5, 0}, 0.9);
+        t.index_put_({16+8, 0}, 1.2);
+        t.index_put_({3*16+14, 0}, 1.4);
+        mixtures.emplace_back(t.view({1, 1, 128, 7}));
+    }
+
+    return mixtures;
+}
+
+inline
+std::vector<torch::Tensor> _collectionOf2dMixtures_with128Gs_red8() {
+    using namespace torch::indexing;
+    std::vector<torch::Tensor> mixtures;
+    {
+        auto t = torch::rand({128, 7});
+        t.index_put_({Slice(), 0}, 0);
+        t.index_put_({Slice(), 4}, 0);
+        t.index_put_({Slice(), 5}, 0);
+        for (auto i = 0; i < 8; ++i) {
+            for (auto j = 0; j < 16; ++j) {
+                t.index_put_({i * 16 + j, 1}, float(i));
+                t.index_put_({i * 16 + j, 2}, float(j));
+
+            }
+        }
+        t.index_put_({0, 0}, 1.0);
+        t.index_put_({2, 0}, 0.8);
+        t.index_put_({3*16+2, 0}, 1.5);
+        t.index_put_({4, 0}, 1.1);
+        t.index_put_({5*16+1, 0}, 1.6);
+        t.index_put_({5*16+5, 0}, 0.9);
+        t.index_put_({16+8, 0}, 1.2);
+        t.index_put_({3*16+14, 0}, 1.4);
+        mixtures.emplace_back(t.view({1, 1, 128, 7}));
+    }
+    {
+        auto t = torch::rand({128, 7});
+        t.index_put_({Slice(), 0}, 0);
+        t.index_put_({Slice(), 4}, 0);
+        t.index_put_({Slice(), 5}, 0);
+        for (auto i = 0; i < 8; ++i) {
+            for (auto j = 0; j < 16; ++j) {
+                t.index_put_({i * 16 + j, 1}, float(i));
+                t.index_put_({i * 16 + j, 2}, float(j));
+
+            }
+        }
+        t.index_put_({2, 0}, 0.8);
+        t.index_put_({3*16+2, 0}, 1.5);
+        t.index_put_({5*16+1, 0}, 1.6);
+        t.index_put_({5*16+5, 0}, 0.9);
+        t.index_put_({16+8, 0}, 1.2);
+        t.index_put_({3*16+14, 0}, 1.4);
+        mixtures.emplace_back(t.view({1, 1, 128, 7}));
+    }
+
+    return mixtures;
+}
 
 
 template <typename T>

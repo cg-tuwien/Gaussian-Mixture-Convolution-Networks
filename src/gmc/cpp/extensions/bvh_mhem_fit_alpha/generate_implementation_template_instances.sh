@@ -2,7 +2,7 @@
 
 file_ending=$1
 if [ -z "$1" ]; then
-    file_ending='cu'
+    file_ending='cpp'
 fi
 
 n_reduction_list="2 4 8 16"

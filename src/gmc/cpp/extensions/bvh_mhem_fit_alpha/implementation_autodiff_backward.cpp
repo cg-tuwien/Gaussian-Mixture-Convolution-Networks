@@ -172,5 +172,7 @@ template ForwardBackWardOutput implementation_autodiff_backward<2, float, 2>(tor
 template ForwardBackWardOutput implementation_autodiff_backward<2, double, 2>(torch::Tensor mixture, const torch::Tensor& gradient_fitting, const Config& config);
 template ForwardBackWardOutput implementation_autodiff_backward<4, float, 2>(torch::Tensor mixture, const torch::Tensor& gradient_fitting, const Config& config);
 template ForwardBackWardOutput implementation_autodiff_backward<4, double, 2>(torch::Tensor mixture, const torch::Tensor& gradient_fitting, const Config& config);
+template ForwardBackWardOutput implementation_autodiff_backward<8, float, 2>(torch::Tensor mixture, const torch::Tensor& gradient_fitting, const Config& config);
+template ForwardBackWardOutput implementation_autodiff_backward<8, double, 2>(torch::Tensor mixture, const torch::Tensor& gradient_fitting, const Config& config);
 
 }
