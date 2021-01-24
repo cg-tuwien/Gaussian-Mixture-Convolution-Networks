@@ -231,8 +231,8 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_em(const gpe::Vector
     const auto target_int1_mixture = gpe::pack_mixture(target_int1_weights, target_positions, target_covariances);
 
     const auto likelihood_matrix = gpe::outer_product(target_int1_mixture, initial_int1_mixture, gpe::likelihood<scalar_t, N_DIMS>);
-    const auto kldiv_sign_matrix = gpe::outer_product(target_int1_mixture, initial_int1_mixture, [](auto target, auto fitting) {
-        return (gpe::sign(fitting.weight) == gpe::sign(target.weight)) ? gpe::kl_divergence<scalar_t, N_DIMS>(target, fitting) : scalar_t(0);
+    const auto kldiv_sign_matrix = gpe::outer_product(target_int1_mixture, initial_int1_mixture, [](auto target, auto initial) {
+        return (gpe::sign(initial.weight) == gpe::sign(target.weight)) ? gpe::kl_divergence<scalar_t, N_DIMS>(target, initial) : scalar_t(0);
     });
 
     auto kl_div_threshold = scalar_t(config.em_kl_div_threshold);

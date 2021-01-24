@@ -96,24 +96,24 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_TARGET> grad_em(const gpe::Vector
     const auto initial_pure_weights = gpe::cwise_fun(initial_int1_weights, initial_gaussian_amplitudes, fun::divided_AbyB<scalar_t>);
 
     const auto likelihood_matrix = gpe::outer_product(target_int1_mixture, initial_int1_mixture, gpe::likelihood<scalar_t, N_DIMS>);
-    const auto kldiv_sign_matrix = gpe::outer_product(target_int1_mixture, initial_int1_mixture, [](auto target, auto fitting) {
-        return (gpe::sign(fitting.weight) == gpe::sign(target.weight)) ? gpe::kl_divergence<scalar_t, N_DIMS>(target, fitting) : scalar_t(0);
+    const auto kldiv_sign_matrix = gpe::outer_product(target_int1_mixture, initial_int1_mixture, [](auto target, auto initial) {
+        return (gpe::sign(initial.weight) == gpe::sign(target.weight)) ? gpe::kl_divergence<scalar_t, N_DIMS>(target, initial) : scalar_t(0);
     });
 
     const auto kl_div_threshold = config.em_kl_div_threshold;
     auto clamp_matrix = gpe::transform(kldiv_sign_matrix, [kl_div_threshold](scalar_t v) { return v < kl_div_threshold ? scalar_t(1) : scalar_t(0); });
     for (unsigned target_id = 0; target_id < clamp_matrix.size(); ++target_id) {
         auto& row = kldiv_sign_matrix[target_id];
-        unsigned best_fitting_id = unsigned(-1);
+        unsigned best_initial_id = unsigned(-1);
         auto smallest_value = std::numeric_limits<scalar_t>::infinity();
-        for (unsigned fitting_id = 0; fitting_id < row.size(); ++fitting_id) {
-            if (row[fitting_id] < smallest_value) {
-                smallest_value = row[fitting_id];
-                best_fitting_id = fitting_id;
+        for (unsigned initial_id = 0; initial_id < row.size(); ++initial_id) {
+            if (row[initial_id] < smallest_value) {
+                smallest_value = row[initial_id];
+                best_initial_id = initial_id;
             }
         }
-        assert(best_fitting_id < N_FITTING);
-        clamp_matrix[target_id][best_fitting_id] = scalar_t(1);  // no change if largest value was > kl_div_threshold.
+        assert(best_initial_id < N_FITTING);
+        clamp_matrix[target_id][best_initial_id] = scalar_t(1);  // no change if largest value was > kl_div_threshold.
     }
 
     const auto weighted_likelihood_matrix = gpe::cwise_fun(initial_pure_weights, likelihood_matrix, fun::times<scalar_t>);
