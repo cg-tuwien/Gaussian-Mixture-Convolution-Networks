@@ -14,11 +14,11 @@ from torch.optim.lr_scheduler import StepLR
 class Net(nn.Module):
     def __init__(self):
         super(Net, self).__init__()
-        self.conv1 = nn.Conv2d(1, 16, kernel_size=3, stride=1, padding=1)
+        self.conv1 = nn.Conv2d(1, 8, kernel_size=3, stride=1, padding=1)
         # self.conv2 = nn.Conv2d(32, 32, kernel_size=3, stride=1, padding=1)
-        self.conv3 = nn.Conv2d(16, 16, kernel_size=3, stride=1, padding=1)
+        self.conv3 = nn.Conv2d(8, 10, kernel_size=3, stride=1, padding=1)
         # self.conv4 = nn.Conv2d(128, 128, kernel_size=3, stride=1, padding=1)
-        self.conv5 = nn.Conv2d(16, 10, kernel_size=7, stride=1, padding=0)
+        self.conv5 = nn.Conv2d(10, 10, kernel_size=7, stride=1, padding=0)
 
     def forward(self, x):
         x = self.conv1(x) # 28
@@ -77,7 +77,7 @@ def main():
                         help='input batch size for training (default: 100)')
     parser.add_argument('--test-batch-size', type=int, default=1000, metavar='N',
                         help='input batch size for testing (default: 1000)')
-    parser.add_argument('--epochs', type=int, default=1, metavar='N',
+    parser.add_argument('--epochs', type=int, default=20, metavar='N',
                         help='number of epochs to train (default: 1)')
     parser.add_argument('--lr', type=float, default=1.0, metavar='LR',
                         help='learning rate (default: 1.0)')
@@ -87,7 +87,7 @@ def main():
                         help='disables CUDA training')
     parser.add_argument('--seed', type=int, default=1, metavar='S',
                         help='random seed (default: 1)')
-    parser.add_argument('--log-interval', type=int, default=10, metavar='N',
+    parser.add_argument('--log-interval', type=int, default=100, metavar='N',
                         help='how many batches to wait before logging training status')
 
     parser.add_argument('--save-model', action='store_true', default=False,
