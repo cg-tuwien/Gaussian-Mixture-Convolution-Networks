@@ -427,7 +427,7 @@ void iterate_over_nodes(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
         assert(leaf_node_id < n_nodes);
         const Node* node = &bvh.nodes[leaf_node_id];
 
-        const G& leaf_gaussian = bvh.gaussians[current_leaf];
+        const G& leaf_gaussian = bvh.gaussians[node->object_idx];
         bvh.per_node_attributes[leaf_node_id].gaussians.push_back(leaf_gaussian);
         bvh.per_node_attributes[leaf_node_id].n_child_leaves = 1;
         bvh.per_node_attributes[leaf_node_id].gm_integral = gpe::integrate(leaf_gaussian);
