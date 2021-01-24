@@ -358,21 +358,21 @@ void trickle_down_grad(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
     assert(mixture_id < n_mixtures);
 
     Bvh bvh = AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>(mixture_id, nodes, aabbs, mixture, node_attributes, n, n_internal_nodes, n_nodes);
-    #ifndef __CUDA_ARCH__
-        std::vector<typename AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>::NodeAttributes> node_attributes_debug;
-        std::vector<Node> nodes_debug;
-        std::vector<G> mixture_debug;
+//    #ifndef __CUDA_ARCH__
+//        std::vector<typename AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>::NodeAttributes> node_attributes_debug;
+//        std::vector<Node> nodes_debug;
+//        std::vector<G> mixture_debug;
 
-        auto updateDebug = [&]() {
-            node_attributes_debug.clear();
-            nodes_debug.clear();
-            mixture_debug.clear();
-            std::copy(bvh.per_node_attributes, bvh.per_node_attributes + n_nodes, std::back_inserter(node_attributes_debug));
-            std::copy(bvh.nodes, bvh.nodes + n_nodes, std::back_inserter(nodes_debug));
-            std::copy(bvh.gaussians, bvh.gaussians + n.components, std::back_inserter(mixture_debug));
-        };
-        updateDebug();
-    #endif
+//        auto updateDebug = [&]() {
+//            node_attributes_debug.clear();
+//            nodes_debug.clear();
+//            mixture_debug.clear();
+//            std::copy(bvh.per_node_attributes, bvh.per_node_attributes + n_nodes, std::back_inserter(node_attributes_debug));
+//            std::copy(bvh.nodes, bvh.nodes + n_nodes, std::back_inserter(nodes_debug));
+//            std::copy(bvh.gaussians, bvh.gaussians + n.components, std::back_inserter(mixture_debug));
+//        };
+//        updateDebug();
+//    #endif
 
     gpe::Vector<node_index_t, 32 * 32> stack;
     {
@@ -414,11 +414,11 @@ void trickle_down_grad(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
                                                     bvh.per_node_attributes[current_index].gradient_cache_data,
                                                     config);
             bvh.distribute_gradient_on_children(node, child_grads, gpe::Epsilon<scalar_t>::large);
-            updateDebug();
+//            updateDebug();
         }
         else {
             bvh.distribute_gradient_on_children(node, bvh.per_node_attributes[current_index].grad, gpe::Epsilon<scalar_t>::large);
-            updateDebug();
+//            updateDebug();
         }
 
         stack.push_back(bvh.nodes[current_index].left_idx);
