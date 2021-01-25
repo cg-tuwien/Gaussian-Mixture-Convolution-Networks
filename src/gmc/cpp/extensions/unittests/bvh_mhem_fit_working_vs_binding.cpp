@@ -93,7 +93,7 @@ void runTest(const std::vector<std::pair<torch::Tensor, torch::Tensor>>& test_ca
         {
             auto gradient_target = bvh_mhem_fit::backward_impl(gradient_fitting.clone(), forward_out, config);
             auto binding_gradient_target = bvh_mhem_fit_backward(gradient_fitting.clone(), binding_forward_out[0], mixture.clone(),
-                    binding_forward_out[1], binding_forward_out[2], binding_forward_out[3],
+                    binding_forward_out[1], binding_forward_out[2],
                     int(config.n_components_fitting), config.reduction_n);
             auto gradient = gradient_target.contiguous().cpu();
             auto gradient_binding = binding_gradient_target.contiguous().cpu();

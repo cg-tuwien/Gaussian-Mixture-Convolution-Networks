@@ -44,8 +44,8 @@ struct AugmentedBvh
 
     struct NodeAttributes {
         using UIntType = typename UIntOfSize<scalar_t>::type;
+        // stores the gaussians in the forward pass and caches them until they are needed in backward. backward overwrites with gradients of the corresponding parameters.
         gpe::Vector<Gaussian_type, REDUCTION_N, UIntType> gaussians;
-        gpe::Vector<Gaussian_type, REDUCTION_N, UIntType> grad; // maybe we can reuse the same field as gaussians in the future.
         GradientCacheData<scalar_t, REDUCTION_N, REDUCTION_N * 2> gradient_cache_data;
         scalar_t gm_integral;
         UIntType n_child_leaves;
@@ -110,14 +110,22 @@ struct AugmentedBvh
         assert(node->left_idx != node_index_t(-1));
         assert(node->right_idx != node_index_t(-1));
 
+        // replace gaussians with gradients
         unsigned grad_index = 0;
         for (unsigned i = 0; i < per_node_attributes[node->left_idx].gaussians.size(); ++i) {
+            //todo: maybe we can remove this 'if': init gaussians with zeroes + copy from mixture to bvh only if weight >= threshold
             if (gpe::abs(per_node_attributes[node->left_idx].gaussians[i].weight) >= weight_threshold)
-                per_node_attributes[node->left_idx].grad.push_back(grad[grad_index++]);
+                per_node_attributes[node->left_idx].gaussians[i] = grad[grad_index++];
+            else
+                // we must set the grad to 0 if it was not computed. that happens when the weight is 0. we do it in order to overwrite the gaussian (position and cov might not be 0)
+                per_node_attributes[node->left_idx].gaussians[i] = {};
         }
         for (unsigned i = 0; i < per_node_attributes[node->right_idx].gaussians.size(); ++i) {
             if (gpe::abs(per_node_attributes[node->right_idx].gaussians[i].weight) >= weight_threshold)
-                per_node_attributes[node->right_idx].grad.push_back(grad[grad_index++]);
+                per_node_attributes[node->right_idx].gaussians[i] = grad[grad_index++];
+            else
+                // we must set the grad to 0 if it was not computed. that happens when the weight is 0. we do it in order to overwrite the gaussian (position and cov might not be 0)
+                per_node_attributes[node->right_idx].gaussians[i] = {};
         }
         assert(grad_index == grad.size());
     }

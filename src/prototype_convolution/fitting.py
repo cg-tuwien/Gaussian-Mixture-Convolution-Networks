@@ -75,7 +75,7 @@ def fixed_point_and_bvh_mhem(mixture: Tensor, constant: Tensor, n_components: in
         t2 = time.perf_counter()
         tensorboard.add_scalar(f"50.2 fitting {mixture.shape} -> {n_components} fixed_point_iteration_to_relu time =", t2 - t1, 0)
 
-    fitting = cppBvhMhemFit.apply(fp_fitting, n_components, 8)
+    fitting = cppBvhMhemFit.apply(fp_fitting, n_components, 4)
 
     if tensorboard is not None:
         torch.cuda.synchronize()

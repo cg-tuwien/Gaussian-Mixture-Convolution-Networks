@@ -10,12 +10,11 @@ namespace bvh_mhem_fit {
 struct ForwardOutput {
     torch::Tensor fitting;
     torch::Tensor target;
-    torch::Tensor bvh_mixture;
     torch::Tensor bvh_nodes;
     torch::Tensor bvh_attributes;
 
     ForwardOutput clone() {
-        return {fitting.clone(), target.clone(), bvh_mixture.clone(), bvh_nodes.clone(), bvh_attributes.clone()};
+        return {fitting.clone(), target.clone(), bvh_nodes.clone(), bvh_attributes.clone()};
     }
 };
 

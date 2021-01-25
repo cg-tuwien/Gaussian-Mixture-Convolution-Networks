@@ -11,7 +11,6 @@ std::vector<torch::Tensor> bvh_mhem_fit_forward(const torch::Tensor& mixture, in
 
 torch::Tensor bvh_mhem_fit_backward(const torch::Tensor& grad,
                                     const torch::Tensor& fitting_mixture,
-                                    const torch::Tensor& target_mixture,
-                                    const torch::Tensor& bvh_mixture_inversed, const torch::Tensor& bvh_nodes, const torch::Tensor& bvh_attribs, int n_components_fitting, int reduction_n);
+                                    const torch::Tensor& target_mixture, const torch::Tensor& bvh_nodes, const torch::Tensor& bvh_attribs, int n_components_fitting, int reduction_n);
 
 #endif

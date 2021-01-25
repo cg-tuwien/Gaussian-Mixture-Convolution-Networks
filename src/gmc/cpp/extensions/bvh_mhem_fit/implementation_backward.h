@@ -41,7 +41,6 @@ namespace  {
 template <unsigned N_FITTING, typename scalar_t, int N_DIMS, unsigned N_TARGET, typename size_type>
 EXECUTION_DEVICES
 gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_TARGET> grad_em(const gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_TARGET>& target,
-                                                               const gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING, size_type>& fitting,
                                                                const gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING, size_type>& fitting_grad,
                                                                const GradientCacheData<scalar_t, N_FITTING, N_FITTING * 2>& gradient_cache_data,
                                                                const Config& config) {
@@ -58,7 +57,6 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_TARGET> grad_em(const gpe::Vector
 
     // input and result
     auto target_mixture = gpe::to_array(target, G{0, pos_t(0), cov_t(1)});
-    auto fitting_array = gpe::to_array(fitting, G{0, pos_t(0), cov_t(1)});
     auto fitting_grad_array = gpe::to_array(fitting_grad, G{0, pos_t(0), cov_t(0)});
 
     const auto grad_fitting_weights = gpe::transform(fitting_grad_array, [](const G& g){ return g.weight; });
@@ -66,9 +64,6 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_TARGET> grad_em(const gpe::Vector
     auto grad_fittingCovariances = gpe::transform(fitting_grad_array, [](const G& g){ return g.covariance; });
 
     // forward cached
-    const auto fitting_weights = gpe::transform(fitting_array, [](const G& g){ return g.weight; });
-    const auto fittingPositions = gpe::transform(fitting_array, [](const G& g){ return g.position; });
-    const auto fittingCovariances = gpe::transform(fitting_array, [](const G& g){ return g.covariance; });
 
     const auto target_weights = gpe::transform(target_mixture, [](const G& g){ return g.weight; });
     const auto target_positions = gpe::transform(target_mixture, [](const G& g){ return g.position; });
@@ -131,11 +126,18 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_TARGET> grad_em(const gpe::Vector
     const auto responsibilities_3 = gpe::cwise_fun(clippedFittingWeights, responsibilities_2, fun::divided_BbyA<scalar_t>);
 
     const auto weightedPositions = gpe::cwise_fun(responsibilities_3, target_positions, fun::times<scalar_t, pos_t>);
+    const auto fittingPositions = gpe::reduce_cols(weightedPositions, pos_t(0), fun::plus<pos_t>);
 
     const auto posDiffs = gpe::outer_product(target_positions, fittingPositions, fun::minus<pos_t>);
     const auto posDiffsOuter = gpe::transform(posDiffs, [](const pos_t& p) { return glm::outerProduct(p, p); });
     const auto unweightedCovs = gpe::cwise_fun(posDiffsOuter, target_covariances, fun::plus<cov_t>);
     const auto weightedCovs = gpe::cwise_fun(responsibilities_3, unweightedCovs, fun::times<scalar_t, cov_t>);
+    auto fittingCovariances = gpe::reduce_cols(weightedCovs, cov_t(0), fun::plus<cov_t>);
+    fittingCovariances = gpe::cwise_fun(fittingCovariances, fitting_pure_weights, [](cov_t cov, scalar_t w) {  // no influence on gradient.
+        if (w < gpe::Epsilon<scalar_t>::large)
+            cov += cov_t(1) * scalar_t(gpe::Epsilon<scalar_t>::large);
+        return cov;
+    });
 
     const auto fitting_normal_amplitudes = gpe::transform(fittingCovariances, gpe::gaussian_amplitude<scalar_t, N_DIMS>);
     const auto fitting_int1_weights = gpe::cwise_fun(fitting_pure_weights, fitting_normal_amplitudes, fun::times<scalar_t>);
@@ -388,7 +390,7 @@ void trickle_down_grad(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
             auto node_id = top_stack.pop_back();
             if(node_id >= n_nodes)
                 continue;   // ran out of nodes, this is a border case happening when the mixtures contain only zero gaussians.
-            if (bvh.per_node_attributes[node_id].grad.size() == 0) {
+            if (bvh.per_node_attributes[node_id].gaussians.size() == 0) {
                 top_stack.push_back(bvh.nodes[node_id].left_idx);
                 top_stack.push_back(bvh.nodes[node_id].right_idx);
                 continue;
@@ -409,9 +411,10 @@ void trickle_down_grad(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
             const Node* node = &bvh.nodes[current_index];
             if (current_index >= n_internal_nodes) {
                 // leaf node
-                if (bvh.per_node_attributes[current_index].grad.size() == 1) {
-                    // grad is empty, if the original gaussian was zero. this check can be removed if the node attributes are initialised with zeroes.
-                    reinterpret_cast<G&>(target_grad[mixture_id][node->object_idx][0]) = bvh.per_node_attributes[current_index].grad[0];
+                assert(node->object_idx < n.components);
+                if (gpe::abs(mixture[mixture_id][node->object_idx].weight) >= gpe::Epsilon<scalar_t>::large) {
+                    // this if must stay: if there are 0 gaussians, they will overwrite gaussian[0] and the gradient written back won't be 0 anymore.
+                    reinterpret_cast<G&>(target_grad[mixture_id][node->object_idx][0]) = bvh.per_node_attributes[current_index].gaussians[0];
                 }
                 active = false; // continue;
             }
@@ -420,14 +423,13 @@ void trickle_down_grad(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
                 auto child_gaussians = bvh.collect_child_gaussians(node, gpe::Epsilon<scalar_t>::large);
                 if (child_gaussians.size() > REDUCTION_N) {
                     auto child_grads = grad_em<REDUCTION_N>(child_gaussians,
-                    bvh.per_node_attributes[current_index].gaussians,
-                    bvh.per_node_attributes[current_index].grad,
-                    bvh.per_node_attributes[current_index].gradient_cache_data,
-                    config);
+                        bvh.per_node_attributes[current_index].gaussians,// grad
+                        bvh.per_node_attributes[current_index].gradient_cache_data,
+                        config);
                     bvh.distribute_gradient_on_children(node, child_grads, gpe::Epsilon<scalar_t>::large);
                 }
                 else {
-                    bvh.distribute_gradient_on_children(node, bvh.per_node_attributes[current_index].grad, gpe::Epsilon<scalar_t>::large);
+                    bvh.distribute_gradient_on_children(node, /* gradient = */ bvh.per_node_attributes[current_index].gaussians, gpe::Epsilon<scalar_t>::large);
                 }
             }
 //            updateDebug();
@@ -518,8 +520,11 @@ EXECUTION_DEVICES void distribute_grad(const dim3& gpe_gridDim, const dim3& gpe_
             break;  // ran out of nodes
         auto best_node_id = selectedNodes[best_node_cache_id];
         assert(best_node_id < n_nodes);
-        const auto& best_descend_node = bvh.nodes[best_node_id];
         assert(best_node_id < n_internal_nodes); // we should have only internal nodes at this point as cach_id_with_highest_rating() returns 0xffff.. if the node is not full.
+
+        bvh.per_node_attributes[best_node_id].gaussians.clear(); // clear unused gaussians, so trickle down knows where to start
+
+        const auto& best_descend_node = bvh.nodes[best_node_id];
 
         selectedNodes[best_node_cache_id] = best_descend_node.left_idx;
 //        updateDebug();
@@ -540,10 +545,13 @@ EXECUTION_DEVICES void distribute_grad(const dim3& gpe_gridDim, const dim3& gpe_
         auto node_id = selectedNodes[i];
         typename Tree::NodeAttributes& destination_attribute = bvh.per_node_attributes[node_id];
 
-        for (unsigned j = 0; j < destination_attribute.gaussians.size(); ++j) {
+        // clear gaussians so they can be overwritten with gradients
+        const auto n_gaussians = destination_attribute.gaussians.size();
+        destination_attribute.gaussians.clear();
+
+        for (unsigned j = 0; j < n_gaussians; ++j) {
             assert(read_position < config.n_components_fitting);
-            destination_attribute.grad.push_back(gpe::gaussian<N_DIMS>(grad_fitting[mixture_id][int(read_position++)]));
-//            updateDebug();
+            destination_attribute.gaussians.push_back(gpe::gaussian<N_DIMS>(grad_fitting[mixture_id][int(read_position++)]));
         }
     }
 }
@@ -568,7 +576,7 @@ at::Tensor backward_impl_t(at::Tensor grad, const ForwardOutput& forward_out, co
     TORCH_CHECK(grad.dtype() == caffe2::TypeMeta::Make<scalar_t>(), "something wrong with dispatch, or maybe this float type is not supported.")
 
     const auto n_mixtures = n.batch * n.layers;
-    const auto bvh = Tree(gpe::mixture_with_inversed_covariances(forward_out.bvh_mixture).contiguous(), forward_out.bvh_nodes, {});
+    const auto bvh = Tree(forward_out.target, forward_out.bvh_nodes, {});
     const auto n_internal_nodes = bvh.m_n_internal_nodes;
     const auto n_nodes = bvh.m_n_nodes;
     const auto mixture_view = forward_out.target.view({n_mixtures, n.components, -1}).contiguous();

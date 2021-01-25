@@ -558,7 +558,7 @@ ForwardOutput forward_impl_t(at::Tensor mixture, const Config& config) {
 
     return ForwardOutput{out_mixture.view({n.batch, n.layers, config.n_components_fitting, -1}),
                          mixture.view({n.batch, n.layers, n.components, -1}),
-                         bvh.m_mixture, bvh.m_nodes, node_attributes};
+                         bvh.m_nodes, node_attributes};
 }
 
 
