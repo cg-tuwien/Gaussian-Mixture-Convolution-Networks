@@ -4,6 +4,7 @@
 #include "cuda_operations.h"
 #include "util/cuda.h"
 #include "util/scalar.h"
+#include "util/containers.h"
 
 namespace gpe {
 

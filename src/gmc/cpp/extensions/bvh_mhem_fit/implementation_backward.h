@@ -393,6 +393,7 @@ void trickle_down_grad(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
                 top_stack.push_back(bvh.nodes[node_id].right_idx);
                 continue;
             }
+            assert(node_id < n_nodes);
             stack.push(node_id, gpe_threadIdx.x == 0, gpe_threadIdx.x);
         }
     }
@@ -402,6 +403,8 @@ void trickle_down_grad(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
     {
         node_index_t current_index = node_index_t(-1);
         bool active = stack.pop(&current_index, gpe_threadIdx.x);
+        assert(!active || current_index < n_nodes);
+
         if (active) {
             const Node* node = &bvh.nodes[current_index];
             if (current_index >= n_internal_nodes) {
@@ -430,8 +433,10 @@ void trickle_down_grad(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
 //            updateDebug();
         }
 
-        stack.push(bvh.nodes[current_index].left_idx, active, gpe_threadIdx.x);
-        stack.push(bvh.nodes[current_index].right_idx, active, gpe_threadIdx.x);
+        assert(!active || bvh.nodes[current_index].left_idx < n_nodes);
+        assert(!active || bvh.nodes[current_index].right_idx < n_nodes);
+        stack.push(active ? bvh.nodes[current_index].left_idx : 0, active, gpe_threadIdx.x);
+        stack.push(active ? bvh.nodes[current_index].right_idx : 0, active, gpe_threadIdx.x);
     }
 }
 
