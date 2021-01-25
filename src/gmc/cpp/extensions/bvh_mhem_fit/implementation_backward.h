@@ -380,8 +380,8 @@ void trickle_down_grad(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
 //        updateDebug();
 //    #endif
 
-    GPE_SHARED gpe::Array<node_index_t, 32 * 32> stack_data;
-    gpe::ParallelStack<node_index_t, 32 * 32, 0> stack{stack_data};
+    GPE_SHARED gpe::Array<node_index_t, 64 * 32> stack_data;
+    gpe::ParallelStack<node_index_t, 64 * 32, 0> stack{stack_data};
 //    stack.stack = stack_data;
     {
         gpe::Vector<node_index_t, 32> top_stack;
@@ -422,6 +422,7 @@ void trickle_down_grad(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
 //                updateDebug();
                 auto child_gaussians = bvh.collect_child_gaussians(node, gpe::Epsilon<scalar_t>::large);
                 if (child_gaussians.size() > REDUCTION_N) {
+
                     auto child_grads = grad_em<REDUCTION_N>(child_gaussians,
                         bvh.per_node_attributes[current_index].gaussians,// grad
                         bvh.per_node_attributes[current_index].gradient_cache_data,

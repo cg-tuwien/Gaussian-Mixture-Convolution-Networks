@@ -19,11 +19,13 @@ struct ParallelStack {
     void push(const T& element, bool is_valid, uint32_t thread_id) {
         auto vote = gpe::ballot_sync(0xFFFFFFFF, is_valid, thread_id, SYNC_ID + 1000 + 0);
         auto write_location = gpe::popc(((1 << thread_id) - 1) & vote);
-        assert(head + write_location < SIZE);
-        if (is_valid)
+        if (is_valid) {
+            assert(head + write_location < SIZE);
             stack[head + write_location] = element;
+        }
         gpe::syncwarp(SYNC_ID + 1000 + 1);
         // head is not in shared memory, all threads make the update.  dunno if that is good perf wise..
+        assert(head + gpe::popc(vote) < SIZE);
         head += gpe::popc(vote);
 //        gpe::syncwarp(SYNC_ID + 1000 + 2);
     }
