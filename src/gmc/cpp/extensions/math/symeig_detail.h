@@ -61,6 +61,7 @@ __forceinline__ __host__ __device__ thrust::tuple<glm::vec<3, scalar_t>, glm::ma
     // [1] https://en.wikipedia.org/wiki/Eigenvalue_algorithm#3%C3%973_matrices
 
     assert(false); // unimplemented
+    return {};
 }
 
 

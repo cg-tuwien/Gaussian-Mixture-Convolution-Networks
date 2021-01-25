@@ -29,7 +29,7 @@ SOFTWARE.
 */
 
 #include "../cuda_qt_creator_definitinos.h"
-#include "../math/matrix.h"
+#include "../util/glm.h"
 #include <glm/glm.hpp>
 
 template <int N_DIMS>

@@ -5,6 +5,8 @@ import torch
 
 class LevelScaler:
     # This class helps to scale a GM-level in hierarchical EM (Eckart HP)
+    # Each Sub-GM is scaled differently.
+    # Currently this is not used (active is always false, leading the scaler do not perform any operation)
 
     def __init__(self, active: bool = True, interval: Tuple[float, float] = (0.0, 1.0)):
         self._scaleP = self._offsetP = None   # Scaling and Offset Values for points per Parent

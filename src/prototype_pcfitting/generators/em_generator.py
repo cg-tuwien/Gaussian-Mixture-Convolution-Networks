@@ -1,12 +1,7 @@
 from prototype_pcfitting import GMMGenerator, GMLogger, data_loading
 from prototype_pcfitting import TerminationCriterion, MaxIterationTerminationCriterion
-from prototype_pcfitting.error_functions import LikelihoodLoss
-from gmc.cpp.extensions.furthest_point_sampling import furthest_point_sampling
 import torch
 import gmc.mixture as gm
-from gmc import mat_tools
-import numpy
-from sklearn.cluster import KMeans
 from .gmm_initializer import GMMInitializer
 from .em_tools import EMTools
 
@@ -21,8 +16,10 @@ class EMGenerator(GMMGenerator):
                  initialization_method: str = 'randnormpos',
                  em_step_gaussians_subbatchsize: int = -1,
                  em_step_points_subbatchsize: int = -1,
-                 dtype: torch.dtype = torch.float64,
-                 eps: float = 1e-4):
+                 use_noise_cluster: bool = True,
+                 dtype: torch.dtype = torch.float32,
+                 eps: float = 1e-7,
+                 eps_is_relative: bool = True):
         # Constructor. Creates a new EMGenerator.
         # Parameters:
         #   n_gaussians: int
@@ -48,10 +45,16 @@ class EMGenerator(GMMGenerator):
         #   em_step_points_subbatchsize: int
         #       How many points should be processed in the E- and M-Step at once
         #       -1 means all Points (default)
+        #   use_noise_cluster: bool
+        #       If true, a noise cluster is used, meaning a weighted uniform distribution over the boudning box
         #   dtype: torch.dtype
         #       In which data type (precision) the operations should be performed. Default: torch.float32
         #   eps: float
-        #       Small value to be added to the Covariances for numerical stability
+        #       Small value to be added to the covariances' diagonals for numerical stability
+        #   eps_is_relative: bool
+        #       If false, eps is added as is to the covariances. If true (default), this eps is relative
+        #       to the longest side of the pc's bounding box (recommended for scaling invariance).
+        #       eps_abs = eps_rel * (maxextend^2)
         #
         self._n_gaussians = n_gaussians
         self._n_sample_points = n_sample_points
@@ -59,10 +62,13 @@ class EMGenerator(GMMGenerator):
         self._termination_criterion = termination_criterion
         self._em_step_gaussians_subbatchsize = em_step_gaussians_subbatchsize
         self._em_step_points_subbatchsize = em_step_points_subbatchsize
+        self._use_noise_cluster = use_noise_cluster
         self._logger = None
         self._epsvar = eps
+        if eps < 1e-9:
+            print("Warning! Very small eps! Might cause numerical issues!")
+        self._eps_is_relative = eps_is_relative
         self._dtype = dtype
-        self._initializer = GMMInitializer(em_step_gaussians_subbatchsize, em_step_points_subbatchsize, dtype, eps)
 
     def set_logging(self, logger: GMLogger = None):
         # Sets logging options
@@ -97,22 +103,45 @@ class EMGenerator(GMMGenerator):
 
         assert (point_count > self._n_gaussians)
 
+        initnoisevalues = None
+        if self._use_noise_cluster:
+            extends = pcbatch.max(dim=1)[0] - pcbatch.min(dim=1)[0]
+            initnoisevalues = 1 / torch.prod(extends, dim=1)
+
+        epsilons = torch.ones(batch_size, dtype=self._dtype, device='cuda') * self._epsvar
+        if self._eps_is_relative:
+            extends = pcbatch.max(dim=1)[0] - pcbatch.min(dim=1)[0]
+            epsilons *= extends.max(dim=1)[0] ** 2
+            epsilons[epsilons < 1e-9] = 1e-9
+
         # eps is a small multiple of the identity matrix which is added to the cov-matrizes
         # in order to avoid singularities
-        eps = (torch.eye(3, 3, dtype=self._dtype, device='cuda') * self._epsvar).view(1, 1, 1, 3, 3) \
-            .expand(batch_size, 1, self._n_gaussians, 3, 3)
+        eps = (torch.eye(3, 3, dtype=self._dtype, device='cuda')).view(1, 1, 1, 3, 3) \
+            .expand(batch_size, 1, 1, 3, 3) * epsilons.view(-1, 1, 1, 1, 1)
 
         # running defines which batches are still being trained
         running = torch.ones(batch_size, dtype=torch.bool)
 
         # Initialize mixture data
         if gmbatch is None:
-            gmbatch = self._initializer.initialize_by_method_name(self._initialization_method, pcbatch,
-                                                                  self._n_gaussians, self._n_sample_points)
+            initializer = GMMInitializer(self._em_step_gaussians_subbatchsize, self._em_step_points_subbatchsize,
+                                         self._dtype, epsilons)
+            gmbatch_init = initializer.initialize_by_method_name(self._initialization_method, pcbatch,
+                                                                 self._n_gaussians, self._n_sample_points, None,
+                                                                 initnoisevalues)
+        else:
+            gmbatch_init = gmbatch
         gm_data = EMTools.TrainingData(batch_size, self._n_gaussians, self._dtype, eps)
-        gm_data.set_positions(gm.positions(gmbatch), running)
-        gm_data.set_covariances(gm.covariances(gmbatch), running)
-        gm_data.set_amplitudes(gm.weights(gmbatch), running)
+        gm_data.set_positions(gm.positions(gmbatch_init), running)
+        gm_data.set_covariances(gm.covariances(gmbatch_init), running)
+        if gmbatch is None:
+            gm_data.set_priors(gm.weights(gmbatch_init), running)
+        else:
+            gm_data.set_amplitudes(gm.weights(gmbatch_init), running)
+        if self._use_noise_cluster:
+            gm_data.set_noise(1 - gm.weights(gmbatch_init).sum().view(-1), initnoisevalues)
+
+        del epsilons
 
         iteration = 0
 
@@ -153,6 +182,8 @@ class EMGenerator(GMMGenerator):
             EMTools.maximization(points_rep, responsibilities, gm_data, running, eps,
                                  self._em_step_gaussians_subbatchsize, self._em_step_points_subbatchsize)
 
+            print("Noise Weight: ", gm_data.get_noise_weight())
+
         # Create final mixtures
         final_gm = gm_data.pack_mixture()
         final_gmm = gm_data.pack_mixture_model()
@@ -161,5 +192,3 @@ class EMGenerator(GMMGenerator):
         print("EM: # of invalid Gaussians: ", torch.sum(gm_data.get_priors() == 0).item())
 
         return final_gm, final_gmm
-
-
