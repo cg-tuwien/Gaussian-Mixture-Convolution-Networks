@@ -278,7 +278,7 @@ const glm::vec<3, scalar_t> colwise_length(const glm::mat<3, 3, scalar_t>& mat) 
 
 template<int N_DIMS, typename scalar_t>
 at::Tensor Bvh<N_DIMS, scalar_t>::compute_aabbs() {
-    constexpr scalar_t threshold = scalar_t(0.001);
+    const scalar_t threshold = scalar_t(m_config.aabb_threshold);
 
     auto aabbs = torch::zeros({m_n.batch, m_n.layers, m_n.components, 8}, torch::TensorOptions(m_mixture.device()).dtype(detail::TorchTypeMapper<scalar_t>::id()));
     auto aabbs_view = aabbs.view({-1, 8});

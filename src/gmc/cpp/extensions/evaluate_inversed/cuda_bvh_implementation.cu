@@ -141,18 +141,18 @@ torch::Tensor inverse_permutation(const torch::Tensor& p) {
     return torch::scatter(torch::empty_like(p), -1, p, l);
 }
 
-std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> cuda_bvh_forward_impl(const at::Tensor& mixture, const at::Tensor& xes) {
+std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> cuda_bvh_forward_impl(const at::Tensor& mixture, const at::Tensor& xes, const lbvh::Config& config) {
     using namespace torch::indexing;
     using LBVH = lbvh::Bvh<2, float>;
 
     auto n = gpe::check_input_and_get_ns(mixture, xes);
 //    TORCH_CHECK(mixture.device().is_cuda(), "mixture must be a CUDA tensor");
-    TORCH_CHECK(n.batch * n.layers < 65535, "n_batch x n_layers must be smaller than 65535 for CUDA");
-    TORCH_CHECK(n.components > 1, "number of components must be greater 1 for this implementation");
-    TORCH_CHECK(n.dims == 2, "atm only 2d gaussians");
-    TORCH_CHECK(mixture.dtype() == caffe2::TypeMeta::Make<float>(), "atm only float");
+    TORCH_CHECK(n.batch * n.layers < 65535, "n_batch x n_layers must be smaller than 65535 for CUDA")
+    TORCH_CHECK(n.components > 1, "number of components must be greater 1 for this implementation")
+    TORCH_CHECK(n.dims == 2, "atm only 2d gaussians")
+    TORCH_CHECK(mixture.dtype() == caffe2::TypeMeta::Make<float>(), "atm only float")
 
-    auto bvh = LBVH(mixture, {});
+    auto bvh = LBVH(mixture, config);
     torch::Tensor sum = torch::zeros({n.batch, n.layers, n.xes}, torch::dtype(mixture.dtype()).device(mixture.device()));
 
     // mixture(batch, layer, component, data)

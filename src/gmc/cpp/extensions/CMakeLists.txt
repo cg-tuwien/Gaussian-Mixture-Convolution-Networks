@@ -290,6 +290,7 @@ set(UNITTESTS_SOURCES
     unittests/bvh_mhem_fit_alpha_vs_ad.cpp
     unittests/bvh_mhem_fit_working_vs_alpha.cpp
     unittests/bvh_mhem_fit_working_vs_binding.cpp
+    unittests/evaluate_inversed.cpp
     unittests/grad_algorithms.cpp
     unittests/grad_mixture.cpp
     unittests/main.cpp
