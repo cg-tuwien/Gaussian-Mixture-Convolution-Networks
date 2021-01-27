@@ -1,3 +1,6 @@
+THIS FILE IS NOT UP TO DATE.
+
+
 This is an explanation on how to execute GMM fitting and evaluation.
 
 GMM Fitting:
