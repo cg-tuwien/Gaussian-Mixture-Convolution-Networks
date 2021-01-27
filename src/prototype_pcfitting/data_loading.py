@@ -52,23 +52,30 @@ def write_gm_to_ply(weights: torch.Tensor, positions: torch.Tensor,
     gm.write_gm_to_ply(weights, positions, covariances, index, filename)
 
 
-def save_gms(gmbatch: torch.Tensor, gmmbatch: torch.Tensor, basepath: str, names: List[str]):
+def save_gms(gmbatch: torch.Tensor, gmmbatch: torch.Tensor, basepath: str, names: List[str], formats: List[str] = None):
+    # available formats: .gmm.ply, .gma.ply, .torch
+    if formats is None:
+        formats = [".gmm.ply", ".gma.ply"]
     gmw = gm.weights(gmmbatch)
     gma = gm.weights(gmbatch)
     gmp = gm.positions(gmbatch)
     gmc = gm.covariances(gmbatch)
     for i in range(gmbatch.shape[0]):
-        write_gm_to_ply(gmw, gmp, gmc, i, f"{basepath}/{names[i]}.gmm.ply")
-        write_gm_to_ply(gma, gmp, gmc, i, f"{basepath}/{names[i]}.gma.ply")
+        if ".gmm.ply" in formats:
+            write_gm_to_ply(gmw, gmp, gmc, i, f"{basepath}/{names[i]}.gmm.ply")
+        if ".gma.ply" in formats:
+            write_gm_to_ply(gma, gmp, gmc, i, f"{basepath}/{names[i]}.gma.ply")
+        if ".torch" in formats:
+            torch.save(gmbatch, f"{basepath}/{names[i]}.torch")
+
 
 def add_noise(pcbatch: torch.Tensor, n_noisepoints: int):
     batch_size = pcbatch.shape[0]
-    point_count = pcbatch.shape[1]
     samples = torch.rand(batch_size, n_noisepoints, 3, dtype=pcbatch.dtype, device='cuda')
     for b in range(batch_size):
-        min = pcbatch[b].min(dim=0)[0]
-        max = pcbatch[b].max(dim=0)[0]
-        ext = max - min
+        pmin = pcbatch[b].min(dim=0)[0]
+        pmax = pcbatch[b].max(dim=0)[0]
+        ext = pmax - pmin
         samples[b] *= ext
-        samples[b] += min
+        samples[b] += pmin
     return torch.cat((pcbatch, samples), dim=1)

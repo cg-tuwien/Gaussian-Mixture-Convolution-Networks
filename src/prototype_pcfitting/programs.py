@@ -10,14 +10,16 @@ from prototype_pcfitting import GMMGenerator, PCDatasetIterator, Scaler, GMLogge
 from prototype_pcfitting.generators.em_tools import EMTools
 
 
-def execute_fitting(training_name: str, model_path: str, genpc_path: str, gengmm_path: str, log_path: str,
-                    n_points: int, n_gaussians: int, batch_size: int, generators: List[GMMGenerator],
-                    generator_identifiers: List[str], scaling_active: bool = False,
+def execute_fitting(training_name: str, n_points: int, batch_size: int, generators: List[GMMGenerator],
+                    generator_identifiers: List[str], model_path: str, genpc_path: str, gengmm_path: str,
+                    formats: List[str] = None, log_path: str = None, scaling_active: bool = False,
                     scaling_interval: Tuple[float, float] = (-50.0, 50.0),
                     log_positions: int = 0, log_loss_console: int = 0,
                     log_loss_tb: int = 0, log_rendering_tb: int = 0, log_gm: int = 0,
-                    log_seperate_directories: bool = True, continuing = True):
+                    log_n_gaussians: int = 0, continuing = True):
     # ---- GMM FITTING ----
+    if formats is None:
+        formats = [".gma.ply"]
 
     # Create Dataset Iterator and Scaler
     dataset = PCDatasetIterator(model_path, n_points, batch_size, genpc_path)
@@ -49,10 +51,9 @@ def execute_fitting(training_name: str, model_path: str, genpc_path: str, gengmm
 
             # Create Logger
             logger = GMLogger(names=names, log_prefix=gen_id, log_path=log_path,
-                              log_positions=log_positions, gm_n_components=n_gaussians,
+                              log_positions=log_positions, gm_n_components=log_n_gaussians,
                               log_loss_console=log_loss_console, log_loss_tb=log_loss_tb,
-                              log_rendering_tb=log_rendering_tb, log_gm=log_gm, pointclouds=batch, scaler=scaler,
-                              log_seperate_directories=log_seperate_directories)
+                              log_rendering_tb=log_rendering_tb, log_gm=log_gm, pointclouds=batch, scaler=scaler)
             generators[j].set_logging(logger)
 
             # Generate GMM
@@ -62,11 +63,12 @@ def execute_fitting(training_name: str, model_path: str, genpc_path: str, gengmm
 
             # Save resulting GMs
             data_loading.save_gms(scaler.unscale_gm(gmbatch), scaler.unscale_gmm(gmmbatch),
-                                  os.path.join(gengmm_path, gen_id), names)
+                                  os.path.join(gengmm_path, gen_id), names, formats)
 
             sumweights = mixture.weights(gmmbatch).sum(dim=2).squeeze(1)
             ones = sumweights.gt(0.99) & sumweights.lt(1.01)
-            assert ones.all(), "Generator created an invalid mixture (sum of weights not 1)!"
+            if not ones.all():
+                print("Generator created an invalid mixture (sum of weights not 1)!")
 
             # Terminate Logging
             logger.finalize()
