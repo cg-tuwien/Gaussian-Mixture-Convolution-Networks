@@ -44,3 +44,4 @@
 /src/__pycache__/*
 /src/gmc/cpp/build-extensions-*
 /src/gmc/cpp/build*
+src/gmc/cpp/gm_vis/build/*

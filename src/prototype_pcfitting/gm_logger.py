@@ -5,7 +5,7 @@ import torch.utils.tensorboard
 import os
 import gmc.mixture as gm
 
-from gmc.cpp.gm_visualizer import GMVisualizer, GmVisColorRangeMode, GmVisColoringRenderMode
+from gmc.cpp.gm_vis.gm_vis import GMVisualizer, GmVisColorRangeMode, GmVisColoringRenderMode
 from .scaler import Scaler
 from prototype_pcfitting import data_loading
 
@@ -86,8 +86,10 @@ class GMLogger:
             self._visualizer.set_camera_auto(True)
             if pointclouds is not None:
                 self._visualizer.set_pointclouds(pointclouds.cpu())
-            self._visualizer.set_ellipsoid_coloring(GmVisColoringRenderMode.COLOR_WEIGHT,
-                                                    GmVisColorRangeMode.RANGE_MINMAX)
+            self._visualizer.set_ellipsoids_rendering(True, True)
+            self._visualizer.set_ellipsoids_colormode(GmVisColoringRenderMode.COLOR_WEIGHT)
+            self._visualizer.set_ellipsoids_rangemode(GmVisColorRangeMode.RANGE_MINMAX)
+            self._visualizer.set_density_rendering(True)
 
         if log_rendering_tb > 0 or log_loss_tb > 0:
             self._tbwriters = []
