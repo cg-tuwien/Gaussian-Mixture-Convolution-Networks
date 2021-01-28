@@ -37,7 +37,7 @@ void execute_parallel_forward(const torch::PackedTensorAccessor32<scalar_t, 3>& 
 std::tuple<at::Tensor, at::Tensor> gpe::symeig_cpu_forward(const torch::Tensor& matrices) {
     using namespace torch::indexing;
     // currently only 2x2 matrices
-    TORCH_CHECK(matrices.size(-1) == 2 && matrices.size(-2) == 2)
+    TORCH_CHECK((matrices.size(-1) == 2 && matrices.size(-2) == 2) || (matrices.size(-1) == 3 && matrices.size(-2) == 3))
     TORCH_CHECK(matrices.device().is_cpu(), "this one is just for cpu..")
 
     const auto original_shape = matrices.sizes().vec();
@@ -55,8 +55,8 @@ std::tuple<at::Tensor, at::Tensor> gpe::symeig_cpu_forward(const torch::Tensor& 
 
         if (n_dims == 2)
             execute_parallel_forward<scalar_t, 2>(matrices_a, eigenvectors_a, eigenvalues_a, n_batch);
-//        else
-//            execute_parallel_forward<scalar_t, 3>(mixture_a, xes_a, sum_a, n);
+        else
+            execute_parallel_forward<scalar_t, 3>(matrices_a, eigenvectors_a, eigenvalues_a, n_batch);
     }));
     auto eigenvalues_shape = original_shape;
     eigenvalues_shape.pop_back();
