@@ -16,7 +16,7 @@ class EMGenerator(GMMGenerator):
                  initialization_method: str = 'randnormpos',
                  em_step_gaussians_subbatchsize: int = -1,
                  em_step_points_subbatchsize: int = -1,
-                 use_noise_cluster: bool = True,
+                 use_noise_cluster: bool = False,
                  dtype: torch.dtype = torch.float32,
                  eps: float = 1e-7,
                  eps_is_relative: bool = True):
@@ -181,8 +181,6 @@ class EMGenerator(GMMGenerator):
             # Maximization -> update GM-data
             EMTools.maximization(points_rep, responsibilities, gm_data, running, eps,
                                  self._em_step_gaussians_subbatchsize, self._em_step_points_subbatchsize)
-
-            print("Noise Weight: ", gm_data.get_noise_weight())
 
         # Create final mixtures
         final_gm = gm_data.pack_mixture()

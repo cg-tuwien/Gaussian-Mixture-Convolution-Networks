@@ -164,9 +164,6 @@ class EckartGeneratorSP(GMMGenerator):
                 loss = llh_loss_calc.calculate_score_packed(pcbatch, mixture)
                 assert not torch.isinf(loss).any()
 
-                if loss.isnan().any():
-                    loss = llh_loss_calc.calculate_score_packed(pcbatch, mixture)
-
                 # weight responsibility
                 weighted_responsibilities = pwf_per_gaussian * responsibilities
 
@@ -604,8 +601,8 @@ class EckartGeneratorSP(GMMGenerator):
             # Checks if given covariances are valid, only then they are taken over
             invcovs = mat_tools.inverse(covariances).contiguous()
             relcovs = EMTools.find_valid_matrices(covariances, invcovs)
-            if (~relcovs).sum() != 0:
-                print("ditching ", (~relcovs).sum().item(), " items")
+            # if (~relcovs).sum() != 0:
+            #     print("ditching ", (~relcovs).sum().item(), " items")
             jcovariances = self.covariances[:, :, j_start:j_end]
             jcovariances[relcovs] = covariances[relcovs]
             self.covariances[:, :, j_start:j_end] = jcovariances

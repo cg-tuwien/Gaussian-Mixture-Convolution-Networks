@@ -5,7 +5,7 @@ import torch.utils.tensorboard
 import os
 import gmc.mixture as gm
 
-from gmc.cpp.gm_visualizer import GMVisualizer, GmVisColorRangeMode, GmVisColoringRenderMode
+from gmc.cpp.gm_vis.gm_vis import GMVisualizer, GmVisColorRangeMode, GmVisColoringRenderMode
 from .scaler import Scaler
 from prototype_pcfitting import data_loading
 
@@ -29,8 +29,7 @@ class GMLogger:
                  log_gm: int = 0,
                  pointclouds: torch.Tensor = None,
                  scaler: Scaler = None,
-                 scale_up_losses: bool = True,
-                 log_seperate_directories: bool = True):
+                 scale_up_losses: bool = True):
         # Constructor. Parameters:
         #   names: List[str]
         #       List of identifiers. There should be a identifier for each batch entry.
@@ -64,8 +63,6 @@ class GMLogger:
         #       corresponding point cloud batch. (in original scale!!!)
         #   scaler: Scaler
         #       Needs to be set for everything except loss logging. The scaler for upscaling the given GMMs.
-        #   log_seperate_directories: bool
-        #       If True, each generator has it's own directory.
 
         # Prepare Tensorboard Log Data
         self._log_rendering_tb = log_rendering_tb
@@ -76,18 +73,17 @@ class GMLogger:
         for i in range(len(names)):
             names[i] = names[i].replace("/", "-").replace("\\", "-")
 
-        if log_seperate_directories:
-            log_prefix += "/"
-        else:
-            log_prefix += "-"
+        log_prefix += "/"
 
         if log_rendering_tb > 0:
             self._visualizer = GMVisualizer(False, 500, 500)
             self._visualizer.set_camera_auto(True)
             if pointclouds is not None:
                 self._visualizer.set_pointclouds(pointclouds.cpu())
-            self._visualizer.set_ellipsoid_coloring(GmVisColoringRenderMode.COLOR_WEIGHT,
-                                                    GmVisColorRangeMode.RANGE_MINMAX)
+            self._visualizer.set_ellipsoids_rendering(True, True)
+            self._visualizer.set_ellipsoids_colormode(GmVisColoringRenderMode.COLOR_WEIGHT)
+            self._visualizer.set_ellipsoids_rangemode(GmVisColorRangeMode.RANGE_MINMAX)
+            self._visualizer.set_density_rendering(True)
 
         if log_rendering_tb > 0 or log_loss_tb > 0:
             self._tbwriters = []
@@ -138,11 +134,11 @@ class GMLogger:
         else:
             running_idcs = torch.nonzero(running, as_tuple=False)
 
-        if self._log_loss_console:
+        if self._log_loss_console > 0 and iteration % self._log_loss_console == 0:
             for b in running_idcs:
                 print(f"Iteration {iteration}. Loss of GM {self._names[b]}: {losses[b].item()}")
 
-        if self._log_loss_tb > 0 and iteration & self._log_loss_tb == 0:
+        if self._log_loss_tb > 0 and iteration % self._log_loss_tb == 0:
             for i in running_idcs:
                 self._tbwriters[i].add_scalar("Loss", losses[i].item(), iteration)
                 self._tbwriters[i].flush()

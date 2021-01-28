@@ -39,7 +39,7 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> cuda_bvh_forward(const t
         assert (device_of(mixture).has_value());
         device_guard.set_device(device_of(mixture).value());
     }
-    return cuda_bvh_forward_impl(mixture, xes);
+    return cuda_bvh_forward_impl(mixture, xes, {});
 }
 
 std::tuple<torch::Tensor, torch::Tensor> cuda_bvh_backward(const torch::Tensor& grad_output,
