@@ -1,12 +1,15 @@
 
 import prototype_pcfitting.data_loading as data_loading
+import gmc.mixture
 import gmc.cpp.gm_vis.gm_vis as gm_vis
+import matplotlib
 import matplotlib.pyplot as plt
+matplotlib.use('TkAgg') # Backend Qt5Agg makes problems when using GMVis, so rather use TkAgg or something else
 import time
 
 # Example Data. One pointcloud and one mixture, although the same could be done with batches.
 pointcloud = data_loading.load_pc_from_off("sample-pc.off")
-mixture = data_loading.read_gm_from_ply("sample-gm.ply", False)
+mixture = gmc.mixture.read_gm_from_ply("sample-gm.ply")
 
 ###############################################################
 #
@@ -14,7 +17,7 @@ mixture = data_loading.read_gm_from_ply("sample-gm.ply", False)
 # The onetime functions provide the easiest access, however they
 # take significantly longer than reusing an existing GMVisualizer-object.
 # Here are taken measurements for each example-operation:
-# - onetime_density_render (normal):        ~180s
+# - onetime_density_render (normal):        ~180ms
 # - onetime_density_render (logarithmic):   ~180ms
 # - onetime_ellipsoids_render:              ~175ms
 # - creation of reusable GMVis-object:      ~117ms
@@ -24,10 +27,6 @@ mixture = data_loading.read_gm_from_ply("sample-gm.ply", False)
 # - finalization of GMvis-object:           ~ 32ms
 # The first time we use the gm_vis-functionality, we have an
 # additional time overhead of ~270ms.
-#
-# Important note: To use gm_vis.py from any path, the gmc-build-
-# process has to be started first. Apparently something happens
-# in there to the search path for modules.
 #
 ###############################################################
 
@@ -41,8 +40,6 @@ mixture = data_loading.read_gm_from_ply("sample-gm.ply", False)
 ###
 # In the first part of this file, the usage of GMVis is displayed.
 # The second part displays the results.
-# GMVis and Matplotlib seem to not work well together (apparently both use Qt).
-# Therefore all GMVis renderings are done before displaying the result.
 # All render functions return an np.array of size (batch_size, n_rendermethods, height, width, 4).
 ###
 

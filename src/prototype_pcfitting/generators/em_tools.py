@@ -295,8 +295,8 @@ class EMTools:
 
             invcovs = mat_tools.inverse(covariances).contiguous()
             relcovs = EMTools.find_valid_matrices(covariances, invcovs)
-            if (~relcovs).sum() != 0:
-                print("ditching ", (~relcovs).sum().item(), " items")
+            # if (~relcovs).sum() != 0:
+            #     print("ditching ", (~relcovs).sum().item(), " items")
             runningcovs = self._covariances[running]
             runningcovs[relcovs] = covariances[relcovs]
             self._covariances[running] = runningcovs

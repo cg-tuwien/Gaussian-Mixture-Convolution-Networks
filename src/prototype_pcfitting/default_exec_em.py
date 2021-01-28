@@ -12,8 +12,8 @@ model_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_vartest/
 # Path where to store the sampled pointclouds
 genpc_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_vartest/pointclouds"
 # Path where to store the generated mixtures
-# Are stored as .gma.ply-files (can be read in via gmc.mixture.read_gm_from_ply)
-# And as .torch-files (can be read in as torch.read)
+# Are stored as .gma.ply-files (can be read in via gmc.mixture.read_gm_from_ply(path))
+# And as .torch-files (can be read in with torch.load)
 gengmm_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_vartest/gmms"
 
 # Define Point Count (Samples), Gaussian Count and Batch Size (how many models to process at once)
@@ -31,7 +31,7 @@ generators = [
 generator_identifiers = ["EM"]
 
 # Read in Name
-training_name = input('Name for this training (or empty for auto): ')
+training_name = input('Name for this fitting (or empty for auto): ')
 if training_name == '':
     training_name = f'fitPointcloud_{datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}'
     print(training_name)

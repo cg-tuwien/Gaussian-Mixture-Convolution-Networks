@@ -579,8 +579,8 @@ class EckartGeneratorHP(GMMGenerator):
         def set_covariances_where_valid(self, j_start: int, j_end: int, covariances: torch.Tensor):
             invcovs = mat_tools.inverse(covariances).contiguous()
             relcovs = EMTools.find_valid_matrices(covariances, invcovs)
-            if (~relcovs).sum() != 0:
-                print("ditching ", (~relcovs).sum().item(), " items")
+            # if (~relcovs).sum() != 0:
+            #     print("ditching ", (~relcovs).sum().item(), " items")
             jcovariances = self.covariances[:, :, j_start:j_end]
             jcovariances[relcovs] = covariances[relcovs]
             self.covariances[:, :, j_start:j_end] = jcovariances

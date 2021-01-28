@@ -528,7 +528,7 @@ def write_gm_to_ply(m_weights: Tensor, m_positions: Tensor, m_covariances: Tenso
     file.close()
 
 
-def read_gm_from_ply(filename: str, ismodel: bool, device='cuda') -> Tensor:
+def read_gm_from_ply(filename: str, ismodel: bool = False, device='cuda') -> Tensor:
     # Reads a Gaussian Mixture from a ply-file
     # The parameter "ismodel" defines whether the weights in the file represent amplitudes (False) or priors (True)
     # The weights of the returned GM are amplitudes.

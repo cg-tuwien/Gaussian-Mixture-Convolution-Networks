@@ -157,7 +157,7 @@ __host__ __device__ __forceinline__ T atomicCAS(T *addr, T compare, T val) {
 #else
     // undefined, but works on gcc 10.2, 9.3, clang 10, 11, and msvc 19.27
     // https://godbolt.org/z/fGK77j
-    assert(detail::is_aligned(std::max(sizeof(T), 4ul), addr));   // afaik *addr must be aligned
+    assert(detail::is_aligned(std::max(sizeof(T), (size_t)4ul), addr));   // afaik *addr must be aligned
     auto d = reinterpret_cast<std::atomic_int32_t*>(addr);
     d->compare_exchange_strong(compare, val);
     return compare;
