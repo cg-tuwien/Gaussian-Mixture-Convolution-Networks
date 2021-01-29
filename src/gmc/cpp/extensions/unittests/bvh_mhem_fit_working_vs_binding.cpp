@@ -80,9 +80,9 @@ void runTest(const std::vector<std::pair<torch::Tensor, torch::Tensor>>& test_ca
 
                 auto similar = are_similar(a, b, threshold);
                 if (!similar) {
-                    std::cout << "fitting_binding: " << fitting_binding << std::endl;
-                    std::cout << "fitting: " << fitting << std::endl;
-                    std::cout << "i = " << i << "; difference: " << a << " - " << b << " = " << a - b << std::endl;
+//                    std::cout << "fitting_binding: " << fitting_binding << std::endl;
+//                    std::cout << "fitting: " << fitting << std::endl;
+//                    std::cout << "i = " << i << "; difference: " << a << " - " << b << " = " << a - b << std::endl;
                     WARN(std::string("forward difference: ") + std::to_string(a) + " - " + std::to_string(b) + " = " + std::to_string(a - b));
                 }
                 REQUIRE(similar);
