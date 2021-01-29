@@ -26,12 +26,12 @@ class EvaluateInversed(torch.autograd.Function):
         if not xes.is_contiguous():
             xes = xes.contiguous()
 
-        #if mixture.is_cuda:
-        #    output = bindings.cuda_bvh_forward(mixture, xes)
-        #    ctx.save_for_backward(mixture, xes, *output)
-        #else:
-        output = bindings.parallel_forward(mixture, xes)
-        ctx.save_for_backward(mixture, xes, *output)
+        if mixture.is_cuda:
+           output = bindings.cuda_bvh_forward(mixture, xes)
+           ctx.save_for_backward(mixture, xes, *output)
+        else:
+            output = bindings.parallel_forward(mixture, xes)
+            ctx.save_for_backward(mixture, xes, *output)
 
         return output[0]
 
@@ -40,12 +40,12 @@ class EvaluateInversed(torch.autograd.Function):
         if not grad_output.is_contiguous():
             grad_output = grad_output.contiguous()
 
-        #if grad_output.is_cuda:
-        #    mixture, xes, *output = ctx.saved_tensors
-        #    grad_mixture, grad_xes = bindings.cuda_bvh_backward(grad_output, mixture, xes, output, ctx.needs_input_grad[0], ctx.needs_input_grad[1])
-        #else:
-        mixture, xes, *output = ctx.saved_tensors
-        grad_mixture, grad_xes = bindings.parallel_backward(grad_output, mixture, xes, output, ctx.needs_input_grad[0], ctx.needs_input_grad[1])
+        if grad_output.is_cuda:
+           mixture, xes, *output = ctx.saved_tensors
+           grad_mixture, grad_xes = bindings.cuda_bvh_backward(grad_output, mixture, xes, output, ctx.needs_input_grad[0], ctx.needs_input_grad[1])
+        else:
+            mixture, xes, *output = ctx.saved_tensors
+            grad_mixture, grad_xes = bindings.parallel_backward(grad_output, mixture, xes, output, ctx.needs_input_grad[0], ctx.needs_input_grad[1])
 
         return grad_mixture, grad_xes
 
