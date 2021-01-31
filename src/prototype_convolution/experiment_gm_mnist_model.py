@@ -11,7 +11,8 @@ from torch.utils.tensorboard import SummaryWriter as TensorboardWriter
 
 import prototype_convolution.config
 import gmc.mixture as gm
-import prototype_convolution.gm_modules as gm_modules
+import gmc.modules as gmc_modules
+import prototype_convolution.modules as prototype_modules
 
 
 class Net(nn.Module):
@@ -22,7 +23,7 @@ class Net(nn.Module):
                  gmcn_config: prototype_convolution.config = prototype_convolution.config):
         super(Net, self).__init__()
         self.storage_path = gmcn_config.data_base_path / "weights" / f"mnist_gmcnet_{name}.pt"
-        # reference_fitter = gm_modules.generate_default_fitting_module
+        # reference_fitter = gmc_modules.generate_default_fitting_module
         n_in_g = gmcn_config.mnist_n_in_g
         n_layers_1 = gmcn_config.mnist_n_layers_1
         n_out_g_1 = gmcn_config.mnist_n_out_g_1
@@ -37,34 +38,34 @@ class Net(nn.Module):
             bias_0 = -0.1
 
         self.biases = torch.nn.ParameterList()
-        self.gmc1 = gm_modules.GmConvolution(gmcn_config, n_layers_in=1, n_layers_out=n_layers_1, n_kernel_components=n_kernel_components,
-                                             position_range=2, covariance_range=0.5,
-                                             learn_positions=learn_positions, learn_covariances=learn_covariances,
-                                             weight_sd=0.4)
+        self.gmc1 = gmc_modules.Convolution(gmcn_config.convolution_config, n_layers_in=1, n_layers_out=n_layers_1, n_kernel_components=n_kernel_components,
+                                            position_range=2, covariance_range=0.5,
+                                            learn_positions=learn_positions, learn_covariances=learn_covariances,
+                                            weight_sd=0.4)
         self.biases.append(torch.nn.Parameter(torch.zeros(1, n_layers_1) + bias_0))
-        # self.maxPool1 = gm_modules.MaxPooling(10)
+        # self.maxPool1 = gmc_modules.MaxPooling(10)
 
-        self.gmc2 = gm_modules.GmConvolution(gmcn_config, n_layers_in=n_layers_1, n_layers_out=n_layers_2, n_kernel_components=n_kernel_components,
-                                             position_range=4, covariance_range=2,
-                                             learn_positions=learn_positions, learn_covariances=learn_covariances,
-                                             weight_sd=0.04)
+        self.gmc2 = gmc_modules.Convolution(gmcn_config.convolution_config, n_layers_in=n_layers_1, n_layers_out=n_layers_2, n_kernel_components=n_kernel_components,
+                                            position_range=4, covariance_range=2,
+                                            learn_positions=learn_positions, learn_covariances=learn_covariances,
+                                            weight_sd=0.04)
         self.biases.append(torch.nn.Parameter(torch.zeros(1, n_layers_2) + bias_0))
-        # self.maxPool2 = gm_modules.MaxPooling(10)
+        # self.maxPool2 = gmc_modules.MaxPooling(10)
 
-        self.gmc3 = gm_modules.GmConvolution(gmcn_config, n_layers_in=n_layers_2, n_layers_out=10, n_kernel_components=n_kernel_components,
-                                             position_range=8, covariance_range=4,
-                                             learn_positions=learn_positions, learn_covariances=learn_covariances,
-                                             weight_sd=0.025)
+        self.gmc3 = gmc_modules.Convolution(gmcn_config.convolution_config, n_layers_in=n_layers_2, n_layers_out=10, n_kernel_components=n_kernel_components,
+                                            position_range=8, covariance_range=4,
+                                            learn_positions=learn_positions, learn_covariances=learn_covariances,
+                                            weight_sd=0.025)
         self.biases.append(torch.nn.Parameter(torch.zeros(1, 10) + bias_0))
-        # self.maxPool3 = gm_modules.MaxPooling(2)
+        # self.maxPool3 = gmc_modules.MaxPooling(2)
 
-        self.bn0 = gm_modules.BatchNorm(gmcn_config, per_mixture_norm=True)
-        self.bn = gm_modules.BatchNorm(gmcn_config, per_mixture_norm=False)
+        self.bn0 = prototype_modules.BatchNorm(gmcn_config, per_mixture_norm=True)
+        self.bn = prototype_modules.BatchNorm(gmcn_config, per_mixture_norm=False)
 
         self.relus = torch.nn.modules.ModuleList()
-        self.relus.append(gm_modules.ReLUFitting(gmcn_config, layer_id="1c", n_layers=n_layers_1, n_input_gaussians=n_in_g * n_kernel_components, n_output_gaussians=n_out_g_1))
-        self.relus.append(gm_modules.ReLUFitting(gmcn_config, layer_id="2c", n_layers=n_layers_2, n_input_gaussians=n_out_g_1 * n_layers_1 * n_kernel_components, n_output_gaussians=n_out_g_2))
-        self.relus.append(gm_modules.ReLUFitting(gmcn_config, layer_id="3c", n_layers=10, n_input_gaussians=n_out_g_2 * n_layers_2 * n_kernel_components, n_output_gaussians=n_out_g_3))
+        self.relus.append(gmc_modules.ReLUFitting(gmcn_config.relu_config, layer_id="1c", n_layers=n_layers_1, n_input_gaussians=n_in_g * n_kernel_components, n_output_gaussians=n_out_g_1))
+        self.relus.append(gmc_modules.ReLUFitting(gmcn_config.relu_config, layer_id="2c", n_layers=n_layers_2, n_input_gaussians=n_out_g_1 * n_layers_1 * n_kernel_components, n_output_gaussians=n_out_g_2))
+        self.relus.append(gmc_modules.ReLUFitting(gmcn_config.relu_config, layer_id="3c", n_layers=10, n_input_gaussians=n_out_g_2 * n_layers_2 * n_kernel_components, n_output_gaussians=n_out_g_3))
 
         self.timings = dict()
         self.last_time = time.time()

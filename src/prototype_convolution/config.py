@@ -1,7 +1,8 @@
 import pathlib
 import os
 
-import prototype_convolution.fitting
+import gmc.fitting
+import gmc.modules
 
 source_dir = os.path.dirname(__file__)
 data_base_path = pathlib.Path(f"{source_dir}/../../data")
@@ -40,5 +41,9 @@ BIAS_TYPE_NORMAL = 1
 BIAS_TYPE_NEGATIVE_SOFTPLUS = 2
 bias_type = BIAS_TYPE_NORMAL
 
-fitting_method = prototype_convolution.fitting.fixed_point_and_mhem
-fitting_config = prototype_convolution.fitting.Config()
+relu_config: gmc.modules.ReLUFittingConfig = gmc.modules.ReLUFittingConfig()
+convolution_config: gmc.modules.ConvolutionConfig = gmc.modules.ConvolutionConfig()
+
+fitting_test_data_store_at_epoch = 10000
+fitting_test_data_store_n_batches = 10
+fitting_test_data_store_path = "/home/madam/Documents/work/tuw/gmc_net/data/fitting_input"

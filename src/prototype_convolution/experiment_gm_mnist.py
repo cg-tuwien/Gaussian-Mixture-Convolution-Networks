@@ -1,30 +1,22 @@
 from __future__ import print_function
-import argparse
 import datetime
-import random
 import time
-import math
-import pathlib
 
 import torch
-import torch.nn as nn
+import torch.jit
 import torch.nn.functional as F
 import torch.optim as optim
 import torch.optim.optimizer as Optimizer
 import torch.utils.data
 import torch.utils.tensorboard
 import typing
-from torchvision import datasets, transforms
-from torch.optim.lr_scheduler import StepLR
 
 import gmc.mixture as gm
-# import fitting_net
-import prototype_convolution.gm_modules as gm_modules
 import prototype_convolution.experiment_gm_mnist_model as experiment_gm_mnist_model
-import prototype_convolution.fitting
+import gmc.fitting
+import prototype_convolution.config
 
 # based on https://github.com/pytorch/examples/blob/master/mnist/main.py
-import gmc.image_tools as madam_imagetools
 
 # torch.autograd.set_detect_anomaly(True)
 
@@ -67,8 +59,7 @@ def render_debug_images_to_tensorboard(model, epoch, tensor_board_writer):
 
 
 def train(args, model: experiment_gm_mnist_model.Net, device: torch.device, train_loader: torch.utils.data.DataLoader,
-          kernel_optimiser: Optimizer, epoch: int, tensor_board_writer: torch.utils.tensorboard.SummaryWriter = None):
-
+          kernel_optimiser: Optimizer, epoch: int, tensor_board_writer: torch.utils.tensorboard.SummaryWriter, config: prototype_convolution.config):
     model.train()
     start_time = time.perf_counter()
     for batch_idx, (data, target) in enumerate(train_loader):
@@ -114,7 +105,7 @@ def train(args, model: experiment_gm_mnist_model.Net, device: torch.device, trai
             # tensor_board_writer.add_scalar("04. mnist training regularisation loss", regularisation_loss.item(), step)
 
             for i, relu in enumerate(model.relus):
-                mse = prototype_convolution.fitting.mse(*relu.last_in, *relu.last_out)
+                mse = gmc.fitting.mse(*relu.last_in, *relu.last_out)
                 tensor_board_writer.add_scalar(f"05.1 model layer {i} relu mse", mse, step)
 
             for name, timing in model.timings.items():
@@ -133,9 +124,30 @@ def train(args, model: experiment_gm_mnist_model.Net, device: torch.device, trai
             # print(f"experiment_gm_mnist.tain: saving optimiser state to {model.storage_path}.optimiser")
             # torch.save(kernel_optimiser.state_dict(), f"{model.storage_path}.optimiser")
 
-        # if epoch == 1 and batch_idx < 10:
-        #     for i, relu in enumerate(model.relus):
-        #         gm.save(relu.last_in[0], f"fitting_input/fitting_input_batch{batch_idx}_netlayer{i}", relu.last_in[1].detach().cpu())
+        if epoch == config.fitting_test_data_store_at_epoch and batch_idx < config.fitting_test_data_store_n_batches:
+            full_input = dict()
+            after_fixed_point = dict()
+            for i, relu in enumerate(model.relus):
+                full_input[f"{i}"] = relu.last_in[0].detach().cpu()
+                full_input[f"{i}_bias"] = relu.last_in[1].detach().cpu()
+
+                fp_fitting, fp_const, _ = prototype_convolution.fitting.fixed_point_only(relu.last_in[0].detach(), relu.last_in[1].detach(), n_components=-1)
+                after_fixed_point[f"{i}"] = fp_fitting.cpu()
+                after_fixed_point[f"{i}_constant"] = fp_const.cpu()
+                # gm.save(relu.last_in[0], f"fitting_input/fitting_input_batch{batch_idx}_netlayer{i}", relu.last_in[1].detach().cpu())
+
+            class Container(torch.nn.Module):
+                def __init__(self, my_values):
+                    super().__init__()
+                    for key in my_values:
+                        setattr(self, key, my_values[key])
+
+            c = torch.jit.script(Container(full_input))
+            c.save(f"{config.fitting_test_data_store_path}/full_input_batch{batch_idx}.pt")
+
+            c = torch.jit.script(Container(after_fixed_point))
+            c.save(f"{config.fitting_test_data_store_path}/after_fixed_point_batch{batch_idx}.pt")
+
     end_time = time.perf_counter()
 
     tensor_board_writer.add_scalar("10. batch_duration", end_time - start_time, step)
@@ -198,7 +210,7 @@ def experiment(device: str = 'cuda', n_epochs: int = 20, kernel_learning_rate: f
     for epoch in range(n_epochs):
         model.set_position_learning(epoch >= learn_positions_after)
         model.set_covariance_learning(epoch >= learn_covariances_after)
-        train(args, model, device, train_loader, kernel_optimiser=kernel_optimiser, epoch=epoch, tensor_board_writer=tensor_board_writer)
+        train(args, model, device, train_loader, kernel_optimiser=kernel_optimiser, epoch=epoch, tensor_board_writer=tensor_board_writer, config=gmcn_config)
         test(args, model, device, test_loader, epoch, tensor_board_writer=tensor_board_writer)
         # scheduler.step()
 

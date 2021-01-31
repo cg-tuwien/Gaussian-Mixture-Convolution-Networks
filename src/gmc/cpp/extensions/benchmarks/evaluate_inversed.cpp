@@ -56,9 +56,9 @@ void run(torch::Tensor mixture, const std::string& name, ForwardFun forward_fun,
 }
 
 
-TEMPLATE_TEST_CASE("evaluate inversed forward and backward benchmark parallel", "[evaluate_inversed]", use_cuda_type, use_cpu_type) {
+TEMPLATE_TEST_CASE("evaluate inversed forward and backward benchmark parallel", "[evaluate_inversed]", use_cuda_type) {
     using namespace torch::indexing;
-    torch::jit::script::Module container = torch::jit::load("/home/madam/Documents/work/tuw/gmc_net/data/fitting_input/fitting_input_batch0.pt");
+    torch::jit::script::Module container = torch::jit::load("/home/madam/Documents/work/tuw/gmc_net/data/fitting_input/after_fixed_point_batch0.pt");
     auto list = container.attributes();
 
     for (uint i = 0; i < N_CONVOLUTION_LAYERS; i++) {
@@ -67,7 +67,7 @@ TEMPLATE_TEST_CASE("evaluate inversed forward and backward benchmark parallel", 
 };
 
 TEST_CASE("evaluate inversed forward and backward benchmark bvh", "[evaluate_inversed]") {
-    torch::jit::script::Module container = torch::jit::load("/home/madam/Documents/work/tuw/gmc_net/data/fitting_input/fitting_input_batch0.pt");
+    torch::jit::script::Module container = torch::jit::load("/home/madam/Documents/work/tuw/gmc_net/data/fitting_input/after_fixed_point_batch0.pt");
     auto list = container.attributes();
 
     for (uint i = 0; i < N_CONVOLUTION_LAYERS; i++) {

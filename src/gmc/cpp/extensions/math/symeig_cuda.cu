@@ -39,7 +39,7 @@ std::tuple<torch::Tensor, torch::Tensor> symeig_cuda_forward_impl(const torch::T
     using namespace torch::indexing;
     // currently only 2x2 matrices
     TORCH_CHECK(matrices.sizes().size() >= 2)
-    TORCH_CHECK(matrices.size(-1) == 2 && matrices.size(-2) == 2)
+    TORCH_CHECK((matrices.size(-1) == 2 && matrices.size(-2) == 2) || (matrices.size(-1) == 3 && matrices.size(-2) == 3))
     TORCH_CHECK(matrices.device().is_cuda(), "this one is just for cuda..")
 
     const auto original_shape = matrices.sizes().vec();
@@ -61,8 +61,8 @@ std::tuple<torch::Tensor, torch::Tensor> symeig_cuda_forward_impl(const torch::T
 
         if (n_dims == 2)
             kernel_forward<scalar_t, 2><<<dimGrid, dimBlock>>>(matrices_a, eigenvalues_a, eigenvectors_a, n_batch);
-//        else
-//            execute_parallel_forward<scalar_t, 3>(mixture_a, xes_a, sum_a, n);
+        else
+            kernel_forward<scalar_t, 3><<<dimGrid, dimBlock>>>(matrices_a, eigenvalues_a, eigenvectors_a, n_batch);
     }));
 //    cudaDeviceSynchronize();
     auto eigenvalues_shape = original_shape;

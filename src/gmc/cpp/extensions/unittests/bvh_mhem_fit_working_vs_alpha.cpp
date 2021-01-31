@@ -87,11 +87,11 @@ void runTest(const std::vector<std::pair<torch::Tensor, torch::Tensor>>& test_ca
 
                 auto similar = are_similar(a, b, threshold);
                 if (!similar) {
-                    std::cout << "target: " << forward_out.target << std::endl;
-                    std::cout << "bvh : " << forward_out.bvh_nodes << std::endl;
-                    std::cout << "reference bvh : " << reference_forward_out.bvh_nodes << std::endl;
-                    std::cout << "fitting: " << forward_out.fitting << std::endl;
-                    std::cout << "reference: " << reference_forward_out.fitting << std::endl;
+//                    std::cout << "target: " << forward_out.target << std::endl;
+//                    std::cout << "bvh : " << forward_out.bvh_nodes << std::endl;
+//                    std::cout << "reference bvh : " << reference_forward_out.bvh_nodes << std::endl;
+//                    std::cout << "fitting: " << forward_out.fitting << std::endl;
+//                    std::cout << "reference: " << reference_forward_out.fitting << std::endl;
 //                    std::cout << "i = " << i << "; difference: " << a << " - " << b << " = " << a - b << std::endl;
                     WARN(std::string("forward difference: ") + std::to_string(a) + " - " + std::to_string(b) + " = " + std::to_string(a - b));
 //                    WARN(QString("forward difference: %1 - %2 = %3").arg(a).arg(b).arg(a-b).toStdString());
@@ -122,7 +122,7 @@ void runTest(const std::vector<std::pair<torch::Tensor, torch::Tensor>>& test_ca
                     std::cout << "gradient target: " << gradient << std::endl;
                     std::cout << "gradient target (reference): " << gradient_reference << std::endl;
                     std::cout << "gradient_fitting: " << gradient_fitting << std::endl;
-//                    std::cout << "i = " << i << "; difference: " << a << " - " << b << " = " << a - b << std::endl;
+                    std::cout << "i = " << i << "; difference: " << a << " - " << b << " = " << a - b << std::endl;
                     WARN(QString("backward difference: %1 - %2 = %3").arg(a).arg(b).arg(a-b).toStdString());
 //                    WARN(std::string("backward difference: ") + std::to_string(a) + " - " + std::to_string(b) + " = " + std::to_string(a - b));
                 }

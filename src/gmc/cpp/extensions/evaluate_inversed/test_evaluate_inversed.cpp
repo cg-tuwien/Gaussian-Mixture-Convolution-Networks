@@ -88,7 +88,7 @@ int main(int argc, char *argv[]) {
 
     cudaDeviceSynchronize();
     for (uint i = 0; i < N_BATCHES; ++i) {
-        torch::jit::script::Module container = torch::jit::load("/home/madam/Documents/work/tuw/gmc_net/data/fitting_input/fitting_input_batch" + std::to_string(i) + ".pt");
+        torch::jit::script::Module container = torch::jit::load("/home/madam/Documents/work/tuw/gmc_net/data/fitting_input/after_fixed_point_batch" + std::to_string(i) + ".pt");
         auto list = container.attributes();
 
         for (uint i = 0; i < N_CONVOLUTION_LAYERS; i++) {

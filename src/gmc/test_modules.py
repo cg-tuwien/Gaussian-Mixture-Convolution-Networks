@@ -1,13 +1,10 @@
 import unittest
 import torch
 import numpy as np
-import numpy.random as nprnd
-import numpy.linalg as npla
 import scipy.signal
-import matplotlib.pyplot as plt
 
 import gmc.mixture as gm
-import gm_modules
+import gmc.modules as gmc
 
 
 class TestGM(unittest.TestCase):
@@ -18,7 +15,7 @@ class TestGM(unittest.TestCase):
         n_layers_in = 4
         n_layers_out = 5
         gm_in = gm.generate_random_mixtures(n_batches, n_layers_in, 3, n_dims=2, pos_radius=1, cov_radius=0.25)
-        conv_layer = gm_modules.GmConvolution(n_layers_in = n_layers_in, n_layers_out = n_layers_out, n_dims=2, position_range = 1, covariance_range = 0.25, weight_sd=1)
+        conv_layer = gmc.Convolution(n_layers_in = n_layers_in, n_layers_out = n_layers_out, n_dims=2, position_range = 1, covariance_range = 0.25, weight_sd=1)
 
         gm_out = conv_layer(gm_in)
         samples_per_unit = 50

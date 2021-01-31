@@ -49,34 +49,46 @@ fastexp (float p)
 
 }
 
+template <typename T> __forceinline__ __device__ __host__
+T sq(T v) {
+    return v * v;
+}
+
 #ifdef __CUDA_ARCH__
-__forceinline__ __device__ float max(float a, float b) {
+__forceinline__ __device__
+float max(float a, float b) {
     return ::fmaxf(a, b);
 }
-__forceinline__ __device__ double max(double a, double b) {
+__forceinline__ __device__
+double max(double a, double b) {
     return ::fmax(a, b);
 }
-template <typename T>
-__forceinline__ __device__ T max(T a, T b) {
+template <typename T> __forceinline__ __device__
+T max(T a, T b) {
     return ::max(a, b);
 }
-__forceinline__ __device__ float min(float a, float b) {
+__forceinline__ __device__
+float min(float a, float b) {
     return ::fminf(a, b);
 }
-__forceinline__ __device__ float min(double a, double b) {
+__forceinline__ __device__
+double min(double a, double b) {
     return ::fmin(a, b);
 }
-template <typename T>
-__forceinline__ __device__ T min(T a, T b) {
+template <typename T> __forceinline__ __device__
+T min(T a, T b) {
     return ::min(a, b);
 }
-__forceinline__ __device__ float exp(float x) {
+__forceinline__ __device__
+float exp(float x) {
     return ::expf(x);
 }
-__forceinline__ __device__ double exp(double x) {
+__forceinline__ __device__
+double exp(double x) {
     return ::exp(x);
 }
-__forceinline__ __device__ float pow(float x, float y) {
+__forceinline__ __device__
+float pow(float x, float y) {
     auto v = ::powf(x, y);
     // i'm leaving this assert in, as it can help finding surprising NaNs.
     // if fast math is in place, pow(0, 0) will give a NaN.
@@ -84,74 +96,110 @@ __forceinline__ __device__ float pow(float x, float y) {
     assert(!::isnan(v));
     return v;
 }
-__forceinline__ __device__ double pow(double x, double y) {
+__forceinline__ __device__
+double pow(double x, double y) {
     auto v = ::pow(x, y);
     assert(!::isnan(v));
     return v;
 }
 
-__forceinline__ __device__ float log(float x) {
+__forceinline__ __device__
+float log(float x) {
     return ::logf(x);
 }
-__forceinline__ __device__ double log(double x) {
+__forceinline__ __device__
+double log(double x) {
     return ::log(x);
 }
 
-__forceinline__ __device__ float sqrt(float x) {
+__forceinline__ __device__
+float sqrt(float x) {
     return ::sqrtf(x);
 }
-__forceinline__ __device__ double sqrt(double x) {
+__forceinline__ __device__
+double sqrt(double x) {
     return ::sqrt(x);
 }
 
-__forceinline__ __device__ float abs(float x) {
+__forceinline__ __device__
+float abs(float x) {
     return ::fabsf(x);
 }
-__forceinline__ __device__ double abs(double x) {
+__forceinline__ __device__
+double abs(double x) {
     return ::fabs(x);
 }
 
-template <typename T>
-__forceinline__ __device__ bool isnan(T x) {
+__forceinline__ __device__
+float acos(float x) {
+    return ::acosf(x);
+}
+__forceinline__ __device__
+double acos(double x) {
+    return ::acos(x);
+}
+
+__forceinline__ __device__
+float cos(float x) {
+    return ::cosf(x);
+}
+__forceinline__ __device__
+double cos(double x) {
+    return ::cos(x);
+}
+
+template <typename T> __forceinline__ __device__
+bool isnan(T x) {
     return ::isnan(x);
 }
 
 #else // __CUDA_ARCH__
 
-template <typename scalar_t>
-inline scalar_t max(scalar_t a, scalar_t b) {
+template <typename scalar_t> inline
+scalar_t max(scalar_t a, scalar_t b) {
     return std::max(a, b);
 }
 
-template <typename scalar_t>
-inline scalar_t min(scalar_t a, scalar_t b) {
+template <typename scalar_t> inline
+scalar_t min(scalar_t a, scalar_t b) {
     return std::min(a, b);
 }
 
-template <typename scalar_t>
-inline scalar_t exp(scalar_t x) {
+template <typename scalar_t> inline
+scalar_t exp(scalar_t x) {
     return std::exp(x);
 }
 
-template <typename scalar_t>
-inline scalar_t pow(scalar_t x, scalar_t y) {
+template <typename scalar_t> inline
+scalar_t pow(scalar_t x, scalar_t y) {
     return std::pow(x, y);
 }
 
-template <typename scalar_t>
-inline scalar_t log(scalar_t x) {
+template <typename scalar_t> inline
+scalar_t log(scalar_t x) {
     return std::log(x);
 }
 
-template <typename scalar_t>
-inline scalar_t sqrt(scalar_t x) {
+template <typename scalar_t> inline
+scalar_t sqrt(scalar_t x) {
     return std::sqrt(x);
 }
 
-template <typename scalar_t>
-inline scalar_t abs(scalar_t x) {
+template <typename scalar_t> inline
+scalar_t abs(scalar_t x) {
     return std::abs(x);
 }
+
+template <typename scalar_t> inline
+scalar_t acos(scalar_t x) {
+    return std::acos(x);
+}
+
+template <typename scalar_t> inline
+scalar_t cos(scalar_t x) {
+    return std::cos(x);
+}
+
 
 template <typename T>
 inline bool isnan(T x) {
