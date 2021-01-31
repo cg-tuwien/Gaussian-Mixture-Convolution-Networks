@@ -149,7 +149,7 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> cuda_bvh_forward_impl(co
 //    TORCH_CHECK(mixture.device().is_cuda(), "mixture must be a CUDA tensor");
     TORCH_CHECK(n.batch * n.layers < 65535, "n_batch x n_layers must be smaller than 65535 for CUDA")
     TORCH_CHECK(n.components > 1, "number of components must be greater 1 for this implementation")
-    TORCH_CHECK(n.dims == 2, "atm only 2d gaussians")
+    TORCH_CHECK(n.dims == 2 || n.dims == 3, "atm only 2d and 3d gaussians")
     TORCH_CHECK(mixture.dtype() == caffe2::TypeMeta::Make<float>(), "atm only float")
 
     auto bvh = LBVH(mixture, config);
