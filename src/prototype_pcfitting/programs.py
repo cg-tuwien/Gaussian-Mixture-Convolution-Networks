@@ -3,7 +3,7 @@ import gc
 import time
 
 import torch
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 
 from gmc import mixture, mat_tools
 from prototype_pcfitting import GMMGenerator, PCDatasetIterator, Scaler, GMLogger, ErrorFunction, data_loading
@@ -11,18 +11,18 @@ from prototype_pcfitting.generators.em_tools import EMTools
 
 
 def execute_fitting(training_name: str, n_points: int, batch_size: int, generators: List[GMMGenerator],
-                    generator_identifiers: List[str], model_path: str, genpc_path: str, gengmm_path: str,
+                    generator_identifiers: List[str], model_path: Optional[str], genpc_path: str, gengmm_path: str,
                     formats: List[str] = None, log_path: str = None, scaling_active: bool = False,
                     scaling_interval: Tuple[float, float] = (-50.0, 50.0),
                     log_positions: int = 0, log_loss_console: int = 0,
                     log_loss_tb: int = 0, log_rendering_tb: int = 0, log_gm: int = 0,
-                    log_n_gaussians: int = 0, continuing = True):
+                    log_n_gaussians: int = 0, continuing: bool = True):
     # ---- GMM FITTING ----
     if formats is None:
         formats = [".gma.ply"]
 
     # Create Dataset Iterator and Scaler
-    dataset = PCDatasetIterator(model_path, n_points, batch_size, genpc_path)
+    dataset = PCDatasetIterator(batch_size, n_points, genpc_path, model_path)
     scaler = Scaler(active=scaling_active, interval=scaling_interval)
 
     # Iterate over Dataset
@@ -83,7 +83,8 @@ def execute_fitting_on_single_pcbatch(training_name: str, pcbatch: torch.Tensor,
                                       generator_identifiers: List[str], log_positions: int = 0,
                                       log_loss_console: int = 0, log_loss_tb: int = 0, log_rendering_tb: int = 0,
                                       log_gm: int = 0, initialgmbatch: torch.Tensor = None,
-                                      scaling_active: bool = False, scaling_interval: Tuple[float, float] = (-50.0, 50.0)):
+                                      scaling_active: bool = False,
+                                      scaling_interval: Tuple[float, float] = (-50.0, 50.0)):
     t = int(time.time())
     names = ["" + str(i + 1) for i in range(pcbatch.shape[0])]
 
@@ -132,7 +133,7 @@ def execute_evaluation(training_name: str, model_path: str, genpc_path: str, gen
                        error_function_identifiers: List[str], scaling_active: bool = False,
                        scaling_interval: Tuple[float, float] = (-50.0, 50.0)):
     # Create Dataset Iterator and Scaler
-    dataset = PCDatasetIterator(model_path, n_points, 1, genpc_path)  # Batch Size must be one!
+    dataset = PCDatasetIterator(1, n_points, genpc_path, model_path)  # Batch Size must be one!
     scaler = Scaler(active=scaling_active, interval=scaling_interval)
 
     # Iterate over GMs

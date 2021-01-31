@@ -1,6 +1,5 @@
 import os
 import torch
-import numpy as np
 from queue import SimpleQueue
 from prototype_pcfitting import data_loading
 import trimesh
@@ -15,31 +14,34 @@ class PCDatasetIterator:
     # and returned in batches. They are also stored in a directory and
     # loaded from there if the model directory has been used before.
 
-    def __init__(self, model_root: str, point_count: int, batch_size: int, pc_root: str):
+    def __init__(self, batch_size: int, point_count: int, pc_root: str, model_root: str = None):
         # Constructor
-        # Creates a new PCDatasetIterator.
+        # Creates a new PCDatasetIterator. If model_root is given, the point clouds will be sampled
+        # from the models and stored in the folder {pc_root}/n{point_count}". If not, the point clouds
+        # will simply be read from pc_root and it's subdirectories.
         # Parameters:
-        #   model_root: str
-        #       Directory containing the models to load. Subdirectories are checked too!
-        #   point_count: int
-        #       With how many points point clouds will be sampled from the models
         #   batch_size: int
         #       How many point clouds will be returned in one batch
+        #   point_count: int
+        #       With how many points point clouds the pointclouds (will) have
         #   pc_root: str
-        #       The path to store the point clouds in. If a point cloud for a given model
-        #       has also been generated and stored in this directory. It is read from there as well,
-        #       instead of creating a new point cloud.
+        #       The path to either read the point clouds from or store the point clouds in.
+        #   model_root: str
+        #       Directory containing the models to load. Subdirectories are checked too!
         #
         self._file_queue = SimpleQueue()
         self._model_root = model_root
         self._point_count = point_count
         self._batch_size = batch_size
-        self._pc_root = os.path.join(pc_root, "n" + str(point_count))
-        for root, dirs, files in os.walk(model_root):
+        if self._model_root is None:
+            self._pc_root = pc_root
+        else:
+            self._pc_root = os.path.join(pc_root, "n" + str(point_count))
+        for root, dirs, files in os.walk(model_root if model_root is not None else pc_root):
             for name in files:
                 if name.lower().endswith(".off"):
                     path = os.path.join(root, name)
-                    relpath = path[len(model_root) + 1:]
+                    relpath = path[len(model_root if model_root is not None else pc_root) + 1:]
                     self._file_queue.put(relpath)
 
     def has_next(self) -> bool:
@@ -57,18 +59,23 @@ class PCDatasetIterator:
             if not self._file_queue.empty():
                 filename = self._file_queue.get()
                 names[i] = filename
-                objpath = os.path.join(self._model_root, filename)
-                pcpath = os.path.join(self._pc_root, filename)
-                if os.path.exists(pcpath):
-                    batch[i, :, :] = data_loading.load_pc_from_off(pcpath)[0, :, :]
+                if self._model_root is not None:
+                    objpath = os.path.join(self._model_root, filename)
+                    pcpath = os.path.join(self._pc_root, filename)
+                    if os.path.exists(pcpath):
+                        batch[i, :, :] = data_loading.load_pc_from_off(pcpath)[0, :, :]
+                    else:
+                        print("Sampling ", objpath)
+                        mesh = trimesh.load_mesh(objpath)
+                        samples, _ = trimesh.sample.sample_surface(mesh, self._point_count)
+                        data_loading.write_pc_to_off(pcpath, samples)
+                        batch[i, :, :] = torch.from_numpy(samples)
                 else:
-                    print("Sampling ", objpath)
-                    mesh = trimesh.load_mesh(objpath)
-                    bb = mesh.bounding_box
-                    samples, _ = trimesh.sample.sample_surface(mesh, self._point_count)
-                    # samples *= 100.0 / np.max(bb.primitive.extents) # Remove this line to preserve original scaling
-                    data_loading.write_pc_to_off(pcpath, samples)
-                    batch[i, :, :] = torch.from_numpy(samples)
+                    pcpath = os.path.join(self._pc_root, filename)
+                    loaded = data_loading.load_pc_from_off(pcpath)
+                    if loaded.shape[1] != self._point_count:
+                        raise Exception("There are point clouds with different point count in the given directory!")
+                    batch[i, :, :] = loaded[0, :, :]
         return batch, names
 
     def remaining_batches_count(self):

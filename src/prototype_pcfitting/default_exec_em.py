@@ -7,10 +7,10 @@ import datetime
 
 # --- CONFIGUREABLE VARIABLES ---
 # Define Paths
-# Path to model .off-files
+# Path to model .off-files (or None)
 model_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_vartest/models"
-# Path where to store the sampled pointclouds
-genpc_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_vartest/pointclouds"
+# Path where to store the sampled pointclouds (if model_path given) or where to read them from
+pc_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_vartest/pointclouds"
 # Path where to store the generated mixtures
 # Are stored as .gma.ply-files (can be read in via gmc.mixture.read_gm_from_ply(path))
 # And as .torch-files (can be read in with torch.load)
@@ -42,7 +42,7 @@ programs.execute_fitting(training_name=training_name,
                          generators=generators,
                          generator_identifiers=generator_identifiers,
                          model_path=model_path,
-                         genpc_path=genpc_path,
+                         genpc_path=pc_path,
                          gengmm_path=gengmm_path,
                          formats=[".gma.ply", ".torch"],
                          log_loss_console=20)
