@@ -54,7 +54,7 @@ class Convolution(torch.nn.modules.Module):
                 xes = torch.cat((torch.zeros(1, dtype=torch.float), torch.sin(angles)), dim=0)
                 yes = torch.cat((torch.zeros(1, dtype=torch.float), torch.cos(angles)), dim=0)
                 positions = torch.cat((xes.view(-1, 1), yes.view(-1, 1)), dim=1)
-                positions = positions.view(1, 1, n_kernel_components, 3).repeat((1, n_layers_in, 1, 1))
+                positions = positions.view(1, 1, n_kernel_components, 2).repeat((1, n_layers_in, 1, 1))
             else:
                 assert (self.n_dims == 3)
                 angles = torch.arange(0, 2 * math.pi, 2 * math.pi / (n_kernel_components - 1))
