@@ -380,8 +380,8 @@ void trickle_down_grad(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
 //        updateDebug();
 //    #endif
 
-    GPE_SHARED gpe::Array<node_index_t, 64 * 32> stack_data;
-    gpe::ParallelStack<node_index_t, 64 * 32, 0> stack{stack_data};
+    GPE_SHARED gpe::Array<node_index_t, 256 * 32> stack_data;
+    gpe::ParallelStack<node_index_t, 256 * 32, 0> stack{stack_data};
 //    stack.stack = stack_data;
     {
         gpe::Vector<node_index_t, 32> top_stack;
@@ -573,7 +573,6 @@ at::Tensor backward_impl_t(at::Tensor grad, const ForwardOutput& forward_out, co
     TORCH_CHECK(n.components > 1, "number of components must be greater 1 for this implementation")
     TORCH_CHECK(n.components < 65535, "number of components must be smaller than 65535 for morton code computation")
     TORCH_CHECK(n.dims == N_DIMS, "something wrong with dispatch")
-    TORCH_CHECK(n.dims == 2, "atm only 2d gaussians (because of eigenvector decomposition)")
     TORCH_CHECK(grad.dtype() == caffe2::TypeMeta::Make<scalar_t>(), "something wrong with dispatch, or maybe this float type is not supported.")
 
     const auto n_mixtures = n.batch * n.layers;

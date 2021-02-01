@@ -529,7 +529,6 @@ at::Tensor backward_impl_t(at::Tensor grad, const ForwardOutput& forward_out, co
     TORCH_CHECK(n.components > 1, "number of components must be greater 1 for this implementation")
     TORCH_CHECK(n.components < 65535, "number of components must be smaller than 65535 for morton code computation")
     TORCH_CHECK(n.dims == N_DIMS, "something wrong with dispatch")
-    TORCH_CHECK(n.dims == 2, "atm only 2d gaussians (because of eigenvector decomposition)")
     TORCH_CHECK(grad.dtype() == caffe2::TypeMeta::Make<scalar_t>(), "something wrong with dispatch, or maybe this float type is not supported.")
 
     const auto n_mixtures = n.batch * n.layers;

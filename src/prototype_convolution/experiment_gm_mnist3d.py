@@ -12,7 +12,7 @@ import torch.utils.tensorboard
 import typing
 
 import gmc.mixture as gm
-import prototype_convolution.experiment_gm_mnist_model as experiment_gm_mnist_model
+import prototype_convolution.experiment_gm_mnist3d_model as experiment_model
 import gmc.fitting
 import prototype_convolution.config
 
@@ -42,23 +42,39 @@ class GmMnistDataSet(torch.utils.data.Dataset):
 
     def __getitem__(self, index):
         mixture, meta = gm.load(f"{self.prefix}{index}")
-        return mixture[0], meta
+
+        n_batch = gm.n_batch(mixture)
+        n_layers = gm.n_layers(mixture)
+        n_components = gm.n_components(mixture)
+
+        weights = gm.weights(mixture)
+
+        positions = gm.positions(mixture)
+        positions3d = torch.zeros([n_batch, n_layers, n_components, 3])
+        positions3d[..., 0:2] = positions
+
+        covariances = gm.covariances(mixture)
+        covariances3d = torch.zeros([n_batch, n_layers, n_components, 3, 3])
+        covariances3d[..., 0:2, 0:2] = covariances
+        covariances3d[..., 2, 2] = 1
+
+        return gm.pack_mixture(weights, positions3d, covariances3d)[0], meta
 
 
 def render_debug_images_to_tensorboard(model, epoch, tensor_board_writer):
-    tensor_board_writer.add_image("mnist conv 1", model.gmc1.debug_render(clamp=[-0.80, 0.80]), epoch, dataformats='HWC')
-    tensor_board_writer.add_image("mnist conv 2", model.gmc2.debug_render(clamp=[-0.32, 0.32]), epoch, dataformats='HWC')
-    tensor_board_writer.add_image("mnist conv 3", model.gmc3.debug_render(clamp=[-0.20, 0.20]), epoch, dataformats='HWC')
+    tensor_board_writer.add_image("mnist conv 1", model.gmc1.debug_render3d(clamp=[-0.80, 0.80]), epoch, dataformats='HWC')
+    tensor_board_writer.add_image("mnist conv 2", model.gmc2.debug_render3d(clamp=[-0.32, 0.32]), epoch, dataformats='HWC')
+    tensor_board_writer.add_image("mnist conv 3", model.gmc3.debug_render3d(clamp=[-0.20, 0.20]), epoch, dataformats='HWC')
 
     # tensor_board_writer.add_image("mnist relu 1", model.relus[0].debug_render(position_range=[-14, -14, 42, 42], clamp=[-4 / (28 ** 2), 16.0 / (28 ** 2)]), epoch, dataformats='HWC')
     # tensor_board_writer.add_image("mnist relu 2", model.relus[1].debug_render(position_range=[-14, -14, 42, 42], clamp=[-20 / (28 ** 2), 80.0 / (28 ** 2)]), epoch, dataformats='HWC')
     # tensor_board_writer.add_image("mnist relu 3", model.relus[2].debug_render(position_range=[-14, -14, 42, 42], clamp=[-6 / (28 ** 2), 24.0 / (28 ** 2)]), epoch, dataformats='HWC')
-    tensor_board_writer.add_image("mnist relu 1", model.relus[0].debug_render(), epoch, dataformats='HWC')
-    tensor_board_writer.add_image("mnist relu 2", model.relus[1].debug_render(), epoch, dataformats='HWC')
-    tensor_board_writer.add_image("mnist relu 3", model.relus[2].debug_render(), epoch, dataformats='HWC')
+    tensor_board_writer.add_image("mnist relu 1", model.relus[0].debug_render3d(), epoch, dataformats='HWC')
+    tensor_board_writer.add_image("mnist relu 2", model.relus[1].debug_render3d(), epoch, dataformats='HWC')
+    tensor_board_writer.add_image("mnist relu 3", model.relus[2].debug_render3d(), epoch, dataformats='HWC')
 
 
-def train(args, model: experiment_gm_mnist_model.Net, device: torch.device, train_loader: torch.utils.data.DataLoader,
+def train(args, model: experiment_model.Net, device: torch.device, train_loader: torch.utils.data.DataLoader,
           kernel_optimiser: Optimizer, epoch: int, tensor_board_writer: torch.utils.tensorboard.SummaryWriter, config: prototype_convolution.config):
     model.train()
     start_time = time.perf_counter()
@@ -95,12 +111,12 @@ def train(args, model: experiment_gm_mnist_model.Net, device: torch.device, trai
             tensor_board_writer.add_scalar("03.2 forward time per batch", (ty - tx), step)
             tensor_board_writer.add_scalar("03.3 backward time per batch", (tw - tz), step)
 
-            tensor_board_writer.add_scalar("07.1 model layer 1 max(bias)", model.biases[0].max().item(), step)
-            tensor_board_writer.add_scalar("07.2 model layer 2 max(bias)", model.biases[1].max().item(), step)
-            tensor_board_writer.add_scalar("07.3 model layer 3 max(bias)", model.biases[2].max().item(), step)
-            tensor_board_writer.add_scalar("07.1 model layer 1 min(bias)", model.biases[0].min().item(), step)
-            tensor_board_writer.add_scalar("07.2 model layer 2 min(bias)", model.biases[1].min().item(), step)
-            tensor_board_writer.add_scalar("07.3 model layer 3 min(bias)", model.biases[2].min().item(), step)
+            # tensor_board_writer.add_scalar("07.1 model layer 1 max(bias)", model.biases[0].max().item(), step)
+            # tensor_board_writer.add_scalar("07.2 model layer 2 max(bias)", model.biases[1].max().item(), step)
+            # tensor_board_writer.add_scalar("07.3 model layer 3 max(bias)", model.biases[2].max().item(), step)
+            # tensor_board_writer.add_scalar("07.1 model layer 1 min(bias)", model.biases[0].min().item(), step)
+            # tensor_board_writer.add_scalar("07.2 model layer 2 min(bias)", model.biases[1].min().item(), step)
+            # tensor_board_writer.add_scalar("07.3 model layer 3 min(bias)", model.biases[2].min().item(), step)
 
             # tensor_board_writer.add_scalar("04. mnist training regularisation loss", regularisation_loss.item(), step)
 
@@ -108,15 +124,15 @@ def train(args, model: experiment_gm_mnist_model.Net, device: torch.device, trai
                 mse = gmc.fitting.mse(*relu.last_in, *relu.last_out)
                 tensor_board_writer.add_scalar(f"05.1 model layer {i} relu mse", mse, step)
 
-            for name, timing in model.timings.items():
-                tensor_board_writer.add_scalar(f"06. {name} time", timing, step)
+            # for name, timing in model.timings.items():
+            #     tensor_board_writer.add_scalar(f"06. {name} time", timing, step)
 
             render_debug_images_to_tensorboard(model, step, tensor_board_writer)
 
             print(f'Training kernels: {epoch}/{step} [{batch_idx}/{len(train_loader)} '
-                  f'({100. * batch_idx / len(train_loader):.0f}%)]\tClassification loss: {loss.item():.6f} (accuracy: {100 * correct / len(data)})')
-
-            print(f'Cuda max memory allocated: {torch.cuda.max_memory_allocated() / 1024 / 1024 / 1024}G')
+                  f'({100. * batch_idx / len(train_loader):.0f}%)]\tClassification loss: {loss.item():.6f} (accuracy: {100 * correct / len(data)}), '
+                  f'Cuda max memory allocated: {torch.cuda.max_memory_allocated() / 1024 / 1024 / 1024}G, '
+                  f'batch time: {batch_end_time - batch_start_time}')
             tensor_board_writer.add_scalar("11. CUDA max memory allocated [GiB]", torch.cuda.max_memory_allocated() / 1024 / 1024 / 1024, step)
 
             if args.save_model:
@@ -143,17 +159,17 @@ def train(args, model: experiment_gm_mnist_model.Net, device: torch.device, trai
                         setattr(self, key, my_values[key])
 
             c = torch.jit.script(Container(full_input))
-            c.save(f"{config.fitting_test_data_store_path}/full_input_batch{batch_idx}.pt")
+            c.save(f"{config.fitting_test_data_store_path}3d/full_input_batch{batch_idx}.pt")
 
             c = torch.jit.script(Container(after_fixed_point))
-            c.save(f"{config.fitting_test_data_store_path}/after_fixed_point_batch{batch_idx}.pt")
+            c.save(f"{config.fitting_test_data_store_path}3d/after_fixed_point_batch{batch_idx}.pt")
 
     end_time = time.perf_counter()
 
     tensor_board_writer.add_scalar("10. batch_duration", end_time - start_time, step)
 
 
-def test(args, model: experiment_gm_mnist_model.Net, device: torch.device, test_loader: torch.utils.data.DataLoader, epoch: int, tensor_board_writer: torch.utils.tensorboard.SummaryWriter):
+def test(args, model: experiment_model.Net, device: torch.device, test_loader: torch.utils.data.DataLoader, epoch: int, tensor_board_writer: torch.utils.tensorboard.SummaryWriter):
     model.eval()
     test_loss = 0
     correct = 0
@@ -180,10 +196,10 @@ def experiment(device: str = 'cuda', n_epochs: int = 20, kernel_learning_rate: f
     train_loader = torch.utils.data.DataLoader(GmMnistDataSet('mnist/train_', begin=0, end=60000), batch_size=gmcn_config.batch_size, num_workers=gmcn_config.num_dataloader_workers, shuffle=True)
     test_loader = torch.utils.data.DataLoader(GmMnistDataSet('mnist/test_', begin=0, end=10000), batch_size=gmcn_config.batch_size, num_workers=gmcn_config.num_dataloader_workers)
 
-    model = experiment_gm_mnist_model.Net(name=desc_string,
-                                          learn_positions=learn_positions_after == 0,
-                                          learn_covariances=learn_covariances_after == 0,
-                                          gmcn_config=gmcn_config)
+    model = experiment_model.Net(name=desc_string,
+                                 learn_positions=learn_positions_after == 0,
+                                 learn_covariances=learn_covariances_after == 0,
+                                 gmcn_config=gmcn_config)
     model.load()
     model = model.to(device)
 

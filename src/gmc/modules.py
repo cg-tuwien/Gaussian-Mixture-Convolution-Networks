@@ -9,6 +9,8 @@ import gmc.mixture as gm
 import gmc.image_tools as madam_imagetools
 import gmc.fitting
 
+import gmc.cpp.gm_vis.gm_vis as gm_vis
+
 
 class ConvolutionConfig:
     def __init__(self):
@@ -45,19 +47,28 @@ class Convolution(torch.nn.modules.Module):
 
             if self.learn_positions and False:
                 positions = torch.rand(1, n_layers_in, n_kernel_components, n_dims, dtype=torch.float32) * 2 - 1
-            else:
+                positions[..., 2] = 0
+            elif self.n_dims == 2:
                 assert (self.n_dims == 2)
                 angles = torch.arange(0, 2 * math.pi, 2 * math.pi / (n_kernel_components - 1))
                 xes = torch.cat((torch.zeros(1, dtype=torch.float), torch.sin(angles)), dim=0)
                 yes = torch.cat((torch.zeros(1, dtype=torch.float), torch.cos(angles)), dim=0)
                 positions = torch.cat((xes.view(-1, 1), yes.view(-1, 1)), dim=1)
-                positions = positions.view(1, 1, n_kernel_components, 2).repeat((1, n_layers_in, 1, 1))
+                positions = positions.view(1, 1, n_kernel_components, 3).repeat((1, n_layers_in, 1, 1))
+            else:
+                assert (self.n_dims == 3)
+                angles = torch.arange(0, 2 * math.pi, 2 * math.pi / (n_kernel_components - 1))
+                xes = torch.cat((torch.zeros(1, dtype=torch.float), torch.sin(angles)), dim=0)
+                yes = torch.cat((torch.zeros(1, dtype=torch.float), torch.cos(angles)), dim=0)
+                zes = torch.zeros_like(xes) # todo fix for real 3d
+                positions = torch.cat((xes.view(-1, 1), yes.view(-1, 1), zes.view(-1, 1)), dim=1)
+                positions = positions.view(1, 1, n_kernel_components, 3).repeat((1, n_layers_in, 1, 1))
             self.positions.append(torch.nn.Parameter(positions))
 
             # initialise with a rather round covariance matrix
             # a psd matrix can be generated with A A'. we learn A and generate a pd matrix via  A A' + eye * epsilon
             covariance_factors = torch.rand(1, n_layers_in, n_kernel_components, n_dims, n_dims, dtype=torch.float32) * 2 - 1
-            cov_rand_factor = 0
+            cov_rand_factor = 0.3
             covariance_factors = covariance_factors * cov_rand_factor + torch.eye(self.n_dims)
             covariance_factors = covariance_factors
             self.covariance_factors.append(torch.nn.Parameter(covariance_factors))
@@ -140,6 +151,23 @@ class Convolution(torch.nn.modules.Module):
         images = madam_imagetools.colour_mapped(images.cpu().numpy(), clamp[0], clamp[1])
         return images[:, :, :3]
 
+    def debug_render3d(self, image_size: int = 80, clamp: typing.Tuple[float, float] = (-0.3, 0.3)):
+        vis = gm_vis.GMVisualizer(False, image_size, image_size)
+        vis.set_camera_auto(True)
+        vis.set_density_rendering(True)
+        vis.set_density_range_manual(clamp[0], clamp[1])
+
+        images = list()
+        for i in range(self.n_layers_out):
+            kernel = self.kernel(i)
+            assert kernel.shape[0] == 1
+            kernel_rendering = gm.render3d(kernel, width=image_size, height=image_size, gm_vis_object=vis)
+            images.append(kernel_rendering)
+
+        vis.finish()
+        images = torch.cat(images, dim=1)
+        return images[:, :, :3]
+
     def forward(self, x: Tensor, x_constant: Tensor) -> typing.Tuple[Tensor, Tensor]:
         assert gm.is_valid_mixture_and_constant(x, x_constant)
         out_mixtures = []
@@ -183,7 +211,6 @@ class ReLUFitting(torch.nn.modules.Module):
         return y_m, y_constant
 
     def debug_render(self, position_range: typing.Tuple[float, float, float, float] = None, image_size: int = 80, clamp: typing.Tuple[float, float] = None):
-        #todo: edit for 3d
         if position_range is None:
             covariance_adjustment = torch.sqrt(torch.diagonal(gm.covariances(self.last_in[0]), dim1=-2, dim2=-1))
             position_max = gm.positions(self.last_in[0]) + covariance_adjustment
@@ -214,3 +241,14 @@ class ReLUFitting(torch.nn.modules.Module):
         images = madam_imagetools.colour_mapped(images.cpu().numpy(), clamp[0], clamp[1])
         return images[:, :, :3]
 
+    def debug_render3d(self, image_size: int = 80, clamp: typing.Tuple[float, float] = (-2, 2)):
+        vis = gm_vis.GMVisualizer(False, image_size, image_size)
+        vis.set_camera_auto(True)
+        vis.set_density_rendering(True)
+        vis.set_density_range_manual(clamp[0], clamp[1])
+        last_in = gm.render3d(self.last_in[0], batches=(0, 1), layers=(0, None), gm_vis_object=vis)
+        prediction = gm.render3d(self.last_out[0], batches=(0, 1), layers=(0, None), gm_vis_object=vis)
+        vis.finish()
+
+        images = torch.cat([last_in, prediction], dim=1)
+        return images[:, :, :3]

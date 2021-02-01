@@ -12,6 +12,7 @@ from . import mat_tools
 from . import config
 from .cpp.extensions.evaluate_inversed import evaluate_inversed as cppExtensionsEvaluateInversed
 # from .cpp.extensions.integrate_inversed import integrate_inversed as cppExtensionsIntegrateInversed
+import gmc.cpp.gm_vis.gm_vis as gm_vis
 
 
 def n_dimensions(mixture: Tensor) -> int:
@@ -251,6 +252,44 @@ def render(mixture: Tensor, constant: Tensor, batches: typing.Tuple[int, int] = 
     rendering = (evaluate(m, xes) + c.unsqueeze(-1)).view(n_batch, n_layers, width, height).transpose(2, 3)
     rendering = rendering.transpose(0, 1).reshape(n_layers * height, n_batch * width)
     return rendering
+
+
+def render3d(mixture: Tensor, batches: typing.Tuple[int, int] = (0, None), layers: typing.Tuple[int, int] = (0, None),
+             width: int = 100, height: int = 100, gm_vis_object: gm_vis.GMVisualizer = None):
+    assert n_dimensions(mixture) == 3
+    assert is_valid_mixture(mixture)
+
+    end_gm_vis_object = False
+    if gm_vis_object is None:
+        gm_vis_object = gm_vis.GMVisualizer(False, width, height)
+        gm_vis_object.set_camera_auto(True)
+        gm_vis_object.set_density_rendering(True)
+        end_gm_vis_object = True
+
+    layer_start = layers[0]
+    if layer_start is None:
+        layer_start = 0
+    layer_end = layers[1]
+    if layer_end is None:
+        layer_end = n_layers(mixture)
+
+    rendering_list = list()
+    for lid in range(layer_start, layer_end):
+        m = mixture[batches[0]:batches[1], lid:(lid+1), :, :]
+        write_gm_to_ply(weights(m), positions(m), covariances(m), 0, f"/home/madam/Documents/work/tuw/gmc_net/test{lid}.ply")
+        gm_vis_object.set_gaussian_mixtures(m.detach().cpu())
+        rendering_list.append(torch.from_numpy(gm_vis_object.render()))
+
+    rendering_tensor = torch.cat(rendering_list, dim=1)
+    n_b = rendering_tensor.shape[0]
+    height = rendering_tensor.shape[2]
+    width = rendering_tensor.shape[3]
+    n_l = len(rendering_list)
+
+    if end_gm_vis_object:
+        gm_vis_object.finish()
+
+    return rendering_tensor.transpose(0, 1).reshape(n_l * height, n_b * width, 4)
 
 
 def render_with_relu(mixture: Tensor, constant: Tensor,
