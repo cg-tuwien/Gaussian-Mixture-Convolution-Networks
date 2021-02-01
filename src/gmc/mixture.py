@@ -90,7 +90,7 @@ def is_valid_mixture(mixture: Tensor) -> bool:
 def integrate_components(mixture: Tensor) -> Tensor:
     assert is_valid_mixture(mixture)
     dets = torch.det(covariances(mixture))
-    return weights(mixture) * torch.sqrt((2 * math.pi) ** n_dimensions(mixture) * dets)
+    return weights(mixture) * torch.sqrt(((2 * math.pi) ** n_dimensions(mixture)) * dets)
 
 
 def integrate(mixture: Tensor) -> Tensor:
@@ -161,7 +161,7 @@ def old_evaluate_inversed(mixture: Tensor, xes: Tensor) -> Tensor:
 
 def evaluate(mixture: Tensor, xes: Tensor) -> Tensor:
     # torch inverse returns a transposed matrix (v 1.3.1). our matrix is symmetric however, and we want to take a view, so the transpose avoids a copy.
-    return evaluate_inversed(pack_mixture(weights(mixture), positions(mixture), mat_tools.inverse(covariances(mixture))), xes)
+    return evaluate_inversed(pack_mixture(weights(mixture), positions(mixture), mat_tools.inverse(covariances(mixture)).transpose(-1, -2)), xes)
 
 
 def evaluate_componentwise_inversed(gaussians: Tensor, xes: Tensor):
@@ -196,7 +196,7 @@ def evaluate_componentwise_inversed(gaussians: Tensor, xes: Tensor):
 
 def evaluate_componentwise(mixture: Tensor, xes: Tensor) -> Tensor:
     # torch inverse returns a transposed matrix (v 1.3.1). our matrix is symmetric however, and we want to take a view, so the transpose avoids a copy.
-    return evaluate_componentwise_inversed(pack_mixture(weights(mixture), positions(mixture), mat_tools.inverse(covariances(mixture))), xes)
+    return evaluate_componentwise_inversed(pack_mixture(weights(mixture), positions(mixture), mat_tools.inverse(covariances(mixture)).transpose(-1, -2)), xes)
 
 
 # # todo: untested

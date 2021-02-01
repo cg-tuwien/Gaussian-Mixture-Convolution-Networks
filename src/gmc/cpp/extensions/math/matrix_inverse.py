@@ -21,7 +21,7 @@ class MatrixInverse(torch.autograd.Function):
             matrices = matrices.contiguous()
 
         if matrices.is_cuda:
-            output = cuda.forward(matrices)
+            output = cuda.forward(matrices).transpose(-1, -2)
         else:
             output = matrices.inverse()
         ctx.save_for_backward(matrices, output)
