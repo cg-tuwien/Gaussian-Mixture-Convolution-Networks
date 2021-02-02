@@ -56,6 +56,8 @@ def save_gms(gmbatch: torch.Tensor, gmmbatch: torch.Tensor, basepath: str, names
     # available formats: .gmm.ply, .gma.ply, .torch
     if formats is None:
         formats = [".gmm.ply", ".gma.ply"]
+    gmmbatch = gmmbatch.cpu()
+    gmbatch = gmbatch.cpu()
     gmw = gm.weights(gmmbatch)
     gma = gm.weights(gmbatch)
     gmp = gm.positions(gmbatch)

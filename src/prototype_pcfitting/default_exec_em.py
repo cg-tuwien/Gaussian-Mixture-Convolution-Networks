@@ -20,7 +20,7 @@ gengmm_path = f"{config.data_base_path}/modelnet/gmms"
 
 # Define Point Count (Samples), Gaussian Count and Batch Size (how many models to process at once)
 n_points = 50000
-batch_size = 100
+batch_size = 200
 
 # --- DO NOT CHANGE FROM HERE ---
 # Define GMM Generators
@@ -41,7 +41,12 @@ generators = [
     #             termination_criterion=RelChangeTerminationCriterion(0.1, 20), em_step_points_subbatchsize=10000,
     #             em_step_gaussians_subbatchsize=512, verbosity=config.verbosity),
 ]
-generator_identifiers = ["EM32"]  # , "EM64", "EM128", "EM256", "EM512"]
+# generator_identifiers = ["EM64", "EM128", "EM256", "EM512"]  # "EM32",
+generator_identifiers = ["EM32"]
+
+log_loss = 0
+if config.verbosity > 2:
+    log_loss = 20
 
 programs.execute_fitting2(training_name=None,
                           dataset=prototype_pcfitting.modelnet_dataset_iterator.ModelNetDatasetIterator(batch_size=batch_size, dataset_path=pc_path),
@@ -49,5 +54,5 @@ programs.execute_fitting2(training_name=None,
                           generator_identifiers=generator_identifiers,
                           gengmm_path=gengmm_path,
                           formats=[".gma.ply", ".torch"],
-                          log_loss_console=0,
+                          log_loss_console=log_loss,
                           verbosity=config.verbosity)
