@@ -19,7 +19,8 @@ class EMGenerator(GMMGenerator):
                  use_noise_cluster: bool = False,
                  dtype: torch.dtype = torch.float32,
                  eps: float = 1e-7,
-                 eps_is_relative: bool = True):
+                 eps_is_relative: bool = True,
+                 verbosity: int = 2):
         # Constructor. Creates a new EMGenerator.
         # Parameters:
         #   n_gaussians: int
@@ -56,6 +57,7 @@ class EMGenerator(GMMGenerator):
         #       to the longest side of the pc's bounding box (recommended for scaling invariance).
         #       eps_abs = eps_rel * (maxextend^2)
         #
+        self._verbosity = verbosity
         self._n_gaussians = n_gaussians
         self._n_sample_points = n_sample_points
         self._initialization_method = initialization_method
@@ -187,6 +189,10 @@ class EMGenerator(GMMGenerator):
         final_gmm = gm_data.pack_mixture_model()
 
         # Gaussian-Weights might be set to zero. This prints for how many Gs this is the case
-        print("EM: # of invalid Gaussians: ", torch.sum(gm_data.get_priors() == 0).item())
+        n_invalid_gaussians = torch.sum(gm_data.get_priors() == 0).item()
+        if self._verbosity >= 2:
+            print("EM: # of invalid Gaussians: ", n_invalid_gaussians)
+        elif self._verbosity >= 1 and n_invalid_gaussians > 0:
+            print(f"EM: {n_invalid_gaussians} invalid Gaussians")
 
         return final_gm, final_gmm

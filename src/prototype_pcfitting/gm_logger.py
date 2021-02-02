@@ -29,7 +29,8 @@ class GMLogger:
                  log_gm: int = 0,
                  pointclouds: torch.Tensor = None,
                  scaler: Scaler = None,
-                 scale_up_losses: bool = True):
+                 scale_up_losses: bool = True,
+                 verbosity: int = 2):
         # Constructor. Parameters:
         #   names: List[str]
         #       List of identifiers. There should be a identifier for each batch entry.
@@ -64,10 +65,13 @@ class GMLogger:
         #   scaler: Scaler
         #       Needs to be set for everything except loss logging. The scaler for upscaling the given GMMs.
 
+        self._verbosity = verbosity
+
         # Prepare Tensorboard Log Data
         self._log_rendering_tb = log_rendering_tb
         self._log_loss_tb = log_loss_tb
         self._log_loss_console = log_loss_console
+        names = names.copy()
         self._names = names
 
         for i in range(len(names)):

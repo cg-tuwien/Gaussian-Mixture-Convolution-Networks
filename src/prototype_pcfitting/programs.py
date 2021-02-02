@@ -6,33 +6,35 @@ import torch
 from typing import List, Tuple, Optional
 
 from gmc import mixture, mat_tools
-from prototype_pcfitting import GMMGenerator, PCDatasetIterator, Scaler, GMLogger, ErrorFunction, data_loading
+from prototype_pcfitting import GMMGenerator, Scaler, PCDatasetIterator, GMLogger, ErrorFunction, data_loading
 from prototype_pcfitting.generators.em_tools import EMTools
+import prototype_pcfitting.pc_dataset_iterator
 
 
-def execute_fitting(training_name: str, n_points: int, batch_size: int, generators: List[GMMGenerator],
-                    generator_identifiers: List[str], model_path: Optional[str], genpc_path: str, gengmm_path: str,
-                    formats: List[str] = None, log_path: str = None, scaling_active: bool = False,
-                    scaling_interval: Tuple[float, float] = (-50.0, 50.0),
-                    log_positions: int = 0, log_loss_console: int = 0,
-                    log_loss_tb: int = 0, log_rendering_tb: int = 0, log_gm: int = 0,
-                    log_n_gaussians: int = 0, continuing: bool = True):
+def execute_fitting2(training_name: str, dataset: prototype_pcfitting.pc_dataset_iterator.DatasetIterator,
+                     generators: List[GMMGenerator], generator_identifiers: List[str],
+                     gengmm_path: str,formats: List[str] = None, log_path: str = None,
+                     scaling_active: bool = False, scaling_interval: Tuple[float, float] = (-50.0, 50.0),
+                     log_positions: int = 0, log_loss_console: int = 0,
+                     log_loss_tb: int = 0, log_rendering_tb: int = 0, log_gm: int = 0,
+                     log_n_gaussians: int = 0, continuing: bool = True, verbosity: int = 2):
     # ---- GMM FITTING ----
     if formats is None:
         formats = [".gma.ply"]
 
     # Create Dataset Iterator and Scaler
-    dataset = PCDatasetIterator(batch_size, n_points, genpc_path, model_path)
     scaler = Scaler(active=scaling_active, interval=scaling_interval)
 
     # Iterate over Dataset
     i = 1
     while dataset.has_next():
-        print("-----------------------------------------------------------------------------------------")
+        if verbosity > 1:
+            print("-----------------------------------------------------------------------------------------")
 
         # Next Batch
         batch, names = dataset.next_batch()
-        print(f"Dataset Batch {i}: {batch.shape}, Remaining Batches: {dataset.remaining_batches_count()}")
+        if verbosity > 0:
+            print(f"Dataset Batch {i}: {batch.shape}, Remaining Batches: {dataset.remaining_batches_count()}")
 
         # Scale down
         scaler.set_pointcloud_batch(batch)
@@ -41,19 +43,24 @@ def execute_fitting(training_name: str, n_points: int, batch_size: int, generato
         for j in range(len(generators)):
             gc.collect()
             torch.cuda.empty_cache()
-            print(generator_identifiers[j], "on", names)
+            if verbosity > 1:
+                print(generator_identifiers[j], "on", names)
 
-            gen_id = training_name + "/" + generator_identifiers[j]
+            if training_name is not None:
+                gen_id = training_name + "/" + generator_identifiers[j]
+            else:
+                gen_id = generator_identifiers[j]
 
             if continuing and os.path.exists(os.path.join(gengmm_path, gen_id, f"{names[-1]}.gma.ply")):
-                print("Skipped - already exists!")
+                if verbosity > 0:
+                    print("Skipped - already exists!")
                 continue
 
             # Create Logger
             logger = GMLogger(names=names, log_prefix=gen_id, log_path=log_path,
                               log_positions=log_positions, gm_n_components=log_n_gaussians,
                               log_loss_console=log_loss_console, log_loss_tb=log_loss_tb,
-                              log_rendering_tb=log_rendering_tb, log_gm=log_gm, pointclouds=batch, scaler=scaler)
+                              log_rendering_tb=log_rendering_tb, log_gm=log_gm, pointclouds=batch, scaler=scaler, verbosity=verbosity)
             generators[j].set_logging(logger)
 
             # Generate GMM
@@ -68,7 +75,8 @@ def execute_fitting(training_name: str, n_points: int, batch_size: int, generato
             sumweights = mixture.weights(gmmbatch).sum(dim=2).squeeze(1)
             ones = sumweights.gt(0.99) & sumweights.lt(1.01)
             if not ones.all():
-                print("Generator created an invalid mixture (sum of weights not 1)!")
+                if verbosity > 0:
+                    print(f"Generator created an invalid mixture (sum of weights not 1) for one of {names} ({gen_id})!")
 
             # Terminate Logging
             logger.finalize()
@@ -76,6 +84,18 @@ def execute_fitting(training_name: str, n_points: int, batch_size: int, generato
         i += 1
 
     print("Done")
+
+
+def execute_fitting(training_name: str, n_points: int, batch_size: int, generators: List[GMMGenerator],
+                    generator_identifiers: List[str], model_path: Optional[str], genpc_path: str, gengmm_path: str,
+                    formats: List[str] = None, log_path: str = None, scaling_active: bool = False,
+                    scaling_interval: Tuple[float, float] = (-50.0, 50.0),
+                    log_positions: int = 0, log_loss_console: int = 0,
+                    log_loss_tb: int = 0, log_rendering_tb: int = 0, log_gm: int = 0,
+                    log_n_gaussians: int = 0, continuing: bool = True):
+    dataset = prototype_pcfitting.pc_dataset_iterator.PCDatasetIterator(batch_size, n_points, genpc_path, model_path)
+    execute_fitting2(training_name, dataset, generators, generator_identifiers, gengmm_path, formats, log_path,scaling_active, scaling_interval, log_positions, log_loss_console, log_loss_tb, log_rendering_tb, log_gm,
+                     log_n_gaussians, continuing)
 
 
 def execute_fitting_on_single_pcbatch(training_name: str, pcbatch: torch.Tensor, gengmm_path: str,

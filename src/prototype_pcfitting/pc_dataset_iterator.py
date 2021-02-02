@@ -7,7 +7,28 @@ import trimesh.sample
 import math
 
 
-class PCDatasetIterator:
+class DatasetIterator:
+    # The DatasetIterator is used for iterating over a model dataset
+    # It reads 3d models from a given directory and samples them into
+    # a point cloud of a given point count. The point clouds are created
+    # and returned in batches. They are also stored in a directory and
+    # loaded from there if the model directory has been used before.
+
+    def has_next(self) -> bool:
+        # Returns true if more batches are available
+        pass
+
+    def next_batch(self):
+        # returns a tensor of the size [b,n,3], where b is the batch size (or less, if less data was available)
+        # and n is the point count
+        # also returns a list of names of the point clouds
+        pass
+
+    def remaining_batches_count(self):
+        pass
+
+
+class PCDatasetIterator(DatasetIterator):
     # The PPCDatasetIterator is used for iterating over a model dataset
     # It reads 3d models from a given directory and samples them into
     # a point cloud of a given point count. The point clouds are created
