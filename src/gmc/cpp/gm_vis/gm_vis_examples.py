@@ -10,6 +10,7 @@ import time
 # Example Data. One pointcloud and one mixture, although the same could be done with batches.
 pointcloud = data_loading.load_pc_from_off("sample-pc.off")
 mixture = gmc.mixture.read_gm_from_ply("sample-gm.ply")
+negmixture = gmc.mixture.read_gm_from_ply("sample-neg-gm.ply")
 
 ###############################################################
 #
@@ -113,7 +114,10 @@ vis.finish()
 # end = time.time()
 # print("Time for calling finish(): ", (end-start))
 
-# Rendering of Density
+# Bonus: Rendering of Mixture with negative Gaussians
+res_negative_density = gm_vis.onetime_density_render(500, 500, negmixture)[0, 0]
+
+# Display of Renderings
 
 f1 = plt.figure("Onetime Density Render")
 f1.figimage(res_onetime_density)
@@ -141,4 +145,8 @@ plt.show()
 
 f7 = plt.figure("Manual Density Render (manual camera)")
 f7.figimage(res_density_manual_camera)
+plt.show()
+
+f8 = plt.figure("Negative Density Renderer")
+f8.figimage(res_negative_density)
 plt.show()
