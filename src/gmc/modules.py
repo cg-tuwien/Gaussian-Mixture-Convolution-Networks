@@ -47,7 +47,6 @@ class Convolution(torch.nn.modules.Module):
 
             if self.learn_positions and False:
                 positions = torch.rand(1, n_layers_in, n_kernel_components, n_dims, dtype=torch.float32) * 2 - 1
-                positions[..., 2] = 0
             elif self.n_dims == 2:
                 assert (self.n_dims == 2)
                 angles = torch.arange(0, 2 * math.pi, 2 * math.pi / (n_kernel_components - 1))
@@ -57,18 +56,15 @@ class Convolution(torch.nn.modules.Module):
                 positions = positions.view(1, 1, n_kernel_components, 2).repeat((1, n_layers_in, 1, 1))
             else:
                 assert (self.n_dims == 3)
-                angles = torch.arange(0, 2 * math.pi, 2 * math.pi / (n_kernel_components - 1))
-                xes = torch.cat((torch.zeros(1, dtype=torch.float), torch.sin(angles)), dim=0)
-                yes = torch.cat((torch.zeros(1, dtype=torch.float), torch.cos(angles)), dim=0)
-                zes = torch.zeros_like(xes) # todo fix for real 3d
-                positions = torch.cat((xes.view(-1, 1), yes.view(-1, 1), zes.view(-1, 1)), dim=1)
-                positions = positions.view(1, 1, n_kernel_components, 3).repeat((1, n_layers_in, 1, 1))
+                positions = torch.rand(1, n_layers_in, n_kernel_components, n_dims, dtype=torch.float32) * 2 - 1
+                # positions = positions / torch.norm(positions, dim=-1, keepdim=True)
+                # positions[:, :, 0, :] = 0
             self.positions.append(torch.nn.Parameter(positions))
 
             # initialise with a rather round covariance matrix
             # a psd matrix can be generated with A A'. we learn A and generate a pd matrix via  A A' + eye * epsilon
             covariance_factors = torch.rand(1, n_layers_in, n_kernel_components, n_dims, n_dims, dtype=torch.float32) * 2 - 1
-            cov_rand_factor = 0.3
+            cov_rand_factor = 0.15
             covariance_factors = covariance_factors * cov_rand_factor + torch.eye(self.n_dims)
             covariance_factors = covariance_factors
             self.covariance_factors.append(torch.nn.Parameter(covariance_factors))
