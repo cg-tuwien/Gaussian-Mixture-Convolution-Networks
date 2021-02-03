@@ -1,16 +1,13 @@
-import math
 import unittest
 
 import numpy as np
 import numpy.random as nprnd
 import numpy.linalg as npla
 import scipy.signal
-import matplotlib.pyplot as plt
 import torch
 from torch import Tensor
 
 import gmc.mixture as gm
-
 
 
 def _triangle_mat_data(dims: int) -> (np.array, np.array, Tensor):
@@ -135,6 +132,26 @@ class TestGM(unittest.TestCase):
             max_l2_err = ((reference_solution - our_solution) ** 2).max()
             # plt.imshow((reference_solution - our_solution)); plt.colorbar(); plt.show();
             self.assertLess(max_l2_err, 0.0000001)
+
+    def test_spatial_scale(self):
+        n_batch = 10
+        n_layers = 8
+        n_components = 3
+        for n_dims in range(2, 4):
+            mixture_in = gm.generate_random_mixtures(n_batch=n_batch, n_layers=n_layers, n_components=n_components, n_dims=n_dims, pos_radius=1, cov_radius=1, weight_min=-0.5, weight_max=4)
+            scaling_factors = torch.rand(n_batch, n_layers, n_dims) * 20
+
+            xv, yv, zv = torch.meshgrid([torch.arange(-1, 1, 0.25, dtype=torch.float),
+                                     torch.arange(-1, 1, 0.25, dtype=torch.float),
+                                     torch.arange(-1, 1, 0.25, dtype=torch.float)])
+            xes = torch.cat((xv.reshape(-1, 1), yv.reshape(-1, 1), zv.reshape(-1, 1)), 1).view(1, 1, -1, n_dims)
+
+            eval_reference = gm.evaluate(mixture_in, xes)
+            mixture_scaled = gm.spatial_scale(mixture_in, scaling_factors)
+            xes_scaled = xes.repeat(n_batch, n_layers, 1, 1) * scaling_factors.view(n_batch, n_layers, 1, n_dims)
+            eval_scaled = gm.evaluate(mixture_scaled, xes_scaled)
+
+            self.assertLess((eval_reference - eval_scaled).abs().mean().item(), 0.000001)
 
     def test_mixture_normalisation(self):
         n_batch = 10

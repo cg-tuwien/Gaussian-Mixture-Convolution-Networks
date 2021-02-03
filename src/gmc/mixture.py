@@ -256,6 +256,15 @@ def convolve(m1: Tensor, m2: Tensor) -> Tensor:
     return m_new
 
 
+def spatial_scale(m: Tensor, scaling_factors: Tensor) -> Tensor:
+    scaling_factors = scaling_factors.view(n_batch(m), n_layers(m), 1, n_dimensions(m))
+    w = weights(m)
+    p = positions(m) * scaling_factors
+    cs = torch.diag_embed(scaling_factors)
+    c = cs @ covariances(m) @ cs
+    return pack_mixture(w, p, c)
+
+
 class NormalisationFactors:
     def __init__(self, weight_scaling: Tensor, position_translation: Tensor, position_scaling: Tensor):
         self.weight_scaling = weight_scaling
