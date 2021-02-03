@@ -257,61 +257,13 @@ def convolve(m1: Tensor, m2: Tensor) -> Tensor:
 
 
 def spatial_scale(m: Tensor, scaling_factors: Tensor) -> Tensor:
+    """Does not scale weights, i.e., the integral will change."""
     scaling_factors = scaling_factors.view(n_batch(m), n_layers(m), 1, n_dimensions(m))
     w = weights(m)
     p = positions(m) * scaling_factors
     cs = torch.diag_embed(scaling_factors)
     c = cs @ covariances(m) @ cs
     return pack_mixture(w, p, c)
-
-
-class NormalisationFactors:
-    def __init__(self, weight_scaling: Tensor, position_translation: Tensor, position_scaling: Tensor):
-        self.weight_scaling = weight_scaling
-        self.position_translation = position_translation
-        self.position_scaling = position_scaling
-
-
-def normalise(mixture_in: Tensor, bias_in: Tensor) -> (Tensor, Tensor, NormalisationFactors):
-    _n_batch = n_batch(mixture_in)
-    assert bias_in.shape[0] == 1 or bias_in.shape[0] == _n_batch
-    _n_layers = n_layers(mixture_in)
-    _n_dims = n_dimensions(mixture_in)
-    weight_min, _ = torch.min(weights(mixture_in.detach()), dim=2)
-    weight_max, _ = torch.max(weights(mixture_in.detach()), dim=2)
-    weight_scaling = torch.max(torch.abs(weight_min), weight_max)
-    weight_scaling = torch.max(weight_scaling, bias_in.detach().abs())
-    weight_scaling = weight_scaling.view(_n_batch, _n_layers, 1)
-    weight_scaling = torch.ones(1, dtype=torch.float32, device=mixture_in.device) / weight_scaling
-
-    weights_normalised = weights(mixture_in) * weight_scaling
-    bias_normalised = bias_in.view(bias_in.shape[0], bias_in.shape[1]) * weight_scaling.view(_n_batch, _n_layers)
-
-    position_translation = (-torch.mean(positions(mixture_in.detach()), dim=2)).view(_n_batch, _n_layers, 1, _n_dims)
-    positions_normalised = positions(mixture_in) + position_translation
-    covariance_adjustment = torch.sqrt(torch.diagonal(covariances(mixture_in.detach()), dim1=-2, dim2=-1))
-    position_max, _ = torch.max(positions_normalised.detach() + covariance_adjustment, dim=2)
-    position_min, _ = torch.min(positions_normalised.detach() - covariance_adjustment, dim=2)
-    position_scaling = torch.max(torch.abs(position_min), position_max)
-    position_scaling = position_scaling.view(_n_batch, _n_layers, 1, _n_dims)
-    position_scaling = torch.ones(1, dtype=torch.float32, device=mixture_in.device) / position_scaling
-    positions_normalised *= position_scaling
-
-    covariance_scaling = torch.diag_embed(position_scaling)
-    covariances_normalised = covariance_scaling @ covariances(mixture_in) @ covariance_scaling
-
-    return pack_mixture(weights_normalised, positions_normalised, covariances_normalised), bias_normalised, NormalisationFactors(weight_scaling, position_translation, position_scaling)
-
-
-def de_normalise(m: Tensor, normalisation: NormalisationFactors) -> Tensor:
-    inverted_weight_scaling = torch.ones(1, dtype=torch.float32, device=m.device) / normalisation.weight_scaling
-    inverted_position_translation = - normalisation.position_translation
-    inverted_position_scaling = torch.ones(1, dtype=torch.float32, device=m.device) / normalisation.position_scaling
-    inverted_covariance_scaling = torch.diag_embed(inverted_position_scaling)
-
-    return pack_mixture(weights(m) * inverted_weight_scaling,
-                        positions(m) * inverted_position_scaling + inverted_position_translation,
-                        inverted_covariance_scaling @ covariances(m) @ inverted_covariance_scaling)
 
 
 def convert_priors_to_amplitudes(gm: torch.Tensor) -> torch.Tensor:

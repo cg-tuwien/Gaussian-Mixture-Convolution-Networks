@@ -153,32 +153,6 @@ class TestGM(unittest.TestCase):
 
             self.assertLess((eval_reference - eval_scaled).abs().mean().item(), 0.000001)
 
-    def test_mixture_normalisation(self):
-        n_batch = 10
-        n_layers = 8
-        bias_in = torch.rand(1, n_layers) + 0.2
-        mixture_in = gm.generate_random_mixtures(n_batch=n_batch, n_layers=n_layers, n_components=3, n_dims=2, pos_radius=3, cov_radius=0.3, weight_min=-0.5, weight_max=4)
-        gm.weights(mixture_in)[0:4, 0, 0] = 2
-        gm.positions(mixture_in)[0, 0, 0, 0] = -10
-        gm.positions(mixture_in)[1, 0, 0, 1] = 10
-        gm.covariances(mixture_in)[2, 0, 0, 0, 0] = 400
-        gm.covariances(mixture_in)[3, 0, 0, 1, 1] = 400
-
-        mixture_normalised, bias_normalised, norm_factors = gm.normalise(mixture_in, bias_in)
-        mixture_out = gm.de_normalise(mixture_normalised, norm_factors)
-
-        self.assertEqual(bias_in.shape[1], bias_normalised.shape[1])
-        self.assertAlmostEqual((gm.weights(mixture_in) / bias_in.view(1, n_layers, 1) - gm.weights(mixture_normalised) / bias_normalised.view(n_batch, n_layers, 1)).abs().mean().item(), 0, places=4)
-        self.assertAlmostEqual((gm.weights(mixture_in) - gm.weights(mixture_out)).abs().mean().item(), 0, places=5)
-        self.assertAlmostEqual((gm.positions(mixture_in) - gm.positions(mixture_out)).abs().mean().item(), 0, places=5)
-        self.assertAlmostEqual((gm.covariances(mixture_in) - gm.covariances(mixture_out)).abs().mean().item(), 0, places=5)
-
-        # for i in range(10):
-        #     gm.debug_show(mixture_in, i, 0, -10, -10, 10, 10, 0.1)
-        #     gm.debug_show(mixture_normalised, i, 0, -10, -10, 10, 10, 0.1)
-        #     gm.debug_show(mixture_out, i, 0, -10, -10, 10, 10, 0.1)
-        #     input("Press enter to continue!")
-
     def test_mixture_integration(self):
         for n_dims in range(2, 4):
             print(n_dims)
