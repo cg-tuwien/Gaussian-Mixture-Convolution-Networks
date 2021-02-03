@@ -3,6 +3,7 @@ from typing import List
 import torch
 import os
 import gmc.mixture as gm
+import gmc.io as gmio
 
 
 def load_pc_from_off(path: str) -> torch.Tensor:
@@ -44,12 +45,12 @@ def sample(pcbatch: torch.Tensor, n_sample_points: int) -> torch.Tensor:
 
 
 def read_gm_from_ply(filename: str, ismodel: bool) -> torch.Tensor:
-    return gm.read_gm_from_ply(filename, ismodel, 'cuda')
+    return gmio.read_gm_from_ply(filename, ismodel, 'cuda')
 
 
 def write_gm_to_ply(weights: torch.Tensor, positions: torch.Tensor,
                     covariances: torch.Tensor, index: int, filename: str):
-    gm.write_gm_to_ply(weights, positions, covariances, index, filename)
+    gmio.write_gm_to_ply(weights, positions, covariances, index, filename)
 
 
 def save_gms(gmbatch: torch.Tensor, gmmbatch: torch.Tensor, basepath: str, names: List[str], formats: List[str] = None):

@@ -175,7 +175,6 @@ def test(args, model: modelnet_classification.model.Net, device: torch.device, t
     model.eval()
     test_loss = 0
     correct = 0
-    fitting_loss_sum = 0
     with torch.no_grad():
         for data, target in test_loader:
             data, target = data.to(device), target.to(device)

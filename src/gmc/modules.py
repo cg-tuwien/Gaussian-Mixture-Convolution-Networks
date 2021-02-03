@@ -6,8 +6,8 @@ from torch import Tensor
 from torch.utils.tensorboard import SummaryWriter as TensorboardWriter
 
 import gmc.mixture as gm
-import gmc.image_tools as madam_imagetools
 import gmc.fitting
+import gmc.render
 
 import gmc.cpp.gm_vis.gm_vis as gm_vis
 
@@ -140,11 +140,11 @@ class Convolution(torch.nn.modules.Module):
         for i in range(self.n_layers_out):
             kernel = self.kernel(i)
             assert kernel.shape[0] == 1
-            kernel_rendering = gm.render(kernel, torch.zeros(1, 1, device=kernel.device),
+            kernel_rendering = gmc.render.render(kernel, torch.zeros(1, 1, device=kernel.device),
                                          x_low=-position_range*1.25, x_high=position_range*1.25, y_low=-position_range*1.25, y_high=position_range*1.25, width=image_size, height=image_size)
             images.append(kernel_rendering)
         images = torch.cat(images, dim=1)
-        images = madam_imagetools.colour_mapped(images.cpu().numpy(), clamp[0], clamp[1])
+        images = gmc.render.colour_mapped(images.cpu().numpy(), clamp[0], clamp[1])
         return images[:, :, :3]
 
     def debug_render3d(self, image_size: int = 80, clamp: typing.Tuple[float, float] = (-0.3, 0.3)):
@@ -157,7 +157,7 @@ class Convolution(torch.nn.modules.Module):
         for i in range(self.n_layers_out):
             kernel = self.kernel(i)
             assert kernel.shape[0] == 1
-            kernel_rendering = gm.render3d(kernel, width=image_size, height=image_size, gm_vis_object=vis)
+            kernel_rendering = gmc.render.render3d(kernel, width=image_size, height=image_size, gm_vis_object=vis)
             images.append(kernel_rendering)
 
         vis.finish()
@@ -223,18 +223,18 @@ class ReLUFitting(torch.nn.modules.Module):
             abs_diff = max_weight - min_weight
             clamp = (min_weight - abs_diff * 2, min_weight + abs_diff * 2)
 
-        last_in = gm.render(self.last_in[0], self.last_in[1], batches=(0, 1), layers=(0, None),
-                            x_low=position_range[0], y_low=position_range[1], x_high=position_range[2], y_high=position_range[3],
-                            width=image_size, height=image_size)
-        target = gm.render_with_relu(self.last_in[0], self.last_in[1], batches=(0, 1), layers=(0, None),
-                                     x_low=position_range[0], y_low=position_range[1], x_high=position_range[2], y_high=position_range[3],
-                                     width=image_size, height=image_size)
-        prediction = gm.render(self.last_out[0], self.last_out[1], batches=(0, 1), layers=(0, None),
-                               x_low=position_range[0], y_low=position_range[1], x_high=position_range[2], y_high=position_range[3],
-                               width=image_size, height=image_size)
+        last_in = gmc.render.render(self.last_in[0], self.last_in[1], batches=(0, 1), layers=(0, None),
+                                    x_low=position_range[0], y_low=position_range[1], x_high=position_range[2], y_high=position_range[3],
+                                    width=image_size, height=image_size)
+        target = gmc.render.render_with_relu(self.last_in[0], self.last_in[1], batches=(0, 1), layers=(0, None),
+                                             x_low=position_range[0], y_low=position_range[1], x_high=position_range[2], y_high=position_range[3],
+                                             width=image_size, height=image_size)
+        prediction = gmc.render.render(self.last_out[0], self.last_out[1], batches=(0, 1), layers=(0, None),
+                                       x_low=position_range[0], y_low=position_range[1], x_high=position_range[2], y_high=position_range[3],
+                                       width=image_size, height=image_size)
         images = [last_in, target, prediction]
         images = torch.cat(images, dim=1)
-        images = madam_imagetools.colour_mapped(images.cpu().numpy(), clamp[0], clamp[1])
+        images = gmc.render.colour_mapped(images.cpu().numpy(), clamp[0], clamp[1])
         return images[:, :, :3]
 
     def debug_render3d(self, image_size: int = 80, clamp: typing.Tuple[float, float] = (-2, 2)):
@@ -242,8 +242,8 @@ class ReLUFitting(torch.nn.modules.Module):
         vis.set_camera_auto(True)
         vis.set_density_rendering(True)
         vis.set_density_range_manual(clamp[0], clamp[1])
-        last_in = gm.render3d(self.last_in[0], batches=(0, 1), layers=(0, None), gm_vis_object=vis)
-        prediction = gm.render3d(self.last_out[0], batches=(0, 1), layers=(0, None), gm_vis_object=vis)
+        last_in = gmc.render.render3d(self.last_in[0], batches=(0, 1), layers=(0, None), gm_vis_object=vis)
+        prediction = gmc.render.render3d(self.last_out[0], batches=(0, 1), layers=(0, None), gm_vis_object=vis)
         vis.finish()
 
         images = torch.cat([last_in, prediction], dim=1)

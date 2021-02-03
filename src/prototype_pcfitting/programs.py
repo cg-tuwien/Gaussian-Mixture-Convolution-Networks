@@ -6,6 +6,7 @@ import torch
 from typing import List, Tuple, Optional
 
 from gmc import mixture, mat_tools
+import gmc.io as gmio
 from prototype_pcfitting import GMMGenerator, Scaler, PCDatasetIterator, GMLogger, ErrorFunction, data_loading
 from prototype_pcfitting.generators.em_tools import EMTools
 import prototype_pcfitting.pc_dataset_iterator
@@ -179,7 +180,7 @@ def execute_evaluation(training_name: str, model_path: str, genpc_path: str, gen
             if not os.path.exists(gm_path):
                 print(name + " / " + gid + ": No GM found")
             else:
-                gm = mixture.read_gm_from_ply(gm_path, False).cuda()
+                gm = gmio.read_gm_from_ply(gm_path, False).cuda()
                 gm = scaler.scale_gm(gm)
                 # Evaluate using each error function
                 print(name, " / ", gid)
@@ -209,7 +210,7 @@ def quick_evaluation(pc_path: str, gm_path: str, is_model: bool, error_function:
     pc_scaled = scaler.scale_pc(pc)
 
     # Load gm
-    gm = mixture.read_gm_from_ply(gm_path, is_model).cuda()
+    gm = gmio.read_gm_from_ply(gm_path, is_model).cuda()
     if is_model:
         gm = mixture.convert_priors_to_amplitudes(gm)
     covariances = mixture.covariances(gm)
@@ -230,7 +231,7 @@ def quick_refine(training_name: str, pc_path: str, gm_in_path: str, gm_in_ismode
                  scaling_interval: Tuple[float, float] = (-50.0, 50.0)):
     # Load data
     pc = data_loading.load_pc_from_off(pc_path).cuda()
-    gm = mixture.read_gm_from_ply(gm_in_path, gm_in_ismodel).cuda()
+    gm = gmio.read_gm_from_ply(gm_in_path, gm_in_ismodel).cuda()
 
     # Scale down
     scaler = Scaler(active=scaling_active, interval=scaling_interval)

@@ -1,6 +1,7 @@
 
 import prototype_pcfitting.data_loading as data_loading
 import gmc.mixture
+import gmc.io
 import gmc.cpp.gm_vis.gm_vis as gm_vis
 import matplotlib
 import matplotlib.pyplot as plt
@@ -9,8 +10,8 @@ import time
 
 # Example Data. One pointcloud and one mixture, although the same could be done with batches.
 pointcloud = data_loading.load_pc_from_off("sample-pc.off")
-mixture = gmc.mixture.read_gm_from_ply("sample-gm.ply")
-negmixture = gmc.mixture.read_gm_from_ply("sample-neg-gm.ply")
+mixture = gmc.io.read_gm_from_ply("sample-gm.ply")
+negmixture = gmc.io.read_gm_from_ply("sample-neg-gm.ply")
 
 ###############################################################
 #

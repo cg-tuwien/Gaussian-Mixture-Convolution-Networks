@@ -56,20 +56,6 @@ class TestGM(unittest.TestCase):
                     np_result += weights[j] * np.exp(exponent)
                 self.assertAlmostEqual(np_result, values_gm[i].item(), 5)
 
-    def test_evaluate_componentwise(self):
-        n_batch = 2
-        n_layers = 5
-        n_eval_positions = 11
-        for n_dims in range(2, 4):
-            m = gm.generate_random_mixtures(n_batch, n_layers, n_components=7, n_dims=n_dims, pos_radius=0.5, cov_radius=0.2)
-            xes = torch.rand(n_batch, n_layers, n_eval_positions, n_dims) * 0.6 - 0.3
-            reference = gm.evaluate(m, xes)
-            componentwise = gm.evaluate_componentwise(m, xes)
-            componentwise = componentwise.sum(dim=3)
-            self.assertAlmostEqual(torch.abs(reference - componentwise).mean().item(), 0)
-
-
-
     def test_polynomMulRepeat(self):
         A: torch.Tensor = torch.tensor([[[[1, 2, 3, 4],
                                           [1, 1, 1, 1],
@@ -91,7 +77,7 @@ class TestGM(unittest.TestCase):
                                           [10, 20]]]], dtype=torch.float32)
         B = B.transpose(2, 3)
 
-        (Ap, Bp) = gm._polynomMulRepeat(A, B)
+        (Ap, Bp) = gm._polynomial_mul_repeat(A, B)
         Ap = Ap.transpose(2, 3)
         Bp = Bp.transpose(2, 3)
 
