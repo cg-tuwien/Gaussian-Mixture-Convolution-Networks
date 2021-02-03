@@ -227,7 +227,7 @@ class PreinerGenerator(GMMGenerator):
                 #     .expand(1, 1, actual_point_subbatch_size, actual_gauss_subbatch_size)
                 # likelihood_log[:, :, i_start:i_end, j_start:j_end] = gma_log_rep - expvalues
 
-                expvalues += mat_tools.batched_trace(torch.matmul(gmicovs_rep, pcovs_rep))
+                expvalues += mat_tools.trace(torch.matmul(gmicovs_rep, pcovs_rep))
                 expvalues += torch.log(torch.det(gm_fit.covariances[:, :, j_start:j_end]))
                 expvalues += 5.513631199
                 # it could be, that there are gaussians with prior-weight 0, so we need to avoid division by zero

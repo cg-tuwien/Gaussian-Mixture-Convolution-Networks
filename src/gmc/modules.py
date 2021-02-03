@@ -8,7 +8,8 @@ from torch.utils.tensorboard import SummaryWriter as TensorboardWriter
 import gmc.mixture as gm
 import gmc.fitting
 import gmc.render
-
+import gmc.inout as gmio
+import gmc.mat_tools as mat_tools
 import gmc.cpp.gm_vis.gm_vis as gm_vis
 
 
@@ -56,15 +57,22 @@ class Convolution(torch.nn.modules.Module):
                 positions = positions.view(1, 1, n_kernel_components, 2).repeat((1, n_layers_in, 1, 1))
             else:
                 assert (self.n_dims == 3)
-                positions = torch.rand(1, n_layers_in, n_kernel_components, n_dims, dtype=torch.float32) * 2 - 1
+                # uniform sphere distribution + one in the middle
+                # https://stats.stackexchange.com/questions/7977/how-to-generate-uniformly-distributed-points-on-the-surface-of-the-3-d-unit-sphe
+                z = torch.rand(1, n_layers_in, n_kernel_components, 1, dtype=torch.float32) * 2 - 1
+                theta = torch.rand(1, n_layers_in, n_kernel_components, 1, dtype=torch.float32) * 2 * 3.14159265358979 - 3.14159265358979
+                x = torch.sin(theta) * torch.sqrt(1 - z * z)
+                y = torch.cos(theta) * torch.sqrt(1 - z * z)
+                positions = torch.cat((x, y, z), dim=3)
                 # positions = positions / torch.norm(positions, dim=-1, keepdim=True)
-                # positions[:, :, 0, :] = 0
+                # + one in the middle
+                positions[:, :, 0, :] = 0
             self.positions.append(torch.nn.Parameter(positions))
 
             # initialise with a rather round covariance matrix
             # a psd matrix can be generated with A A'. we learn A and generate a pd matrix via  A A' + eye * epsilon
             covariance_factors = torch.rand(1, n_layers_in, n_kernel_components, n_dims, n_dims, dtype=torch.float32) * 2 - 1
-            cov_rand_factor = 0.15
+            cov_rand_factor = 0.05
             covariance_factors = covariance_factors * cov_rand_factor + torch.eye(self.n_dims)
             covariance_factors = covariance_factors
             self.covariance_factors.append(torch.nn.Parameter(covariance_factors))
@@ -164,6 +172,13 @@ class Convolution(torch.nn.modules.Module):
         images = torch.cat(images, dim=1)
         return images[:, :, :3]
 
+    def debug_save3d(self, base_name: str):
+        for i in range(self.n_layers_out):
+            kernel = self.kernel(i)
+            assert kernel.shape[0] == 1
+
+            gmio.write_gm_to_ply2(kernel, f"{base_name}_k{i}")
+
     def forward(self, x: Tensor, x_constant: Tensor) -> typing.Tuple[Tensor, Tensor]:
         assert gm.is_valid_mixture_and_constant(x, x_constant)
         out_mixtures = []
@@ -248,3 +263,39 @@ class ReLUFitting(torch.nn.modules.Module):
 
         images = torch.cat([last_in, prediction], dim=1)
         return images[:, :, :3]
+
+    def debug_save3d(self, base_name: str, n_batch_samples: int = 1, n_layers: int = None):
+        gmio.write_gm_to_ply2(self.last_in[0][0:n_batch_samples, 0:n_layers], f"{base_name}_in")
+        gmio.write_gm_to_ply2(self.last_out[0][0:n_batch_samples, 0:n_layers], f"{base_name}_out")
+
+
+class CovScaleNorm(torch.nn.modules.Module):
+    """
+    this norm scales the covariances and positions so that the average covariance trace is n_dimensions.
+    scaling is uniform in all spatial directions (x, y, and z)
+    """
+    def __init__(self, norm_over_batch: bool = True):
+        super(CovScaleNorm, self).__init__()
+        self.norm_over_batch = norm_over_batch
+
+    def forward(self, x: Tensor, x_constant: Tensor = None) -> typing.Tuple[Tensor, Tensor]:
+        # according to the following link the scaling and mean computations do not detach the gradient.
+        # https://kratzert.github.io/2016/02/12/understanding-the-gradient-flow-through-the-batch-normalization-layer.html
+        assert gm.is_valid_mixture(x)
+
+        scaling_factor = mat_tools.trace(gm.covariances(x)).mean(-1) / gm.n_dimensions(x)  # mean over components and trace elements
+        n_batch = gm.n_batch(x)
+        if self.norm_over_batch:
+            scaling_factor = scaling_factor.mean(0)
+            n_batch = 1
+
+        scaling_factor = (1 / scaling_factor).view(n_batch, gm.n_layers(x), 1)
+        scaling_factor = torch.sqrt(scaling_factor)
+        y = gm.spatial_scale(x, scaling_factor)
+
+        if x_constant is None:
+            y_constant = torch.zeros(1, 1, device=x.device)
+        else:
+            y_constant = x_constant
+
+        return y, y_constant

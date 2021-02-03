@@ -13,6 +13,8 @@ from gmc import colourmap
 
 gamma_correction = 1/2.2
 
+index_t = typing.Optional[int]
+index_range = typing.Tuple[index_t, index_t]
 
 def colour_mapped(mono, low, high):
     if mono.ndim > 2:
@@ -37,7 +39,7 @@ def write_colour_map(width: int, height: int, filename: str):
     plt.imsave(filename, vals)
 
 
-def render(mixture: Tensor, constant: Tensor, batches: typing.Tuple[int, int] = (0, None), layers: typing.Tuple[int, int] = (0, None),
+def render(mixture: Tensor, constant: Tensor, batches: index_range = (0, None), layers: index_range = (0, None),
            x_low: float = -22, y_low: float = -22, x_high: float = 22, y_high: float = 22,
            width: int = 100, height: int = 100):
     assert gm.n_dimensions(mixture) == 2
@@ -54,7 +56,7 @@ def render(mixture: Tensor, constant: Tensor, batches: typing.Tuple[int, int] = 
     return rendering
 
 
-def render3d(mixture: Tensor, batches: typing.Tuple[int, int] = (0, None), layers: typing.Tuple[int, int] = (0, None),
+def render3d(mixture: Tensor, batches: index_range = (0, None), layers: index_range = (0, None),
              width: int = 100, height: int = 100, gm_vis_object: gm_vis.GMVisualizer = None):
     assert gm.n_dimensions(mixture) == 3
     assert gm.is_valid_mixture(mixture)
@@ -92,7 +94,7 @@ def render3d(mixture: Tensor, batches: typing.Tuple[int, int] = (0, None), layer
 
 
 def render_with_relu(mixture: Tensor, constant: Tensor,
-                     batches: typing.Tuple[int, int] = (0, None), layers: typing.Tuple[int, int] = (0, None),
+                     batches: index_range = (0, None), layers: index_range = (0, None),
                      x_low: float = -22, y_low: float = -22, x_high: float = 22, y_high: float = 22,
                      width: int = 100, height: int = 100) -> Tensor:
     assert gm.is_valid_mixture_and_constant(mixture, constant)

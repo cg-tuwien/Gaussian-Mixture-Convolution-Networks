@@ -5,6 +5,7 @@ import scipy.signal
 
 import gmc.mixture as gm
 import gmc.modules as gmc
+import gmc.mat_tools as mat_tools
 
 
 class TestGM(unittest.TestCase):
@@ -47,6 +48,25 @@ class TestGM(unittest.TestCase):
                 # plt.imshow((reference_solution - our_solution)); plt.colorbar(); plt.show();
                 assert max_l2_err < 0.0000001
 
+    def test_cov_scale_norm(self):
+        norm = gmc.CovScaleNorm()
+
+        m = torch.tensor([1, 1, 1, 1, 0, 0, 1], dtype=torch.float).view(1, 1, 1, -1)
+        mp_ref = torch.tensor([1, 1, 1, 1, 0, 0, 1], dtype=torch.float).view(1, 1, 1, -1)
+        mp, _ = norm(m, None)
+        self.assertLess((mp_ref - mp).abs().mean().item(), 0.000001)
+
+        m = torch.tensor([1, 1, 1, 4, 0, 0, 4], dtype=torch.float).view(1, 1, 1, -1)
+        mp, _ = norm(m, None)
+        self.assertAlmostEqual(mat_tools.trace(gm.covariances(mp)).item(), 2, places=5)
+
+        m = torch.tensor([1, 1, 1, 4, 0, 0, 9], dtype=torch.float).view(1, 1, 1, -1)
+        mp, _ = norm(m, None)
+        self.assertAlmostEqual(mat_tools.trace(gm.covariances(mp)).item(), 2, places=5)
+
+        m = gm.generate_random_mixtures(20, 10, 30, 3, pos_radius=15, cov_radius=30)
+        mp, _ = norm(m, None)
+        self.assertAlmostEqual(mat_tools.trace(gm.covariances(mp)).mean().item(), 3, places=5)
 
 if __name__ == '__main__':
     unittest.main()

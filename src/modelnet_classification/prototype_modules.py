@@ -9,9 +9,44 @@ import gmc.mat_tools as mat_tools
 import modelnet_classification.config as Config
 
 
-class BatchNorm(torch.nn.modules.Module):
+class CentroidWeightNorm(torch.nn.modules.Module):
+    """
+    This norm scales the weights so that the largest activation on at the centroids has norm 1.
+    """
+    def __init__(self, norm_over_batch: bool = True):
+        super(CentroidWeightNorm, self).__init__()
+        self.norm_over_batch = norm_over_batch
+
+    def forward(self, x: Tensor, x_constant: Tensor = None) -> typing.Tuple[Tensor, Tensor]:
+        # according to the following link the scaling and mean computations do not detach the gradient.
+        # https://kratzert.github.io/2016/02/12/understanding-the-gradient-flow-through-the-batch-normalization-layer.html
+        assert gm.is_valid_mixture(x)
+
+        scaling_factor = gm.evaluate(x, gm.positions(x)).detach().abs().max(-1)[0]  # detaching, because the gradient would be sparse.
+
+        n_batch = gm.n_batch(x)
+        if self.norm_over_batch:
+            scaling_factor = scaling_factor.max(dim=0)[0]
+            n_batch = 1
+
+        scaling_factor = torch.max(scaling_factor, torch.ones_like(scaling_factor))
+        scaling_factor = (1 / scaling_factor).view(n_batch, gm.n_layers(x), 1)
+
+        w = gm.weights(x) * scaling_factor
+        p = gm.positions(x)
+        c = gm.covariances(x)
+
+        if x_constant is None:
+            y_constant = torch.zeros(1, 1, device=x.device)
+        else:
+            y_constant = x_constant
+
+        return gm.pack_mixture(w, p, c), y_constant
+
+
+class OldBatchNorm(torch.nn.modules.Module):
     def __init__(self, config: Config, per_mixture_norm: bool = False):
-        super(BatchNorm, self).__init__()
+        super(OldBatchNorm, self).__init__()
         self.per_mixture_norm = per_mixture_norm
         self.config = config
 

@@ -258,11 +258,18 @@ def convolve(m1: Tensor, m2: Tensor) -> Tensor:
 
 def spatial_scale(m: Tensor, scaling_factors: Tensor) -> Tensor:
     """Does not scale weights, i.e., the integral will change."""
-    scaling_factors = scaling_factors.view(n_batch(m), n_layers(m), 1, n_dimensions(m))
+    assert len(scaling_factors.shape) == 3
+    scaling_factors = scaling_factors.unsqueeze(-2)
+
     w = weights(m)
     p = positions(m) * scaling_factors
-    cs = torch.diag_embed(scaling_factors)
-    c = cs @ covariances(m) @ cs
+    if scaling_factors.shape[-1] == n_dimensions(m):
+        cs = torch.diag_embed(scaling_factors)
+        c = cs @ covariances(m) @ cs
+    else:
+        cs = scaling_factors.unsqueeze(-1)
+        c = cs * cs * covariances(m)
+
     return pack_mixture(w, p, c)
 
 

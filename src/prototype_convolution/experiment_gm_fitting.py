@@ -80,7 +80,6 @@ for batch_idx in range(0, 10):  # max 10
                     n_batch = gm.n_batch(m)
                     n_layers = gm.n_layers(m)
                     n_components = gm.n_components(m)
-                    m, _, _ = gm.normalise(m, torch.zeros([1, n_layers], device=device))
                     # m.requires_grad = True
                     # sorted_indices = torch.argsort(gm.weights(m.detach()))
                     # sorted_m = mat_tools.my_index_select(m, sorted_indices)

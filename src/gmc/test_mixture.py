@@ -137,9 +137,11 @@ class TestGM(unittest.TestCase):
         n_batch = 10
         n_layers = 8
         n_components = 3
+
+        # different scale per dimensions
         for n_dims in range(2, 4):
             mixture_in = gm.generate_random_mixtures(n_batch=n_batch, n_layers=n_layers, n_components=n_components, n_dims=n_dims, pos_radius=1, cov_radius=1, weight_min=-0.5, weight_max=4)
-            scaling_factors = torch.rand(n_batch, n_layers, n_dims) * 20
+            scaling_factors = torch.rand(1, n_layers, n_dims) * 20
 
             xv, yv, zv = torch.meshgrid([torch.arange(-1, 1, 0.25, dtype=torch.float),
                                      torch.arange(-1, 1, 0.25, dtype=torch.float),
@@ -148,7 +150,24 @@ class TestGM(unittest.TestCase):
 
             eval_reference = gm.evaluate(mixture_in, xes)
             mixture_scaled = gm.spatial_scale(mixture_in, scaling_factors)
-            xes_scaled = xes.repeat(n_batch, n_layers, 1, 1) * scaling_factors.view(n_batch, n_layers, 1, n_dims)
+            xes_scaled = xes.repeat(n_batch, n_layers, 1, 1) * scaling_factors.view(1, n_layers, 1, n_dims)
+            eval_scaled = gm.evaluate(mixture_scaled, xes_scaled)
+
+            self.assertLess((eval_reference - eval_scaled).abs().mean().item(), 0.000001)
+
+        #uniform scale
+        for n_dims in range(2, 4):
+            mixture_in = gm.generate_random_mixtures(n_batch=n_batch, n_layers=n_layers, n_components=n_components, n_dims=n_dims, pos_radius=1, cov_radius=1, weight_min=-0.5, weight_max=4)
+            scaling_factors = torch.rand(n_batch, n_layers, 1) * 20
+
+            xv, yv, zv = torch.meshgrid([torch.arange(-1, 1, 0.25, dtype=torch.float),
+                                     torch.arange(-1, 1, 0.25, dtype=torch.float),
+                                     torch.arange(-1, 1, 0.25, dtype=torch.float)])
+            xes = torch.cat((xv.reshape(-1, 1), yv.reshape(-1, 1), zv.reshape(-1, 1)), 1).view(1, 1, -1, n_dims)
+
+            eval_reference = gm.evaluate(mixture_in, xes)
+            mixture_scaled = gm.spatial_scale(mixture_in, scaling_factors)
+            xes_scaled = xes.repeat(n_batch, n_layers, 1, 1) * scaling_factors.view(n_batch, n_layers, 1, 1)
             eval_scaled = gm.evaluate(mixture_scaled, xes_scaled)
 
             self.assertLess((eval_reference - eval_scaled).abs().mean().item(), 0.000001)

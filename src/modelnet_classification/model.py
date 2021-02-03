@@ -39,7 +39,7 @@ class Net(nn.Module):
 
         self.biases = torch.nn.ParameterList()
         self.gmc1 = gmc_modules.Convolution(gmcn_config.convolution_config, n_layers_in=1, n_layers_out=n_layers_1, n_kernel_components=n_kernel_components,
-                                            position_range=2, covariance_range=0.5,
+                                            position_range=2, covariance_range=1,
                                             learn_positions=learn_positions, learn_covariances=learn_covariances,
                                             weight_sd=0.4, n_dims=3)
         self.biases.append(torch.nn.Parameter(torch.zeros(1, n_layers_1) + bias_0))
@@ -59,8 +59,10 @@ class Net(nn.Module):
         self.biases.append(torch.nn.Parameter(torch.zeros(1, 10) + bias_0))
         # self.maxPool3 = gmc_modules.MaxPooling(2)
 
-        self.bn0 = prototype_modules.BatchNorm(gmcn_config, per_mixture_norm=True)
-        self.bn = prototype_modules.BatchNorm(gmcn_config, per_mixture_norm=False)
+        self.cov_norm0 = gmc_modules.CovScaleNorm(norm_over_batch=False)
+        self.cov_norm = gmc_modules.CovScaleNorm(norm_over_batch=True)
+        self.weight_norm0 = prototype_modules.CentroidWeightNorm(norm_over_batch=False)
+        self.weight_norm = prototype_modules.CentroidWeightNorm(norm_over_batch=True)
 
         self.relus = torch.nn.modules.ModuleList()
         self.relus.append(gmc_modules.ReLUFitting(gmcn_config.relu_config, layer_id="1c", n_layers=n_layers_1, n_input_gaussians=n_in_g * n_kernel_components, n_output_gaussians=n_out_g_1))
@@ -100,10 +102,10 @@ class Net(nn.Module):
         #
         # in our case: BN just scales and centres. the constant input to BN is ignored, so the constant convolution would be ignored if we place BN before ReLU.
         # but that might perform better anyway, we'll have to test.
-        x, x_const = self.bn0(in_x)
+        x, x_const = self.cov_norm0(*self.weight_norm0(in_x))
         x, x_const = self.gmc1(x, x_const)
         if self.config.bn_place == Config.BN_PLACE_AFTER_GMC:
-            x, x_const = self.bn(x, x_const)
+            x, x_const = self.cov_norm(*self.weight_norm(x, x_const))
 
         if self.config.bias_type == Config.BIAS_TYPE_NEGATIVE_SOFTPLUS:
             x_const = x_const - F.softplus(self.biases[0], beta=20)
@@ -119,10 +121,10 @@ class Net(nn.Module):
         # x = self.maxPool1(x)
 
         if self.config.bn_place == Config.BN_PLACE_BEFORE_GMC:
-            x, x_const = self.bn(x, x_const)
+            x, x_const = self.cov_norm(*self.weight_norm(x, x_const))
         x, x_const = self.gmc2(x, x_const)
         if self.config.bn_place == Config.BN_PLACE_AFTER_GMC:
-            x, x_const = self.bn(x, x_const)
+            x, x_const = self.cov_norm(*self.weight_norm(x, x_const))
 
         if self.config.bias_type == Config.BIAS_TYPE_NEGATIVE_SOFTPLUS:
             x_const = x_const - F.softplus(self.biases[1], beta=20)
@@ -138,10 +140,10 @@ class Net(nn.Module):
         # x = self.maxPool2(x)
 
         if self.config.bn_place == Config.BN_PLACE_BEFORE_GMC:
-            x, x_const = self.bn(x, x_const)
+            x, x_const = self.cov_norm(*self.weight_norm(x, x_const))
         x, x_const = self.gmc3(x, x_const)
         if self.config.bn_place == Config.BN_PLACE_AFTER_GMC:
-            x, x_const = self.bn(x, x_const)
+            x, x_const = self.cov_norm(*self.weight_norm(x, x_const))
 
         if self.config.bias_type == Config.BIAS_TYPE_NEGATIVE_SOFTPLUS:
             x_const = x_const - F.softplus(self.biases[2], beta=20)

@@ -92,6 +92,14 @@ def write_gm_to_ply(m_weights: Tensor, m_positions: Tensor, m_covariances: Tenso
     file.close()
 
 
+def write_gm_to_ply2(m: Tensor, path_without_ending: str):
+    assert gm.n_dimensions(m) == 3
+    for b in range(gm.n_batch(m)):
+        for l in range(gm.n_layers(m)):
+            t = m[b:b+1, l:l+1, :, :]
+            write_gm_to_ply(gm.weights(t), gm.positions(t), gm.covariances(t), 0, f"{path_without_ending}_b{b}_l{l}.ply");
+
+
 def read_gm_from_ply(filename: str, ismodel: bool = False, device='cuda') -> Tensor:
     # Reads a Gaussian Mixture from a ply-file
     # The parameter "ismodel" defines whether the weights in the file represent amplitudes (False) or priors (True)

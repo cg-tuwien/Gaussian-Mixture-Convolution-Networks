@@ -68,17 +68,17 @@ class ModelNetDataSet(torch.utils.data.Dataset):
         return mixture[0], torch.tensor(self.sample_labels[index])
 
 
-def render_debug_images_to_tensorboard(model, epoch, tensor_board_writer):
+def render_debug_images_to_tensorboard(model, epoch, tensor_board_writer, config: Config):
     tensor_board_writer.add_image("conv 1", model.gmc1.debug_render3d(clamp=[-0.80, 0.80]), epoch, dataformats='HWC')
+    model.gmc1.debug_save3d(f"{config.data_base_path}/debug_conv1")
     tensor_board_writer.add_image("conv 2", model.gmc2.debug_render3d(clamp=[-0.32, 0.32]), epoch, dataformats='HWC')
+    model.gmc2.debug_save3d(f"{config.data_base_path}/debug_conv2")
     tensor_board_writer.add_image("conv 3", model.gmc3.debug_render3d(clamp=[-0.20, 0.20]), epoch, dataformats='HWC')
+    model.gmc3.debug_save3d(f"{config.data_base_path}/debug_conv3")
 
-    # tensor_board_writer.add_image("mnist relu 1", model.relus[0].debug_render(position_range=[-14, -14, 42, 42], clamp=[-4 / (28 ** 2), 16.0 / (28 ** 2)]), epoch, dataformats='HWC')
-    # tensor_board_writer.add_image("mnist relu 2", model.relus[1].debug_render(position_range=[-14, -14, 42, 42], clamp=[-20 / (28 ** 2), 80.0 / (28 ** 2)]), epoch, dataformats='HWC')
-    # tensor_board_writer.add_image("mnist relu 3", model.relus[2].debug_render(position_range=[-14, -14, 42, 42], clamp=[-6 / (28 ** 2), 24.0 / (28 ** 2)]), epoch, dataformats='HWC')
-    tensor_board_writer.add_image("relu 1", model.relus[0].debug_render3d(), epoch, dataformats='HWC')
-    tensor_board_writer.add_image("relu 2", model.relus[1].debug_render3d(), epoch, dataformats='HWC')
-    tensor_board_writer.add_image("relu 3", model.relus[2].debug_render3d(), epoch, dataformats='HWC')
+    for i, relu in enumerate(model.relus):
+        tensor_board_writer.add_image(f"relu {i+1}", relu.debug_render3d(), epoch, dataformats='HWC')
+        relu.debug_save3d(f"{config.data_base_path}/debug_relu{i+1}")
 
 
 def train(args, model: modelnet_classification.model.Net, device: torch.device, train_loader: torch.utils.data.DataLoader,
@@ -133,7 +133,7 @@ def train(args, model: modelnet_classification.model.Net, device: torch.device, 
             # for name, timing in model.timings.items():
             #     tensor_board_writer.add_scalar(f"06. {name} time", timing, step)
 
-            render_debug_images_to_tensorboard(model, step, tensor_board_writer)
+            render_debug_images_to_tensorboard(model, step, tensor_board_writer, config)
 
             print(f'Training kernels: {epoch}/{step} [{batch_idx}/{len(train_loader)} '
                   f'({100. * batch_idx / len(train_loader):.0f}%)]\tClassification loss: {loss.item():.6f} (accuracy: {100 * correct / len(data)}), '
