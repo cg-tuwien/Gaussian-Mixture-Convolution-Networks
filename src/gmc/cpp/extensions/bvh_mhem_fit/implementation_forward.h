@@ -301,14 +301,17 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_em(const gpe::Vector
     }
 
 
-//    if (gpe::abs(abs_integral - gpe::reduce(result, scalar_t(0), [](scalar_t i, const G& g) { return i + gpe::abs(gpe::integrate(g)); })) >= scalar_t(0.0001)) {
+#ifndef NDEBUG
+//    if (gpe::abs(target_clipped_integral - gpe::reduce(result, scalar_t(0), [](scalar_t i, const G& g) { return i + gpe::abs(gpe::integrate(g)); })) >= scalar_t(0.0001)) {
 //        auto intabsmixres = gpe::reduce(result, scalar_t(0), [](scalar_t i, const G& g) { return i + gpe::abs(gpe::integrate(g)); });
+//        printf("target_clipped_integral= %f, intabsmixres=%f\n", float(target_clipped_integral), float(intabsmixres));
+//
 //        printf("target:\n");
-//        for (const auto& g : target_double_gmm) {
+//        for (const auto& g : target) {
 //            gpe::printGaussian(g);
 //        }
-//        printf("initial fitting:\n");
-//        for (const auto& g : fitting_double_gmm) {
+//        printf("initial_mixture:\n");
+//        for (const auto& g : initial_mixture) {
 //            gpe::printGaussian(g);
 //        }
 //        printf("result:\n");
@@ -320,7 +323,9 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_em(const gpe::Vector
 //#endif
 //        assert(false);
 //    }
-    assert(gpe::abs(target_clipped_integral - gpe::reduce(result, scalar_t(0), [](scalar_t i, const G& g) { return i + gpe::abs(gpe::integrate(g)); })) < scalar_t(0.0001));
+    auto fitting_integral = gpe::reduce(result, scalar_t(0), [](scalar_t i, const G& g) { return i + gpe::abs(gpe::integrate(g)); });
+    assert(gpe::abs(target_clipped_integral - fitting_integral) / gpe::max(scalar_t(1), (target_clipped_integral + fitting_integral) / 2) < scalar_t(0.0001));
+#endif
     return result;
 }
 
