@@ -6,7 +6,7 @@ import torch
 from typing import List, Tuple, Optional
 
 from gmc import mixture, mat_tools
-import gmc.io as gmio
+import gmc.inout as gmio
 from prototype_pcfitting import GMMGenerator, Scaler, PCDatasetIterator, GMLogger, ErrorFunction, data_loading
 from prototype_pcfitting.generators.em_tools import EMTools
 import prototype_pcfitting.pc_dataset_iterator

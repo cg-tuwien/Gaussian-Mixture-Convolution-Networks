@@ -3,7 +3,7 @@ from typing import List
 import torch
 import os
 import gmc.mixture as gm
-import gmc.io as gmio
+import gmc.inout as gmio
 
 
 def load_pc_from_off(path: str) -> torch.Tensor:
