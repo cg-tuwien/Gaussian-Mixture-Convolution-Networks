@@ -82,7 +82,7 @@ def render_debug_images_to_tensorboard(model, epoch, tensor_board_writer, config
 
 
 def train(args, model: modelnet_classification.model.Net, device: torch.device, train_loader: torch.utils.data.DataLoader,
-          kernel_optimiser: Optimizer, epoch: int, tensor_board_writer: torch.utils.tensorboard.SummaryWriter, config: Config):
+          kernel_optimiser: Optimizer, weight_decay_optimiser: Optimizer, epoch: int, tensor_board_writer: torch.utils.tensorboard.SummaryWriter, config: Config):
     model.train()
     for batch_idx, (data, target) in enumerate(train_loader):
         data, target = data.to(device), target.to(device)
@@ -105,6 +105,11 @@ def train(args, model: modelnet_classification.model.Net, device: torch.device, 
         training_loss.backward()
         tw = time.perf_counter()
         kernel_optimiser.step()
+
+        weight_decay_optimiser.zero_grad()
+        model.weight_decay_loss().backward()
+        weight_decay_optimiser.step()
+
         batch_end_time = time.perf_counter()
 
         if step % args.log_interval == 0:
@@ -220,6 +225,7 @@ def experiment(device: str = 'cuda', n_epochs: int = 20, kernel_learning_rate: f
     #     print(parameter)
 
     kernel_optimiser = optim.Adam(model.parameters(), lr=kernel_learning_rate)
+    weight_decay_optimiser = optim.SGD(model.parameters(), lr=(0.1*kernel_learning_rate))
     tensor_board_writer = torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard' / f'{desc_string}_{datetime.datetime.now().strftime("%m%d_%H%M")}')
 
     # scheduler = StepLR(kernel_optimiser, step_size=1, gamma=args.gamma)
@@ -227,7 +233,7 @@ def experiment(device: str = 'cuda', n_epochs: int = 20, kernel_learning_rate: f
     for epoch in range(n_epochs):
         model.set_position_learning(epoch >= learn_positions_after)
         model.set_covariance_learning(epoch >= learn_covariances_after)
-        train(args, model, device, train_loader, kernel_optimiser=kernel_optimiser, epoch=epoch, tensor_board_writer=tensor_board_writer, config=config)
+        train(args, model, device, train_loader, kernel_optimiser=kernel_optimiser, weight_decay_optimiser=weight_decay_optimiser, epoch=epoch, tensor_board_writer=tensor_board_writer, config=config)
         test(args, model, device, test_loader, epoch, tensor_board_writer=tensor_board_writer)
         # scheduler.step()
 

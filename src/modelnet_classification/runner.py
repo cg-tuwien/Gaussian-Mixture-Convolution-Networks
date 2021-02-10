@@ -17,7 +17,7 @@ c.mnist_n_layers_2 = 16
 c.mnist_n_out_g_2 = 16
 c.mnist_n_out_g_3 = -1
 
-c.kernel_radius = 1
+c.kernel_radius = 0.5
 
 mnist_n_kernel_components = 5
 

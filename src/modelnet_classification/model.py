@@ -115,6 +115,9 @@ class Net(nn.Module):
     def regularisation_loss(self) -> Tensor:
         return self.gmc1.regularisation_loss() + self.gmc2.regularisation_loss() + self.gmc3.regularisation_loss()
 
+    def weight_decay_loss(self) -> Tensor:
+        return self.gmc1.weight_decay_loss() + self.gmc2.weight_decay_loss() + self.gmc3.weight_decay_loss()
+
     # noinspection PyCallingNonCallable
     def forward(self, in_x: Tensor, tensorboard: TensorboardWriter = None) -> Tensor:
         # Andrew Ng says that most of the time batch norm (BN) is applied before activation.

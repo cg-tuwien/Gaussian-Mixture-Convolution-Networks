@@ -28,6 +28,8 @@ mnist_n_out_g_2 = 16
 mnist_n_out_g_3 = -1
 mnist_n_kernel_components = 5
 
+kernel_radius = 1
+
 bn_mean_over_layers = False
 BN_CONSTANT_COMPUTATION_ZERO = 0
 BN_CONSTANT_COMPUTATION_MEAN_IN_CONST = 1
