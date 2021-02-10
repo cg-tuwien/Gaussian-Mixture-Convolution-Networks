@@ -70,15 +70,15 @@ class ModelNetDataSet(torch.utils.data.Dataset):
 
 def render_debug_images_to_tensorboard(model, epoch, tensor_board_writer, config: Config):
     tensor_board_writer.add_image("conv 1", model.gmc1.debug_render3d(clamp=[-0.80, 0.80]), epoch, dataformats='HWC')
-    model.gmc1.debug_save3d(f"{config.data_base_path}/debug_conv1")
+    model.gmc1.debug_save3d(f"{config.data_base_path}/debug_out/kernels/conv1")
     tensor_board_writer.add_image("conv 2", model.gmc2.debug_render3d(clamp=[-0.32, 0.32]), epoch, dataformats='HWC')
-    model.gmc2.debug_save3d(f"{config.data_base_path}/debug_conv2")
+    model.gmc2.debug_save3d(f"{config.data_base_path}/debug_out/kernels/conv2")
     tensor_board_writer.add_image("conv 3", model.gmc3.debug_render3d(clamp=[-0.20, 0.20]), epoch, dataformats='HWC')
-    model.gmc3.debug_save3d(f"{config.data_base_path}/debug_conv3")
+    model.gmc3.debug_save3d(f"{config.data_base_path}/debug_out/kernels/conv3")
 
     for i, relu in enumerate(model.relus):
         tensor_board_writer.add_image(f"relu {i+1}", relu.debug_render3d(), epoch, dataformats='HWC')
-        relu.debug_save3d(f"{config.data_base_path}/debug_relu{i+1}")
+        relu.debug_save3d(f"{config.data_base_path}/debug_out/activations/relu{i+1}")
 
 
 def train(args, model: modelnet_classification.model.Net, device: torch.device, train_loader: torch.utils.data.DataLoader,
