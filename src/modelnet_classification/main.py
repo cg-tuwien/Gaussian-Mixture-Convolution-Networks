@@ -69,12 +69,9 @@ class ModelNetDataSet(torch.utils.data.Dataset):
 
 
 def render_debug_images_to_tensorboard(model, epoch, tensor_board_writer, config: Config):
-    tensor_board_writer.add_image("conv 1", model.gmc1.debug_render3d(clamp=[-0.80, 0.80]), epoch, dataformats='HWC')
-    model.gmc1.debug_save3d(f"{config.data_base_path}/debug_out/kernels/conv1")
-    tensor_board_writer.add_image("conv 2", model.gmc2.debug_render3d(clamp=[-0.32, 0.32]), epoch, dataformats='HWC')
-    model.gmc2.debug_save3d(f"{config.data_base_path}/debug_out/kernels/conv2")
-    tensor_board_writer.add_image("conv 3", model.gmc3.debug_render3d(clamp=[-0.20, 0.20]), epoch, dataformats='HWC')
-    model.gmc3.debug_save3d(f"{config.data_base_path}/debug_out/kernels/conv3")
+    for i, gmc in enumerate(model.gmcs):
+        tensor_board_writer.add_image(f"conv {i}", gmc.debug_render3d(clamp=[-0.80, 0.80]), epoch, dataformats='HWC')
+        gmc.debug_save3d(f"{config.data_base_path}/debug_out/kernels/conv{i}")
 
     for i, relu in enumerate(model.relus):
         tensor_board_writer.add_image(f"relu {i+1}", relu.debug_render3d(), epoch, dataformats='HWC')
@@ -205,7 +202,7 @@ def experiment(device: str = 'cuda', n_epochs: int = 20, kernel_learning_rate: f
     model = modelnet_classification.model.Net(name=desc_string,
                                               learn_positions=learn_positions_after == 0,
                                               learn_covariances=learn_covariances_after == 0,
-                                              gmcn_config=config)
+                                              config=config)
     model.load()
     model = model.to(device)
 
@@ -225,7 +222,7 @@ def experiment(device: str = 'cuda', n_epochs: int = 20, kernel_learning_rate: f
     #     print(parameter)
 
     kernel_optimiser = optim.Adam(model.parameters(), lr=kernel_learning_rate)
-    weight_decay_optimiser = optim.SGD(model.parameters(), lr=(0.1*kernel_learning_rate))
+    weight_decay_optimiser = optim.SGD(model.parameters(), lr=(0.05*kernel_learning_rate))
     tensor_board_writer = torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard' / f'{desc_string}_{datetime.datetime.now().strftime("%m%d_%H%M")}')
 
     # scheduler = StepLR(kernel_optimiser, step_size=1, gamma=args.gamma)

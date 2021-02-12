@@ -34,62 +34,41 @@ class Net(nn.Module):
                  name: str = "default",
                  learn_positions: bool = False,
                  learn_covariances: bool = False,
-                 gmcn_config: Config = Config):
+                 config: Config = Config):
         super(Net, self).__init__()
-        self.storage_path = gmcn_config.data_base_path / "weights" / f"mnist3d_gmcnet_{name}.pt"
+        self.storage_path = config.data_base_path / "weights" / f"mnist3d_gmcnet_{name}.pt"
         # reference_fitter = gmc_modules.generate_default_fitting_module
-        n_in_g = gmcn_config.mnist_n_in_g
-        n_layers_1 = gmcn_config.mnist_n_layers_1
-        n_out_g_1 = gmcn_config.mnist_n_out_g_1
-        n_layers_2 = gmcn_config.mnist_n_layers_2
-        n_out_g_2 = gmcn_config.mnist_n_out_g_2
-        n_out_g_3 = gmcn_config.mnist_n_out_g_3
-        n_kernel_components = gmcn_config.mnist_n_kernel_components
-        self.config = gmcn_config
+
+        self.config = config
 
         bias_0 = 0.0
         if self.config.bias_type == Config.BIAS_TYPE_NEGATIVE_SOFTPLUS:
             bias_0 = -0.1
 
         pos2cov = lambda p: (p / 3) ** 2
-        posrange1 = gmcn_config.kernel_radius
-        posrange2 = gmcn_config.kernel_radius
-        posrange3 = gmcn_config.kernel_radius
 
         self.biases = torch.nn.ParameterList()
-        self.gmc1 = gmc_modules.Convolution(gmcn_config.convolution_config, n_layers_in=1, n_layers_out=n_layers_1, n_kernel_components=n_kernel_components,
-                                            position_range=posrange1, covariance_range=pos2cov(posrange1),
-                                            learn_positions=learn_positions, learn_covariances=learn_covariances,
-                                            weight_sd=0.4, weight_mean=0.04, n_dims=3)
-        self.biases.append(torch.nn.Parameter(torch.zeros(1, n_layers_1) + bias_0))
-        # self.maxPool1 = gmc_modules.MaxPooling(10)
+        self.gmcs = torch.nn.modules.ModuleList()
+        self.relus = torch.nn.modules.ModuleList()
 
-        self.gmc2 = gmc_modules.Convolution(gmcn_config.convolution_config, n_layers_in=n_layers_1, n_layers_out=n_layers_2, n_kernel_components=n_kernel_components,
-                                            position_range=posrange2, covariance_range=pos2cov(posrange2),
-                                            learn_positions=learn_positions, learn_covariances=learn_covariances,
-                                            weight_sd=0.04, weight_mean=0.004, n_dims=3)
-        self.biases.append(torch.nn.Parameter(torch.zeros(1, n_layers_2) + bias_0))
-        # self.maxPool2 = gmc_modules.MaxPooling(10)
-
-        self.gmc3 = gmc_modules.Convolution(gmcn_config.convolution_config, n_layers_in=n_layers_2, n_layers_out=10, n_kernel_components=n_kernel_components,
-                                            position_range=posrange3, covariance_range=pos2cov(posrange3),
-                                            learn_positions=learn_positions, learn_covariances=learn_covariances,
-                                            weight_sd=0.04, weight_mean=0.004, n_dims=3)
-        self.biases.append(torch.nn.Parameter(torch.zeros(1, 10) + bias_0))
-        # self.maxPool3 = gmc_modules.MaxPooling(2)
+        config.layers[-1].n_feature_layers = 10
+        n_feature_layers_in = 1
+        for i, l in enumerate(config.layers):
+            self.gmcs.append(gmc_modules.Convolution(config.convolution_config, n_layers_in=n_feature_layers_in, n_layers_out=l.n_feature_layers, n_kernel_components=config.n_kernel_components,
+                                                     position_range=l.kernel_radius, covariance_range=pos2cov(l.kernel_radius),
+                                                     learn_positions=learn_positions, learn_covariances=learn_covariances,
+                                                     weight_sd=0.4, weight_mean=0.04, n_dims=3))
+            self.biases.append(torch.nn.Parameter(torch.zeros(1, l.n_feature_layers) + bias_0))
+            self.relus.append(gmc_modules.ReLUFitting(config.relu_config, layer_id=f"{i}c", n_layers=l.n_feature_layers, n_output_gaussians=l.n_fitting_components))
+            n_feature_layers_in = l.n_feature_layers
 
         self.norm0 = BatchNormStack((gmc_modules.CovScaleNorm(norm_over_batch=False),
-                                     prototype_modules.OldBatchNorm(gmcn_config, True), ))
+                                     prototype_modules.OldBatchNorm(config, True),))
 
-        self.norm = BatchNormStack((#gmc_modules.CovScaleNorm(),
-                                    prototype_modules.OldBatchNorm(gmcn_config), ))
+        self.norm = BatchNormStack((gmc_modules.CovScaleNorm(),
+                                    prototype_modules.OldBatchNorm(config),))
         # self.weight_norm0 = prototype_modules.CentroidWeightNorm(norm_over_batch=False)
         # self.weight_norm = prototype_modules.CentroidWeightNorm(norm_over_batch=True)
-
-        self.relus = torch.nn.modules.ModuleList()
-        self.relus.append(gmc_modules.ReLUFitting(gmcn_config.relu_config, layer_id="1c", n_layers=n_layers_1, n_input_gaussians=n_in_g * n_kernel_components, n_output_gaussians=n_out_g_1))
-        self.relus.append(gmc_modules.ReLUFitting(gmcn_config.relu_config, layer_id="2c", n_layers=n_layers_2, n_input_gaussians=n_out_g_1 * n_layers_1 * n_kernel_components, n_output_gaussians=n_out_g_2))
-        self.relus.append(gmc_modules.ReLUFitting(gmcn_config.relu_config, layer_id="3c", n_layers=10, n_input_gaussians=n_out_g_2 * n_layers_2 * n_kernel_components, n_output_gaussians=n_out_g_3))
 
         self.timings = dict()
         self.last_time = time.time()
@@ -103,20 +82,24 @@ class Net(nn.Module):
         self.last_time = current
 
     def set_position_learning(self, flag: bool):
-        self.gmc1.learn_positions = flag
-        self.gmc2.learn_positions = flag
-        self.gmc3.learn_positions = flag
+        for gmc in self.gmcs:
+            gmc.learn_positions = flag
 
     def set_covariance_learning(self, flag: bool):
-        self.gmc1.learn_covariances = flag
-        self.gmc2.learn_covariances = flag
-        self.gmc3.learn_covariances = flag
+        for gmc in self.gmcs:
+            gmc.learn_covariances = flag
 
     def regularisation_loss(self) -> Tensor:
-        return self.gmc1.regularisation_loss() + self.gmc2.regularisation_loss() + self.gmc3.regularisation_loss()
+        rl = torch.zeros(1, device=next(self.parameters()).device, dtype=torch.float)
+        for gmc in self.gmcs:
+            rl = rl + gmc.regularisation_loss()
+        return rl
 
     def weight_decay_loss(self) -> Tensor:
-        return self.gmc1.weight_decay_loss() + self.gmc2.weight_decay_loss() + self.gmc3.weight_decay_loss()
+        wdl = torch.zeros(1, device=next(self.parameters()).device, dtype=torch.float)
+        for gmc in self.gmcs:
+            wdl = wdl + gmc.weight_decay_loss()
+        return wdl
 
     # noinspection PyCallingNonCallable
     def forward(self, in_x: Tensor, tensorboard: TensorboardWriter = None) -> Tensor:
@@ -128,60 +111,28 @@ class Net(nn.Module):
         # in our case: BN just scales and centres. the constant input to BN is ignored, so the constant convolution would be ignored if we place BN before ReLU.
         # but that might perform better anyway, we'll have to test.
         x, x_const = self.norm0(in_x)
-        x, x_const = self.gmc1(x, x_const)
-        if self.config.bn_place == Config.BN_PLACE_AFTER_GMC:
-            x, x_const = self.norm(x, x_const)
 
-        if self.config.bias_type == Config.BIAS_TYPE_NEGATIVE_SOFTPLUS:
-            x_const = x_const - F.softplus(self.biases[0], beta=20)
-        elif self.config.bias_type == Config.BIAS_TYPE_NORMAL:
-            x_const = x_const + self.biases[0]
-        else:
-            assert self.config.bias_type == Config.BIAS_TYPE_NONE
-            x_const = torch.zeros(1, 1, device=in_x.device)
+        for i in range(len(self.config.layers)):
+            x, x_const = self.gmcs[i](x, x_const)
 
-        self.reset_timer()
-        x, x_const = self.relus[0](x, x_const, tensorboard)
-        self.time_lap("relu0")
-        # x = self.maxPool1(x)
+            if self.config.bn_place == Config.BN_PLACE_AFTER_GMC:
+                x, x_const = self.norm(x, x_const)
 
-        if self.config.bn_place == Config.BN_PLACE_BEFORE_GMC:
-            x, x_const = self.norm(x, x_const)
-        x, x_const = self.gmc2(x, x_const)
-        if self.config.bn_place == Config.BN_PLACE_AFTER_GMC:
-            x, x_const = self.norm(x, x_const)
+            if self.config.bias_type == Config.BIAS_TYPE_NEGATIVE_SOFTPLUS:
+                x_const = x_const - F.softplus(self.biases[i], beta=20)
+            elif self.config.bias_type == Config.BIAS_TYPE_NORMAL:
+                x_const = x_const + self.biases[i]
+            else:
+                assert self.config.bias_type == Config.BIAS_TYPE_NONE
+                x_const = torch.zeros(1, 1, device=in_x.device)
 
-        if self.config.bias_type == Config.BIAS_TYPE_NEGATIVE_SOFTPLUS:
-            x_const = x_const - F.softplus(self.biases[1], beta=20)
-        elif self.config.bias_type == Config.BIAS_TYPE_NORMAL:
-            x_const = x_const + self.biases[1]
-        else:
-            assert self.config.bias_type == Config.BIAS_TYPE_NONE
-            x_const = torch.zeros(1, 1, device=in_x.device)
+            self.reset_timer()
+            x, x_const = self.relus[i](x, x_const, tensorboard)
+            self.time_lap(f"relu{i}")
+            # x = self.maxPool1(x)
 
-        self.reset_timer()
-        x, x_const = self.relus[1](x, x_const, tensorboard)
-        self.time_lap("relu1")
-        # x = self.maxPool2(x)
-
-        if self.config.bn_place == Config.BN_PLACE_BEFORE_GMC:
-            x, x_const = self.norm(x, x_const)
-        x, x_const = self.gmc3(x, x_const)
-        if self.config.bn_place == Config.BN_PLACE_AFTER_GMC:
-            x, x_const = self.norm(x, x_const)
-
-        if self.config.bias_type == Config.BIAS_TYPE_NEGATIVE_SOFTPLUS:
-            x_const = x_const - F.softplus(self.biases[2], beta=20)
-        elif self.config.bias_type == Config.BIAS_TYPE_NORMAL:
-            x_const = x_const + self.biases[2]
-        else:
-            assert self.config.bias_type == Config.BIAS_TYPE_NONE
-            x_const = torch.zeros(1, 1, device=in_x.device)
-
-        self.reset_timer()
-        x, x_const = self.relus[2](x, x_const, tensorboard)
-        self.time_lap("relu2")
-        # x = self.maxPool3(x)
+            if self.config.bn_place == Config.BN_PLACE_AFTER_RELU:
+                x, x_const = self.norm(x, x_const)
 
         x = gm.integrate(x)
         x = F.log_softmax(x, dim=1)
