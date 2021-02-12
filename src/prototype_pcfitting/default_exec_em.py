@@ -20,17 +20,17 @@ gengmm_path = f"{config.data_base_path}/modelnet/gmms"
 
 # Define Point Count (Samples), Gaussian Count and Batch Size (how many models to process at once)
 n_points = 50000
-batch_size = 200
+batch_size = 100
 
 # --- DO NOT CHANGE FROM HERE ---
 # Define GMM Generators
 generators = [
-    EMGenerator(n_gaussians=32, initialization_method='randnormpos', n_sample_points=n_points,
-                termination_criterion=RelChangeTerminationCriterion(0.1, 20), em_step_points_subbatchsize=10000,
-                em_step_gaussians_subbatchsize=512, verbosity=config.verbosity),
-    # EMGenerator(n_gaussians=64, initialization_method='randnormpos', n_sample_points=n_points,
+    # EMGenerator(n_gaussians=32, initialization_method='randnormpos', n_sample_points=n_points,
     #             termination_criterion=RelChangeTerminationCriterion(0.1, 20), em_step_points_subbatchsize=10000,
     #             em_step_gaussians_subbatchsize=512, verbosity=config.verbosity),
+    EMGenerator(n_gaussians=64, initialization_method='randnormpos', n_sample_points=n_points,
+                termination_criterion=RelChangeTerminationCriterion(0.1, 20), em_step_points_subbatchsize=10000,
+                em_step_gaussians_subbatchsize=512, verbosity=config.verbosity),
     # EMGenerator(n_gaussians=128, initialization_method='randnormpos', n_sample_points=n_points,
     #             termination_criterion=RelChangeTerminationCriterion(0.1, 20), em_step_points_subbatchsize=10000,
     #             em_step_gaussians_subbatchsize=512, verbosity=config.verbosity),
@@ -41,8 +41,8 @@ generators = [
     #             termination_criterion=RelChangeTerminationCriterion(0.1, 20), em_step_points_subbatchsize=10000,
     #             em_step_gaussians_subbatchsize=512, verbosity=config.verbosity),
 ]
-# generator_identifiers = ["EM64", "EM128", "EM256", "EM512"]  # "EM32",
-generator_identifiers = ["EM32"]
+# generator_identifiers = ["EM32", "EM64", "EM128", "EM256", "EM512"]  # "EM32",
+generator_identifiers = ["EM64"]
 
 log_loss = 0
 if config.verbosity > 2:

@@ -29,7 +29,7 @@ generators = [
     #             termination_criterion=RelChangeTerminationCriterion(0.1, 20), em_step_points_subbatchsize=10000,
     #             em_step_gaussians_subbatchsize=512, verbosity=config.verbosity),
     EMGenerator(n_gaussians=64, initialization_method='fpsmax', n_sample_points=n_points,
-                termination_criterion=MaxIterationTerminationCriterion(0), em_step_points_subbatchsize=10000,
+                termination_criterion=MaxIterationTerminationCriterion(0), em_step_points_subbatchsize=10000, eps=0.00005,
                 em_step_gaussians_subbatchsize=512, verbosity=config.verbosity),
     # EMGenerator(n_gaussians=128, initialization_method='randnormpos', n_sample_points=n_points,
     #             termination_criterion=RelChangeTerminationCriterion(0.1, 20), em_step_points_subbatchsize=10000,
@@ -42,7 +42,7 @@ generators = [
     #             em_step_gaussians_subbatchsize=512, verbosity=config.verbosity),
 ]
 # generator_identifiers = ["EM32", "EM64", "EM128", "EM256", "EM512"]  # "EM32",
-generator_identifiers = ["EM64"]
+generator_identifiers = ["fpsmax64_2"]
 
 log_loss = 0
 if config.verbosity > 2:
