@@ -6,3 +6,4 @@ from .termination_criterion import TerminationCriterion, \
     OrCombinedTerminationCriterion
 from .pc_dataset_iterator import PCDatasetIterator
 from .scaler import Scaler, ScalingMethod
+from .gm_sampler import GMSampler
