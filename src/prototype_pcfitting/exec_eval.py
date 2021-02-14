@@ -1,6 +1,6 @@
 from typing import List
 from prototype_pcfitting import ErrorFunction, programs
-from prototype_pcfitting.error_functions import LikelihoodLoss
+from prototype_pcfitting.error_functions import LikelihoodLoss, PSNR
 
 # This takes a set of finished GMMs and evaluates them using several error functions.
 # The results are printed to the console.
@@ -10,10 +10,13 @@ from prototype_pcfitting.error_functions import LikelihoodLoss
 model_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_vartest/models"
 genpc_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_vartest/pointclouds"
 gengmm_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_vartest/gmms"
+# model_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_bunny/models"
+# genpc_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_bunny/pointclouds"
+# gengmm_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_bunny/gmms"
 
 # Define point count of pointclouds to use, and how many points to use for evaluation
-n_points = 1000
-eval_points = 1000
+n_points = 50000
+eval_points = 50000
 
 # Define identifiers of Generators to evaluate and error functions to use
 #generator_identifiers = ["EMi0", "EMi3", "EckHP", "EckSP0.3", "EckSP0.5"]
@@ -22,9 +25,10 @@ eval_points = 1000
 #                          "14-EckHPiEigen", "20-EckSP0.0iBB","21-EckSP0.0iRNP", "22-EckSP0.0iFpsmax", "23-EckSP0.0iKM",
 #                          "30-EckSP0.1iBB","31-EckSP0.1iRNP", "32-EckSP0.1iFpsmax", "33-EckSP0.1iKM",
 #                          "40-EckSP0.3iBB","41-EckSP0.3iRNP", "42-EckSP0.3iFpsmax", "43-EckSP0.3iKM"]
-generator_identifiers = ["10-EckHPiTBB(unscaled)", "11-EckHPiRNP(unscaled)", "14-EckHPiEigen(unscaled)"]
-error_functions: List[ErrorFunction] = [] # [LikelihoodLoss()]
-error_function_identifiers = [] # ["Likelihood Loss"]
+# generator_identifiers = ["10-EckHPiTBB(unscaled)", "11-EckHPiRNP(unscaled)", "14-EckHPiEigen(unscaled)"]
+generator_identifiers = ["EMrnp", "EMfps", "Eckbb", "Eckrnp", "Eckfps"]
+error_functions: List[ErrorFunction] = [LikelihoodLoss(False), PSNR()]#, PSNR(True)]
+error_function_identifiers = ["Likelihood Loss", "PSNR"]#, "EXPPSNR"]
 
 # Scaling options
 scaling_active = False

@@ -144,8 +144,13 @@ class GMLogger:
 
         if self._log_loss_tb > 0 and iteration % self._log_loss_tb == 0:
             for i in running_idcs:
-                self._tbwriters[i].add_scalar("Loss", losses[i].item(), iteration)
-                self._tbwriters[i].flush()
+                if losses[i].numel() == 1:
+                    self._tbwriters[i].add_scalar("Loss", losses[i].item(), iteration)
+                    self._tbwriters[i].flush()
+                else:
+                    for j in range(losses[i].shape[0]):
+                        self._tbwriters[i].add_scalar("Loss " + str(j), losses[i][0].item(), iteration)
+                        self._tbwriters[i].flush()
 
         log_rendering = self._log_rendering_tb > 0 and iteration % self._log_rendering_tb == 0
         log_gm = self._log_gm > 0 and iteration % self._log_gm == 0

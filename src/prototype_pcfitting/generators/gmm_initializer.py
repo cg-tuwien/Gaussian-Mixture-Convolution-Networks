@@ -199,7 +199,8 @@ class GMMInitializer:
         gmpositions = pcbatch[batch_indizes, sampled, :].view(batch_size, 1, n_gaussians, 3)
         gmcovariances = torch.zeros(batch_size, 1, n_gaussians, 3, 3, dtype=self._dtype, device='cuda') + eps
         maxextends = torch.max(pcbatch.max(dim=1)[0] - pcbatch.min(dim=1)[0], dim=1)[0].view(-1, 1)
-        gmcovariances[:, :, :] = torch.eye(3, dtype=self._dtype, device='cuda') * (maxextends**2)
+        gmcovariances[:, 0, :] = torch.eye(3, dtype=self._dtype, device='cuda')\
+                .unsqueeze(0).unsqueeze(0).expand(batch_size, 1, 3, 3) * maxextends.unsqueeze(2).unsqueeze(1)
         gmpriors = torch.zeros(batch_size, 1, n_gaussians, dtype=self._dtype, device='cuda')
         gmpriors[:, :, :] = 1 / (n_gaussians + (noise_cluster is not None))
 
