@@ -14,8 +14,8 @@ import gmc.cpp.gm_vis.gm_vis as gm_vis
 
 
 class ConvolutionConfig:
-    def __init__(self):
-        pass
+    def __init__(self, dropout: float = 0.0):
+        self.dropout = dropout
 
 
 class Convolution(torch.nn.modules.Module):
@@ -95,13 +95,21 @@ class Convolution(torch.nn.modules.Module):
             t.requires_grad = self.learn_covariances and flag
 
     def kernel(self, index: int) -> Tensor:
-        # a psd matrix can be generated with A A'. we learn A and generate a pd matrix via  A A' + eye * epsilon
+        # a psd matrix can be generated with AA'. we learn A and generate a pd matrix via  AA' + eye * epsilon
         weights = self.weights[index] * self.weight_sd + self.weight_mean
+        if not self.training:
+            weights = weights * (1.0 - self.config.dropout)
+
         A = self.covariance_factors[index]
         covariances = A @ A.transpose(-1, -2) + torch.eye(self.n_dims, dtype=torch.float32, device=A.device) * self.covariance_epsilon
         # kernel = torch.cat((self.weights[index], self.positions[index], covariances.view(1, self.n_layers_in, self.n_kernel_components, self.n_dims * self.n_dims)), dim=-1)
 
         kernel = gm.pack_mixture(weights, self.positions[index] * self.position_range, covariances * self.covariance_range)
+        if self.training:
+            dropouts = torch.rand(self.n_layers_in, dtype=torch.float32) < self.config.dropout
+            kernel[:, dropouts, :, :] = 0
+            gm.covariances(kernel)[:, dropouts, :, :, :] = torch.eye(self.n_dims, dtype=torch.float32, device=A.device)
+
         assert gm.is_valid_mixture(kernel)
         return kernel
 
