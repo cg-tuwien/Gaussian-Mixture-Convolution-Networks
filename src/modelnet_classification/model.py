@@ -10,7 +10,7 @@ import torch.nn.functional as F
 import torch.utils.data
 from torch.utils.tensorboard import SummaryWriter as TensorboardWriter
 
-import modelnet_classification.config as Config
+from modelnet_classification.config import Config
 import gmc.mixture as gm
 import gmc.modules as gmc_modules
 import modelnet_classification.prototype_modules as prototype_modules
@@ -65,8 +65,16 @@ class Net(nn.Module):
         self.norm0 = BatchNormStack((gmc_modules.CovScaleNorm(norm_over_batch=False),
                                      prototype_modules.OldBatchNorm(config, True),))
 
-        self.norm = BatchNormStack((gmc_modules.CovScaleNorm(),
-                                    prototype_modules.OldBatchNorm(config),))
+        if config.bn_type == Config.BN_TYPE_COVARIANCE_INTEGRAL:
+            self.norm = BatchNormStack((gmc_modules.CovScaleNorm(),
+                                        prototype_modules.OldBatchNorm(config),))
+        elif config.bn_type == Config.BN_TYPE_ONLY_COVARIANCE:
+            self.norm = BatchNormStack((gmc_modules.CovScaleNorm(), ))
+        elif config.bn_type == Config.BN_TYPE_ONLY_INTEGRAL:
+            self.norm = BatchNormStack((prototype_modules.OldBatchNorm(config),))
+        elif config.bn_type == Config.BN_TYPE_INTEGRAL_COVARIANCE:
+            self.norm = BatchNormStack((prototype_modules.OldBatchNorm(config),
+                                        gmc_modules.CovScaleNorm(),))
         # self.weight_norm0 = prototype_modules.CentroidWeightNorm(norm_over_batch=False)
         # self.weight_norm = prototype_modules.CentroidWeightNorm(norm_over_batch=True)
 
