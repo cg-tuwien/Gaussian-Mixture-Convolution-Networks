@@ -20,6 +20,21 @@
 
 namespace {
 
+template <typename scalar_t>
+__device__
+void reduce_warp(scalar_t v, scalar_t* dest)
+{
+    #pragma unroll
+    for (int offset = 16; offset > 0; offset /= 2)
+    {
+        v += __shfl_down_sync(0xffffffff, v, offset);
+    }
+    if(!(threadIdx.x & 0x1F)) // warp leader
+    {
+        atomicAdd(dest, v);
+    }
+}
+
 template <typename scalar_t, int DIMS>
 __device__
 void backward(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
@@ -37,13 +52,14 @@ void backward(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
     const auto layer_xes_index = gpe::min(layer_index, n.layers_xes - 1);
     const auto xes_index = int(gpe_blockIdx.x * gpe_blockDim.x + gpe_threadIdx.x);
 
+
     if (xes_index >= n.xes)
         return;
     //    printf("block %d/%d/%d, thread %d: batch_index=%d, layer_index=%d, component_index=%d, xes_index=%d \n",
     //           blockIdx.x, blockIdx.y, blockIdx.z, threadIdx.x,
     //           batch_index, layer_index, component_index, xes_index);
 
-    for (int component_index = 0; component_index < n.components; ++component_index) {
+    for (int component_index = 0; component_index < n.components; ++component_index) { // component index atm up to 1280, in the future may be 10-20k
         auto a = xes_a[batch_xes_index][layer_xes_index][xes_index];
         const scalar_t& memory_location = a[0];
         const auto& x_pos = gpe::vec<DIMS>(memory_location);
@@ -70,15 +86,24 @@ void backward(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
                 gpe::atomicAdd(&grad_xes_a[batch_xes_index][layer_xes_index][xes_index][i], grad_xes_addition[i]);
             }
         }
+
+
         if (requires_grad_mixture) {
             const auto grad_c_weight_addition = exp * grad_output_a[batch_index][layer_index][xes_index];
             const auto grad_c_pos_addition = local_grad_c_pos * grad_output_a[batch_index][layer_index][xes_index];
             const auto grad_c_cov_addition = - c_weight * scalar_t(0.5) * exp * grad_output_a[batch_index][layer_index][xes_index] * glm::outerProduct(t, t);
-            gpe::atomicAdd(&grad_mixture_a[batch_index][layer_index][component_index][0], grad_c_weight_addition);
+            //gpe::atomicAdd(&grad_mixture_a[batch_index][layer_index][component_index][0], grad_c_weight_addition);
+            reduce_warp(grad_c_weight_addition, &grad_mixture_a[batch_index][layer_index][component_index][0]);
             for (int i = 0; i < DIMS; ++i) {
-                gpe::atomicAdd(&grad_mixture_a[batch_index][layer_index][component_index][1 + i], grad_c_pos_addition[i]);
+                //gpe::atomicAdd(&grad_mixture_a[batch_index][layer_index][component_index][1 + i], grad_c_pos_addition[i]);
+                reduce_warp(grad_c_pos_addition[i], &grad_mixture_a[batch_index][layer_index][component_index][1 + i]);
+                //atomicAdd(&temp[1 + i], grad_c_pos_addition[i]);
                 for (int j = 0; j < DIMS; ++j)
-                    gpe::atomicAdd(&grad_mixture_a[batch_index][layer_index][component_index][1 + DIMS + i*DIMS + j], grad_c_cov_addition[i][j]);
+                {
+                    reduce_warp(grad_c_cov_addition[i][j], &grad_mixture_a[batch_index][layer_index][component_index][1 + DIMS + i*DIMS + j]);
+                    //gpe::atomicAdd(&grad_mixture_a[batch_index][layer_index][component_index][1 + DIMS + i*DIMS + j], grad_c_cov_addition[i][j]);
+                    //atomicAdd(&temp[1 + DIMS + i*DIMS + j], grad_c_cov_addition[i][j]);
+                }
             }
         }
     }
@@ -96,6 +121,13 @@ std::tuple<torch::Tensor, torch::Tensor> parallel_backward_optimised_impl(const 
     TORCH_CHECK(grad_output.size(2) == n.xes, "grad_output has wrong xes dimension")
     TORCH_CHECK(grad_output.dtype() == mixture.dtype(), "grad_output dtype does not match with mixture dtype")
 
+    // mixture[n.batch(10-100)][n.layers(10-64)][n.components(2000-20000)][daten(7, 13)]
+    // xes[1|n.batch][1|n.layers][n.xes(100x100|n.components][n.dims(2, 3)]
+    // grad_output[n.batch][n.layers][n.xes]
+    // grad_mixture same as mixture
+    // grad_xes same as xes
+
+    torch::Tensor mixture_view = mixture.view({-1, n.components, mixture.size(3)});
 
     torch::Tensor grad_mixture = torch::zeros({n.batch, n.layers, n.components, mixture.size(3)}, torch::dtype(mixture.dtype()).device(mixture.device()));
     torch::Tensor grad_xes = torch::zeros({n.batch_xes, n.layers_xes, n.xes, n.dims}, torch::dtype(mixture.dtype()).device(mixture.device()));
