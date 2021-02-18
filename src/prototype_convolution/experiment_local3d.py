@@ -1,5 +1,4 @@
-import sys
-import cluster_experiments.conf as cluster
+import prototype_convolution.runner as cluster
 import prototype_convolution.config
 
 # device = list(sys.argv)[1]
