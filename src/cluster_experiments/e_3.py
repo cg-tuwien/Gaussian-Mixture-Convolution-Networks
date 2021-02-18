@@ -7,7 +7,7 @@ device = list(sys.argv)[1]
 # device = "cuda"
 
 c: Config = Config()
-c.bn_type = Config.BN_TYPE_INTEGRAL_COVARIANCE
+c.bn_type = Config.BN_TYPE_COVARIANCE_INTEGRAL
 
 # network size
 c.layers = [Layer(8, 1, 32),
