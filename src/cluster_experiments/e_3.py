@@ -8,6 +8,7 @@ device = list(sys.argv)[1]
 
 c: Config = Config()
 c.bn_type = Config.BN_TYPE_COVARIANCE_INTEGRAL
+c.log_tensorboard_renderings = False
 
 # network size
 c.layers = [Layer(8, 1, 32),
