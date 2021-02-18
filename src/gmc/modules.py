@@ -186,9 +186,12 @@ class Convolution(torch.nn.modules.Module):
         images = gmc.render.colour_mapped(images.cpu().numpy(), clamp[0], clamp[1])
         return images[:, :, :3]
 
-    def debug_render3d(self, image_size: int = 80, clamp: typing.Tuple[float, float] = (-0.3, 0.3)) -> Tensor:
+    def debug_render3d(self, image_size: int = 80, clamp: typing.Tuple[float, float] = (-0.3, 0.3), camera: typing.Optional[typing.Dict] = None) -> Tensor:
         vis = gm_vis.GMVisualizer(False, image_size, image_size)
-        vis.set_camera_auto(True)
+        if camera is not None:
+            vis.set_camera_lookat(**camera)
+        else:
+            vis.set_camera_auto(True)
         vis.set_density_rendering(True)
         vis.set_density_range_manual(clamp[0], clamp[1])
 
@@ -283,11 +286,15 @@ class ReLUFitting(torch.nn.modules.Module):
         images = gmc.render.colour_mapped(images.cpu().numpy(), clamp[0], clamp[1])
         return images[:, :, :3]
 
-    def debug_render3d(self, image_size: int = 80, clamp: typing.Tuple[float, float] = (-2, 2)):
+    def debug_render3d(self, image_size: int = 80, clamp: typing.Tuple[float, float] = (-0.1, 0.1), camera: typing.Optional[typing.Dict] = None):
         vis = gm_vis.GMVisualizer(False, image_size, image_size)
-        vis.set_camera_auto(True)
+        if camera is not None:
+            vis.set_camera_lookat(**camera)
+        else:
+            vis.set_camera_auto(True)
         vis.set_density_rendering(True)
         vis.set_density_range_manual(clamp[0], clamp[1])
+
         last_in = gmc.render.render3d(self.last_in[0], batches=(0, 1), layers=(0, None), gm_vis_object=vis)
         prediction = gmc.render.render3d(self.last_out[0], batches=(0, 1), layers=(0, None), gm_vis_object=vis)
         vis.finish()

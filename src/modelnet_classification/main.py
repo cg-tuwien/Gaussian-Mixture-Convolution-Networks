@@ -70,11 +70,14 @@ class ModelNetDataSet(torch.utils.data.Dataset):
 
 def render_debug_images_to_tensorboard(model, epoch, tensor_board_writer, config: Config):
     for i, gmc in enumerate(model.gmcs):
-        tensor_board_writer.add_image(f"conv {i}", gmc.debug_render3d(clamp=[-0.80, 0.80]), epoch, dataformats='HWC')
+        rendering = gmc.debug_render3d(clamp=(-0.80, 0.80), camera={'positions': (2.91864, 3.45269, 2.76324), 'lookat': (0.0, 0.0, 0.0), 'up': (0.0, 1.0, 0.0)})
+        tensor_board_writer.add_image(f"conv {i}", rendering, epoch, dataformats='HWC')
         gmc.debug_save3d(f"{config.data_base_path}/debug_out/kernels/conv{i}")
 
+    clamps = ((-0.005, 0.005), (-0.025, 0.025), (-0.1, 0.1), (-0.2, 0.2), (-0.3, 0.3))
     for i, relu in enumerate(model.relus):
-        tensor_board_writer.add_image(f"relu {i+1}", relu.debug_render3d(), epoch, dataformats='HWC')
+        rendering = relu.debug_render3d(clamp=clamps[i], camera={'positions': (22.0372, 30.9668, 23.3432), 'lookat': (0.0, 0.0, 0.0), 'up': (0.0, 1.0, 0.0)})
+        tensor_board_writer.add_image(f"relu {i+1}", rendering, epoch, dataformats='HWC')
         relu.debug_save3d(f"{config.data_base_path}/debug_out/activations/relu{i+1}")
 
 
