@@ -42,7 +42,7 @@ generators = [
     #             em_step_gaussians_subbatchsize=512, verbosity=config.verbosity),
 ]
 # generator_identifiers = ["EM32", "EM64", "EM128", "EM256", "EM512"]  # "EM32",
-generator_identifiers = ["fpsmax64_2"]
+generator_identifiers = ["fpsmax64_00005"]
 
 log_loss = 0
 if config.verbosity > 2:

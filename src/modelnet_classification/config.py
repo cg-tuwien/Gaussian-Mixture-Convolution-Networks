@@ -39,11 +39,14 @@ class Config:
     BN_PLACE_AFTER_GMC = "aCn"
     BN_PLACE_AFTER_RELU = "aRl"
 
-    def __init__(self):
+    def __init__(self, gmms_fitting: str = "fpsmax64_2", gengmm_path: typing.Optional[str] = None):
         # data sources
         self.source_dir = os.path.dirname(__file__)
         self.data_base_path = pathlib.Path(f"{self.source_dir}/../../data")
-        self.modelnet_data_path = pathlib.Path(f"{self.data_base_path}/modelnet/gmms/fpsmax64_2")
+        if gengmm_path is None:
+            self.modelnet_data_path = pathlib.Path(f"{self.data_base_path}/modelnet/gmms/{gmms_fitting}")
+        else:
+            self.modelnet_data_path = pathlib.Path(f"{gengmm_path}/{gmms_fitting}")
         self.modelnet_category_list_file = pathlib.Path(f"{self.data_base_path}/modelnet/pointclouds/modelnet10_shape_names.txt")
         self.modelnet_training_sample_names_file = pathlib.Path(f"{self.data_base_path}/modelnet/pointclouds/modelnet10_train.txt")
         self.modelnet_test_sample_names_file = pathlib.Path(f"{self.data_base_path}/modelnet/pointclouds/modelnet10_test.txt")
