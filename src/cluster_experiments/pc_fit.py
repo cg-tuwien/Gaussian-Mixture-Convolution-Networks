@@ -25,7 +25,7 @@ class Config:
         self.n_points = 50000
         self.batch_size = 25
         self.n_gaussians = n_gaussians
-        self.eps = 0.00005
+        self.eps = eps
         self.name = f"fpsm_n{self.n_gaussians}_eps{int(self.eps * 1000000)}"
 
         # Path where to store the generated mixtures
