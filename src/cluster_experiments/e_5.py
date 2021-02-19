@@ -5,10 +5,10 @@ from modelnet_classification.config import Layer
 
 import cluster_experiments.pc_fit as pcfit
 
-# device = list(sys.argv)[1]
-device = "cuda"
+device = list(sys.argv)[1]
+# device = "cuda"
 
-tmp_gmm_base_path = "/home/madam/Documents/work/tuw/gmc_net/data/modelnet/gmms/tmp"
+tmp_gmm_base_path = "/scratch/acelarek/gmms"
 
 fitconf = pcfit.Config(n_gaussians=64, eps=0.00002, gengmm_path=tmp_gmm_base_path)
 pcfit.fit(fitconf)
