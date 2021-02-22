@@ -17,38 +17,38 @@ c: Config = Config(gmms_fitting=fitconf.name, gengmm_path=tmp_gmm_base_path)
 c.bn_type = Config.BN_TYPE_ONLY_COVARIANCE
 c.log_tensorboard_renderings = False
 
-# network size
-c.layers = [Layer(8, 2.5, 32),
-            Layer(16, 2.5, 16),
-            Layer(-1, 2.5, -1)]
+# # network size
+# c.layers = [Layer(8, 2.5, 32),
+#             Layer(16, 2.5, 16),
+#             Layer(-1, 2.5, -1)]
+#
+# main.experiment(device=device, desc_string=f"{fitconf.name}_{c.produce_description()}", config=c)
+#
+# # network size
+# c.layers = [Layer(8, 2.5, 64),
+#             Layer(16, 2.5, 32),
+#             Layer(-1, 2.5, -1)]
+#
+# main.experiment(device=device, desc_string=f"{fitconf.name}_{c.produce_description()}", config=c)
+#
+# # network size
+# c.layers = [Layer(8, 2.5, 64),
+#             Layer(16, 2.5, 32),
+#             Layer(32, 2.5, 16),
+#             Layer(-1, 2.5, -1)]
+#
+# main.experiment(device=device, desc_string=f"{fitconf.name}_{c.produce_description()}", config=c)
+#
+# # network size
+# c.layers = [Layer(8, 1.5, 64),
+#             Layer(16, 1.5, 32),
+#             Layer(32, 1.5, 16),
+#             Layer(-1, 1.5, -1)]
+#
+# main.experiment(device=device, desc_string=f"{fitconf.name}_{c.produce_description()}", config=c)
 
-main.experiment(device=device, desc_string=f"{fitconf.name}_{c.produce_description()}", config=c)
 
-# network size
-c.layers = [Layer(8, 2.5, 64),
-            Layer(16, 2.5, 32),
-            Layer(-1, 2.5, -1)]
-
-main.experiment(device=device, desc_string=f"{fitconf.name}_{c.produce_description()}", config=c)
-
-# network size
-c.layers = [Layer(8, 2.5, 64),
-            Layer(16, 2.5, 32),
-            Layer(32, 2.5, 16),
-            Layer(-1, 2.5, -1)]
-
-main.experiment(device=device, desc_string=f"{fitconf.name}_{c.produce_description()}", config=c)
-
-# network size
-c.layers = [Layer(8, 1.5, 64),
-            Layer(16, 1.5, 32),
-            Layer(32, 1.5, 16),
-            Layer(-1, 1.5, -1)]
-
-main.experiment(device=device, desc_string=f"{fitconf.name}_{c.produce_description()}", config=c)
-
-
-c: Config = Config(gmms_fitting="EM64", gengmm_path=tmp_gmm_base_path)
+c: Config = Config(gmms_fitting="EM64")
 c.bn_type = Config.BN_TYPE_ONLY_COVARIANCE
 c.log_tensorboard_renderings = False
 
