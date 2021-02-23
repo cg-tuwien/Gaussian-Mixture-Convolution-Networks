@@ -51,7 +51,7 @@ class Net(nn.Module):
         self.gmcs = torch.nn.modules.ModuleList()
         self.relus = torch.nn.modules.ModuleList()
 
-        config.layers[-1].n_feature_layers = 10
+        config.layers[-1].n_feature_layers = config.n_classes
         n_feature_layers_in = 1
         for i, l in enumerate(config.layers):
             self.gmcs.append(gmc_modules.Convolution(config.convolution_config, n_layers_in=n_feature_layers_in, n_layers_out=l.n_feature_layers, n_kernel_components=config.n_kernel_components,
@@ -144,7 +144,7 @@ class Net(nn.Module):
 
         x = gm.integrate(x)
         x = F.log_softmax(x, dim=1)
-        return x.view(-1, 10)
+        return x.view(-1, self.config.n_classes)
 
     def save_model(self):
         print(f"experiment_model.Net.save: saving model to {self.storage_path}")

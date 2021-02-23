@@ -39,7 +39,7 @@ class Config:
     BN_PLACE_AFTER_GMC = "aCn"
     BN_PLACE_AFTER_RELU = "aRl"
 
-    def __init__(self, gmms_fitting: str = "fpsmax64_2", gengmm_path: typing.Optional[str] = None):
+    def __init__(self, gmms_fitting: str = "fpsmax64_2", gengmm_path: typing.Optional[str] = None, n_classes: int = 10):
         # data sources
         self.source_dir = os.path.dirname(__file__)
         self.data_base_path = pathlib.Path(f"{self.source_dir}/../../data")
@@ -47,9 +47,9 @@ class Config:
             self.modelnet_data_path = pathlib.Path(f"{self.data_base_path}/modelnet/gmms/{gmms_fitting}")
         else:
             self.modelnet_data_path = pathlib.Path(f"{gengmm_path}/{gmms_fitting}")
-        self.modelnet_category_list_file = pathlib.Path(f"{self.data_base_path}/modelnet/pointclouds/modelnet10_shape_names.txt")
-        self.modelnet_training_sample_names_file = pathlib.Path(f"{self.data_base_path}/modelnet/pointclouds/modelnet10_train.txt")
-        self.modelnet_test_sample_names_file = pathlib.Path(f"{self.data_base_path}/modelnet/pointclouds/modelnet10_test.txt")
+        self.modelnet_category_list_file = pathlib.Path(f"{self.data_base_path}/modelnet/pointclouds/modelnet{n_classes}_shape_names.txt")
+        self.modelnet_training_sample_names_file = pathlib.Path(f"{self.data_base_path}/modelnet/pointclouds/modelnet{n_classes}_train.txt")
+        self.modelnet_test_sample_names_file = pathlib.Path(f"{self.data_base_path}/modelnet/pointclouds/modelnet{n_classes}_test.txt")
 
         # run settings
         self.num_dataloader_workers = 24   # 0 -> main thread, otherwise number of threads. no auto available.
@@ -58,6 +58,7 @@ class Config:
             # running in debugger
             self.num_dataloader_workers = 0
 
+        self.n_classes = n_classes
         self.batch_size = 21
         self.n_epochs = 80
         self.kernel_learning_rate = 0.001
