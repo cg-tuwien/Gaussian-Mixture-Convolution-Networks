@@ -14,8 +14,8 @@ import gmc.cpp.gm_vis.gm_vis as gm_vis
 
 
 class ConvolutionConfig:
-    def __init__(self):
-        pass
+    def __init__(self, dropout: float = 0.0):
+        self.dropout = dropout
 
 
 class Convolution(torch.nn.modules.Module):
@@ -32,6 +32,7 @@ class Convolution(torch.nn.modules.Module):
         self.position_range = position_range
         self.covariance_range = covariance_range
         self.weight_sd = weight_sd
+        self.weight_mean = weight_mean
         self.covariance_epsilon = covariance_epsilon
         self.learn_positions = learn_positions
         self.learn_covariances = learn_covariances
@@ -43,7 +44,7 @@ class Convolution(torch.nn.modules.Module):
         # todo: probably can optimise performance by putting kernels into their own dimension (currently as a list)
         for i in range(self.n_layers_out):
             # positive mean produces a rather positive gm. i believe this is a better init
-            weights = torch.randn(1, n_layers_in, n_kernel_components, 1, dtype=torch.float32) * weight_sd + weight_mean
+            weights = torch.randn(1, n_layers_in, n_kernel_components, 1, dtype=torch.float32)
             self.weights.append(torch.nn.Parameter(weights))
 
             if self.learn_positions and False:
@@ -93,16 +94,26 @@ class Convolution(torch.nn.modules.Module):
         for t in self.covariance_factors:
             t.requires_grad = self.learn_covariances and flag
 
-    def kernel(self, index: int):
-        # a psd matrix can be generated with A A'. we learn A and generate a pd matrix via  A A' + eye * epsilon
+    def kernel(self, index: int) -> Tensor:
+        # a psd matrix can be generated with AA'. we learn A and generate a pd matrix via  AA' + eye * epsilon
+        weights = self.weights[index] * self.weight_sd + self.weight_mean
+        if not self.training:
+            weights = weights * (1.0 - self.config.dropout)
+
         A = self.covariance_factors[index]
         covariances = A @ A.transpose(-1, -2) + torch.eye(self.n_dims, dtype=torch.float32, device=A.device) * self.covariance_epsilon
         # kernel = torch.cat((self.weights[index], self.positions[index], covariances.view(1, self.n_layers_in, self.n_kernel_components, self.n_dims * self.n_dims)), dim=-1)
-        kernel = gm.pack_mixture(self.weights[index], self.positions[index] * self.position_range, covariances * self.covariance_range)
+
+        kernel = gm.pack_mixture(weights, self.positions[index] * self.position_range, covariances * self.covariance_range)
+        if self.training:
+            dropouts = torch.rand(self.n_layers_in, dtype=torch.float32) < self.config.dropout
+            kernel[:, dropouts, :, :] = 0
+            gm.covariances(kernel)[:, dropouts, :, :, :] = torch.eye(self.n_dims, dtype=torch.float32, device=A.device)
+
         assert gm.is_valid_mixture(kernel)
         return kernel
 
-    def regularisation_loss(self):
+    def regularisation_loss(self) -> Tensor:
         cost = torch.zeros(1, dtype=torch.float32, device=self.weights[0].device)
         for i in range(self.n_layers_out):
             A = self.covariance_factors[i]
@@ -140,6 +151,26 @@ class Convolution(torch.nn.modules.Module):
 
         return cost
 
+    def weight_decay_loss(self) -> Tensor:
+        """
+        USAGE: use a simple stochastic optimiser! if you use something more elaborate with moments (e.g. Adam), then consider using a separate optimiser as the moments don't play well with weight decay.
+        Read more here: https://arxiv.org/abs/1711.05101 and
+        https://towardsdatascience.com/weight-decay-l2-regularization-90a9e17713cd (towards the bottom of section "Is L2 Regularization and Weight Decay the same thing?")
+
+        weights are decayed to 0, positions not at all, covariance towards the identity
+        """
+        n_dims = gm.n_dimensions(self.kernel(0))
+        eye = torch.eye(n_dims, device=self.weights[0].device, dtype=self.weights[0].dtype).view(1, 1, 1, n_dims, n_dims)
+        loss = torch.zeros(1, dtype=torch.float32, device=self.weights[0].device)
+        for k in range(self.n_layers_out):
+            A = self.covariance_factors[k]
+            covariances = A @ A.transpose(-1, -2)
+            temp1 = (self.weights[k] * self.weights[k]).mean()
+            temp2 = covariances - eye
+            loss = loss + (temp2 * temp2).mean() + temp1
+
+        return loss
+
     def debug_render(self, position_range: float = None, image_size: int = 80, clamp: typing.Tuple[float, float] = (-0.3, 0.3)):
         if position_range is None:
             position_range = self.position_range * 2
@@ -155,9 +186,12 @@ class Convolution(torch.nn.modules.Module):
         images = gmc.render.colour_mapped(images.cpu().numpy(), clamp[0], clamp[1])
         return images[:, :, :3]
 
-    def debug_render3d(self, image_size: int = 80, clamp: typing.Tuple[float, float] = (-0.3, 0.3)):
+    def debug_render3d(self, image_size: int = 80, clamp: typing.Tuple[float, float] = (-0.3, 0.3), camera: typing.Optional[typing.Dict] = None) -> Tensor:
         vis = gm_vis.GMVisualizer(False, image_size, image_size)
-        vis.set_camera_auto(True)
+        if camera is not None:
+            vis.set_camera_lookat(**camera)
+        else:
+            vis.set_camera_auto(True)
         vis.set_density_rendering(True)
         vis.set_density_range_manual(clamp[0], clamp[1])
 
@@ -252,11 +286,15 @@ class ReLUFitting(torch.nn.modules.Module):
         images = gmc.render.colour_mapped(images.cpu().numpy(), clamp[0], clamp[1])
         return images[:, :, :3]
 
-    def debug_render3d(self, image_size: int = 80, clamp: typing.Tuple[float, float] = (-2, 2)):
+    def debug_render3d(self, image_size: int = 80, clamp: typing.Tuple[float, float] = (-0.1, 0.1), camera: typing.Optional[typing.Dict] = None):
         vis = gm_vis.GMVisualizer(False, image_size, image_size)
-        vis.set_camera_auto(True)
+        if camera is not None:
+            vis.set_camera_lookat(**camera)
+        else:
+            vis.set_camera_auto(True)
         vis.set_density_rendering(True)
         vis.set_density_range_manual(clamp[0], clamp[1])
+
         last_in = gmc.render.render3d(self.last_in[0], batches=(0, 1), layers=(0, None), gm_vis_object=vis)
         prediction = gmc.render.render3d(self.last_out[0], batches=(0, 1), layers=(0, None), gm_vis_object=vis)
         vis.finish()

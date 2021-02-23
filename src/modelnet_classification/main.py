@@ -69,20 +69,20 @@ class ModelNetDataSet(torch.utils.data.Dataset):
 
 
 def render_debug_images_to_tensorboard(model, epoch, tensor_board_writer, config: Config):
-    tensor_board_writer.add_image("conv 1", model.gmc1.debug_render3d(clamp=[-0.80, 0.80]), epoch, dataformats='HWC')
-    model.gmc1.debug_save3d(f"{config.data_base_path}/debug_conv1")
-    tensor_board_writer.add_image("conv 2", model.gmc2.debug_render3d(clamp=[-0.32, 0.32]), epoch, dataformats='HWC')
-    model.gmc2.debug_save3d(f"{config.data_base_path}/debug_conv2")
-    tensor_board_writer.add_image("conv 3", model.gmc3.debug_render3d(clamp=[-0.20, 0.20]), epoch, dataformats='HWC')
-    model.gmc3.debug_save3d(f"{config.data_base_path}/debug_conv3")
+    for i, gmc in enumerate(model.gmcs):
+        rendering = gmc.debug_render3d(clamp=(-0.80, 0.80), camera={'positions': (2.91864, 3.45269, 2.76324), 'lookat': (0.0, 0.0, 0.0), 'up': (0.0, 1.0, 0.0)})
+        tensor_board_writer.add_image(f"conv {i}", rendering, epoch, dataformats='HWC')
+        gmc.debug_save3d(f"{config.data_base_path}/debug_out/kernels/conv{i}")
 
+    clamps = ((-0.005, 0.005), (-0.025, 0.025), (-0.1, 0.1), (-0.2, 0.2), (-0.3, 0.3))
     for i, relu in enumerate(model.relus):
-        tensor_board_writer.add_image(f"relu {i+1}", relu.debug_render3d(), epoch, dataformats='HWC')
-        relu.debug_save3d(f"{config.data_base_path}/debug_relu{i+1}")
+        rendering = relu.debug_render3d(clamp=clamps[i], camera={'positions': (22.0372, 30.9668, 23.3432), 'lookat': (0.0, 0.0, 0.0), 'up': (0.0, 1.0, 0.0)})
+        tensor_board_writer.add_image(f"relu {i+1}", rendering, epoch, dataformats='HWC')
+        relu.debug_save3d(f"{config.data_base_path}/debug_out/activations/relu{i+1}")
 
 
-def train(args, model: modelnet_classification.model.Net, device: torch.device, train_loader: torch.utils.data.DataLoader,
-          kernel_optimiser: Optimizer, epoch: int, tensor_board_writer: torch.utils.tensorboard.SummaryWriter, config: Config):
+def train(model: modelnet_classification.model.Net, device: str, train_loader: torch.utils.data.DataLoader,
+          kernel_optimiser: Optimizer, weight_decay_optimiser: Optimizer, epoch: int, tensor_board_writer: torch.utils.tensorboard.SummaryWriter, config: Config):
     model.train()
     for batch_idx, (data, target) in enumerate(train_loader):
         data, target = data.to(device), target.to(device)
@@ -105,9 +105,14 @@ def train(args, model: modelnet_classification.model.Net, device: torch.device, 
         training_loss.backward()
         tw = time.perf_counter()
         kernel_optimiser.step()
+
+        weight_decay_optimiser.zero_grad()
+        model.weight_decay_loss().backward()
+        weight_decay_optimiser.step()
+
         batch_end_time = time.perf_counter()
 
-        if step % args.log_interval == 0:
+        if step % config.log_interval == 0:
             pred = output.detach().argmax(dim=1, keepdim=True)  # get the index of the max log-probability
             correct = pred.eq(target.view_as(pred)).sum().item()
             tensor_board_writer.add_scalar("00. training loss", training_loss.item(), step)
@@ -133,18 +138,14 @@ def train(args, model: modelnet_classification.model.Net, device: torch.device, 
             # for name, timing in model.timings.items():
             #     tensor_board_writer.add_scalar(f"06. {name} time", timing, step)
 
-            render_debug_images_to_tensorboard(model, step, tensor_board_writer, config)
+            if config.log_tensorboard_renderings:
+                render_debug_images_to_tensorboard(model, step, tensor_board_writer, config)
 
             print(f'Training kernels: {epoch}/{step} [{batch_idx}/{len(train_loader)} '
                   f'({100. * batch_idx / len(train_loader):.0f}%)]\tClassification loss: {loss.item():.6f} (accuracy: {100 * correct / len(data)}), '
                   f'Cuda max memory allocated: {torch.cuda.max_memory_allocated() / 1024 / 1024 / 1024}G, '
                   f'batch time: {batch_end_time - batch_start_time}')
             tensor_board_writer.add_scalar("11. CUDA max memory allocated [GiB]", torch.cuda.max_memory_allocated() / 1024 / 1024 / 1024, step)
-
-            if args.save_model:
-                model.save_model()
-            # print(f"experiment_gm_mnist.tain: saving optimiser state to {model.storage_path}.optimiser")
-            # torch.save(kernel_optimiser.state_dict(), f"{model.storage_path}.optimiser")
 
         if epoch == config.fitting_test_data_store_at_epoch and batch_idx < config.fitting_test_data_store_n_batches:
             full_input = dict()
@@ -171,7 +172,7 @@ def train(args, model: modelnet_classification.model.Net, device: torch.device, 
             c.save(f"{config.fitting_test_data_store_path}/after_fixed_point_batch{batch_idx}.pt")
 
 
-def test(args, model: modelnet_classification.model.Net, device: torch.device, test_loader: torch.utils.data.DataLoader, epoch: int, tensor_board_writer: torch.utils.tensorboard.SummaryWriter):
+def test(model: modelnet_classification.model.Net, device: str, test_loader: torch.utils.data.DataLoader, epoch: int, tensor_board_writer: torch.utils.tensorboard.SummaryWriter):
     model.eval()
     test_loss = 0
     correct = 0
@@ -189,48 +190,37 @@ def test(args, model: modelnet_classification.model.Net, device: torch.device, t
     print(f'\nTest set: Average loss: {test_loss:.4f}, Accuracy: {correct}/{len(test_loader.dataset)} ({100. * correct / len(test_loader.dataset):.0f}%)\n')
 
 
-def experiment(device: str = 'cuda', n_epochs: int = 20, kernel_learning_rate: float = 0.001, log_interval: int = 100,
-               learn_positions_after: int = 0, learn_covariances_after: int = 0, desc_string: str = "", config: Config = None):
+def experiment(device: str = 'cuda', desc_string: str = "", config: Config = None):
     # Training settings
     torch.manual_seed(0)
 
-    train_loader = torch.utils.data.DataLoader(ModelNetDataSet(config.modelnet_data_path, config.modelnet_category_list_file, config.modelnet_training_sample_names_file), batch_size=config.batch_size, num_workers=config.num_dataloader_workers, shuffle=True, drop_last=True)
-    test_loader  = torch.utils.data.DataLoader(ModelNetDataSet(config.modelnet_data_path, config.modelnet_category_list_file, config.modelnet_test_sample_names_file),     batch_size=config.batch_size, num_workers=config.num_dataloader_workers)
+    train_loader = torch.utils.data.DataLoader(ModelNetDataSet(config.modelnet_data_path, config.modelnet_category_list_file, config.modelnet_training_sample_names_file),
+                                               batch_size=config.batch_size, num_workers=config.num_dataloader_workers, shuffle=True, drop_last=True)
+    test_loader  = torch.utils.data.DataLoader(ModelNetDataSet(config.modelnet_data_path, config.modelnet_category_list_file, config.modelnet_test_sample_names_file),
+                                               batch_size=config.batch_size, num_workers=config.num_dataloader_workers)
 
     model = modelnet_classification.model.Net(name=desc_string,
-                                              learn_positions=learn_positions_after == 0,
-                                              learn_covariances=learn_covariances_after == 0,
-                                              gmcn_config=config)
+                                              learn_positions=config.learn_positions_after == 0,
+                                              learn_covariances=config.learn_covariances_after == 0,
+                                              config=config)
     model.load()
     model = model.to(device)
 
-    class Args:
-        pass
-
-    args = Args()
-    args.save_model = True
-    args.log_interval = log_interval
-    args.save_model = False
-
-    # for name, param in model.named_parameters():
-    #     if param.requires_grad:
-    #         print(name, param.data)
-    #
-    # for parameter in model.parameters():
-    #     print(parameter)
-
-    kernel_optimiser = optim.Adam(model.parameters(), lr=kernel_learning_rate)
+    kernel_optimiser = optim.Adam(model.parameters(), lr=config.kernel_learning_rate)
+    weight_decay_optimiser = optim.SGD(model.parameters(), lr=(config.weight_decay_rate * config.kernel_learning_rate))
+    #todo: load optimiser state
     tensor_board_writer = torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard' / f'{desc_string}_{datetime.datetime.now().strftime("%m%d_%H%M")}')
 
     # scheduler = StepLR(kernel_optimiser, step_size=1, gamma=args.gamma)
 
-    for epoch in range(n_epochs):
-        model.set_position_learning(epoch >= learn_positions_after)
-        model.set_covariance_learning(epoch >= learn_covariances_after)
-        train(args, model, device, train_loader, kernel_optimiser=kernel_optimiser, epoch=epoch, tensor_board_writer=tensor_board_writer, config=config)
-        test(args, model, device, test_loader, epoch, tensor_board_writer=tensor_board_writer)
+    for epoch in range(config.n_epochs):
+        model.set_position_learning(epoch >= config.learn_positions_after)
+        model.set_covariance_learning(epoch >= config.learn_covariances_after)
+        train(model, device, train_loader, kernel_optimiser=kernel_optimiser, weight_decay_optimiser=weight_decay_optimiser, epoch=epoch, tensor_board_writer=tensor_board_writer, config=config)
+        test(model, device, test_loader, epoch, tensor_board_writer=tensor_board_writer)
         # scheduler.step()
 
-        if args.save_model:
+        if config.save_model:
             model.save_model()
-            model.save_fitting_optimiser_state()
+            torch.save(kernel_optimiser.state_dict(), f"{model.storage_path}.optimiser")
+            torch.save(weight_decay_optimiser.state_dict(), f"{model.storage_path}.optimiser")

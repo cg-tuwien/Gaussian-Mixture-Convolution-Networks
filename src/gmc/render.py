@@ -57,7 +57,7 @@ def render(mixture: Tensor, constant: Tensor, batches: index_range = (0, None), 
 
 
 def render3d(mixture: Tensor, batches: index_range = (0, None), layers: index_range = (0, None),
-             width: int = 100, height: int = 100, gm_vis_object: gm_vis.GMVisualizer = None):
+             width: int = 100, height: int = 100, gm_vis_object: gm_vis.GMVisualizer = None) -> Tensor:
     assert gm.n_dimensions(mixture) == 3
     assert gm.is_valid_mixture(mixture)
 

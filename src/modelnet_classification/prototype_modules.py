@@ -6,7 +6,7 @@ from torch.utils.tensorboard import SummaryWriter as TensorboardWriter
 
 import gmc.mixture as gm
 import gmc.mat_tools as mat_tools
-import modelnet_classification.config as Config
+from modelnet_classification.config import Config
 
 
 class CentroidWeightNorm(torch.nn.modules.Module):

@@ -12,7 +12,7 @@ from prototype_pcfitting.generators.em_tools import EMTools
 import prototype_pcfitting.pc_dataset_iterator
 
 
-def execute_fitting2(training_name: str, dataset: prototype_pcfitting.pc_dataset_iterator.DatasetIterator,
+def execute_fitting2(training_name: Optional[str], dataset: prototype_pcfitting.pc_dataset_iterator.DatasetIterator,
                      generators: List[GMMGenerator], generator_identifiers: List[str],
                      gengmm_path: str,formats: List[str] = None, log_path: str = None,
                      scaling_active: bool = False, scaling_interval: Tuple[float, float] = (-50.0, 50.0),

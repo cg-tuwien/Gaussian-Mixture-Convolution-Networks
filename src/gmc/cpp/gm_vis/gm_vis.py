@@ -92,6 +92,7 @@ class GMVisualizer:
         #   width/height: int
         #       Size of desired renderings in pixels
         self._vis = pygmvis.create_visualizer(asyncmode, width, height)
+        self.set_density_rendermode(GmVisDensityRenderMode.ADDITIVE_ACC_PROJECTED)
 
     def set_image_size(self, width: int, height: int):
         # Sets the size of the renderings
