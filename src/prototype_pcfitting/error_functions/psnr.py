@@ -3,6 +3,7 @@ import math
 from prototype_pcfitting import ErrorFunction, GMSampler
 import torch
 import gmc.mixture as gm
+from prototype_pcfitting.cpp.gmeval import pyeval
 
 
 class PSNR(ErrorFunction):
@@ -21,18 +22,28 @@ class PSNR(ErrorFunction):
         bbsizes = (bbmax - bbmin).norm(dim=1)
         gmm = gm.convert_amplitudes_to_priors(gm.pack_mixture(gmamplitudes, gmpositions, gmcovariances))
         sampled = GMSampler.sample(gmm, point_size)
-        minsqdiffs = torch.zeros(batch_size, point_size, dtype=pcbatch.dtype, device=pcbatch.device)
-        point_batch = 1000
-        for i_start in range(0, point_size, point_batch):
-            i_len = min(point_size - i_start, point_batch)
-            i_end = i_start + i_len
-            pcbatch_rep = pcbatch[:,i_start:i_end].unsqueeze(2).unsqueeze(-1).expand(batch_size, i_len, point_size, 3, 1)
-            sampled_rep = sampled.unsqueeze(1).unsqueeze(-1).expand(batch_size, i_len, point_size, 3, 1)
-            diffs = (pcbatch_rep - sampled_rep)
-            sqdiffs = (diffs.transpose(-1, -2) @ diffs).squeeze(-1).squeeze(-1) # shape: (bs, il, ps)
-            minsqdiffs[:, i_start:i_end] = sqdiffs.min(dim=2)[0]
-        avgminsqdiff = minsqdiffs.mean(dim=1) # shape: (bs)
-        relrms = (bbsizes) / torch.sqrt(avgminsqdiff)
-        if not self._nolog:
-            relrms = 20*torch.log10(relrms) # https://en.wikipedia.org/wiki/Peak_signal-to-noise_ratio
+
+        # minsqdiffs = torch.zeros(batch_size, point_size, dtype=pcbatch.dtype, device=pcbatch.device)
+        # point_batch = 1000
+        # for i_start in range(0, point_size, point_batch):
+        #     i_len = min(point_size - i_start, point_batch)
+        #     i_end = i_start + i_len
+        #     pcbatch_rep = pcbatch[:,i_start:i_end].unsqueeze(2).unsqueeze(-1).expand(batch_size, i_len, point_size, 3, 1)
+        #     sampled_rep = sampled.unsqueeze(1).unsqueeze(-1).expand(batch_size, i_len, point_size, 3, 1)
+        #     diffs = (pcbatch_rep - sampled_rep)
+        #     sqdiffs = (diffs.transpose(-1, -2) @ diffs).squeeze(-1).squeeze(-1) # shape: (bs, il, ps)
+        #     minsqdiffs[:, i_start:i_end] = sqdiffs.min(dim=2)[0]
+        # avgminsqdiff = minsqdiffs.mean(dim=1) # shape: (bs)
+        # relrms = (bbsizes) / torch.sqrt(avgminsqdiff)
+        # if not self._nolog:
+        #     relrms = 20*torch.log10(relrms) # https://en.wikipedia.org/wiki/Peak_signal-to-noise_ratio
+        #
+        # print("   dbgpsnr", relrms.item())
+
+        # sampled = pcbatch.clone()
+        # start = timeit.default_timer()
+        relrms = pyeval.eval_psnr(pcbatch.view(point_size, 3), sampled.view(point_size, 3))
+        relrms = torch.tensor([relrms], device=pcbatch.device, dtype=pcbatch.dtype)
+        # end = timeit.default_timer()
+        # print(end-start)
         return relrms
