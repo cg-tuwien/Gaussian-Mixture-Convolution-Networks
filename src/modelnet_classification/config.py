@@ -16,7 +16,7 @@ class Layer:
 def produce_name(layers: typing.List[Layer]) -> str:
     name = "L"
     for l in layers:
-        name = f"{name}_{l.n_feature_layers}f_{int(l.kernel_radius * 10)}r"
+        name = f"{name}_{l.n_feature_layers}f_{int(l.kernel_radius * 10)}r_{int(l.n_fitting_components * 10)}c"
     return name
 
 
@@ -91,5 +91,5 @@ class Config:
         self.fitting_test_data_store_path = f"{self.data_base_path}/modelnet/fitting_input"
 
     def produce_description(self):
-        return f"BN{self.bn_place}{self.bn_type}_drp{int(self.convolution_config.dropout * 100)}_wDec{int(self.weight_decay_rate * 100)}_b{self.batch_size}_{produce_name(self.layers)}"
+        return f"BN{self.bn_place}{self.bn_type}_drp{int(self.convolution_config.dropout * 100)}_wDec{int(self.weight_decay_rate * 100)}_b{self.batch_size}_nK{self.n_kernel_components}_{produce_name(self.layers)}"
 
