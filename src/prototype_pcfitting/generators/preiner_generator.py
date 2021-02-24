@@ -16,54 +16,47 @@ import prototype_pcfitting.cpp.gmslib.src.pytorch_bindings.compute_mixture as gm
 class PreinerGenerator(GMMGenerator):
 
     def __init__(self,
-                 initNeighborhoodType: int = 1,
-                 knnCount: int = 8,
-                 maxInitNeighborDist: float = 1.0,
-                 initIsotropicStdev: float = 1.0,
-                 initIsotropic: bool = False,
-                 useWeightedPotentials: bool = False,
-                 initMeansInPoints: bool = True,
-                 nLevels: int = 4,
-                 alpha: float = 2.2,
-                 fixedNumberOfGaussians: int = 0):
+                 alpha: float = 2.0,
+                 pointpos: bool = True,
+                 stdev: float = 0.01,
+                 iso: bool = False,
+                 inittype: str = "fixed",
+                 knn: int = 8,
+                 fixeddist: float = 0.1,
+                 weighted: bool = False,
+                 levels: int = 20):
         # Creates a new PreinerGenerator
         # Parameters:
-        #   initNeighborhoodType: int
-        #       0: initialize Gaussian using all samples within maxInitNeighborDist,
-        #       1: use only kNNCount nearest neighbors.
-        #   knnCount: int
-        #       number nearest neighbors per point used for initial Gaussian computation.
-        #       The neighbor set is clamped by maxInitNeighborDist.
-        #   maxInitNeighborDist: float
-        #       global initialization kernel radius, in % of to BB-Size
-        #   initIsotropicStdev: float
-        #       if isotropic initialization is active, the initial standard deviation of the Gaussians in % of BB-Size
-        #   initIsotropic: bool
-        #       isotropic initial Gaussians, with stddev initIsotropicStdev
-        #   useWeightedPotentials: bool
-        #       if true, performs WLOP-like balancing of the initial Gaussian potentials
-        #   initMeansInPoints: bool
-        #       positions the initial Gaussians in the point positions instead of the local means
-        #   nLevels: int
-        #       number of levels to use when clustering
         #   alpha: float
-        #       multiple of cluster maximum std deviation to use for query radius
-        #   fixedNumberOfGaussians: int
-        #       If 0, the number of Gaussians is not determined in advance.
-        #       Otherwise this will be the amount of Gaussians in the result. If activated, nLevels will be ignored
+        #       Clustering regularization parameter
+        #   pointpos: bool
+        #       Initializes Gaussian positions in point locations rather than local point means
+        #   stdev: float
+        #       Default isotropic standard deviation bias of each initial Gaussian [in %bbd]
+        #   iso: bool
+        #       Initialize mixture with isotropic Gaussians of standard deviation <stdev>
+        #   inittype: str
+        #       'knn' - Init anisotropic Gaussians based on KNN; 'fixed' - based on fixed distance
+        #   knn: int
+        #       Number of nearest neighbors considered for 'knn' initialization
+        #   fixeddist: float
+        #       Max neighborhood distance for points considered for 'fixed' initialization [in %bbd]
+        #   weighted: bool
+        #       Initializes mixture with locally normalized density
+        #   levels: int
+        #       Number of HEM clustering levels
+        # Quantities described with '[in %bbd]' are given in percent of the input point cloud bounding box diagonal.
         #
         self._params = gms.Params()
-        self._params.verbose = True
-        self._params.initNeighborhoodType = initNeighborhoodType
-        self._params.kNNCount = knnCount
-        self._params.maxInitNeighborDist = maxInitNeighborDist
-        self._params.initIsotropicStdev = initIsotropicStdev
-        self._params.initIsotropic = initIsotropic
-        self._params.useWeightedPotentials = useWeightedPotentials
-        self._params.initMeansInPoints = initMeansInPoints
-        self._params.nLevels = nLevels
         self._params.alpha = alpha
-        self._params.fixedNumberOfGaussians = fixedNumberOfGaussians
+        self._params.pointpos = pointpos
+        self._params.stdev = stdev
+        self._params.iso = iso
+        self._params.inittype = inittype
+        self._params.knn = knn
+        self._params.fixeddist = fixeddist
+        self._params.weighted = weighted
+        self._params.levels = levels
 
     def set_logging(self, logger: GMLogger = None):
         # Sets logging options. Note that logging increases the execution time,
