@@ -16,6 +16,7 @@ pcfit.fit(fitconf)
 c: Config = Config(gmms_fitting=fitconf.name, gengmm_path=tmp_gmm_base_path, n_classes=40)
 c.bn_type = Config.BN_TYPE_ONLY_COVARIANCE
 c.log_tensorboard_renderings = False
+c.n_epochs = 160
 
 # network size
 c.layers = [Layer(8, 2.5, 32),

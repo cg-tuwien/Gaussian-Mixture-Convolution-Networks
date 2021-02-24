@@ -16,7 +16,7 @@ class Layer:
 def produce_name(layers: typing.List[Layer]) -> str:
     name = "L"
     for l in layers:
-        name = f"{name}_{l.n_feature_layers}f_{int(l.kernel_radius * 10)}r_{int(l.n_fitting_components * 10)}c"
+        name = f"{name}_{l.n_feature_layers}f_{int(l.kernel_radius * 10)}r_{int(l.n_fitting_components)}c"
     return name
 
 
