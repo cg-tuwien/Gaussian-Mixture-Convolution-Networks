@@ -15,13 +15,15 @@ class GMSampler:
         means = gmc.mixture.positions(gmm)
         covs = gmc.mixture.covariances(gmm)
         weights = gmc.mixture.weights(gmm).clone()
-        for i in range(1, weights.shape[2]):
+        gauss_count = weights.shape[2]
+        for i in range(1, gauss_count):
             weights[:,0,i] += weights[:,0,i-1]
         gaussidzs = torch.zeros(batch_size, count, dtype=torch.int)
         for b in range(batch_size):
             for i in range(count):
                 gaussidzs[b, i] = torch.nonzero(uniformprobs[b, i] < weights[b,0,:])[0]
-            for i in range(count):
-                idx = gaussidzs[b, i]
-                samples[b,i,:] = torch.tensor(numpy.random.multivariate_normal(means[b,0,idx].cpu(), covs[b,0,idx].cpu()), dtype=gmm.dtype, device=gmm.device)
+            for g in range(gauss_count):
+                selected_samples = gaussidzs[b, :].eq(g)
+                if selected_samples.sum().item() > 0:
+                    samples[b, selected_samples, :] = torch.tensor(numpy.random.multivariate_normal(means[b,0,g].cpu(), covs[b,0,g].cpu(), selected_samples.sum().item()), dtype=gmm.dtype, device=gmm.device)
         return samples
