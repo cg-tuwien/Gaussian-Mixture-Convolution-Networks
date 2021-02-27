@@ -197,9 +197,11 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_em(const gpe::Vector
 
     namespace fun = gpe::functors;
 
+#ifndef NDEBUG
     auto has_nan = [](const auto& vec) {
         return gpe::reduce(vec, false, [](bool o, auto v) { return o || gpe::isnan(v); });
     };
+#endif
 
     const auto target_mixture = gpe::to_array(target, G{0, pos_t(0), cov_t(1)});
 

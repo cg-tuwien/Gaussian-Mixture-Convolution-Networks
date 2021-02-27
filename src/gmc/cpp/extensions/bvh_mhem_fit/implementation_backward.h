@@ -51,9 +51,11 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_TARGET> grad_em(const gpe::Vector
     namespace fun = gpe::functors;
     namespace gradfun = gpe::grad::functors;
 
+#ifndef NDEBUG
     auto has_nan = [](const auto& vec) {
         return gpe::reduce(vec, false, [](bool o, auto v) { return o || gpe::isnan(v); });
     };
+#endif
 
     // input and result
     auto target_mixture = gpe::to_array(target, G{0, pos_t(0), cov_t(1)});
