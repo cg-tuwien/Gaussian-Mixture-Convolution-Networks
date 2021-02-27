@@ -2,7 +2,7 @@
 #include <torch/extension.h>
 #include <vector>
 #include <omp.h>
-#include "gmslib/PointSet.hpp"
+#include "gmslib/pointset.hpp"
 
 float eval_rmse_psnr(torch::Tensor pointcloudSource, torch::Tensor pointcloudGenerated, bool psnr)
 {

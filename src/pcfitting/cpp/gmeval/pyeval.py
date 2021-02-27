@@ -7,7 +7,7 @@ import torch.utils.cpp_extension
 source_dir = os.path.dirname(__file__)
 # print(source_dir)
 
-extra_include_paths = [source_dir + "/..", source_dir + "/../ext"]
+extra_include_paths = [source_dir, source_dir + "/..", source_dir + "/../ext", source_dir + "/../gmslib/src/gmslib"]
 if platform.system() == "Windows":
     cpp_extra_cflags = ["/openmp", "/O2", "/std:c++17", "/DNDEBUG", "/D_HAS_STD_BYTE=0", "/DNOMINMAX"]
 else:
