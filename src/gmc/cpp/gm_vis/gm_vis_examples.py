@@ -1,5 +1,5 @@
 
-import prototype_pcfitting.data_loading as data_loading
+import pcfitting.data_loading as data_loading
 import gmc.mixture
 import gmc.inout
 import gmc.cpp.gm_vis.gm_vis as gm_vis
