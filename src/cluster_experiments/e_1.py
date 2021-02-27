@@ -10,17 +10,18 @@ device = list(sys.argv)[1]
 
 tmp_gmm_base_path = "/scratch/acelarek/gmms"
 
-fitconf = pcfit.Config(n_gaussians=128, eps=0.00002, gengmm_path=tmp_gmm_base_path)
+fitconf = pcfit.Config(n_gaussians=128, eps=0.00001, gengmm_path=tmp_gmm_base_path)
 pcfit.fit(fitconf)
 
 c: Config = Config(gmms_fitting=fitconf.name, gengmm_path=tmp_gmm_base_path, n_classes=40)
 c.bn_type = Config.BN_TYPE_ONLY_COVARIANCE
 c.log_tensorboard_renderings = False
+c.n_epochs = 160
 
 # network size
-c.layers = [Layer(8, 2.5, 64),
-            Layer(16, 2.5, 32),
-            Layer(32, 2.5, 16),
-            Layer(-1, 2.5, -1)]
+c.layers = [Layer(8, 2.5, 32),
+            Layer(16, 2.5, 16),
+            Layer(32, 2.5, -1)]
+c.mlp = (128, 64, 40)
 
 main.experiment(device=device, desc_string=f"{fitconf.name}_{c.produce_description()}", config=c)
