@@ -92,5 +92,10 @@ class Config:
         self.fitting_test_data_store_path = f"{self.data_base_path}/modelnet/fitting_input"
 
     def produce_description(self):
-        return f"BN{self.bn_place}{self.bn_type}_drp{int(self.convolution_config.dropout * 100)}_wDec{int(self.weight_decay_rate * 100)}_b{self.batch_size}_nK{self.n_kernel_components}_{produce_name(self.layers)}"
+        mlp_string = ""
+        if self.mlp is not None:
+            mlp_string = "_MLP"
+            for l in self.mlp:
+                mlp_string = f"{mlp_string}_{l}"
+        return f"BN{self.bn_place}{self.bn_type}_drp{int(self.convolution_config.dropout * 100)}_wDec{int(self.weight_decay_rate * 100)}_b{self.batch_size}_nK{self.n_kernel_components}_{produce_name(self.layers)}{mlp_string}_"
 
