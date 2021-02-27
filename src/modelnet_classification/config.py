@@ -71,6 +71,7 @@ class Config:
                                            Layer(16, 1, 16),
                                            Layer(-1, 1, -1)]
         self.bias_type = Config.BIAS_TYPE_NONE
+        self.mlp: typing.Optional[typing.List[int]] = None
 
         # auxiliary architectural options
         self.bn_mean_over_layers = False

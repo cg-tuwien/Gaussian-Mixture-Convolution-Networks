@@ -51,7 +51,8 @@ class Net(nn.Module):
         self.gmcs = torch.nn.modules.ModuleList()
         self.relus = torch.nn.modules.ModuleList()
 
-        config.layers[-1].n_feature_layers = config.n_classes
+        if config.layers[-1].n_feature_layers == -1:
+            config.layers[-1].n_feature_layers = config.n_classes
         n_feature_layers_in = 1
         for i, l in enumerate(config.layers):
             self.gmcs.append(gmc_modules.Convolution(config.convolution_config, n_layers_in=n_feature_layers_in, n_layers_out=l.n_feature_layers, n_kernel_components=config.n_kernel_components,
@@ -77,6 +78,19 @@ class Net(nn.Module):
                                         gmc_modules.CovScaleNorm(),))
         # self.weight_norm0 = prototype_modules.CentroidWeightNorm(norm_over_batch=False)
         # self.weight_norm = prototype_modules.CentroidWeightNorm(norm_over_batch=True)
+
+        if config.mlp is not None:
+            if config.mlp[-1] == -1:
+                config.mlp[-1] = config.n_classes
+
+            mlp = list()
+            for l in config.mlp:
+                mlp.append(nn.Linear(n_feature_layers_in, l))
+                n_feature_layers_in = l
+                mlp.append(nn.ReLU())
+            self.mlp = nn.Sequential(*mlp)
+        else:
+            self.mlp = None
 
         self.timings = dict()
         self.last_time = time.time()
@@ -143,6 +157,8 @@ class Net(nn.Module):
                 x, x_const = self.norm(x, x_const)
 
         x = gm.integrate(x)
+        if self.mlp is not None:
+            x = self.mlp(x)
         x = F.log_softmax(x, dim=1)
         return x.view(-1, self.config.n_classes)
 

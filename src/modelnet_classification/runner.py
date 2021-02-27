@@ -10,6 +10,7 @@ c: Config = Config(n_classes=40)
 # network size
 c.layers = [Layer(8, 2.5, 32),
             Layer(16, 2.5, 16),
-            Layer(-1, 2.5, -1)]
+            Layer(32, 2.5, -1)]
+c.mlp = (128, 64, 40)
 
 main.experiment(device=device, desc_string=c.produce_description(), config=c)
