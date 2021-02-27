@@ -1,9 +1,9 @@
 import typing
 
-from prototype_pcfitting import programs, MaxIterationTerminationCriterion
-from prototype_pcfitting.generators import EMGenerator
-import prototype_pcfitting.modelnet_dataset_iterator
-import prototype_pcfitting.config as general_config
+from pcfitting import programs, MaxIterationTerminationCriterion
+from pcfitting.generators import EMGenerator
+import pcfitting.modelnet_dataset_iterator
+import pcfitting.config as general_config
 
 # This takes a polygonal dataset, creates point clouds and then continues to generate gmms from it using classical EM.
 # All the results are stored on disk.
@@ -52,7 +52,7 @@ def fit(config: Config):
         log_loss = 20
 
     programs.execute_fitting2(training_name=None,
-                              dataset=prototype_pcfitting.modelnet_dataset_iterator.ModelNetDatasetIterator(batch_size=config.batch_size, dataset_path=pc_path),
+                              dataset=pcfitting.modelnet_dataset_iterator.ModelNetDatasetIterator(batch_size=config.batch_size, dataset_path=pc_path),
                               generators=generators,
                               generator_identifiers=generator_identifiers,
                               gengmm_path=config.gengmm_path,

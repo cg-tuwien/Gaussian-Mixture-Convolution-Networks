@@ -1,0 +1,3 @@
+[submodule "src/pcfitting/cpp/gmslib"]
+	path = src/pcfitting/cpp/gmslib
+	url = git@github.com:adam-ce/gmslib.git
