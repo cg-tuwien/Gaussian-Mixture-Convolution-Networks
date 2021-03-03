@@ -6,14 +6,13 @@ import torch
 import gmc.mixture as gm
 
 
-class LikelihoodLoss(EvalFunction):
-    # Calculates an error by calculating the likelihood of the point cloud given the mixture
+class AvgLogLikelihood(EvalFunction):
+    # Calculates the average log likelihood of the point cloud given the mixture
 
-    def __init__(self, avoidinf: bool, eps: float = 1e-5):
-        # avoidinf to True adds epps to the gaussian values to avoid taking the logarithm of 0 which would
-        # lead to infinite loss
-        self._avoidinf = avoidinf
-        self._eps = eps
+    def __init__(self,
+                 calculate_stdev: bool = True):
+        self._stdev = calculate_stdev
+        pass
 
     def calculate_score(self, pcbatch: torch.Tensor, gmpositions: torch.Tensor, gmcovariances: torch.Tensor,
                         gminvcovariances: torch.Tensor, gmamplitudes: torch.Tensor,
@@ -31,8 +30,18 @@ class LikelihoodLoss(EvalFunction):
             output[:, startidx:endidx] = \
                 gm.evaluate_inversed(mixture_with_inversed_cov, points[:, :, startidx:endidx, :]).view(batch_size, -1) \
                 + (noisecontribution.view(batch_size, 1) if noisecontribution is not None else 0)
-        res = -torch.mean(torch.log(output + (self._eps if self._avoidinf else 0)), dim=1)
-        return res.view(1, -1)
+        if not self._stdev:
+            mean = torch.mean(torch.log(output), dim=1)
+            return mean.view(1, -1)
+        else:
+            (std, mean) = torch.std_mean(torch.log(output), dim=1)
+            res = torch.zeros(2, batch_size, device=mean.device, dtype=mean.dtype)
+            res[0, :] = mean
+            res[1, :] = std
+            return res
 
     def get_names(self) -> List[str]:
-        return ["LikelihoodLoss"]
+        nlst = ["Average Log Likelihood"]
+        if self._stdev:
+            nlst.append("Stdev of Log Likelihood")
+        return nlst

@@ -1,4 +1,4 @@
-from pcfitting import ErrorFunction, programs
+from pcfitting import EvalFunction, programs
 from pcfitting.error_functions import LikelihoodLoss
 
 # This takes a single GMM with a single point cloud and evluates it on a single error function
@@ -16,7 +16,7 @@ gm_is_model = False
 # gm_is_model = False
 
 # Error Function
-error_function: ErrorFunction = LikelihoodLoss(False)
+error_function: EvalFunction = LikelihoodLoss(False)
 
 # Scaling options
 scaling_active = False

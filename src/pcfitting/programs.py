@@ -7,7 +7,7 @@ from typing import List, Tuple, Optional
 
 from gmc import mixture, mat_tools
 import gmc.inout as gmio
-from pcfitting import GMMGenerator, Scaler, PCDatasetIterator, GMLogger, ErrorFunction, data_loading
+from pcfitting import GMMGenerator, Scaler, PCDatasetIterator, GMLogger, EvalFunction, data_loading
 from pcfitting.generators.em_tools import EMTools
 import pcfitting.pc_dataset_iterator
 
@@ -150,9 +150,8 @@ def execute_fitting_on_single_pcbatch(training_name: str, pcbatch: torch.Tensor,
 
 
 def execute_evaluation(training_name: str, model_path: Optional[str], pc1_path: str, pc2_path: Optional[str], gengmm_path: str, n_points: int,
-                       n_eval_points: int, generator_identifiers: List[str], error_functions: List[ErrorFunction],
-                       error_function_identifiers: List[str], scaling_active: bool = False,
-                       scaling_interval: Tuple[float, float] = (-50.0, 50.0)):
+                       n_eval_points: int, generator_identifiers: List[str], error_functions: List[EvalFunction],
+                       scaling_active: bool = False, scaling_interval: Tuple[float, float] = (-50.0, 50.0)):
     # Evaluates a performed Training. Several pointclouds, several gms for each. 2pcs: fitpc, evalpc
     # Create Dataset Iterator and Scaler
     pc1dataset = PCDatasetIterator(1, n_points, pc1_path, model_path)  # Batch Size must be one!
@@ -195,26 +194,21 @@ def execute_evaluation(training_name: str, model_path: Optional[str], pc1_path: 
                 # Evaluate using each error function
                 print(name, " / ", gid)
                 for j in range(len(error_functions)):
-                    loss = error_functions[j].calculate_score_packed(pc1_scaled, gm).item()
-                    print("  ", error_function_identifiers[j], " on PC1: ", loss)
-                    if pc2_scaled is not None:
-                        loss = error_functions[j].calculate_score_packed(pc2_scaled, gm).item()
-                        print("  ", error_function_identifiers[j], " on PC2: ", loss)
-                # covariances = mixture.covariances(gm)
-                # invcovs = mat_tools.inverse(covariances).contiguous()
-                # irelcovs = ~EMTools.find_valid_matrices(covariances, invcovs, True)
-                # print("Broken Covariances: ", (irelcovs.sum().item()))
-                # print("   Invalid Gaussians: ", (mixture.weights(gm).eq(0)).sum().item())
-                # print("   Valid Gaussians: ", (~mixture.weights(gm).eq(0)).sum().item())
-                # print("   Sum of Weights: ", (mixture.weights(mixture.convert_amplitudes_to_priors(gm)).sum()).item())
+                    names = error_functions[j].get_names()
+                    loss = error_functions[j].calculate_score_packed(pc1_scaled, gm)
+                    for k in range(len(names)):
+                        print("  ", names[k], " on PC1: " if error_functions[j].needs_pc() else "", loss[k].item())
+                    if error_functions[j].needs_pc() and pc2_scaled is not None:
+                        loss = error_functions[j].calculate_score_packed(pc2_scaled, gm)
+                        for k in range(len(names)):
+                            print("  ", names[k], " on PC2: ", loss[k].item())
 
     print("Done")
 
 
 def execute_evaluation_singlepc_severalgm(pc1_path: str, pc2_path: Optional[str], gengmm_path: str,
-                        error_functions: List[ErrorFunction],
-                       error_function_identifiers: List[str], scaling_active: bool = False,
-                       scaling_interval: Tuple[float, float] = (-50.0, 50.0), gmaonly: bool = False):
+                                          error_functions: List[EvalFunction], scaling_active: bool = False,
+                                          scaling_interval: Tuple[float, float] = (-50.0, 50.0), gmaonly: bool = False):
     # Evaluates all gmms in a directory for a single pc. 2pcs: fitpc, evalpc
     # Create Dataset Iterator and Scaler
     pc1 = data_loading.load_pc_from_off(pc1_path)
@@ -245,11 +239,14 @@ def execute_evaluation_singlepc_severalgm(pc1_path: str, pc2_path: Optional[str]
                 # Evaluate using each error function
                 print(gm_path)
                 for j in range(len(error_functions)):
-                    loss = error_functions[j].calculate_score_packed(pc1_scaled, gm).item()
-                    print("  ", error_function_identifiers[j], " on PC1: ", loss)
-                    if pc2_scaled is not None:
-                        loss = error_functions[j].calculate_score_packed(pc2_scaled, gm).item()
-                        print("  ", error_function_identifiers[j], " on PC2: ", loss)
+                    names = error_functions[j].get_names()
+                    loss = error_functions[j].calculate_score_packed(pc1_scaled, gm)
+                    for k in range(len(names)):
+                        print("  ", names[k], " on PC1: " if error_functions[j].needs_pc() else "", loss[k].item())
+                    if error_functions[j].needs_pc() and pc2_scaled is not None:
+                        loss = error_functions[j].calculate_score_packed(pc2_scaled, gm)
+                        for k in range(len(names)):
+                            print("  ", names[k], " on PC2: ", loss[k].item())
                 # covariances = mixture.covariances(gm)
                 # invcovs = mat_tools.inverse(covariances).contiguous()
                 # irelcovs = ~EMTools.find_valid_matrices(covariances, invcovs, True)
@@ -261,7 +258,7 @@ def execute_evaluation_singlepc_severalgm(pc1_path: str, pc2_path: Optional[str]
     print("Done")
 
 
-def quick_evaluation(pc_path: str, gm_path: str, is_model: bool, error_function: ErrorFunction,
+def quick_evaluation(pc_path: str, gm_path: str, is_model: bool, error_function: EvalFunction,
                      scaling_active: bool = False,
                      scaling_interval: Tuple[float, float] = (-50.0, 50.0)):
     # Load pc
@@ -284,8 +281,10 @@ def quick_evaluation(pc_path: str, gm_path: str, is_model: bool, error_function:
     gm = scaler.scale_gm(gm)
 
     # Evaluate using each error function
-    loss = error_function.calculate_score_packed(pc_scaled, gm).item()
-    print("Loss: ", loss)
+    names = error_function.get_names()
+    loss = error_function.calculate_score_packed(pc_scaled, gm)
+    for k in range(len(names)):
+        print(names[k], ": ", loss[k].item())
 
 
 def quick_refine(training_name: str, pc_path: str, gm_in_path: str, gm_in_ismodel: bool, out_path: str,

@@ -161,7 +161,7 @@ class EckartGeneratorSP(GMMGenerator):
                 # Calculate Loss
                 mixture = gm_data.approximate_whole_mixture()
                 mixture = self._construct_full_gm(mixture, finished_subgmms)
-                loss = llh_loss_calc.calculate_score_packed(pcbatch, mixture)
+                loss = llh_loss_calc.calculate_score_packed(pcbatch, mixture)[0]
                 assert not torch.isinf(loss).any()
 
                 # weight responsibility

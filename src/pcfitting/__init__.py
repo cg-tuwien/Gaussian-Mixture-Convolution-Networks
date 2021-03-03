@@ -1,6 +1,6 @@
 from .gm_logger import GMLogger
 from .gmm_generator import GMMGenerator
-from .error_function import ErrorFunction
+from .eval_function import EvalFunction
 from .termination_criterion import TerminationCriterion, \
     MaxIterationTerminationCriterion, RelChangeTerminationCriterion, AndCombinedTerminationCriterion, \
     OrCombinedTerminationCriterion

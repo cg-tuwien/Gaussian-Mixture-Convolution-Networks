@@ -1,9 +1,11 @@
 from abc import ABC, abstractmethod
+from typing import List
+
 from gmc import mixture, mat_tools
 import torch
 
 
-class ErrorFunction(ABC):
+class EvalFunction(ABC):
     # Abstract base class for Error Functions
 
     @abstractmethod
@@ -14,8 +16,8 @@ class ErrorFunction(ABC):
         # and n is the point count, as well as a Gaussian mixture containing
         # g Gaussians, given by their positions [m,1,g,3], covariances [m,1,g,3,3],
         # inverse covariances [m,1,g,3,3] and amplitudes [m,1,g].
-        # Returns a tensor of size [m] where each entry contains the
-        # score / loss
+        # Returns a tensor of size [i,m] where i is the number of evaluation values
+        # and m the batch size
         pass
 
     def calculate_score_packed(self, pcbatch: torch.Tensor, gmabatch: torch.Tensor,
@@ -26,3 +28,9 @@ class ErrorFunction(ABC):
         gmamplitudes = mixture.weights(gmabatch)
         return self.calculate_score(pcbatch, gmpositions, gmcovariances, gminvcovariances, gmamplitudes,
                                     noisecontribution)
+
+    def get_names(self) -> List[str]:
+        pass
+
+    def needs_pc(self) -> bool:
+        return True

@@ -171,7 +171,7 @@ class EckartGeneratorHP(GMMGenerator):
                 # Calculate Mixture and Loss
                 mixture = gm_data.pack_scaled_up_mixture(scaler)
                 mixture = self._construct_full_gm(mixture, finished_subgmms)
-                loss = llh_loss_calc.calculate_score_packed(pcbatch, mixture)
+                loss = llh_loss_calc.calculate_score_packed(pcbatch, mixture)[0]
 
                 if self._logger:
                     self._logger.log(absiteration - 1, loss, mixture)
