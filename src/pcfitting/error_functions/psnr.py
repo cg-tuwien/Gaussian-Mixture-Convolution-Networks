@@ -12,7 +12,7 @@ class PSNR(EvalFunction):
 
     def calculate_score(self, pcbatch: torch.Tensor, gmpositions: torch.Tensor, gmcovariances: torch.Tensor,
                         gminvcovariances: torch.Tensor, gmamplitudes: torch.Tensor,
-                        noisecontribution: torch.Tensor = None) -> torch.Tensor:
+                        noisecontribution: torch.Tensor = None, modelpath: str = None) -> torch.Tensor:
         assert pcbatch.shape[0] == 1
         point_size = pcbatch.shape[1]
         gmm = gm.convert_amplitudes_to_priors(gm.pack_mixture(gmamplitudes, gmpositions, gmcovariances))

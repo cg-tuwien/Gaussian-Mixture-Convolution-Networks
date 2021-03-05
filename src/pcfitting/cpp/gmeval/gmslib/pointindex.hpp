@@ -256,7 +256,7 @@ namespace gms
 			}
 		}
 
-		float nearestDistSearch(const vec3& queryPoint) const
+		float nearestDistSearch(const vec3& queryPoint, int forbiddenindex=-1) const
 		{
 			vec3i c = getGridCoord(queryPoint);
 
@@ -274,9 +274,12 @@ namespace gms
 					const vec2i& indexRange = pos->second;
 
 					for (int i_ = indexRange.x; i_ < indexRange.x + indexRange.y; ++i_) {
-						float sqd = sqdist(queryPoint, mPoints->at(mIndices[i_]));
-						if (sqd < minsqdist)
-							minsqdist = sqd;
+						if (mIndices[i_] != forbiddenindex)
+						{
+							float sqd = sqdist(queryPoint, mPoints->at(mIndices[i_]));
+							if (sqd < minsqdist)
+								minsqdist = sqd;
+						}
 					}
 				}
 			}
@@ -284,9 +287,12 @@ namespace gms
 			{
 				for (int i = 0; i < this->mPoints->size(); ++i)
 				{
-					float sqd = sqdist(queryPoint, mPoints->at(i));
-					if (sqd < minsqdist)
-						minsqdist = sqd;
+					if (i != forbiddenindex)
+					{
+						float sqd = sqdist(queryPoint, mPoints->at(i));
+						if (sqd < minsqdist)
+							minsqdist = sqd;
+					}
 				}
 			}
 			return minsqdist;

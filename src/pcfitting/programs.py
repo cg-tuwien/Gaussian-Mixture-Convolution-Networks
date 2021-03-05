@@ -170,6 +170,8 @@ def execute_evaluation(training_name: str, model_path: Optional[str], pc1_path: 
         if pc2dataset is not None:
             pc2, _ = pc2dataset.next_batch()
 
+        modelpath = os.path.join(model_path, names[0])
+
         # Scale down
         scaler.set_pointcloud_batch(pc1)
         pc1_scaled = scaler.scale_pc(pc1)
@@ -195,11 +197,11 @@ def execute_evaluation(training_name: str, model_path: Optional[str], pc1_path: 
                 print(name, " / ", gid)
                 for j in range(len(error_functions)):
                     names = error_functions[j].get_names()
-                    loss = error_functions[j].calculate_score_packed(pc1_scaled, gm)
+                    loss = error_functions[j].calculate_score_packed(pc1_scaled, gm, modelpath=modelpath)
                     for k in range(len(names)):
                         print("  ", names[k], " on PC1: " if error_functions[j].needs_pc() else "", loss[k].item())
                     if error_functions[j].needs_pc() and pc2_scaled is not None:
-                        loss = error_functions[j].calculate_score_packed(pc2_scaled, gm)
+                        loss = error_functions[j].calculate_score_packed(pc2_scaled, gm, modelpath=modelpath)
                         for k in range(len(names)):
                             print("  ", names[k], " on PC2: ", loss[k].item())
 
@@ -208,7 +210,8 @@ def execute_evaluation(training_name: str, model_path: Optional[str], pc1_path: 
 
 def execute_evaluation_singlepc_severalgm(pc1_path: str, pc2_path: Optional[str], gengmm_path: str,
                                           error_functions: List[EvalFunction], scaling_active: bool = False,
-                                          scaling_interval: Tuple[float, float] = (-50.0, 50.0), gmaonly: bool = False):
+                                          scaling_interval: Tuple[float, float] = (-50.0, 50.0), gmaonly: bool = False,
+                                          modelpath: str = None):
     # Evaluates all gmms in a directory for a single pc. 2pcs: fitpc, evalpc
     # Create Dataset Iterator and Scaler
     pc1 = data_loading.load_pc_from_off(pc1_path)
@@ -240,11 +243,11 @@ def execute_evaluation_singlepc_severalgm(pc1_path: str, pc2_path: Optional[str]
                 print(gm_path)
                 for j in range(len(error_functions)):
                     names = error_functions[j].get_names()
-                    loss = error_functions[j].calculate_score_packed(pc1_scaled, gm)
+                    loss = error_functions[j].calculate_score_packed(pc1_scaled, gm, modelpath)
                     for k in range(len(names)):
                         print("  ", names[k], " on PC1: " if error_functions[j].needs_pc() else "", loss[k].item())
                     if error_functions[j].needs_pc() and pc2_scaled is not None:
-                        loss = error_functions[j].calculate_score_packed(pc2_scaled, gm)
+                        loss = error_functions[j].calculate_score_packed(pc2_scaled, gm, modelpath)
                         for k in range(len(names)):
                             print("  ", names[k], " on PC2: ", loss[k].item())
                 # covariances = mixture.covariances(gm)

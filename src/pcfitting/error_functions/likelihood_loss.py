@@ -17,7 +17,7 @@ class LikelihoodLoss(EvalFunction):
 
     def calculate_score(self, pcbatch: torch.Tensor, gmpositions: torch.Tensor, gmcovariances: torch.Tensor,
                         gminvcovariances: torch.Tensor, gmamplitudes: torch.Tensor,
-                        noisecontribution: torch.Tensor = None) -> torch.Tensor:
+                        noisecontribution: torch.Tensor = None, modelpath: str = None) -> torch.Tensor:
         batch_size = pcbatch.shape[0]
         points = pcbatch.view(batch_size, 1, -1, 3)
         point_count = points.shape[2]

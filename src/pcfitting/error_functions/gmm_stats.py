@@ -37,7 +37,7 @@ class GMMStats(EvalFunction):
 
     def calculate_score(self, pcbatch: torch.Tensor, gmpositions: torch.Tensor, gmcovariances: torch.Tensor,
                         gminvcovariances: torch.Tensor, gmamplitudes: torch.Tensor,
-                        noisecontribution: torch.Tensor = None) -> torch.Tensor:
+                        noisecontribution: torch.Tensor = None, modelpath: str = None) -> torch.Tensor:
         result = torch.zeros(self._n_activated, pcbatch.shape[0], device=pcbatch.device, dtype=pcbatch.dtype)
         i = 0
         if self._avg_trace or self._stdev_traces:
