@@ -17,12 +17,12 @@ class ReconstructionStats(EvalFunction):
     def __init__(self,
                  rmsd_pure: bool = True,
                  rmsd_scaled_bb_diag: bool = True,
-                 rmsd_scaled_by_sampling: bool = True,
+                 rmsd_scaled_by_area: bool = True,
                  psnr: bool = True,
                  sample_points: int = 10000):
         self._rmsd_pure = rmsd_pure
         self._rmsd_scaled_bb_diag = rmsd_scaled_bb_diag
-        self._rmsd_scaled_by_sampling = rmsd_scaled_by_sampling
+        self._rmsd_scaled_by_area = rmsd_scaled_by_area
         self._psnr = psnr
         self._samplepoints = sample_points
         pass
@@ -33,7 +33,7 @@ class ReconstructionStats(EvalFunction):
         batch_size = pcbatch.shape[0]
         assert batch_size == 1
 
-        nmeth = self._rmsd_pure + self._rmsd_scaled_bb_diag + self._rmsd_scaled_by_sampling + self._psnr
+        nmeth = self._rmsd_pure + self._rmsd_scaled_bb_diag + self._rmsd_scaled_by_area + self._psnr
         result = torch.zeros(nmeth, batch_size, device=pcbatch.device, dtype=pcbatch.dtype)
 
         gmm = gm.convert_amplitudes_to_priors(gm.pack_mixture(gmamplitudes, gmpositions, gmcovariances))
@@ -52,12 +52,16 @@ class ReconstructionStats(EvalFunction):
             result[i, 0] = rmsd / bbscale
             i += 1
         samples = None
-        if self._rmsd_scaled_by_sampling:
+        # if self._rmsd_scaled_by_sampling:
+        #     mesh = trimesh.load_mesh(modelpath)
+        #     samples, _ = trimesh.sample.sample_surface(mesh, self._samplepoints)
+        #     samples = torch.from_numpy(samples)
+        #     rmsdref = pyeval.eval_rmsd_unscaled(pcbatch.view(-1, 3), samples)
+        #     result[i, 0] = rmsd / rmsdref
+        #     i += 1
+        if self._rmsd_scaled_by_area:
             mesh = trimesh.load_mesh(modelpath)
-            samples, _ = trimesh.sample.sample_surface(mesh, self._samplepoints)
-            samples = torch.from_numpy(samples)
-            rmsdref = pyeval.eval_rmsd_unscaled(pcbatch.view(-1, 3), samples)
-            result[i, 0] = rmsd / rmsdref
+            result[i, 0] = rmsd / math.sqrt(mesh.area)
             i += 1
         if self._psnr:
             result[i, 0] = 20*math.log10(bbscale / rmsd)
@@ -70,8 +74,10 @@ class ReconstructionStats(EvalFunction):
             nlst.append("RMSD")
         if self._rmsd_scaled_bb_diag:
             nlst.append("RMSD scaled by BB")
-        if self._rmsd_scaled_by_sampling:
-            nlst.append("RMSD scaled by Sampling")
+        # if self._rmsd_scaled_by_sampling:
+        #     nlst.append("RMSD scaled by Sampling")
+        if self._rmsd_scaled_by_area:
+            nlst.append("RMSD scaled by Area")
         if self._psnr:
             nlst.append("PSNR")
         return nlst

@@ -14,11 +14,11 @@ class AvgLogLikelihood(EvalFunction):
 
     def __init__(self,
                  calculate_stdev: bool = True,
-                 calculate_rel_to_gt: bool = True,
+                 calcualte_scaled: bool = True,
                  enlarge_evs: bool = True,
                  smallest_ev: float = 2e-4):
         self._stdev = calculate_stdev
-        self._rel_to_gt = calculate_rel_to_gt
+        self._calcualte_scaled = calcualte_scaled
         self._enlarge_evs = enlarge_evs
         self._smallest_ev = smallest_ev
         pass
@@ -44,28 +44,28 @@ class AvgLogLikelihood(EvalFunction):
             output[:, startidx:endidx] = \
                 gm.evaluate_inversed(mixture_with_inversed_cov, points[:, :, startidx:endidx, :]).view(batch_size, -1) \
                 + (noisecontribution.view(batch_size, 1) if noisecontribution is not None else 0)
-        res = torch.zeros(1 + self._stdev + self._rel_to_gt, batch_size, device=pcbatch.device, dtype=pcbatch.dtype)
+        res = torch.zeros(1 + self._stdev + self._calcualte_scaled, batch_size, device=pcbatch.device, dtype=pcbatch.dtype)
         if not self._stdev:
             res[0, :] = torch.mean(torch.log(output), dim=1)
-            if self._rel_to_gt:
-                res[1, :] = res[0, :] - self.calculate_ground_truth(modelpath)
+            if self._calcualte_scaled:
+                res[1, :] = res[0, :] + self.calculate_scale_factor(modelpath)
             return res
         else:
             (std, mean) = torch.std_mean(torch.log(output), dim=1)
             res[0, :] = mean
             res[1, :] = std
-            if self._rel_to_gt:
-                res[2, :] = mean - self.calculate_ground_truth(modelpath)
+            if self._calcualte_scaled:
+                res[2, :] = mean + self.calculate_scale_factor(modelpath)
             return res
 
     def get_names(self) -> List[str]:
         nlst = ["Average Log Likelihood" + ("(evcorrected)" if self._enlarge_evs else "")]
         if self._stdev:
             nlst.append("Stdev of Log Likelihood" + ("(evcorrected)" if self._enlarge_evs else ""))
-        if self._rel_to_gt:
-            nlst.append("Average Log Likelihood RelGT" + ("(evcorrected)" if self._enlarge_evs else ""))
+        if self._calcualte_scaled:
+            nlst.append("Average Log Likelihood Scaled" + ("(evcorrected)" if self._enlarge_evs else ""))
         return nlst
 
-    def calculate_ground_truth(self, modelpath: str):
+    def calculate_scale_factor(self, modelpath: str):
        mesh = trimesh.load_mesh(modelpath)
-       return math.log(1 / self._smallest_ev * mesh.area)
+       return 1.5 * math.log( (mesh.area / 16000))

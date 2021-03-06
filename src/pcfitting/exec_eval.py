@@ -1,16 +1,20 @@
 from typing import List
 from pcfitting import EvalFunction, programs
-from pcfitting.error_functions import LikelihoodLoss, PSNR, GMMStats, AvgLogLikelihood
+from pcfitting.error_functions import LikelihoodLoss, PSNR, GMMStats, AvgLogLikelihood, ReconstructionStats
 
 # This takes a set of finished GMMs and evaluates them using several error functions.
 # The results are printed to the console.
 
 # --- CONFIGUREABLE VARIABLES ---
 # Define Paths
-model_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_vartest/models"
-fitpc_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_vt_evaluation/fitpcs" # DOESN'T WORK CORRECTLY, BECAUSE OF OTHER SCALING (???)
-evalpc_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_vt_evaluation/evalpcs"
-gengmm_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_vt_evaluation/gmms"
+# model_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_vartest/models"
+# fitpc_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_vt_evaluation/fitpcs"
+# evalpc_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_vt_evaluation/evalpcs"
+# gengmm_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_vt_evaluation/gmms"
+model_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_diff_scales/models"
+fitpc_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_diff_scales/fitpcs"
+evalpc_path = None#"D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_diff_scales/evalpcs"
+gengmm_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_diff_scales/gmms"
 # model_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_bunny/models"
 # fitpc_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_bunny/pointclouds"
 # gengmm_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_bunny/gmms"
@@ -20,7 +24,7 @@ gengmm_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_vt_eval
 
 # Define point count of pointclouds to use, and how many points to use for evaluation
 n_points = 100000
-eval_points = 5000000
+eval_points = 100000#5000000
 
 # Define identifiers of Generators to evaluate and error functions to use
 #generator_identifiers = ["EMi0", "EMi3", "EckHP", "EckSP0.3", "EckSP0.5"]
@@ -32,8 +36,9 @@ eval_points = 5000000
 # generator_identifiers = ["10-EckHPiTBB(unscaled)", "11-EckHPiRNP(unscaled)", "14-EckHPiEigen(unscaled)"]
 # generator_identifiers = ["1613915290-Preiner[unscaled]-maxIND=0.9-init0", "1613916382-Preiner[unscaled]-maxIND=0.1",
 #                           "bed03gms-r0.1", "bed03gms-r0.6", "bed03gms-r0.9", "bed03gms-r1.5"]
-generator_identifiers = ["fpsmax", "EMrnp", "EMfps", "Eckbb", "Eckrnp", "Eckfps", "Preiner-0.9-5"]
-error_functions: List[EvalFunction] = [LikelihoodLoss(False), AvgLogLikelihood(), GMMStats()]# PSNR()]
+generator_identifiers = ["Eckeigen"]#["fpsmax", "EMrnp", "EMfps", "Eckbb", "Eckrnp", "Eckfps", "Preiner-0.9-5"]
+#error_functions: List[EvalFunction] = [AvgLogLikelihood(enlarge_evs=False), AvgLogLikelihood(), ReconstructionStats()]
+error_functions: List[EvalFunction] = [AvgLogLikelihood()]#, ReconstructionStats()]
 
 # Scaling options
 scaling_active = False

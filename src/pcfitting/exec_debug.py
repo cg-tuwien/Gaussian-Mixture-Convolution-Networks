@@ -23,17 +23,33 @@ terminator1 = RelChangeTerminationCriterion(0.1, 100)
 terminator2 = RelChangeTerminationCriterion(0.1, 50)
 
 generators = [
-    # PreinerGenerator(fixeddist=0.5, stdev=0.01, reductionFactor=1.25, levels=30, alpha=4.0),
-    # PreinerGenerator(fixeddist=0.25, stdev=0.01, ngaussians=512, alpha=5.0),
-    # PreinerGenerator(fixeddist=0.25, stdev=0.01, ngaussians=512, alpha=10.0),
-    PreinerGenerator(fixeddist=0.5, stdev=0.01, ngaussians=512, alpha=1000.0),
-    # PreinerGenerator(fixeddist=0.5, stdev=0.01, reductionFactor=1.25, levels=30, alpha=2.0),
-    # PreinerGenerator(fixeddist=0.5, stdev=0.01, reductionFactor=3.0, levels=30, alpha=2.0),
+    PreinerGenerator(fixeddist=0.5, ngaussians=512, alpha=4, avoidorphans=False),
+    PreinerGenerator(fixeddist=0.5, ngaussians=512, alpha=4, avoidorphans=True),
+    # PreinerGenerator(fixeddist=0.5, stdev=0.01, ngaussians=512, alpha=5, avoidorphans=True),
+    # PreinerGenerator(fixeddist=0.7, stdev=0.01, ngaussians=512, alpha=5, avoidorphans=True),
+    # PreinerGenerator(fixeddist=0.75, stdev=0.01, ngaussians=512, alpha=5, avoidorphans=True),
+    # PreinerGenerator(fixeddist=0.8, stdev=0.01, ngaussians=512, alpha=5, avoidorphans=True),
+    # PreinerGenerator(fixeddist=0.85, stdev=0.01, ngaussians=512, alpha=5, avoidorphans=True),
+    # PreinerGenerator(fixeddist=0.9, stdev=0.01, ngaussians=512, alpha=5, avoidorphans=True),
+    # PreinerGenerator(fixeddist=1.1, stdev=0.01, ngaussians=512, alpha=5, avoidorphans=True)
+    # PreinerGenerator(fixeddist=0.5, stdev=0.01, ngaussians=512, alpha=5, avoidorphans=False),
+    # PreinerGenerator(fixeddist=0.7, stdev=0.01, ngaussians=512, alpha=5, avoidorphans=False),
+    # PreinerGenerator(fixeddist=0.75, stdev=0.01, ngaussians=512, alpha=5, avoidorphans=False),
+    # PreinerGenerator(fixeddist=0.8, stdev=0.01, ngaussians=512, alpha=5, avoidorphans=False),
+    # PreinerGenerator(fixeddist=0.85, stdev=0.01, ngaussians=512, alpha=5, avoidorphans=False),
+    # PreinerGenerator(fixeddist=0.9, stdev=0.01, ngaussians=512, alpha=5, avoidorphans=False),
+    # PreinerGenerator(fixeddist=1.1, stdev=0.01, ngaussians=512, alpha=5, avoidorphans=False)
 ]
 generator_identifiers = [
-    # "Preiner-fd0.25-stdev=0.01-a=05-ng=512",
-    # "Preiner-fd0.25-stdev=0.01-a=10-ng=512",
-    "Preiner-fd0.5-stdev=0.01-a=1000-ng=512",
+    "Preiner-fd0.5-a=4-ng=512-",
+    "Preiner-fd0.5-a=4-ng=512-AVO",
+    # "Preiner-fd0.5-stdev=0.01-a=5-ng=512-AVO",
+    # "Preiner-fd0.7-stdev=0.01-a=5-ng=512-AVO",
+    # "Preiner-fd0.75-stdev=0.01-a=5-ng=512-AVO",
+    # "Preiner-fd0.8-stdev=0.01-a=5-ng=512-AVO",
+    # "Preiner-fd0.85-stdev=0.01-a=5-ng=512-AVO",
+    # "Preiner-fd0.9-stdev=0.01-a=5-ng=512-AVO",
+    # "Preiner-fd1.1-stdev=0.01-a=5-ng=512-AVO"
 ]
 
 
