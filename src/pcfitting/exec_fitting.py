@@ -41,6 +41,13 @@ generators = [
       PreinerGenerator(fixeddist=0.9, ngaussians=512, alpha=5, avoidorphans=False)
 ]
 generator_identifiers = ["fpsmax", "EMrnp", "EMfps", "Eckbb", "Eckrnp", "Eckfps", "Eckeigen", "Preiner-0.9-5"]
+# generators = [
+#       EMGenerator(n_gaussians=n_gaussians, initialization_method='fpsmax', termination_criterion=MaxIterationTerminationCriterion(0), em_step_points_subbatchsize=10000, eps=1e-4, eps_is_relative=False),
+#       EMGenerator(n_gaussians=n_gaussians, initialization_method='fpsmax', termination_criterion=terminator2, em_step_points_subbatchsize=10000, eps=1e-4, eps_is_relative=False),
+#       EckartGeneratorSP(n_gaussians_per_node=8, n_levels=3, termination_criterion=terminator2, initialization_method='eigen', partition_threshold=0.1, m_step_points_subbatchsize=10000, e_step_pair_subbatchsize=5120000, eps=1e-4, eps_is_relative=False),
+#       PreinerGenerator(fixeddist=0.9, ngaussians=512, alpha=5, avoidorphans=False)
+# ]
+# generator_identifiers = ["fpsmax", "EMfpsmax", "EckEigen", "Preiner"]
 
 # Scaling options
 scaling_active = False

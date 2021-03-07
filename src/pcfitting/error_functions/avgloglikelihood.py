@@ -68,4 +68,4 @@ class AvgLogLikelihood(EvalFunction):
 
     def calculate_scale_factor(self, modelpath: str):
        mesh = trimesh.load_mesh(modelpath)
-       return 1.5 * math.log( (mesh.area / 16000))
+       return 1.5 * math.log( (mesh.area / 16384))

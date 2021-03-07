@@ -261,11 +261,16 @@ def execute_evaluation_singlepc_severalgm(pc1_path: str, pc2_path: Optional[str]
     print("Done")
 
 
-def quick_evaluation(pc_path: str, gm_path: str, is_model: bool, error_function: EvalFunction,
+def quick_evaluation(pc_path: str, gm_path: str, mesh_path: str, is_model: bool, error_function: EvalFunction,
                      scaling_active: bool = False,
                      scaling_interval: Tuple[float, float] = (-50.0, 50.0)):
     # Load pc
     pc = data_loading.load_pc_from_off(pc_path).cuda()
+
+    # Scale to double size
+    # minext = (torch.max(pc[0], dim=0)[0] - torch.min(pc[0], dim=0)[0]).min()
+    # scaling_active = True
+    # scaling_interval = (0, 2*minext)
 
     # Scale down
     scaler = Scaler(active=scaling_active, interval=scaling_interval)
@@ -277,15 +282,11 @@ def quick_evaluation(pc_path: str, gm_path: str, is_model: bool, error_function:
     if is_model:
         gm = mixture.convert_priors_to_amplitudes(gm)
     covariances = mixture.covariances(gm)
-    invcovs = mat_tools.inverse(covariances).contiguous()
-    irelcovs = ~EMTools.find_valid_matrices(covariances, invcovs, True)
-    print("Broken Covariances: ", (irelcovs.sum().item()))
-    print("Invalid Gaussians: ", (mixture.weights(gm).eq(0)).sum().item())
     gm = scaler.scale_gm(gm)
 
     # Evaluate using each error function
     names = error_function.get_names()
-    loss = error_function.calculate_score_packed(pc_scaled, gm)
+    loss = error_function.calculate_score_packed(pc_scaled, gm, modelpath=mesh_path)
     for k in range(len(names)):
         print(names[k], ": ", loss[k].item())
 

@@ -4,7 +4,7 @@
 #include <omp.h>
 #include "gmslib/pointset.hpp"
 
-float eval_rmse_psnr(torch::Tensor pointcloudSource, torch::Tensor pointcloudGenerated, bool scaled, bool psnr)
+py::tuple eval_rmse_psnr(torch::Tensor pointcloudSource, torch::Tensor pointcloudGenerated, bool scaled, bool psnr)
 {
     omp_set_dynamic(0);
     omp_set_num_threads(8);
@@ -48,6 +48,7 @@ float eval_rmse_psnr(torch::Tensor pointcloudSource, torch::Tensor pointcloudGen
     //std::cout << "preprocessing done" << std::endl;
 
     float summinsqdiffs = 0;
+    float summindiffs = 0;
     std::vector<float> sqdiffs;
     sqdiffs.resize(nS);
     #pragma omp parallel for
@@ -61,19 +62,27 @@ float eval_rmse_psnr(torch::Tensor pointcloudSource, torch::Tensor pointcloudGen
     {
         //std::cout << sqdiffs[i] << std::endl;
         summinsqdiffs += sqdiffs[i];
+        summindiffs += sqrt(sqdiffs[i]);
     }
-    float avgminsqdiff = summinsqdiffs / nS;
+    float rmsd = std::sqrt(summinsqdiffs / nS);
+    float averagediff = summindiffs / nS;
+    float sumdeviations = 0;
+    for (int i = 0; i < nS; ++i)
+    {
+        sumdeviations += pow(sqrt(sqdiffs[i]) - averagediff, 2);
+    }
+    float standarddev = sqrt(sumdeviations / nS);
     if (psnr) {
-        float psnr = bboxPointsS.diagonal() / std::sqrt(avgminsqdiff);
+        float psnr = bboxPointsS.diagonal() / rmsd;
         psnr = 20 * std::log10(psnr);
-        return psnr;
+        return py::make_tuple(psnr);
     }
     else {
         if (scaled)
         {
-            return std::sqrt(avgminsqdiff) / bboxPointsS.diagonal();
+            return py::make_tuple(rmsd / bboxPointsS.diagonal(), averagediff / bboxPointsS.diagonal(), standarddev / bboxPointsS.diagonal());
         }
-        return std::sqrt(avgminsqdiff);
+        return py::make_tuple(rmsd, averagediff, standarddev);
     }
 }
 

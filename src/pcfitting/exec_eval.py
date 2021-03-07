@@ -36,9 +36,10 @@ eval_points = 100000#5000000
 # generator_identifiers = ["10-EckHPiTBB(unscaled)", "11-EckHPiRNP(unscaled)", "14-EckHPiEigen(unscaled)"]
 # generator_identifiers = ["1613915290-Preiner[unscaled]-maxIND=0.9-init0", "1613916382-Preiner[unscaled]-maxIND=0.1",
 #                           "bed03gms-r0.1", "bed03gms-r0.6", "bed03gms-r0.9", "bed03gms-r1.5"]
-generator_identifiers = ["Eckeigen"]#["fpsmax", "EMrnp", "EMfps", "Eckbb", "Eckrnp", "Eckfps", "Preiner-0.9-5"]
+generator_identifiers = ["fpsmax", "EMrnp", "EMfps", "Eckbb", "Eckrnp", "Eckfps", "Eckeigen", "Preiner-0.9-5"]
+#generator_identifiers = ["fpsmax", "EMfpsmax", "EckEigen", "Preiner"]
 #error_functions: List[EvalFunction] = [AvgLogLikelihood(enlarge_evs=False), AvgLogLikelihood(), ReconstructionStats()]
-error_functions: List[EvalFunction] = [AvgLogLikelihood()]#, ReconstructionStats()]
+error_functions: List[EvalFunction] = [AvgLogLikelihood(enlarge_evs=False), ReconstructionStats()]#, GMMStats()]
 
 # Scaling options
 scaling_active = False

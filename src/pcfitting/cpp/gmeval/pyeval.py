@@ -19,14 +19,15 @@ bindings = torch.utils.cpp_extension.load('gmeval',
 
 
 def eval_psnr(point_cloud_source: torch.Tensor, point_cloud_generated: torch.Tensor) -> float:
-    return bindings.eval_rmse_psnr(point_cloud_source, point_cloud_generated, True, True)
+    return bindings.eval_rmse_psnr(point_cloud_source, point_cloud_generated, True, True)[0]
 
 
 def eval_rmse(point_cloud_source: torch.Tensor, point_cloud_generated: torch.Tensor) -> float:
-    return bindings.eval_rmse_psnr(point_cloud_source, point_cloud_generated, True, False)
+    return bindings.eval_rmse_psnr(point_cloud_source, point_cloud_generated, True, False)[0]
 
 
-def eval_rmsd_unscaled(point_cloud_source: torch.Tensor, point_cloud_generated: torch.Tensor) -> float:
+def eval_rmsd_unscaled(point_cloud_source: torch.Tensor, point_cloud_generated: torch.Tensor) -> (float, float, float):
+    # Returns rmsd, md, stdev
     return bindings.eval_rmse_psnr(point_cloud_source, point_cloud_generated, False, False)
 
 
