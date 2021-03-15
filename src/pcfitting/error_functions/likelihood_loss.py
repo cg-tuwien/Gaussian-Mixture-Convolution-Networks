@@ -1,11 +1,12 @@
 import math
+from typing import List
 
-from pcfitting import ErrorFunction
+from pcfitting import EvalFunction
 import torch
 import gmc.mixture as gm
 
 
-class LikelihoodLoss(ErrorFunction):
+class LikelihoodLoss(EvalFunction):
     # Calculates an error by calculating the likelihood of the point cloud given the mixture
 
     def __init__(self, avoidinf: bool, eps: float = 1e-5):
@@ -16,7 +17,7 @@ class LikelihoodLoss(ErrorFunction):
 
     def calculate_score(self, pcbatch: torch.Tensor, gmpositions: torch.Tensor, gmcovariances: torch.Tensor,
                         gminvcovariances: torch.Tensor, gmamplitudes: torch.Tensor,
-                        noisecontribution: torch.Tensor = None) -> torch.Tensor:
+                        noisecontribution: torch.Tensor = None, modelpath: str = None) -> torch.Tensor:
         batch_size = pcbatch.shape[0]
         points = pcbatch.view(batch_size, 1, -1, 3)
         point_count = points.shape[2]
@@ -31,4 +32,7 @@ class LikelihoodLoss(ErrorFunction):
                 gm.evaluate_inversed(mixture_with_inversed_cov, points[:, :, startidx:endidx, :]).view(batch_size, -1) \
                 + (noisecontribution.view(batch_size, 1) if noisecontribution is not None else 0)
         res = -torch.mean(torch.log(output + (self._eps if self._avoidinf else 0)), dim=1)
-        return res
+        return res.view(1, -1)
+
+    def get_names(self) -> List[str]:
+        return ["LikelihoodLoss"]

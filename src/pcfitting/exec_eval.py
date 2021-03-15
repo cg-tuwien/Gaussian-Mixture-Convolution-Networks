@@ -1,16 +1,20 @@
 from typing import List
-from pcfitting import ErrorFunction, programs
-from pcfitting.error_functions import LikelihoodLoss, PSNR
+from pcfitting import EvalFunction, programs
+from pcfitting.error_functions import LikelihoodLoss, PSNR, GMMStats, AvgLogLikelihood, ReconstructionStats
 
 # This takes a set of finished GMMs and evaluates them using several error functions.
 # The results are printed to the console.
 
 # --- CONFIGUREABLE VARIABLES ---
 # Define Paths
-model_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_vartest/models"
-fitpc_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_vartest/pointclouds"
-evalpc_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_vartest/evalpcs"
-gengmm_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_vartest/gmms"
+# model_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_vartest/models"
+# fitpc_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_vt_evaluation/fitpcs"
+# evalpc_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_vt_evaluation/evalpcs"
+# gengmm_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_vt_evaluation/gmms"
+model_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_diff_scales/models"
+fitpc_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_diff_scales/fitpcs"
+evalpc_path = None#"D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_diff_scales/evalpcs"
+gengmm_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_diff_scales/gmms"
 # model_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_bunny/models"
 # fitpc_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_bunny/pointclouds"
 # gengmm_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_bunny/gmms"
@@ -20,7 +24,7 @@ gengmm_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_vartest
 
 # Define point count of pointclouds to use, and how many points to use for evaluation
 n_points = 100000
-eval_points = 100000
+eval_points = 100000#5000000
 
 # Define identifiers of Generators to evaluate and error functions to use
 #generator_identifiers = ["EMi0", "EMi3", "EckHP", "EckSP0.3", "EckSP0.5"]
@@ -32,9 +36,10 @@ eval_points = 100000
 # generator_identifiers = ["10-EckHPiTBB(unscaled)", "11-EckHPiRNP(unscaled)", "14-EckHPiEigen(unscaled)"]
 # generator_identifiers = ["1613915290-Preiner[unscaled]-maxIND=0.9-init0", "1613916382-Preiner[unscaled]-maxIND=0.1",
 #                           "bed03gms-r0.1", "bed03gms-r0.6", "bed03gms-r0.9", "bed03gms-r1.5"]
-generator_identifiers = ["Eckbb", "Eckfps", "Eckrnp", "EMfps", "EMrnp"]
-error_functions: List[ErrorFunction] = [LikelihoodLoss(False)]#, PSNR(True)]
-error_function_identifiers = ["Likelihood Loss"]#, "EXPPSNR"]
+generator_identifiers = ["fpsmax", "EMrnp", "EMfps", "Eckbb", "Eckrnp", "Eckfps", "Eckeigen", "Preiner-0.9-5"]
+#generator_identifiers = ["fpsmax", "EMfpsmax", "EckEigen", "Preiner"]
+#error_functions: List[EvalFunction] = [AvgLogLikelihood(enlarge_evs=False), AvgLogLikelihood(), ReconstructionStats()]
+error_functions: List[EvalFunction] = [AvgLogLikelihood(enlarge_evs=False), ReconstructionStats()]#, GMMStats()]
 
 # Scaling options
 scaling_active = False
@@ -45,5 +50,4 @@ scaling_interval = (0, 1)
 training_name = input('Name for training to evaluate: ')
 
 programs.execute_evaluation(training_name, model_path, fitpc_path, evalpc_path, gengmm_path, n_points, eval_points,
-                            generator_identifiers, error_functions, error_function_identifiers,
-                            scaling_active, scaling_interval)
+                            generator_identifiers, error_functions, scaling_active, scaling_interval)

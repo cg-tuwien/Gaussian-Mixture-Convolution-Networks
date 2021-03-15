@@ -171,7 +171,7 @@ class EckartGeneratorHP(GMMGenerator):
                 # Calculate Mixture and Loss
                 mixture = gm_data.pack_scaled_up_mixture(scaler)
                 mixture = self._construct_full_gm(mixture, finished_subgmms)
-                loss = llh_loss_calc.calculate_score_packed(pcbatch, mixture)
+                loss = llh_loss_calc.calculate_score_packed(pcbatch, mixture)[0]
 
                 if self._logger:
                     self._logger.log(absiteration - 1, loss, mixture)
@@ -360,7 +360,9 @@ class EckartGeneratorHP(GMMGenerator):
                 meanweight = 1.0 / self._n_gaussians_per_node
                 eigenvalues, eigenvectors = torch.symeig(meancov, True)
                 eigenvalues_sorted, indices = torch.sort(eigenvalues[:], dim=0, descending=True)
-                eigenvectors_sorted = eigenvalues_sorted.unsqueeze(0).repeat(3, 1).sqrt() * eigenvectors[:, indices]
+                eigenvalues_sorted_sqrt = eigenvalues_sorted.sqrt()
+                eigenvalues_sorted_sqrt[eigenvalues_sorted_sqrt.isnan()] = 1e-10
+                eigenvectors_sorted = eigenvalues_sorted_sqrt.unsqueeze(0).repeat(3, 1) * eigenvectors[:, indices]
                 if self._n_gaussians_per_node <= 8:
                     if eigenvalues_sorted[2] > 1e-8:
                         gmdata.positions[0, 0, gidx_start:gidx_end] = position_templates3d[0:self._n_gaussians_per_node]

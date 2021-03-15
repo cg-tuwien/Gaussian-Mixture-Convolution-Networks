@@ -102,7 +102,7 @@ class GradientDescentGenerator(GMMGenerator):
         # Calculate initial loss
         sample_points = data_loading.sample(pcbatch, self._n_sample_points)
         losses = self._loss.calculate_score(sample_points, gm_data.get_positions(), gm_data.get_covariances(),
-                                            gm_data.get_inversed_covariances(), gm_data.get_amplitudes())
+                                            gm_data.get_inversed_covariances(), gm_data.get_amplitudes())[0]
         loss = losses.sum()
         iteration = 0
 
@@ -123,7 +123,7 @@ class GradientDescentGenerator(GMMGenerator):
             losses = self._loss.calculate_score(sample_points, gm_data.get_positions()[running],
                                                 gm_data.get_covariances()[running],
                                                 gm_data.get_inversed_covariances()[running],
-                                                gm_data.get_amplitudes()[running])
+                                                gm_data.get_amplitudes()[running])[0]
             current_losses[running] = losses
 
             # Log

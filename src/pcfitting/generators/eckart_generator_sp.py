@@ -43,6 +43,7 @@ class EckartGeneratorSP(GMMGenerator):
         #           'fpsmax' or 'adam2' = furthest point sampling, artifical responsibilities and m-step,
         #           'kmeans-full' = Full weighted kmeans (NOT RECOMMENDED)
         #           'kmeans-fast' or 'kmeans' = Fast weighted kmeans
+        #           'eigen': initialize using eigen vectors
         #       Plus one additional method:
         #           'bb': Initialize GMMs on corners of tight bounding box of points (different side lengths)
         #   e_step_pair_subbatchsize: int
@@ -161,7 +162,7 @@ class EckartGeneratorSP(GMMGenerator):
                 # Calculate Loss
                 mixture = gm_data.approximate_whole_mixture()
                 mixture = self._construct_full_gm(mixture, finished_subgmms)
-                loss = llh_loss_calc.calculate_score_packed(pcbatch, mixture)
+                loss = llh_loss_calc.calculate_score_packed(pcbatch, mixture)[0]
                 assert not torch.isinf(loss).any()
 
                 # weight responsibility
@@ -373,7 +374,9 @@ class EckartGeneratorSP(GMMGenerator):
                 meanweight = 1.0 / self._n_gaussians_per_node
                 eigenvalues, eigenvectors = torch.symeig(meancov, True)
                 eigenvalues_sorted, indices = torch.sort(eigenvalues[:], dim=0, descending=True)
-                eigenvectors_sorted = eigenvalues_sorted.unsqueeze(0).repeat(3, 1).sqrt() * eigenvectors[:, indices]
+                eigenvalues_sorted_sqrt = eigenvalues_sorted.sqrt()
+                eigenvalues_sorted_sqrt[eigenvalues_sorted_sqrt.isnan()] = 1e-10
+                eigenvectors_sorted = eigenvalues_sorted_sqrt.unsqueeze(0).repeat(3, 1) * eigenvectors[:, indices]
                 if self._n_gaussians_per_node <= 8:
                     if eigenvalues_sorted[2] > 1e-8:
                         gmdata.positions[0, 0, gidx_start:gidx_end] = position_templates3d[0:self._n_gaussians_per_node]

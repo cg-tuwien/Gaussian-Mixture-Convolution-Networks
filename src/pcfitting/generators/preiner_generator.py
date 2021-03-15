@@ -25,8 +25,9 @@ class PreinerGenerator(GMMGenerator):
                  fixeddist: float = 0.1,
                  weighted: bool = False,
                  levels: int = 20,
-                 reductionFactor: float = 3,
-                 ngaussians: int = 0):
+                 reductionfactor: float = 3,
+                 ngaussians: int = 0,
+                 avoidorphans: bool = False):
         # Creates a new PreinerGenerator
         # Parameters:
         #   alpha: float
@@ -52,6 +53,8 @@ class PreinerGenerator(GMMGenerator):
         #   ngaussians: int
         #       Fixed Number of output Gaussians if desired, otherwise zero. If not zero, levels will be ignored, and
         #       chosen automatically.
+        #   avoidorphans: bool
+        #       Assigns each Child Gaussian to at least one parent
         # Quantities described with '[in %bbd]' are given in percent of the input point cloud bounding box diagonal.
         #
         self._params = gms.Params()
@@ -64,8 +67,9 @@ class PreinerGenerator(GMMGenerator):
         self._params.fixeddist = fixeddist
         self._params.weighted = weighted
         self._params.levels = levels
-        self._params.reductionFactor = reductionFactor
+        self._params.reductionfactor = reductionfactor
         self._params.ngaussians = ngaussians
+        self._params.avoidorphans = avoidorphans
 
     def set_logging(self, logger: GMLogger = None):
         # Sets logging options. Note that logging increases the execution time,
