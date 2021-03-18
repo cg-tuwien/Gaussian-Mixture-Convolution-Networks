@@ -54,6 +54,7 @@ class Net(nn.Module):
         if config.layers[-1].n_feature_layers == -1:
             config.layers[-1].n_feature_layers = config.n_classes
         n_feature_layers_in = 1
+        last_n_fitting_components = -1
         for i, l in enumerate(config.layers):
             self.gmcs.append(gmc_modules.Convolution(config.convolution_config, n_layers_in=n_feature_layers_in, n_layers_out=l.n_feature_layers, n_kernel_components=config.n_kernel_components,
                                                      position_range=l.kernel_radius, covariance_range=pos2cov(l.kernel_radius),
@@ -61,6 +62,7 @@ class Net(nn.Module):
                                                      weight_sd=0.4, weight_mean=0.04, n_dims=3))
             self.biases.append(torch.nn.Parameter(torch.zeros(1, l.n_feature_layers) + bias_0))
             self.relus.append(gmc_modules.ReLUFitting(config.relu_config, layer_id=f"{i}c", n_layers=l.n_feature_layers, n_output_gaussians=l.n_fitting_components))
+            last_n_fitting_components = l.n_fitting_components
             n_feature_layers_in = l.n_feature_layers
 
         self.norm0 = BatchNormStack((gmc_modules.CovScaleNorm(norm_over_batch=False),
@@ -82,6 +84,9 @@ class Net(nn.Module):
         if config.mlp is not None:
             if config.mlp[-1] == -1:
                 config.mlp[-1] = config.n_classes
+
+            if last_n_fitting_components == 1:
+                n_feature_layers_in = n_feature_layers_in * 13
 
             mlp = list()
             for l in config.mlp:
@@ -160,7 +165,11 @@ class Net(nn.Module):
             if self.config.bn_place == Config.BN_PLACE_AFTER_RELU:
                 x, x_const = self.norm(x, x_const)
 
-        x = gm.integrate(x)
+        if gm.n_components(x) > 1:
+            x = gm.integrate(x)
+        else:
+            x = x.view(gm.n_batch(x), -1)
+
         if self.mlp is not None:
             x = self.mlp(x)
         x = F.log_softmax(x, dim=1)

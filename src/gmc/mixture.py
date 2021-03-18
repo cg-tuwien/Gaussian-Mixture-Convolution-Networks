@@ -167,6 +167,41 @@ def evaluate_bvh(mixture: Tensor, xes: Tensor) -> Tensor:
     return evaluate_inversed_bvh(pack_mixture(weights(mixture), positions(mixture), mat_tools.inverse(covariances(mixture)).transpose(-1, -2)), xes)
 
 
+def evaluate_componentwise_inversed(gaussians: Tensor, xes: Tensor):
+    _n_batch = n_batch(gaussians)
+    _n_layers = n_layers(gaussians)
+    _n_dims = n_dimensions(gaussians)
+    _n_comps = n_components(gaussians)
+
+    # xes dims: 1. batch (may be 1), 2. layers (may be 1), 3. n_xes, 4. x/y/[z]
+    assert len(xes.shape) == 4
+    assert xes.shape[0] == 1 or xes.shape[0] == _n_batch
+    assert xes.shape[1] == 1 or xes.shape[1] == _n_layers
+    n_xes = xes.shape[2]
+    assert xes.shape[3] == _n_dims
+
+    xes = xes.view(xes.shape[0], xes.shape[1], n_xes, 1, _n_dims)
+
+    # 1. dim: batches, 2. layers, 3. xes, 4. component, 5.+: vector / matrix components
+    _positions = positions(gaussians).view(_n_batch, _n_layers, 1, _n_comps, _n_dims)
+    values = xes - _positions
+
+    # x^t A x -> quadratic form
+    x_t = values.view(_n_batch, _n_layers, n_xes, _n_comps, 1, _n_dims)
+    x = values.view(_n_batch, _n_layers, n_xes, _n_comps, _n_dims, 1)
+    A = covariances(gaussians).view(_n_batch, _n_layers, 1, _n_comps, _n_dims, _n_dims)
+    values = -0.5 * x_t @ A @ x  # 0.8 -> 3.0gb
+    values = values.view(_n_batch, _n_layers, n_xes, _n_comps)
+
+    values = weights(gaussians).view(_n_batch, _n_layers, 1, _n_comps) * torch.exp(values)
+    return values
+
+
+def evaluate_componentwise(mixture: Tensor, xes: Tensor) -> Tensor:
+    # torch inverse returns a transposed matrix (v 1.3.1). our matrix is symmetric however, and we want to take a view, so the transpose avoids a copy.
+    return evaluate_componentwise_inversed(pack_mixture(weights(mixture), positions(mixture), mat_tools.inverse(covariances(mixture)).transpose(-1, -2)), xes)
+
+
 def is_valid_mixture_and_constant(mixture: Tensor, constant: Tensor) -> bool:
     # ok = True
     # ok = ok and is_valid_mixture(mixture)

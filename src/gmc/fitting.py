@@ -7,11 +7,13 @@ from torch.utils.tensorboard import SummaryWriter as TensorboardWriter
 
 import gmc.mixture as gm
 from gmc.cpp.extensions.bvh_mhem_fit import binding as cppBvhMhemFit
+import gmc.mat_tools as mat_tools
 
 
 class Config:
     def __init__(self, n_reduction: int=4):
         self.n_reduction = n_reduction
+        self.KL_divergence_threshold = 2.0
 
 
 def fixed_point_and_bvh_mhem(mixture: Tensor, constant: Tensor, n_components: int, config: Config = Config(), tensorboard: TensorboardWriter = None) -> typing.Tuple[Tensor, Tensor, typing.List[Tensor]]:
@@ -38,12 +40,16 @@ def fixed_point_and_bvh_mhem(mixture: Tensor, constant: Tensor, n_components: in
         t2 = time.perf_counter()
         tensorboard.add_scalar(f"50.2 fitting {mixture.shape} -> {n_components} fixed_point_iteration_to_relu time =", t2 - t1, 0)
 
-    fitting = cppBvhMhemFit.apply(fp_fitting, n_components, config.n_reduction)
+    fitting = cppBvhMhemFit.apply(fp_fitting, max(config.n_reduction, n_components), config.n_reduction)
 
     if tensorboard is not None:
         torch.cuda.synchronize()
         t3 = time.perf_counter()
         tensorboard.add_scalar(f"50.5 fitting {mixture.shape} -> {n_components} bvh_mhem_fit time=", t3 - t2, 0)
+
+    if n_components < config.n_reduction:
+        reduced_fitting = representative_select_for_relu(fitting, n_components, config)
+        fitting = mhem_fit_a_to_b(reduced_fitting, fitting, config)
 
     return fitting, ret_const, [initial_fitting, fp_fitting]
 
@@ -104,3 +110,177 @@ def mse(target_mixture: Tensor, target_constant: Tensor, fitting_mixture: Tensor
     fitting = gm.evaluate(fitting_mixture, xes) + fitting_constant.unsqueeze(-1)
     fitting = (fitting - gt_mean) / gt_sd
     return ((fitting - ground_truth)**2).mean().item()
+
+
+def mixture_to_double_gmm(mixture: Tensor) -> typing.Tuple[Tensor, Tensor, Tensor]:
+    component_integrals = gm.integrate_components(mixture)
+    abs_integrals = component_integrals.abs().sum(dim=2, keepdim=True)
+    abs_integrals = abs_integrals.where(abs_integrals > 0.05, 0.05 * torch.ones_like(abs_integrals))
+
+    new_weights = gm.weights(mixture) / abs_integrals
+    target_double_gmm = gm.pack_mixture(new_weights, gm.positions(mixture), gm.covariances(mixture))
+    return target_double_gmm, component_integrals, abs_integrals
+
+
+def calc_likelihoods(target: Tensor, fitting: Tensor) -> Tensor:
+    # index i -> target
+    # index s -> fitting
+    n_batch = gm.n_batch(target)
+    n_layers = gm.n_layers(target)
+    n_target_components = gm.n_components(target)
+    n_fitting_components = gm.n_components(fitting)
+    n_dims = gm.n_dimensions(target)
+    n_virtual_points = 20
+
+    target_weights = gm.weights(target).abs()
+    target_positions = gm.positions(target)
+    target_covariances = gm.covariances(target)
+    target_normal_amplitudes = gm.normal_amplitudes(target_covariances)
+
+    # fitting weights are not used here, only in mhem_algorithm()
+    fitting_positions = gm.positions(fitting)
+    fitting_covariances = gm.covariances(fitting)
+    fitting_normal_amplitudes = gm.normal_amplitudes(fitting_covariances)
+
+    # todo: n_virtual_points should be separate for +-
+    target_n_virtual_points = n_virtual_points * target_weights / target_normal_amplitudes
+
+    # preiner equation 9
+    gaussian_values = gm.evaluate_componentwise(gm.pack_mixture(fitting_normal_amplitudes, fitting_positions, fitting_covariances), target_positions)
+    c = mat_tools.inverse(fitting_covariances).view(n_batch, n_layers, 1, n_fitting_components, n_dims, n_dims) \
+        @ target_covariances.view(n_batch, n_layers, n_target_components, 1, n_dims, n_dims)
+    exp_values = torch.exp(-0.5 * mat_tools.trace(c))
+
+    almost_likelihoods = gaussian_values * exp_values
+
+    return torch.pow(almost_likelihoods, target_n_virtual_points.unsqueeze(-1))
+
+
+def calc_KL_divergence(target: Tensor, fitting: Tensor) -> Tensor:
+    # index i -> target
+    # index s -> fitting
+
+    target_positions = gm.positions(target).unsqueeze(3)
+    target_covariances = gm.covariances(target).unsqueeze(3)
+
+    fitting_positions = gm.positions(fitting).unsqueeze(2)
+    fitting_covariances = gm.covariances(fitting).unsqueeze(2)
+    fitting_covariances_inversed = mat_tools.inverse(fitting_covariances)
+
+    p_diff = target_positions - fitting_positions
+    # mahalanobis_factor = mahalanobis distance squared
+    mahalanobis_factor = (p_diff.unsqueeze(-2) @ fitting_covariances_inversed @ p_diff.unsqueeze(-1)).squeeze(dim=-1).squeeze(dim=-1)
+    trace = mat_tools.trace(fitting_covariances_inversed @ target_covariances)
+    logarithm = torch.log(target_covariances.det() / fitting_covariances.det())
+    KL_divergence = 0.5 * (mahalanobis_factor + trace - gm.n_dimensions(target) - logarithm)
+
+    return KL_divergence
+
+
+def representative_select_for_relu(mixture: Tensor, n_components: int, config: Config = Config()) -> Tensor:
+    assert n_components > 0
+    component_integrals = gm.integrate_components(mixture.detach()).abs()
+
+    n_original_components = gm.n_components(mixture)
+    device = mixture.device
+
+    # original
+    _, sorted_indices = torch.sort(component_integrals, descending=True)
+    selection_mixture = mat_tools.my_index_select(mixture, sorted_indices)[:, :, :n_components, :]
+
+    return selection_mixture
+
+
+def mhem_fit_a_to_b(fitting_mixture: Tensor, target_mixture: Tensor, config: Config = Config(), tensorboard: TensorboardWriter = None) -> Tensor:
+    assert gm.is_valid_mixture(fitting_mixture)
+    assert gm.is_valid_mixture(target_mixture)
+    assert gm.n_batch(target_mixture) == gm.n_batch(fitting_mixture)
+    assert gm.n_layers(target_mixture) == gm.n_layers(fitting_mixture)
+    assert gm.n_dimensions(target_mixture) == gm.n_dimensions(fitting_mixture)
+    assert target_mixture.device == fitting_mixture.device
+
+    n_batch = gm.n_batch(target_mixture)
+    n_layers = gm.n_layers(target_mixture)
+    n_components_target = gm.n_components(target_mixture)
+    n_components_fitting = gm.n_components(fitting_mixture)
+    n_dims = gm.n_dimensions(target_mixture)
+    device = target_mixture.device
+
+    target_double_gmm, component_integrals, abs_integrals = mixture_to_double_gmm(target_mixture)
+    # target_double_gmm, integrals = mixture_to_gmm(target)
+
+    fitting_double_gmm, _, _ = mixture_to_double_gmm(fitting_mixture)
+
+    # log(target_double_gmm, 0, tensor_board_writer, layer=layer)
+    # log(fitting_double_gmm, 1, tensor_board_writer, layer=layer)
+
+    assert gm.is_valid_mixture(target_double_gmm)
+
+    assert gm.is_valid_mixture(fitting_double_gmm)
+
+    target_weights = gm.weights(target_double_gmm).unsqueeze(3)
+    fitting_weights = gm.weights(fitting_double_gmm).unsqueeze(2)
+    # sign_match = target_weights.sign() == fitting_weights.sign()
+    if tensorboard is not None:
+        torch.cuda.synchronize()
+        t0 = time.perf_counter()
+
+    likelihoods = calc_likelihoods(target_double_gmm.detach(), fitting_double_gmm.detach())
+    if tensorboard is not None:
+        torch.cuda.synchronize()
+        t1 = time.perf_counter()
+        tensorboard.add_scalar(f"50.4.1 mhem_fit_a_to_b {target_mixture.shape} -> {gm.n_components(fitting_mixture)} calc_likelihoods time =", t1 - t0, 0)
+
+    # KL_divergence = calc_KL_divergence(target_double_gmm.detach(), fitting_double_gmm.detach())
+    if tensorboard is not None:
+        torch.cuda.synchronize()
+        t2 = time.perf_counter()
+        tensorboard.add_scalar(f"50.4.2 mhem_fit_a_to_b {target_mixture.shape} -> {gm.n_components(fitting_mixture)} KL_divergence time =", t2 - t1, 0)
+
+    likelihoods = likelihoods * (gm.weights(fitting_double_gmm).abs() / gm.normal_amplitudes(gm.covariances(fitting_double_gmm))).view(n_batch, n_layers, 1, n_components_fitting)
+    # likelihoods = likelihoods * (KL_divergence < config.KL_divergence_threshold) * sign_match
+
+    likelihoods_sum = likelihoods.sum(3, keepdim=True)
+    responsibilities = likelihoods / (likelihoods_sum + 0.00001)
+
+    if tensorboard is not None:
+        torch.cuda.synchronize()
+        t3 = time.perf_counter()
+        tensorboard.add_scalar(f"50.4.3 mhem_fit_a_to_b {target_mixture.shape} -> {gm.n_components(fitting_mixture)} other 1 time =", t3 - t2, 0)
+    assert not torch.any(torch.isnan(responsibilities))
+
+    # index i -> target
+    # index s -> fitting
+    responsibilities = responsibilities * (gm.weights(target_double_gmm).abs() / gm.normal_amplitudes(gm.covariances(target_double_gmm))).unsqueeze(-1)
+    newWeights = torch.sum(responsibilities, 2)
+    assert not torch.any(torch.isnan(responsibilities))
+
+    assert not torch.any(torch.isnan(newWeights))
+    responsibilities = responsibilities / (newWeights + 0.00001).view(n_batch, n_layers, 1, n_components_fitting)
+    assert torch.all(responsibilities >= 0)
+    assert not torch.any(torch.isnan(responsibilities))
+    newPositions = torch.sum(responsibilities.unsqueeze(-1) * gm.positions(target_double_gmm).view(n_batch, n_layers, n_components_target, 1, n_dims), 2)
+    assert not torch.any(torch.isnan(newPositions))
+    posDiffs = gm.positions(target_double_gmm).view(n_batch, n_layers, n_components_target, 1, n_dims, 1) - newPositions.view(n_batch, n_layers, 1, n_components_fitting, n_dims, 1)
+    assert not torch.any(torch.isnan(posDiffs))
+
+    newCovariances = (torch.sum(responsibilities.unsqueeze(-1).unsqueeze(-1) * (gm.covariances(target_double_gmm).view(n_batch, n_layers, n_components_target, 1, n_dims, n_dims) +
+                                                                                posDiffs.matmul(posDiffs.transpose(-1, -2))), 2))
+    newCovariances = newCovariances + (newWeights < 0.0001).unsqueeze(-1).unsqueeze(-1) * torch.eye(n_dims, device=device).view(1, 1, 1, n_dims, n_dims) * 0.0001
+
+    assert not torch.any(torch.isnan(newCovariances))
+
+    normal_amplitudes = gm.normal_amplitudes(newCovariances)
+    fitting_double_gmm = gm.pack_mixture(newWeights.contiguous() * normal_amplitudes * gm.weights(fitting_double_gmm).sign(), newPositions.contiguous(), newCovariances.contiguous())
+
+    if tensorboard is not None:
+        torch.cuda.synchronize()
+        t4 = time.perf_counter()
+        tensorboard.add_scalar(f"50.4.4 mhem_fit_a_to_b {target_mixture.shape} -> {gm.n_components(fitting_mixture)} other 2 time =", t4 - t3, 0)
+
+    # the following line would have the following effect: scale the fitting result to match the integral of the input exactly. that is bad in case many weak Gs are killed and the remaining weak G is blown up.
+    # fitting_double_gmm, _, _, _ = mixture_to_double_gmm(fitting_double_gmm)
+
+    newWeights = gm.weights(fitting_double_gmm) * abs_integrals
+    fitting = gm.pack_mixture(newWeights, gm.positions(fitting_double_gmm), gm.covariances(fitting_double_gmm))
+    return fitting

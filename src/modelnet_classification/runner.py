@@ -10,7 +10,7 @@ c.bn_type = Config.BN_TYPE_ONLY_COVARIANCE
 c.convolution_config.dropout = 0.35
 # network size
 c.layers = [Layer(8, 2.5, 32),
-            Layer(16, 2.5, -1), ]
+            Layer(16, 2.5, 1), ]
 #            Layer(40, 2.5, -1)]
 c.mlp = (128, -1, 40, )
 
