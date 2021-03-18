@@ -165,7 +165,7 @@ class Net(nn.Module):
             if self.config.bn_place == Config.BN_PLACE_AFTER_RELU:
                 x, x_const = self.norm(x, x_const)
 
-        if gm.n_components(x) > 1:
+        if gm.n_components(x) > 1 or self.mlp is None:
             x = gm.integrate(x)
         else:
             x = x.view(gm.n_batch(x), -1)
