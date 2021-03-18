@@ -22,7 +22,7 @@ c.n_epochs = 160
 # network size
 c.layers = [Layer(8, 2.5, 16),
             Layer(16, 2.5, 8),
-            Layer(40, 2.5, 1)]
-# c.mlp = (-1, 128, -1, 64, 40, )
+            Layer(32, 2.5, -1)]
+c.mlp = (-1, 40)
 
 main.experiment(device=device, desc_string=f"{fitconf.name}_{c.produce_description()}bn", config=c)

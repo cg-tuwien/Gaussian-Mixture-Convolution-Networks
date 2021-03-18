@@ -20,8 +20,8 @@ c.log_tensorboard_renderings = False
 c.n_epochs = 160
 
 # network size
-c.layers = [Layer(8, 2.5, 16),
-            Layer(16, 2.5, 8),
+c.layers = [Layer(16, 2.5, 64),
+            Layer(32, 2.5, 32),
             Layer(40, 2.5, -1)]
 # c.mlp = (-1, 128, -1, 64, 40, )
 
