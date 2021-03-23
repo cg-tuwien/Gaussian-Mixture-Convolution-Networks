@@ -58,12 +58,23 @@ py::tuple eval_rmse_psnr(torch::Tensor pointcloudSource, torch::Tensor pointclou
         sqdiffs[i] = minsqdiff;
         //if (i % 1000 == 0) std::cout << i << std::endl;
     }
+    float maxdiff = 0;
+    //unsigned int now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+    //std::cout << "LogID: " << std::to_string(now) << std::endl;
+    //std::ofstream out("D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/EvalLogs/dists-" + std::to_string(now) + ".txt");
     for (int i = 0; i < nS; ++i)
     {
         //std::cout << sqdiffs[i] << std::endl;
         summinsqdiffs += sqdiffs[i];
-        summindiffs += sqrt(sqdiffs[i]);
+        float diff = sqrt(sqdiffs[i]);
+        summindiffs += diff;
+        if (diff > maxdiff)
+        {
+            maxdiff = diff;
+        }
+        //out << diff << std::endl;
     }
+    //out.close();
     float rmsd = std::sqrt(summinsqdiffs / nS);
     float averagediff = summindiffs / nS;
     float sumdeviations = 0;
@@ -71,7 +82,7 @@ py::tuple eval_rmse_psnr(torch::Tensor pointcloudSource, torch::Tensor pointclou
     {
         sumdeviations += pow(sqrt(sqdiffs[i]) - averagediff, 2);
     }
-    float standarddev = sqrt(sumdeviations / nS);
+    float standarddev = sqrt(sumdeviations / (nS - 1));
     if (psnr) {
         float psnr = bboxPointsS.diagonal() / rmsd;
         psnr = 20 * std::log10(psnr);
@@ -80,9 +91,9 @@ py::tuple eval_rmse_psnr(torch::Tensor pointcloudSource, torch::Tensor pointclou
     else {
         if (scaled)
         {
-            return py::make_tuple(rmsd / bboxPointsS.diagonal(), averagediff / bboxPointsS.diagonal(), standarddev / bboxPointsS.diagonal());
+            return py::make_tuple(rmsd / bboxPointsS.diagonal(), averagediff / bboxPointsS.diagonal(), standarddev / bboxPointsS.diagonal(), maxdiff / bboxPointsS.diagonal());
         }
-        return py::make_tuple(rmsd, averagediff, standarddev);
+        return py::make_tuple(rmsd, averagediff, standarddev, maxdiff);
     }
 }
 

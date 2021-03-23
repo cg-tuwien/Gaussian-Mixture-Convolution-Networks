@@ -15,11 +15,14 @@ class GMMStats(EvalFunction):
                  min_ev: bool = True,
                  avg_amp: bool = True,
                  stdev_amp: bool = True,
+                 avg_det: bool = True,
+                 stdev_det: bool = True,
                  avg_weight: bool = True,
                  stdev_weights: bool = True,
                  sum_of_weights: bool = True,
                  zero_gaussians: bool = True,
-                 invalid_gaussians: bool = True):
+                 invalid_gaussians: bool = True,
+                 em_default_abs_eps: bool = True):
         self._avg_trace = avg_trace
         self._stdev_traces = stdev_traces
         self._avg_evs = avg_evs
@@ -27,13 +30,18 @@ class GMMStats(EvalFunction):
         self._min_ev = min_ev
         self._avg_amp = avg_amp
         self._stdev_amp = stdev_amp
+        self._avg_det = avg_det
+        self._stdev_det = stdev_det
         self._avg_weight = avg_weight
         self._stdev_weights = stdev_weights
         self._sum_of_weights = sum_of_weights
         self._zero_gaussians = zero_gaussians
         self._invalid_gaussians = invalid_gaussians
+        self._em_default_abs_eps = em_default_abs_eps
         self._n_activated = avg_trace + stdev_traces + avg_evs*3 + stdev_evs*3 + min_ev + avg_amp + stdev_amp + \
-                            avg_weight + stdev_weights + sum_of_weights + zero_gaussians + invalid_gaussians
+                            avg_det + stdev_det + \
+                            avg_weight + stdev_weights + sum_of_weights + zero_gaussians + invalid_gaussians + \
+                            em_default_abs_eps
 
     def calculate_score(self, pcbatch: torch.Tensor, gmpositions: torch.Tensor, gmcovariances: torch.Tensor,
                         gminvcovariances: torch.Tensor, gmamplitudes: torch.Tensor,
@@ -73,6 +81,14 @@ class GMMStats(EvalFunction):
             if self._stdev_amp:
                 result[i, :] = std
                 i += 1
+        if self._avg_det or self._stdev_det:
+            (std, mean) = torch.std_mean(gmcovariances.det()[:, 0, :], dim=1, unbiased=False) # (bs)
+            if self._avg_det:
+                result[i, :] = mean
+                i += 1
+            if self._stdev_det:
+                result[i, :] = std
+                i += 1
         if self._avg_weight or self._stdev_weights or self._sum_of_weights:
             weights = gmamplitudes * (gmcovariances.det().sqrt() * 15.74960995)
             (std, mean) = torch.std_mean(weights[:, 0, :], dim=1, unbiased=False)
@@ -91,6 +107,12 @@ class GMMStats(EvalFunction):
         if self._invalid_gaussians:
             irelcovs = ~EMTools.find_valid_matrices(gmcovariances, gminvcovariances, False)
             result[i, :] = irelcovs.sum(dim=2).view(-1)
+            i += 1
+        if self._em_default_abs_eps:
+            eps = 1e-7 * ((pcbatch[0].max(dim=0)[0] - pcbatch[0].min(dim=0)[0]).max(dim=0)[0].item() ** 2)
+            if eps < 1e-9:
+                eps = 1e-9
+            result[i, :] = eps
             i += 1
         return result
 
@@ -114,6 +136,10 @@ class GMMStats(EvalFunction):
             nlst.append("Average Amplitude")
         if self._stdev_amp:
             nlst.append("Stdev of Amplitudes")
+        if self._avg_det:
+            nlst.append("Average Determinant")
+        if self._stdev_det:
+            nlst.append("Stdev of Determinants")
         if self._avg_weight:
             nlst.append("Average Weight")
         if self._stdev_weights:
@@ -124,6 +150,8 @@ class GMMStats(EvalFunction):
             nlst.append("Number of 0-Gaussians")
         if self._invalid_gaussians:
             nlst.append("Number of invalid Gaussians")
+        if self._em_default_abs_eps:
+            nlst.append("EM default abs eps")
         return nlst
 
     def needs_pc(self) -> bool:
