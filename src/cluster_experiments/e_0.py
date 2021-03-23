@@ -16,6 +16,7 @@ fitconf = pcfit.Config(n_gaussians=128, eps=0.00001, gengmm_path=tmp_gmm_base_pa
 c: Config = Config(gmms_fitting=fitconf.name, gengmm_path=tmp_gmm_base_path, n_classes=40)
 c.bn_type = Config.BN_TYPE_ONLY_COVARIANCE
 c.convolution_config.dropout = 0.0
+c.dataDropout = 0.0
 c.log_tensorboard_renderings = False
 c.n_epochs = 160
 
