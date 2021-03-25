@@ -165,12 +165,13 @@ class EvalDbAccess:
                    n_gaussians_should: int,
                    n_gaussians_is: int,
                    method: str,
-                   method_options: int) -> int:
+                   method_options: int,
+                   execution_time: float) -> int:
         sql = "INSERT INTO Run(modelfile, nr_fit_points, nr_eval_points, n_gaussians_should, n_gaussians_is, method, " \
-              "method_options) VALUES (?, ?, ?, ?, ?, ?, ?)"
+              "method_options, execution_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
         cur = self._con.cursor()
         cur.execute(sql, (modelfile, nr_fit_points, nr_eval_points, n_gaussians_should, n_gaussians_is, method,
-                          method_options))
+                          method_options, execution_time))
         self._con.commit()
         return cur.lastrowid
 
