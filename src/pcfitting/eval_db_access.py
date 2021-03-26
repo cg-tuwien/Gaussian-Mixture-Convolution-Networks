@@ -175,5 +175,26 @@ class EvalDbAccess:
         self._con.commit()
         return cur.lastrowid
 
+    def has_em_run(self,
+                   modelfile: str,
+                   nr_fit_points: int,
+                   nr_eval_points: int,
+                   n_gaussians_should: int,
+                   n_sample_points: int,
+                   termination_criterion: str,
+                   init_method: str,
+                   dtype: str,
+                   eps: float,
+                   is_eps_relative: bool):
+        sql = "SELECT Run.ID FROM Run JOIN OptionsEM ON Run.method = 'EM' AND Run.method_options = OptionsEM.ID WHERE " \
+              "Run.modelfile = ? AND Run.nr_fit_points = ? AND Run.nr_eval_points = ? AND Run.n_gaussians_should = ? " \
+              "AND OptionsEM.n_sample_points = ? AND OptionsEM.termination_criterion = ? AND OptionsEM.init_method = ? " \
+              "AND OptionsEM.dtype = ? AND OptionsEM.eps = ? AND OptionsEM.is_eps_relative = ?"
+        cur = self._con.cursor()
+        cur.execute(sql, (modelfile, nr_fit_points, nr_eval_points, n_gaussians_should, n_sample_points,
+                          termination_criterion, init_method, dtype, eps, is_eps_relative))
+        list = cur.fetchall()
+        return len(list) > 0
+
     def __del__(self):
         self._con.close()
