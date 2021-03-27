@@ -26,7 +26,7 @@ def onetime_ellipsoids_render(width: int,
     # Size of return: (batchsize, 1, height, width, 4)
     vis = GMVisualizer(False, width, height)
     vis.set_camera_auto(True)
-    vis.set_ellipsoids_rendering(True)
+    vis.set_ellipsoids_pc_rendering(True, False, True)
     vis.set_ellipsoids_colormode(GmVisColoringRenderMode.COLOR_WEIGHT)
     vis.set_ellipsoids_rangemode(GmVisColorRangeMode.RANGE_MINMAX)
     vis.set_gaussian_mixtures(mixtures.detach().cpu(), False)
@@ -112,14 +112,16 @@ class GMVisualizer:
         # Sets the view matrix
         self._vis.set_view_matrix(viewmat)
 
-    def set_ellipsoids_rendering(self, ellipsoids: bool, pointcloud: bool = True):
-        # Activates or disables Ellipsoid Rendering
+    def set_ellipsoids_pc_rendering(self, ellipsoids: bool, pointcloud: bool, gray: bool = True):
+        # Activates or disables Ellipsoid and Pointcloud Rendering
         # Parameters:
         #   ellipsoids: bool
         #       If ellipsoids should be rendered or not
         #   pointcloud: bool
-        #       If the pointcloud should be visible in the ellipsoids rendering
-        self._vis.set_ellipsoids_rendering(ellipsoids, pointcloud)
+        #       If the pointcloud should be rendered or not
+        #   gray: bool
+        #       Gray background or black
+        self._vis.set_ellipsoids_pc_rendering(ellipsoids, pointcloud, gray)
 
     def set_ellipsoids_colormode(self, colormode: GmVisColoringRenderMode):
         # Sets the color mode of ellipsoids (Uniform, by weight, by amplitude)

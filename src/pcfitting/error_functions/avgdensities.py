@@ -14,14 +14,14 @@ class AvgDensities(EvalFunction):
     # Calculates the average log likelihood of the point cloud given the mixture
 
     def __init__(self,
-                 calculate_logavg: bool = False,
+                 calculate_logavg: bool = True,
                  calculate_logstdv: bool = False,
                  calculate_logavg_scaled: bool = True,
-                 calculate_avg: bool = False,
-                 calculate_stdev: bool = False,
+                 calculate_avg: bool = True,
+                 calculate_stdev: bool = True,
                  calculate_avg_scaled: bool = True,
                  calculate_stdev_scaled: bool = True,
-                 calculate_stdev_relative: bool = True,
+                 calculate_cv: bool = True,
                  enlarge_evs: bool = False,
                  smallest_ev: float = 2e-4):
         self._logavg = calculate_logavg
@@ -31,9 +31,9 @@ class AvgDensities(EvalFunction):
         self._stdev = calculate_stdev
         self._avg_scaled = calculate_avg_scaled
         self._stdev_scaled = calculate_stdev_scaled
-        self._stdev_relative = calculate_stdev_relative
+        self._cv = calculate_cv
         self._n = self._logavg + self._logstdev + self._logavg_scaled + self._avg + self._stdev + self._avg_scaled + \
-                  self._stdev_scaled + self._stdev_relative
+                  self._stdev_scaled + self._cv
         self._enlarge_evs = enlarge_evs
         self._smallest_ev = smallest_ev
         pass
@@ -91,7 +91,7 @@ class AvgDensities(EvalFunction):
         if self._stdev_scaled:
             res[i, :] = std * sf
             i += 1
-        if self._stdev_relative:
+        if self._cv:
             res[i, :] = std / mean
             i += 1
         return res
@@ -112,8 +112,8 @@ class AvgDensities(EvalFunction):
             nlst.append("Average Density Scaled"+ ("(evcorrected)" if self._enlarge_evs else ""))
         if self._stdev_scaled:
             nlst.append("Stdev of Density Scaled" + ("(evcorrected)" if self._enlarge_evs else ""))
-        if self._stdev_relative:
-            nlst.append("Stdev/Average Density Ratio" + ("(evcorrected)" if self._enlarge_evs else ""))
+        if self._cv:
+            nlst.append("Coefficient of Variation" + ("(evcorrected)" if self._enlarge_evs else ""))
         return nlst
 
     def calculate_scale_factor(self, modelpath: str):

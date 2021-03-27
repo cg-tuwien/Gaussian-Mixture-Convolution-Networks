@@ -15,23 +15,23 @@ class ReconstructionStats(EvalFunction):
     # Calculates the average log likelihood of the point cloud given the mixture
 
     def __init__(self,
-                 rmsd_pure: bool = False,
+                 rmsd_pure: bool = True,
                  rmsd_scaled_bb_diag: bool = False,
                  rmsd_scaled_by_area: bool = True,
-                 md_pure: bool = False,
+                 md_pure: bool = True,
                  md_scaled_bb_diag: bool = False,
                  md_scaled_by_area: bool = True,
-                 stdev: bool = False,
+                 stdev: bool = True,
                  stdev_scaled_bb_diag: bool = False,
                  stdev_scaled_by_area: bool = True,
-                 stdev_mean_ratio: bool = False,
+                 cv: bool = True,
                  psnr: bool = False,
-                 maxdist: bool = False,
+                 maxdist: bool = True,
                  maxdist_norm: bool = True,
                  inverse: bool = True,
-                 chamfer: bool = False,
+                 chamfer: bool = True,
                  chamfer_norm: bool = True,
-                 hausdorff: bool = False,
+                 hausdorff: bool = True,
                  hausdorff_norm: bool = True,
                  sample_points: int = 100000):
         self._rmsd_pure = rmsd_pure
@@ -43,7 +43,7 @@ class ReconstructionStats(EvalFunction):
         self._stdev = stdev
         self._stdev_scaled_bb_diag = stdev_scaled_bb_diag
         self._stdev_scaled_by_area = stdev_scaled_by_area
-        self._stdev_mean_ratio = stdev_mean_ratio
+        self._cv = cv
         self._psnr = psnr
         self._maxdist = maxdist
         self._maxdist_norm = maxdist_norm
@@ -55,21 +55,17 @@ class ReconstructionStats(EvalFunction):
         self._samplepoints = sample_points
         self._nmeth = (self._rmsd_pure + self._rmsd_scaled_bb_diag + self._rmsd_scaled_by_area + self._md_pure
                 + self._md_scaled_bb_diag + self._md_scaled_by_area + self._stdev
-                + self._stdev_scaled_bb_diag + self._stdev_scaled_by_area + self._stdev_mean_ratio + self._psnr
+                + self._stdev_scaled_bb_diag + self._stdev_scaled_by_area + self._cv + self._psnr
                        + self._maxdist + self._maxdist_norm) *\
                 (2 if self._inverse else 1 ) + 2*(self._chamfer + self._chamfer_norm + self._hausdorff + self._hausdorff_norm)
         pass
 
-    def calculate_score(self, pcbatch: torch.Tensor, gmpositions: torch.Tensor, gmcovariances: torch.Tensor,
-                        gminvcovariances: torch.Tensor, gmamplitudes: torch.Tensor,
-                        noisecontribution: torch.Tensor = None, modelpath: str = None) -> torch.Tensor:
+    def calculate_score_on_reconstructed(self, pcbatch: torch.Tensor, sampled: torch.Tensor,
+                                         modelpath: str = None) -> torch.Tensor:
         batch_size = pcbatch.shape[0]
         assert batch_size == 1
 
         result = torch.zeros(self._nmeth, batch_size, device=pcbatch.device, dtype=pcbatch.dtype)
-
-        gmm = gm.convert_amplitudes_to_priors(gm.pack_mixture(gmamplitudes, gmpositions, gmcovariances))
-        sampled = GMSampler.sample(gmm, self._samplepoints)
 
         pmin = torch.min(pcbatch[0], dim=0)[0]
         pmax = torch.max(pcbatch[0], dim=0)[0]
@@ -138,7 +134,7 @@ class ReconstructionStats(EvalFunction):
             if self._inverse:
                 result[i, 0] = stdevI * scalefactor
                 i += 1
-        if self._stdev_mean_ratio:
+        if self._cv:
             result[i, 0] = stdev / md
             i += 1
             if self._inverse:
@@ -178,6 +174,18 @@ class ReconstructionStats(EvalFunction):
             result[i, 0] = max(maxd, maxdI) * scalefactor
             i += 1
         return result
+
+
+    def calculate_score(self, pcbatch: torch.Tensor, gmpositions: torch.Tensor, gmcovariances: torch.Tensor,
+                        gminvcovariances: torch.Tensor, gmamplitudes: torch.Tensor,
+                        noisecontribution: torch.Tensor = None, modelpath: str = None) -> torch.Tensor:
+        batch_size = pcbatch.shape[0]
+        assert batch_size == 1
+
+        gmm = gm.convert_amplitudes_to_priors(gm.pack_mixture(gmamplitudes, gmpositions, gmcovariances))
+        sampled = GMSampler.sample(gmm, self._samplepoints)
+
+        return self.calculate_score_on_reconstructed(pcbatch, sampled, modelpath)
 
     def get_names(self) -> List[str]:
         nlst = []
@@ -219,10 +227,10 @@ class ReconstructionStats(EvalFunction):
             nlst.append("MD Stdev norm.")
             if self._inverse:
                 nlst.append("Inverse MD Stdev norm.")
-        if self._stdev_mean_ratio:
-            nlst.append("MD Stdev-Mean-Ratio")
+        if self._cv:
+            nlst.append("MD CV")
             if self._inverse:
-                nlst.append("Inverse MD Stdev-Mean-Ratio")
+                nlst.append("Inverse MD CV")
         if self._psnr:
             nlst.append("PSNR")
             if self._inverse:
