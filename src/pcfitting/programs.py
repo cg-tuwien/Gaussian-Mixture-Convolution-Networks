@@ -1,6 +1,7 @@
 import os
 import gc
 import time
+from queue import SimpleQueue
 
 import torch
 from typing import List, Tuple, Optional
@@ -205,6 +206,7 @@ def execute_evaluation(training_name: str, model_path: Optional[str], pc1_path: 
                 #gmio.write_gm_to_ply(mixture.weights(gm), mixture.positions(gm), gmcovariances, 0, r"D:\Simon\Studium\S-11 (WS19-20)\Diplomarbeit\data\dataset_diff_scales\gmms\210312-EMepsvar\enlarged\\" + name + gid + r".ply")
                 # Evaluate using each error function
                 print(name, " / ", gid)
+                start = time.time()
                 for j in range(len(error_functions)):
                     names = error_functions[j].get_names()
                     loss = error_functions[j].calculate_score_packed(pc1_scaled, gm, modelpath=modelpath)
@@ -214,9 +216,10 @@ def execute_evaluation(training_name: str, model_path: Optional[str], pc1_path: 
                         loss = error_functions[j].calculate_score_packed(pc2_scaled, gm, modelpath=modelpath)
                         for k in range(len(names)):
                             print("  ", names[k], " on PC2: ", loss[k].item())
+                end = time.time()
+                print ("Evaluation took: ", (end - start), " Seconds")
 
     print("Done")
-
 
 def execute_evaluation_singlepc_severalgm(pc1_path: str, pc2_path: Optional[str], gengmm_path: str,
                                           error_functions: List[EvalFunction], scaling_active: bool = False,

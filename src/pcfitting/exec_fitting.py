@@ -12,10 +12,14 @@ import torch
 # genpc_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_vt_evaluation/fitpcs"
 # gengmm_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_vt_evaluation/gmms"
 # log_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_vt_evaluation/logs"
-model_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_diff_scales/models"
-genpc_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_diff_scales/fitpcs"
-gengmm_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_diff_scales/gmms"
-log_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_diff_scales/logs"
+# model_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_diff_scales/models-onlyplane"
+# genpc_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_diff_scales/fitpcs"
+# gengmm_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_diff_scales/gmms"
+# log_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_diff_scales/logs"
+model_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_planes/models-onlytoilet"
+genpc_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_planes/fitpcs"
+gengmm_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_planes/gmms"
+log_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_planes/logs"
 # model_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_bunny/models"
 # genpc_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_bunny/pointclouds"
 # gengmm_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_bunny/gmms"
@@ -30,13 +34,13 @@ continuing = True
 # Define GMM Generators
 terminator1 = RelChangeTerminationCriterion(0.1, 100)
 terminator2 = RelChangeTerminationCriterion(0.1, 20)
-generators = [
-      EMGenerator(n_gaussians=512, initialization_method='fpsmax', termination_criterion=MaxIterationTerminationCriterion(0), em_step_points_subbatchsize=10000, eps=1e-5),
-      #EMGenerator(n_gaussians=512, initialization_method='fpsmax', termination_criterion=terminator2, em_step_points_subbatchsize=10000),
-      #EckartGeneratorSP(n_gaussians_per_node=8, n_levels=3, termination_criterion=terminator2, initialization_method='eigen', partition_threshold=0.1, m_step_points_subbatchsize=10000, e_step_pair_subbatchsize=5120000),
-      #PreinerGenerator(fixeddist=0.9, ngaussians=512, alpha=5, avoidorphans=False)
-]
-generator_identifiers = ["fpsmax1e-5"]
+# generators = [
+#       EMGenerator(n_gaussians=512, initialization_method='fpsmax', termination_criterion=MaxIterationTerminationCriterion(0), em_step_points_subbatchsize=10000, eps=1e-5),
+#       #EMGenerator(n_gaussians=512, initialization_method='fpsmax', termination_criterion=terminator2, em_step_points_subbatchsize=10000),
+#       #EckartGeneratorSP(n_gaussians_per_node=8, n_levels=3, termination_criterion=terminator2, initialization_method='eigen', partition_threshold=0.1, m_step_points_subbatchsize=10000, e_step_pair_subbatchsize=5120000),
+#       #PreinerGenerator(fixeddist=0.9, ngaussians=512, alpha=5, avoidorphans=False)
+# ]
+# generator_identifiers = ["fpsmax1e-5"]
 # generator_identifiers = ["fpsmax10k", "EMfps10k", "Eckeigen10k", "Preiner10k"]
 # generator_identifiers = ["fpsmax", "EMrnp", "EMfps", "Eckbb", "Eckrnp", "Eckfps", "Eckeigen", "Preiner-0.9-5"]
 # generators = [
@@ -45,18 +49,32 @@ generator_identifiers = ["fpsmax1e-5"]
 #     EMGenerator(n_gaussians=n_gaussians, initialization_method='fpsmax', termination_criterion=terminator2, em_step_points_subbatchsize=10000, eps=1e-9)
 # ]
 # generator_identifiers = ["EM1e-7", "EM1e-5", "EM1e-9"]
-# generators = [
-#       EMGenerator(n_gaussians=n_gaussians, initialization_method='fpsmax', termination_criterion=MaxIterationTerminationCriterion(0), em_step_points_subbatchsize=10000),
-#       # EMGenerator(n_gaussians=n_gaussians, initialization_method='randnormpos', termination_criterion=terminator2, em_step_points_subbatchsize=10000),
-#       EMGenerator(n_gaussians=n_gaussians, initialization_method='fpsmax', termination_criterion=terminator2, em_step_points_subbatchsize=10000),
-#       # EckartGeneratorSP(n_gaussians_per_node=8, n_levels=3, termination_criterion=terminator2, initialization_method='bb', partition_threshold=0.1, m_step_points_subbatchsize=10000, e_step_pair_subbatchsize=5120000),
-#       # EckartGeneratorSP(n_gaussians_per_node=8, n_levels=3, termination_criterion=terminator2, initialization_method='randnormpos', partition_threshold=0.1, m_step_points_subbatchsize=10000, e_step_pair_subbatchsize=5120000),
-#       # EckartGeneratorSP(n_gaussians_per_node=8, n_levels=3, termination_criterion=terminator2, initialization_method='fpsmax', partition_threshold=0.1, m_step_points_subbatchsize=10000, e_step_pair_subbatchsize=5120000),
-#       EckartGeneratorSP(n_gaussians_per_node=8, n_levels=3, termination_criterion=terminator2, initialization_method='eigen', partition_threshold=0.1, m_step_points_subbatchsize=10000, e_step_pair_subbatchsize=5120000),
-#       PreinerGenerator(fixeddist=0.9, ngaussians=512, alpha=5, avoidorphans=False)
-# ]
+generators = [
+      EMGenerator(n_gaussians=n_gaussians, initialization_method='fpsmax', termination_criterion=MaxIterationTerminationCriterion(0), em_step_points_subbatchsize=10000),
+      # EMGenerator(n_gaussians=n_gaussians, initialization_method='randnormpos', termination_criterion=terminator2, em_step_points_subbatchsize=10000),
+      EMGenerator(n_gaussians=n_gaussians, initialization_method='fpsmax', termination_criterion=terminator2, em_step_points_subbatchsize=10000),
+      # EckartGeneratorSP(n_gaussians_per_node=8, n_levels=3, termination_criterion=terminator2, initialization_method='bb', partition_threshold=0.1, m_step_points_subbatchsize=10000, e_step_pair_subbatchsize=5120000),
+      # EckartGeneratorSP(n_gaussians_per_node=8, n_levels=3, termination_criterion=terminator2, initialization_method='randnormpos', partition_threshold=0.1, m_step_points_subbatchsize=10000, e_step_pair_subbatchsize=5120000),
+      # EckartGeneratorSP(n_gaussians_per_node=8, n_levels=3, termination_criterion=terminator2, initialization_method='fpsmax', partition_threshold=0.1, m_step_points_subbatchsize=10000, e_step_pair_subbatchsize=5120000),
+      EckartGeneratorSP(n_gaussians_per_node=8, n_levels=3, termination_criterion=terminator2, initialization_method='eigen', partition_threshold=0.1, m_step_points_subbatchsize=10000, e_step_pair_subbatchsize=5120000),
+      PreinerGenerator(fixeddist=0.9, ngaussians=512, alpha=5, avoidorphans=False)
+]
 # # generator_identifiers = ["fpsmax", "EMrnp", "EMfps", "Eckbb", "Eckrnp", "Eckfps", "Eckeigen", "Preiner-0.9-5"]
-# generator_identifiers = ["fpsmax", "EMfps", "Eckeigen", "Preiner-0.9-5"]
+generator_identifiers = ["fpsmax", "EMfps", "Eckeigen", "Preiner-0.9-5"]
+#generator_identifiers = ["EMfps"]
+# generators = [
+#       EMGenerator(n_gaussians=8, initialization_method='fpsmax', termination_criterion=MaxIterationTerminationCriterion(0), em_step_points_subbatchsize=10000),
+#       EMGenerator(n_gaussians=8, initialization_method='fpsmax', termination_criterion=terminator2, em_step_points_subbatchsize=10000, eps=1e-5),
+#       EMGenerator(n_gaussians=8, initialization_method='fpsmax', termination_criterion=terminator2, em_step_points_subbatchsize=10000, eps=1e-7),
+#       EMGenerator(n_gaussians=8, initialization_method='fpsmax', termination_criterion=terminator2, em_step_points_subbatchsize=10000, eps=1e-9),
+#       PreinerGenerator(fixeddist=0.9, ngaussians=8, alpha=5, avoidorphans=False),
+#       PreinerGenerator(fixeddist=0.9, ngaussians=8, alpha=5, avoidorphans=True)
+# ]
+# generator_identifiers = ["fpsmax", "EMfps1e-5","EMfps1e-7","EMfps1e-9", "Preiner-avFalse", "Preiner-avTrue"]
+# generators = [
+#       EMGenerator(n_gaussians=1, initialization_method='fpsmax', termination_criterion=MaxIterationTerminationCriterion(0), em_step_points_subbatchsize=10000)
+# ]
+# generator_identifiers = ["fpsmax"]
 # generators = [
 #       EMGenerator(n_gaussians=n_gaussians, initialization_method='fpsmax', termination_criterion=MaxIterationTerminationCriterion(0), em_step_points_subbatchsize=10000, eps=1e-4, eps_is_relative=False),
 #       EMGenerator(n_gaussians=n_gaussians, initialization_method='fpsmax', termination_criterion=terminator2, em_step_points_subbatchsize=10000, eps=1e-4, eps_is_relative=False),

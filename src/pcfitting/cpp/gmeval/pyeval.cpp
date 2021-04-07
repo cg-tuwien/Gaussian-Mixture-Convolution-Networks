@@ -97,7 +97,7 @@ py::tuple eval_rmse_psnr(torch::Tensor pointcloudSource, torch::Tensor pointclou
     }
 }
 
-float calc_rmsd_to_itself(torch::Tensor pointcloud)
+py::tuple calc_rmsd_to_itself(torch::Tensor pointcloud)
 {
     omp_set_dynamic(0);
     omp_set_num_threads(8);
@@ -130,6 +130,7 @@ float calc_rmsd_to_itself(torch::Tensor pointcloud)
     //std::cout << "preprocessing done" << std::endl;
 
     float summinsqdiffs = 0;
+    float summindiffs = 0;
     std::vector<float> sqdiffs;
     sqdiffs.resize(nS);
 #pragma omp parallel for
@@ -143,12 +144,71 @@ float calc_rmsd_to_itself(torch::Tensor pointcloud)
     {
         //std::cout << sqdiffs[i] << std::endl;
         summinsqdiffs += sqdiffs[i];
+        float diff = sqrt(sqdiffs[i]);
+        summindiffs += diff;
     }
     float avgminsqdiff = summinsqdiffs / nS;
-    return std::sqrt(avgminsqdiff);
+    return py::make_tuple(std::sqrt(avgminsqdiff), summindiffs / nS);
+}
+
+py::tuple cov_measure(torch::Tensor pointcloud)
+{
+    omp_set_dynamic(0);
+    omp_set_num_threads(8);
+#pragma omp parallel
+#pragma omp master
+
+    //std::cout << "Start" << std::endl;
+    pointcloud = pointcloud.clone().contiguous().toType(torch::ScalarType::Float).cpu();
+    TORCH_CHECK(pointcloud.sizes().size() == 2, "point cloud must have dimensions of N x 3");
+    TORCH_CHECK(pointcloud.size(0) > 0, "point cloud must have dimensions of N x 3");
+    TORCH_CHECK(pointcloud.size(1) == 3, "point cloud must have dimensions of N x 3");
+
+    //std::cout << "Start Preprocessing" << std::endl;
+
+    auto pSAccess = pointcloud.accessor<float, 2>();
+
+    int nS = pointcloud.size(0);
+
+    gms::PointSet cpp_pcS;
+    cpp_pcS.reserve(size_t(nS));
+    for (unsigned i = 0; i < nS; ++i) {
+        cpp_pcS.emplace_back(pSAccess[i][0], pSAccess[i][1], pSAccess[i][2]);
+    }
+    gms::PointIndex piS(cpp_pcS, std::numeric_limits<float>::max());
+
+    //std::cout << "calculating bbox" << std::endl;
+
+    gms::BBox bboxPointsS(cpp_pcS);
+
+    //std::cout << "preprocessing done" << std::endl;
+
+    float summindiffs = 0;
+    std::vector<float> diffs;
+    diffs.resize(nS);
+#pragma omp parallel for
+    for (int i = 0; i < nS; ++i)
+    {
+        float minsqdiff = piS.nearestDistSearch(cpp_pcS[i], i);
+        diffs[i] = sqrt(minsqdiff);
+    }
+    for (int i = 0; i < nS; ++i)
+    {
+        summindiffs += diffs[i];
+    }
+    float avgmindiff = summindiffs / nS;
+    float std = 0;
+    for (int i = 0; i < nS; ++i)
+    {
+        std += pow(diffs[i] - avgmindiff, 2);
+    }
+    std /= nS;
+    std = sqrt(std);
+    return py::make_tuple(std / avgmindiff, std);
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("eval_rmse_psnr", &eval_rmse_psnr);
     m.def("calc_rmsd_to_itself", &calc_rmsd_to_itself);
+    m.def("cov_measure", &cov_measure);
 }

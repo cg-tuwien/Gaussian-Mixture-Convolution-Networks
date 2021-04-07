@@ -9,6 +9,7 @@ import gmc.mixture as gm
 import gmc.mat_tools as mat_tools
 import numpy as np
 import time
+from pcfitting.cpp.gmeval import pyeval
 
 class AvgDensities(EvalFunction):
     # Calculates the average log likelihood of the point cloud given the mixture
@@ -16,27 +17,33 @@ class AvgDensities(EvalFunction):
     def __init__(self,
                  calculate_logavg: bool = True,
                  calculate_logstdv: bool = False,
-                 calculate_logavg_scaled: bool = True,
+                 calculate_logavg_scaled_area: bool = True,
+                 calculate_logavg_scaled_nn: bool = False,
                  calculate_avg: bool = True,
                  calculate_stdev: bool = True,
-                 calculate_avg_scaled: bool = True,
-                 calculate_stdev_scaled: bool = True,
+                 calculate_avg_scaled_area: bool = True,
+                 calculate_avg_scaled_nn: bool = False,
+                 calculate_stdev_scaled_area: bool = True,
+                 calculate_stdev_scaled_nn: bool = False,
                  calculate_cv: bool = True,
                  enlarge_evs: bool = False,
                  smallest_ev: float = 2e-4):
         self._logavg = calculate_logavg
         self._logstdev = calculate_logstdv
-        self._logavg_scaled = calculate_logavg_scaled
+        self._logavg_scaled_area = calculate_logavg_scaled_area
+        self._logavg_scaled_nn = calculate_logavg_scaled_nn
         self._avg = calculate_avg
         self._stdev = calculate_stdev
-        self._avg_scaled = calculate_avg_scaled
-        self._stdev_scaled = calculate_stdev_scaled
+        self._avg_scaled_area = calculate_avg_scaled_area
+        self._avg_scaled_nn = calculate_avg_scaled_nn
+        self._stdev_scaled_area = calculate_stdev_scaled_area
+        self._stdev_scaled_nn = calculate_stdev_scaled_nn
         self._cv = calculate_cv
-        self._n = self._logavg + self._logstdev + self._logavg_scaled + self._avg + self._stdev + self._avg_scaled + \
-                  self._stdev_scaled + self._cv
+        self._n = self._logavg + self._logstdev + self._logavg_scaled_area + self._logavg_scaled_nn + self._avg + \
+                  self._stdev + self._avg_scaled_area + self._avg_scaled_nn + self._stdev_scaled_area + \
+                  self._stdev_scaled_nn + self._cv
         self._enlarge_evs = enlarge_evs
         self._smallest_ev = smallest_ev
-        pass
 
     def calculate_score(self, pcbatch: torch.Tensor, gmpositions: torch.Tensor, gmcovariances: torch.Tensor,
                         gminvcovariances: torch.Tensor, gmamplitudes: torch.Tensor,
@@ -61,11 +68,18 @@ class AvgDensities(EvalFunction):
             output[:, startidx:endidx] = \
                 gm.evaluate_inversed(mixture_with_inversed_cov, points[:, :, startidx:endidx, :]).view(batch_size, -1) \
                 + (noisecontribution.view(batch_size, 1) if noisecontribution is not None else 0)
-        np.savetxt("D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/EvalLogs/densities-" + str(round(time.time() * 1000)) + ".txt", output.cpu().numpy(),
-                   delimiter="\n")
+        #np.savetxt("D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/EvalLogs/densities-" + str(round(time.time() * 1000)) + ".txt", output.cpu().numpy(),
+        #           delimiter="\n")
         res = torch.zeros(self._n, batch_size, device=pcbatch.device, dtype=pcbatch.dtype)
         (lgstd, lgmean) = torch.std_mean(torch.log(output), dim=1)
         (std, mean) = torch.std_mean(output, dim=1)
+        sf = 1
+        sfnn = 1
+        sfnnl = 1
+        if self._avg_scaled_area or self._stdev_scaled_area:
+            sf = self.calculate_scale_factor(modelpath)
+        if self._logavg_scaled_nn or self._avg_scaled_nn or self._stdev_scaled_nn:
+            sfnn, sfnnl = self.calculate_scale_factors_nn(pcbatch)
         i = 0
         if self._logavg:
             res[i, :] = lgmean
@@ -73,8 +87,11 @@ class AvgDensities(EvalFunction):
         if self._logstdev:
             res[i, :] = lgstd
             i += 1
-        if self._logavg_scaled:
+        if self._logavg_scaled_area:
             res[i, :] = lgmean + self.calculate_scale_factor_log(modelpath)
+            i += 1
+        if self._logavg_scaled_nn:
+            res[i, :] = lgmean + sfnnl
             i += 1
         if self._avg:
             res[i, :] = mean
@@ -82,14 +99,17 @@ class AvgDensities(EvalFunction):
         if self._stdev:
             res[i, :] = std
             i += 1
-        sf = 1
-        if self._avg_scaled or self._stdev_scaled:
-            sf = self.calculate_scale_factor(modelpath)
-        if self._avg_scaled:
+        if self._avg_scaled_area:
             res[i, :] = mean * sf
             i += 1
-        if self._stdev_scaled:
+        if self._avg_scaled_nn:
+            res[i, :] = mean * sfnn
+            i += 1
+        if self._stdev_scaled_area:
             res[i, :] = std * sf
+            i += 1
+        if self._stdev_scaled_nn:
+            res[i, :] = std * sfnn
             i += 1
         if self._cv:
             res[i, :] = std / mean
@@ -102,24 +122,38 @@ class AvgDensities(EvalFunction):
             nlst.append("Average Log Density" + ("(evcorrected)" if self._enlarge_evs else ""))
         if self._logstdev:
             nlst.append("Stdev of Log Density" + ("(evcorrected)" if self._enlarge_evs else ""))
-        if self._logavg_scaled:
-            nlst.append("Average Log Density Scaled" + ("(evcorrected)" if self._enlarge_evs else ""))
+        if self._logavg_scaled_area:
+            nlst.append("Average Log Density AR-Scaled" + ("(evcorrected)" if self._enlarge_evs else ""))
+        if self._logavg_scaled_nn:
+            nlst.append("Average Log Density NN-Scaled" + ("(evcorrected)" if self._enlarge_evs else ""))
         if self._avg:
             nlst.append("Average Density" + ("(evcorrected)" if self._enlarge_evs else ""))
         if self._stdev:
             nlst.append("Stdev of Density" + ("(evcorrected)" if self._enlarge_evs else ""))
-        if self._avg_scaled:
-            nlst.append("Average Density Scaled"+ ("(evcorrected)" if self._enlarge_evs else ""))
-        if self._stdev_scaled:
-            nlst.append("Stdev of Density Scaled" + ("(evcorrected)" if self._enlarge_evs else ""))
+        if self._avg_scaled_area:
+            nlst.append("Average Density AR-Scaled"+ ("(evcorrected)" if self._enlarge_evs else ""))
+        if self._avg_scaled_nn:
+            nlst.append("Average Density NN-Scaled" + ("(evcorrected)" if self._enlarge_evs else ""))
+        if self._stdev_scaled_area:
+            nlst.append("Stdev of Density AR-Scaled" + ("(evcorrected)" if self._enlarge_evs else ""))
+        if self._stdev_scaled_nn:
+            nlst.append("Stdev of Density NN-Scaled" + ("(evcorrected)" if self._enlarge_evs else ""))
         if self._cv:
             nlst.append("Coefficient of Variation" + ("(evcorrected)" if self._enlarge_evs else ""))
         return nlst
 
     def calculate_scale_factor(self, modelpath: str):
         mesh = trimesh.load_mesh(modelpath)
-        return math.pow(math.sqrt(mesh.area) / 128, 3)
+        factor = math.pow(math.sqrt(mesh.area) / 128, 3)
+        return factor
 
     def calculate_scale_factor_log(self, modelpath: str):
-       mesh = trimesh.load_mesh(modelpath)
-       return 1.5 * math.log( (mesh.area / 16384))
+        mesh = trimesh.load_mesh(modelpath)
+        return 1.5 * math.log( (mesh.area / 16384))
+
+    def calculate_scale_factors_nn(self, pcbatch: torch.Tensor) -> (float, float):
+        if not hasattr(pcbatch, "nnscalefactor"):
+            md = pyeval.calc_rmsd_to_itself(pcbatch.view(-1, 3))[1]
+            refdist = 128 / (2*math.sqrt(pcbatch.shape[1]) - 1)
+            pcbatch.nnscalefactor = refdist / md
+        return (math.pow(pcbatch.nnscalefactor, -3), -3 * math.log(pcbatch.nnscalefactor))

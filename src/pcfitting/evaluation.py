@@ -19,21 +19,51 @@ recpc_path = r"F:\DA-Eval\dataset\recpcs"
 gengmm_path = r"F:\DA-Eval\dataset\gmms"
 rendering_path = r"F:\DA-Eval\dataset\renderings"
 
+initterm = MaxIterationTerminationCriterion(0)
 terminator2 = RelChangeTerminationCriterion(0.1, 20)
 
+# -- EXECUTED --
+# EMGenerator(n_gaussians=64, initialization_method='randnormpos', termination_criterion=terminator2, em_step_points_subbatchsize=10000, verbosity=0),
+# EMGenerator(n_gaussians=64, initialization_method='randresp', termination_criterion=terminator2, em_step_points_subbatchsize=10000, verbosity=0),
+# EMGenerator(n_gaussians=64, initialization_method='fpsmax', termination_criterion=terminator2, em_step_points_subbatchsize=10000, verbosity=0),
+# EMGenerator(n_gaussians=64, initialization_method='kmeans', termination_criterion=terminator2, em_step_points_subbatchsize=10000, verbosity=0),
+# EMGenerator(n_gaussians=256, initialization_method='randnormpos', termination_criterion=terminator2, em_step_points_subbatchsize=10000, verbosity=0),
+# EMGenerator(n_gaussians=256, initialization_method='randresp', termination_criterion=terminator2, em_step_points_subbatchsize=10000, verbosity=0),
+# EMGenerator(n_gaussians=256, initialization_method='fpsmax', termination_criterion=terminator2, em_step_points_subbatchsize=10000, verbosity=0),
+# EMGenerator(n_gaussians=256, initialization_method='kmeans', termination_criterion=terminator2, em_step_points_subbatchsize=10000, verbosity=0),
+# EMGenerator(n_gaussians=512, initialization_method='randnormpos', termination_criterion=terminator2, em_step_points_subbatchsize=10000, verbosity=0),
+# EMGenerator(n_gaussians=512, initialization_method='randresp', termination_criterion=terminator2, em_step_points_subbatchsize=10000, verbosity=0),
+# EMGenerator(n_gaussians=512, initialization_method='fpsmax', termination_criterion=terminator2, em_step_points_subbatchsize=10000, verbosity=0),
+# EMGenerator(n_gaussians=512, initialization_method='kmeans', termination_criterion=terminator2, em_step_points_subbatchsize=10000, verbosity=0),
+
+# EMGenerator(n_gaussians=64, initialization_method='fpsmax', termination_criterion=initterm, em_step_points_subbatchsize=10000, verbosity=0),
+# EMGenerator(n_gaussians=256, initialization_method='fpsmax', termination_criterion=initterm, em_step_points_subbatchsize=10000, verbosity=0),
+# EMGenerator(n_gaussians=512, initialization_method='fpsmax', termination_criterion=initterm, em_step_points_subbatchsize=10000, verbosity=0),
+
+# -- IN PROGRESS --
+
+# EMGenerator(n_gaussians=512, initialization_method='fpsmax', termination_criterion=initterm, em_step_points_subbatchsize=10000, verbosity=0, eps=1e-5),
+# EMGenerator(n_gaussians=512, initialization_method='randnormpos', termination_criterion=terminator2, em_step_points_subbatchsize=10000, verbosity=0, eps=1e-5),
+# EMGenerator(n_gaussians=512, initialization_method='randresp', termination_criterion=terminator2, em_step_points_subbatchsize=10000, verbosity=0, eps=1e-5),
+# EMGenerator(n_gaussians=512, initialization_method='fpsmax', termination_criterion=terminator2, em_step_points_subbatchsize=10000, verbosity=0, eps=1e-5),
+# EMGenerator(n_gaussians=512, initialization_method='kmeans', termination_criterion=terminator2, em_step_points_subbatchsize=10000, verbosity=0, eps=1e-5),
+
 generators = [
+    # EMGenerator(n_gaussians=64, initialization_method='fpsmax', termination_criterion=initterm, em_step_points_subbatchsize=10000, verbosity=0),
+    # EMGenerator(n_gaussians=256, initialization_method='fpsmax', termination_criterion=initterm, em_step_points_subbatchsize=10000, verbosity=0),
+    # EMGenerator(n_gaussians=512, initialization_method='fpsmax', termination_criterion=initterm, em_step_points_subbatchsize=10000, verbosity=0, eps=1e-5),
     EMGenerator(n_gaussians=64, initialization_method='randnormpos', termination_criterion=terminator2, em_step_points_subbatchsize=10000, verbosity=0),
-    EMGenerator(n_gaussians=64, initialization_method='randresp', termination_criterion=terminator2, em_step_points_subbatchsize=10000, verbosity=0),
-    EMGenerator(n_gaussians=64, initialization_method='fpsmax', termination_criterion=terminator2, em_step_points_subbatchsize=10000, verbosity=0),
-    EMGenerator(n_gaussians=64, initialization_method='kmeans', termination_criterion=terminator2, em_step_points_subbatchsize=10000, verbosity=0),
-    EMGenerator(n_gaussians=256, initialization_method='randnormpos', termination_criterion=terminator2, em_step_points_subbatchsize=10000, verbosity=0),
-    EMGenerator(n_gaussians=256, initialization_method='randresp', termination_criterion=terminator2, em_step_points_subbatchsize=10000, verbosity=0),
-    EMGenerator(n_gaussians=256, initialization_method='fpsmax', termination_criterion=terminator2, em_step_points_subbatchsize=10000, verbosity=0),
-    EMGenerator(n_gaussians=256, initialization_method='kmeans', termination_criterion=terminator2, em_step_points_subbatchsize=10000, verbosity=0),
-    EMGenerator(n_gaussians=512, initialization_method='randnormpos', termination_criterion=terminator2, em_step_points_subbatchsize=10000, verbosity=0),
-    EMGenerator(n_gaussians=512, initialization_method='randresp', termination_criterion=terminator2, em_step_points_subbatchsize=10000, verbosity=0),
-    EMGenerator(n_gaussians=512, initialization_method='fpsmax', termination_criterion=terminator2, em_step_points_subbatchsize=10000, verbosity=0),
-    EMGenerator(n_gaussians=512, initialization_method='kmeans', termination_criterion=terminator2, em_step_points_subbatchsize=10000, verbosity=0),
+    # EMGenerator(n_gaussians=64, initialization_method='randresp', termination_criterion=terminator2, em_step_points_subbatchsize=10000, verbosity=0),
+    # EMGenerator(n_gaussians=64, initialization_method='fpsmax', termination_criterion=terminator2, em_step_points_subbatchsize=10000, verbosity=0),
+    # EMGenerator(n_gaussians=64, initialization_method='kmeans', termination_criterion=terminator2, em_step_points_subbatchsize=10000, verbosity=0),
+    # EMGenerator(n_gaussians=256, initialization_method='randnormpos', termination_criterion=terminator2, em_step_points_subbatchsize=10000, verbosity=0),
+    # EMGenerator(n_gaussians=256, initialization_method='randresp', termination_criterion=terminator2, em_step_points_subbatchsize=10000, verbosity=0),
+    # EMGenerator(n_gaussians=256, initialization_method='fpsmax', termination_criterion=terminator2, em_step_points_subbatchsize=10000, verbosity=0),
+    # EMGenerator(n_gaussians=256, initialization_method='kmeans', termination_criterion=terminator2, em_step_points_subbatchsize=10000, verbosity=0),
+    # EMGenerator(n_gaussians=512, initialization_method='randnormpos', termination_criterion=terminator2, em_step_points_subbatchsize=10000, verbosity=0, eps=1e-5),
+    # EMGenerator(n_gaussians=512, initialization_method='randresp', termination_criterion=terminator2, em_step_points_subbatchsize=10000, verbosity=0, eps=1e-5),
+    # EMGenerator(n_gaussians=512, initialization_method='fpsmax', termination_criterion=terminator2, em_step_points_subbatchsize=10000, verbosity=0, eps=1e-5),
+    # EMGenerator(n_gaussians=512, initialization_method='kmeans', termination_criterion=terminator2, em_step_points_subbatchsize=10000, verbosity=0, eps=1e-5),
 ]
 
 n_fit_points = 100000
@@ -58,13 +88,15 @@ i = -1
 while dataset_fit.has_next():
     i += 1
     batch, names = dataset_fit.next_batch()
-    batch_eval_dens, _ = dataset_eval_dist.next_batch()
+    batch_eval_dens, _ = dataset_eval_dens.next_batch()
     batch_eval_dist, _ = dataset_eval_dist.next_batch()
     for j in range(len(generators)):
         print(100 * ((i / batchcount) + (j / len(generators) / batchcount)), "%")
         print("Generator ", (j+1), "/", len(generators), " on ", names)
 
-        if dbaccess.has_em_run(names[0], n_fit_points, generators[j]._n_gaussians, n_fit_points, "RelChange(0.1,20)",
+        termcrit = "RelChange(0.1,20)"#"MaxIter(0)"
+
+        if dbaccess.has_em_run(names[0], n_fit_points, generators[j]._n_gaussians, n_fit_points, termcrit,
                                generators[j]._initialization_method, "float32", 1e-7, True):
             print("Skip")
             continue
@@ -95,16 +127,17 @@ while dataset_fit.has_next():
 
         # Save in DB
         print ("Saving")
-        emid = dbaccess.insert_options_em(n_fit_points, "RelChange(0.1,20)", generators[j]._initialization_method,
+        emid = dbaccess.insert_options_em(n_fit_points, termcrit, generators[j]._initialization_method,
                                           "float32", 1e-7, True)
         runid = dbaccess.insert_run(names[0], n_fit_points, generators[j]._n_gaussians, gmbatch.shape[2],
                                     "EM", emid, (end - start))
+        # TODO: FIX VALUES
         dbaccess.insert_density_eval(densvalues_fit[0].item(), densvalues_fit[1].item(), densvalues_fit[2].item(),
                                      densvalues_fit[4].item(), densvalues_fit[3].item(), densvalues_fit[5].item(),
                                      densvalues_fit[6].item(), None, runid, True, n_eval_points_density)
-        dbaccess.insert_density_eval(densvalues_eval[0].item(), densvalues_eval[1].item(), densvalues_eval[2].item(),
-                                     densvalues_eval[4].item(), densvalues_eval[3].item(), densvalues_eval[5].item(),
-                                     densvalues_eval[6].item(), None, runid, False, n_eval_points_density)
+        dbaccess.insert_density_eval(densvalues_eval[0].item(), densvalues_eval[2].item(), densvalues_eval[3].item(),
+                                     densvalues_eval[6].item(), densvalues_eval[4].item(), densvalues_eval[8].item(),
+                                     densvalues_eval[9].item(), None, runid, False, n_eval_points_density)
         dbaccess.insert_distance_eval(distvalues[0].item(), distvalues[2].item(), distvalues[4].item(),
                                       distvalues[6].item(), distvalues[8].item(), distvalues[10].item(),
                                       distvalues[12].item(), distvalues[14].item(), distvalues[16].item(),
@@ -120,14 +153,14 @@ while dataset_fit.has_next():
                                   statvalues[12].item(), statvalues[13].item(), statvalues[14].item(),
                                   statvalues[15].item(), statvalues[16].item(), statvalues[17].item(), runid)
 
-        mimg.imsave(os.path.join(rendering_path, "recpc-" + str(runid).zfill(9) + ".png"), res[0, 0])
-        mimg.imsave(os.path.join(rendering_path, "density-" + str(runid).zfill(9) + ".png"), res[0, 1])
+        # mimg.imsave(os.path.join(rendering_path, "recpc-" + str(runid).zfill(9) + ".png"), res[0, 0])
+        # mimg.imsave(os.path.join(rendering_path, "density-" + str(runid).zfill(9) + ".png"), res[0, 1])
 
         # Save GMM and resampled pc
         gma = gmc.mixture.weights(gmbatch)
         gmp = gmc.mixture.positions(gmbatch)
         gmcov = gmc.mixture.covariances(gmbatch)
         data_loading.write_gm_to_ply(gma, gmp, gmcov, 0, os.path.join(gengmm_path, str(runid).zfill(9) + ".gma.ply"))
-        data_loading.write_pc_to_off(os.path.join(recpc_path, str(runid).zfill(9) + ".off"), reconstructed)
+        # data_loading.write_pc_to_off(os.path.join(recpc_path, str(runid).zfill(9) + ".off"), reconstructed)
 
 vis.finish()
