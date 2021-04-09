@@ -13,6 +13,7 @@ from torch.utils.tensorboard import SummaryWriter as TensorboardWriter
 from modelnet_classification.config import Config
 import gmc.mixture as gm
 import gmc.modules as gmc_modules
+import gmc.mat_tools as mat_tools
 import modelnet_classification.prototype_modules as prototype_modules
 
 
@@ -144,6 +145,18 @@ class Net(nn.Module):
         x, x_const = self.norm0(in_x)
 
         for i in range(len(self.config.layers)):
+            if self.config.dataDropout > 0:
+                if self.training:
+                    n_selected_components = int(gm.n_components(x) * (1.0 - self.config.dataDropout))
+                    indices = list()
+                    for l in range(gm.n_layers(x)):
+                        indices.append(torch.randperm(gm.n_components(x))[:n_selected_components].view(1, 1, -1))
+                    indices = torch.cat(indices, 1)
+                    x = mat_tools.my_index_select(x, indices.to(device=x.device))
+                else:
+                    weights = gm.weights(x) * (1.0 - self.config.dataDropout)
+                    x = gm.pack_mixture(weights, gm.positions(x), gm.covariances(x))
+
             x, x_const = self.gmcs[i](x, x_const)
 
             if self.config.bn_place == Config.BN_PLACE_AFTER_GMC:
