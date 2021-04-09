@@ -84,7 +84,7 @@ class GMLogger:
             self._visualizer.set_camera_auto(True)
             if pointclouds is not None:
                 self._visualizer.set_pointclouds(pointclouds.cpu())
-            self._visualizer.set_ellipsoids_rendering(True, True)
+            self._visualizer.set_ellipsoids_pc_rendering(True, True)
             self._visualizer.set_ellipsoids_colormode(GmVisColoringRenderMode.COLOR_WEIGHT)
             self._visualizer.set_ellipsoids_rangemode(GmVisColorRangeMode.RANGE_MINMAX)
             self._visualizer.set_density_rendering(True)

@@ -198,8 +198,8 @@ class EMTools:
         # Handling of invalid Gaussians! If all responsibilities of a Gaussian are zero, the previous code will
         # set the prior of it to zero and the covariances and positions to NaN
         # To avoid NaNs, we will then replace those invalid values with 0 (pos) and eps (cov).
-        if (new_priors == 0).sum() > 0:
-            print("detected ", (new_priors == 0).sum().item(), "0-priors!")
+        # if (new_priors == 0).sum() > 0:
+            # print("detected ", (new_priors == 0).sum().item(), "0-priors!")
         new_positions[new_priors == 0] = torch.tensor([0.0, 0.0, 0.0], dtype=dtype, device='cuda')
         new_covariances[new_priors == 0] = eps[0, 0, 0, :, :]
 

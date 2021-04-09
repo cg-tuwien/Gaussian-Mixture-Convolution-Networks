@@ -82,7 +82,7 @@ res_manual_density = vis.render()[0, 0]
 # Ellipsoid Rendering on vis-object
 # start = time.time()
 vis.set_density_rendering(False) # camera position has been set in previous example
-vis.set_ellipsoids_rendering(True)
+vis.set_ellipsoids_pc_rendering(True, True, True)
 vis.set_ellipsoids_colormode(gm_vis.GmVisColoringRenderMode.COLOR_WEIGHT)
 vis.set_ellipsoids_rangemode(gm_vis.GmVisColorRangeMode.RANGE_MINMAX)
 vis.set_gaussian_mixtures(mixture.detach().cpu()) # We could skip this, as we've done this in the previous example
@@ -90,11 +90,15 @@ res_manual_ellipsoids = vis.render()[0, 0]
 # end = time.time()
 # print("Time for manual ellipsoids", (end-start))
 
+vis.set_ellipsoids_pc_rendering(False, True, False)
+vis.set_pointclouds(pointcloud.detach().cpu())
+res_pc_only = vis.render()[0, 0]
+
 # Rendering of GM-Positions (colored by amp) + Pointcloud
 # and Density (manual minmax values) together, manual camera position
 # start = time.time()
 vis.set_camera_lookat((33.4439, 18.4841, 60.3351), (0, -1e-05, 0.0076), (0, 1, 0))
-vis.set_ellipsoids_rendering(False)
+vis.set_ellipsoids_pc_rendering(False, False, True)
 vis.set_positions_rendering(True, pointcloud=True)
 vis.set_positions_colormode(gm_vis.GmVisColoringRenderMode.COLOR_AMPLITUDE)
 vis.set_positions_rangemode(gm_vis.GmVisColorRangeMode.RANGE_MINMAX)
@@ -138,6 +142,10 @@ plt.show()
 
 f5 = plt.figure("Manual Ellipsoids Render")
 f5.figimage(res_manual_ellipsoids)
+plt.show()
+
+fX = plt.figure("Only PC Render")
+fX.figimage(res_pc_only)
 plt.show()
 
 f6 = plt.figure("Manual Positions Render (manual camera)")

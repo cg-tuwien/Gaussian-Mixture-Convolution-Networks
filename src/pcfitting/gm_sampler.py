@@ -11,7 +11,7 @@ class GMSampler:
         # result size: [bs,n,3]
         batch_size = gmm.shape[0]
         samples = torch.zeros(batch_size, count, 3, dtype=gmm.dtype, device=gmm.device)
-        uniformprobs = numpy.random.uniform(size=(batch_size, count))
+        uniformprobs = torch.from_numpy(numpy.random.uniform(size=(batch_size, count))).to(gmm.device)
         means = gmc.mixture.positions(gmm)
         covs = gmc.mixture.covariances(gmm)
         weights = gmc.mixture.weights(gmm).clone()
@@ -19,9 +19,10 @@ class GMSampler:
         for i in range(1, gauss_count):
             weights[:,0,i] += weights[:,0,i-1]
         gaussidzs = torch.zeros(batch_size, count, dtype=torch.int)
+        uniformprobs *= weights[:,0,-1]
         for b in range(batch_size):
             for i in range(count):
-                gaussidzs[b, i] = torch.nonzero(uniformprobs[b, i] < weights[b,0,:])[0]
+                gaussidzs[b, i] = torch.nonzero(uniformprobs[b, i] <= weights[b,0,:])[0]
             for g in range(gauss_count):
                 selected_samples = gaussidzs[b, :].eq(g)
                 if selected_samples.sum().item() > 0:

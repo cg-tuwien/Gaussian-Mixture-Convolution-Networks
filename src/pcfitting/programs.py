@@ -1,6 +1,7 @@
 import os
 import gc
 import time
+from queue import SimpleQueue
 
 import torch
 from typing import List, Tuple, Optional
@@ -151,7 +152,8 @@ def execute_fitting_on_single_pcbatch(training_name: str, pcbatch: torch.Tensor,
 
 def execute_evaluation(training_name: str, model_path: Optional[str], pc1_path: str, pc2_path: Optional[str], gengmm_path: str, n_points: int,
                        n_eval_points: int, generator_identifiers: List[str], error_functions: List[EvalFunction],
-                       scaling_active: bool = False, scaling_interval: Tuple[float, float] = (-50.0, 50.0)):
+                       scaling_active: bool = False, scaling_interval: Tuple[float, float] = (-50.0, 50.0),
+                       smallest_ev: Optional[float] = None):
     # Evaluates a performed Training. Several pointclouds, several gms for each. 2pcs: fitpc, evalpc
     # Create Dataset Iterator and Scaler
     pc1dataset = PCDatasetIterator(1, n_points, pc1_path, model_path)  # Batch Size must be one!
@@ -193,8 +195,18 @@ def execute_evaluation(training_name: str, model_path: Optional[str], pc1_path: 
             else:
                 gm = gmio.read_gm_from_ply(gm_path, ismodel).cuda()
                 gm = scaler.scale_gm(gm)
+                # Enlarge EVs
+                if smallest_ev is not None:
+                    gmm = mixture.convert_amplitudes_to_priors(gm)
+                    evals, evecs = torch.symeig(mixture.covariances(gmm), eigenvectors=True)
+                    evals[evals.lt(smallest_ev)] = smallest_ev
+                    gmcovariances = evecs @ torch.diag_embed(evals) @ evecs.transpose(-1, -2)
+                    gmm = mixture.pack_mixture(mixture.weights(gmm), mixture.positions(gmm), gmcovariances)
+                    gm = mixture.convert_priors_to_amplitudes(gmm)
+                #gmio.write_gm_to_ply(mixture.weights(gm), mixture.positions(gm), gmcovariances, 0, r"D:\Simon\Studium\S-11 (WS19-20)\Diplomarbeit\data\dataset_diff_scales\gmms\210312-EMepsvar\enlarged\\" + name + gid + r".ply")
                 # Evaluate using each error function
                 print(name, " / ", gid)
+                start = time.time()
                 for j in range(len(error_functions)):
                     names = error_functions[j].get_names()
                     loss = error_functions[j].calculate_score_packed(pc1_scaled, gm, modelpath=modelpath)
@@ -204,9 +216,10 @@ def execute_evaluation(training_name: str, model_path: Optional[str], pc1_path: 
                         loss = error_functions[j].calculate_score_packed(pc2_scaled, gm, modelpath=modelpath)
                         for k in range(len(names)):
                             print("  ", names[k], " on PC2: ", loss[k].item())
+                end = time.time()
+                print ("Evaluation took: ", (end - start), " Seconds")
 
     print("Done")
-
 
 def execute_evaluation_singlepc_severalgm(pc1_path: str, pc2_path: Optional[str], gengmm_path: str,
                                           error_functions: List[EvalFunction], scaling_active: bool = False,

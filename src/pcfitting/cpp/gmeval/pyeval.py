@@ -26,10 +26,14 @@ def eval_rmse(point_cloud_source: torch.Tensor, point_cloud_generated: torch.Ten
     return bindings.eval_rmse_psnr(point_cloud_source, point_cloud_generated, True, False)[0]
 
 
-def eval_rmsd_unscaled(point_cloud_source: torch.Tensor, point_cloud_generated: torch.Tensor) -> (float, float, float):
-    # Returns rmsd, md, stdev
+def eval_rmsd_unscaled(point_cloud_source: torch.Tensor, point_cloud_generated: torch.Tensor) -> (float, float, float, float):
+    # Returns rmsd, md, stdev, max
     return bindings.eval_rmse_psnr(point_cloud_source, point_cloud_generated, False, False)
 
 
-def calc_rmsd_to_itself(point_cloud: torch.Tensor) -> float:
+#returns rmsd, md
+def calc_rmsd_to_itself(point_cloud: torch.Tensor) -> (float, float):
     return bindings.calc_rmsd_to_itself(point_cloud)
+
+def cov_measure(point_cloud: torch.Tensor) -> (float, float):
+    return bindings.cov_measure(point_cloud)

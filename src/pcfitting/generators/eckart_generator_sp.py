@@ -43,9 +43,9 @@ class EckartGeneratorSP(GMMGenerator):
         #           'fpsmax' or 'adam2' = furthest point sampling, artifical responsibilities and m-step,
         #           'kmeans-full' = Full weighted kmeans (NOT RECOMMENDED)
         #           'kmeans-fast' or 'kmeans' = Fast weighted kmeans
-        #           'eigen': initialize using eigen vectors
         #       Plus one additional method:
         #           'bb': Initialize GMMs on corners of tight bounding box of points (different side lengths)
+        #           'eigen': initialize using eigen vectors
         #   e_step_pair_subbatchsize: int
         #       How many Point-Gaussian-Pairs should be processed in the E-Step at once (see _expectation)
         #       -1 means all Pairs (default)

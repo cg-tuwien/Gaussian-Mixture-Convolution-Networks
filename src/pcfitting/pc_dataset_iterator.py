@@ -69,6 +69,9 @@ class PCDatasetIterator(DatasetIterator):
         # Returns true if more batches are available
         return not self._file_queue.empty()
 
+    def skip_batch(self):
+        self._file_queue.get()
+
     def next_batch(self):
         # returns a tensor of the size [b,n,3], where b is the batch size (or less, if less data was available)
         # and n is the point count
