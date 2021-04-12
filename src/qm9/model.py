@@ -2,6 +2,7 @@ from __future__ import print_function
 import pathlib
 import time
 import typing
+import math
 
 import torch
 from torch import Tensor
@@ -46,7 +47,9 @@ class Net(nn.Module):
         if self.config.bias_type == Config.BIAS_TYPE_NEGATIVE_SOFTPLUS:
             bias_0 = -0.1
 
-        pos2cov = lambda p: (p / 3) ** 2
+        radius2cov = lambda p: (p / 3) ** 2
+        # will return a weight that would integrate to 1 with the given radius
+        radius2weight = lambda r: 1 / (config.n_kernel_components * math.sqrt((math.pi * radius2cov(r) * 2) ** 3))  # integral(gaussian) = sqrt(..)
 
         self.biases = torch.nn.ParameterList()
         self.gmcs = torch.nn.modules.ModuleList()
@@ -58,9 +61,9 @@ class Net(nn.Module):
         last_n_fitting_components = -1
         for i, l in enumerate(config.layers):
             self.gmcs.append(gmc_modules.Convolution(config.convolution_config, n_layers_in=n_feature_layers_in, n_layers_out=l.n_feature_layers, n_kernel_components=config.n_kernel_components,
-                                                     position_range=l.kernel_radius, covariance_range=pos2cov(l.kernel_radius),
+                                                     position_range=l.kernel_radius, covariance_range=radius2cov(l.kernel_radius),
                                                      learn_positions=learn_positions, learn_covariances=learn_covariances,
-                                                     weight_sd=0.4, weight_mean=0.04, n_dims=3))
+                                                     weight_sd=0.5 * radius2weight(l.kernel_radius), weight_mean=0.05 * radius2weight(l.kernel_radius), n_dims=3))
             self.biases.append(torch.nn.Parameter(torch.zeros(1, l.n_feature_layers) + bias_0))
             self.relus.append(gmc_modules.ReLUFitting(config.relu_config, layer_id=f"{i}c", n_layers=l.n_feature_layers, n_output_gaussians=l.n_fitting_components))
             last_n_fitting_components = l.n_fitting_components
