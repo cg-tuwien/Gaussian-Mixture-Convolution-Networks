@@ -22,7 +22,7 @@ class BvhMhemFit(torch.autograd.Function):
     @staticmethod
     def forward(ctx, target_mixture: torch.Tensor, n_components_fitting: int, reduction_n: int):
         if not target_mixture.is_contiguous():
-            mixture = target_mixture.contiguous()
+            target_mixture = target_mixture.contiguous()
 
         fitting_mixture, bvh_nodes, bvh_attribs = cpp_binding.forward(target_mixture, n_components_fitting, reduction_n)
         ctx.save_for_backward(fitting_mixture, target_mixture, bvh_nodes, bvh_attribs, torch.tensor(n_components_fitting), torch.tensor(reduction_n))
