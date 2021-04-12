@@ -8,6 +8,7 @@ device = "cuda"
 
 c: Config = Config(inference_on='U')
 c.bn_type = Config.BN_TYPE_ONLY_COVARIANCE
+c.bn_place = Config.BN_PLACE_NOWHERE
 c.convolution_config.dropout = 0.0
 c.dataDropout = 0.0
 # c.log_tensorboard_renderings = False

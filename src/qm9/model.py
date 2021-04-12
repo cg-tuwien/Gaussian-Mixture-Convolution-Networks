@@ -69,18 +69,18 @@ class Net(nn.Module):
             last_n_fitting_components = l.n_fitting_components
             n_feature_layers_in = l.n_feature_layers
 
-        self.norm0 = BatchNormStack((gmc_modules.CovScaleNorm(norm_over_batch=False),
-                                     prototype_modules.OldBatchNorm(config, True),))
+        # self.norm0 = BatchNormStack((  # gmc_modules.CovScaleNorm(norm_over_batch=False),
+        #                              prototype_modules.IntegralNorm(config, True),))
 
         if config.bn_type == Config.BN_TYPE_COVARIANCE_INTEGRAL:
             self.norm = BatchNormStack((gmc_modules.CovScaleNorm(),
-                                        prototype_modules.OldBatchNorm(config),))
+                                        prototype_modules.IntegralNorm(config),))
         elif config.bn_type == Config.BN_TYPE_ONLY_COVARIANCE:
             self.norm = BatchNormStack((gmc_modules.CovScaleNorm(), ))
         elif config.bn_type == Config.BN_TYPE_ONLY_INTEGRAL:
-            self.norm = BatchNormStack((prototype_modules.OldBatchNorm(config),))
+            self.norm = BatchNormStack((prototype_modules.IntegralNorm(config),))
         elif config.bn_type == Config.BN_TYPE_INTEGRAL_COVARIANCE:
-            self.norm = BatchNormStack((prototype_modules.OldBatchNorm(config),
+            self.norm = BatchNormStack((prototype_modules.IntegralNorm(config),
                                         gmc_modules.CovScaleNorm(),))
         # self.weight_norm0 = prototype_modules.CentroidWeightNorm(norm_over_batch=False)
         # self.weight_norm = prototype_modules.CentroidWeightNorm(norm_over_batch=True)
@@ -145,7 +145,9 @@ class Net(nn.Module):
         #
         # in our case: BN just scales and centres. the constant input to BN is ignored, so the constant convolution would be ignored if we place BN before ReLU.
         # but that might perform better anyway, we'll have to test.
-        x, x_const = self.norm0(in_x)
+        # x, x_const = self.norm0(in_x)
+        x = in_x
+        x_const = torch.zeros(1, 1, device=x.device)
 
         for i in range(len(self.config.layers)):
             if self.config.dataDropout > 0:
