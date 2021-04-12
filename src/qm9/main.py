@@ -61,7 +61,7 @@ def train(model: qm9.model.Net, device: str, train_loader: torch.utils.data.Data
         # if step % args.log_interval == 0:
         #     temp_tb = tensor_board_writer
         output = model(data, temp_tb)
-        loss = F.mse_loss(output, target)
+        loss = F.mse_loss(output, -target/400)
         ty = time.perf_counter()
         # regularisation_loss = model.regularisation_loss() * len(data)
         training_loss = loss  # (loss + regularisation_loss)
@@ -80,6 +80,8 @@ def train(model: qm9.model.Net, device: str, train_loader: torch.utils.data.Data
 
         if step % config.log_interval == 0:
             tensor_board_writer.add_scalar("00. RMSE training loss", training_loss.sqrt().item(), step)
+            tensor_board_writer.add_scalar("01.1 Mean Output", output.mean().item(), step)
+            tensor_board_writer.add_scalar("01.2 Mean Abs Output", output.abs().mean().item(), step)
             tensor_board_writer.add_scalar("02. kernel loss", loss.item(), step)
             tensor_board_writer.add_scalar("03.1 total duration per sample", (batch_end_time - batch_start_time) / len(data), step)
             tensor_board_writer.add_scalar("03.2 forward time per sample", (ty - tx) / len(data), step)
@@ -138,16 +140,20 @@ def train(model: qm9.model.Net, device: str, train_loader: torch.utils.data.Data
 def test(model: qm9.model.Net, device: str, test_loader: torch.utils.data.DataLoader, epoch: int, tensor_board_writer: torch.utils.tensorboard.SummaryWriter):
     model.eval()
     test_loss = 0
+    test_me = 0
     with torch.no_grad():
         for data, target in test_loader:
             data, target = data.to(device), target.to(device)
             output = model(data)
-            test_loss += F.mse_loss(output, target, reduction='sum').item()  # sum up batch loss
+            test_loss += F.mse_loss(output, -target/400, reduction='sum').item()  # sum up batch loss
+            test_me += ((output * -400) - target).abs().sum().item()
 
     test_loss /= len(test_loader.dataset)
     test_loss = math.sqrt(test_loss)
+    test_me /= len(test_loader.dataset)
     tensor_board_writer.add_scalar("99. test RMSE loss", test_loss, epoch)
-    print(f'\nTest set: Average RMSE loss: {test_loss:.4f})\n')
+    tensor_board_writer.add_scalar("99. test ME", test_me, epoch)
+    print(f'\nTest set: Average RMSE loss: {test_loss:.4f}, ME: {test_me:.4f})\n')
 
 
 def experiment(device: str = 'cuda', desc_string: str = "", config: Config = None):
