@@ -188,7 +188,6 @@ class Net(nn.Module):
 
         if self.mlp is not None:
             x = self.mlp(x)
-        x = F.log_softmax(x, dim=1)
         return x.view(-1)
 
     def save_model(self):
