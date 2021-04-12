@@ -80,6 +80,7 @@ class Config:
         self.bn_type = Config.BN_TYPE_COVARIANCE_INTEGRAL
         self.weight_decay_rate = 0.05
         self.dataDropout = 0.0
+        self.mlp_dropout = 0.5
 
         self.relu_config: gmc.modules.ReLUFittingConfig = gmc.modules.ReLUFittingConfig()
         self.convolution_config: gmc.modules.ConvolutionConfig = gmc.modules.ConvolutionConfig(dropout=0.0)
@@ -95,7 +96,7 @@ class Config:
     def produce_description(self):
         mlp_string = ""
         if self.mlp is not None:
-            mlp_string = "_MLP"
+            mlp_string = f"_MLP_do{int(self.mlp_dropout * 100)}"
             for l in self.mlp:
                 mlp_string = f"{mlp_string}_{l}"
         return f"BN{self.bn_place}{self.bn_type}_cnDrp{int(self.convolution_config.dropout * 100)}_dtaDrp{int(self.dataDropout * 100)}_wDec{int(self.weight_decay_rate * 100)}_b{self.batch_size}_nK{self.n_kernel_components}_{produce_name(self.layers)}{mlp_string}_"

@@ -92,7 +92,7 @@ class Net(nn.Module):
             mlp = list()
             for l in config.mlp:
                 if l == -1:
-                    mlp.append(nn.Dropout(p=0.5))
+                    mlp.append(nn.Dropout(p=config.mlp_dropout))
                 else:
                     mlp.append(nn.BatchNorm1d(n_feature_layers_in))
                     mlp.append(nn.Linear(n_feature_layers_in, l))
