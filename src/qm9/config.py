@@ -50,7 +50,7 @@ class Config:
         self.validation_start_index = 110000
         self.validation_end_index = 120000
         self.test_start_index = 120000
-        self.test_end_index = 133885
+        self.test_end_index = 130831
 
         # run settings
         self.num_dataloader_workers = 24   # 0 -> main thread, otherwise number of threads. no auto available.
