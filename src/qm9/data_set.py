@@ -13,6 +13,11 @@ from qm9.config import Config
 from qm9.exclude_list import exclude_list
 import qm9.data_constants as data_constants
 
+# nature article: https://www.nature.com/articles/sdata201422
+# download here: https://figshare.com/collections/Quantum_chemistry_structures_and_properties_of_134_kilo_molecules/978904
+#                (some download links don't work. remove %XX codes and points, e.g. link.com/Blah%3A_bluh_H%2C_bleh./something => link.com/Blah_bluh_H_bleh/something)
+# sota benchmarks: https://paperswithcode.com/dataset/qm9
+# description of the dataset from a university course: https://notebook.community/beangoben/dataDrivenChemistry/mainCode
 
 class AtomData:
     def __init__(self, x: float, y: float, z: float, mulliken_charge: float):
