@@ -81,7 +81,7 @@ def read_dataset(config: Config) -> typing.List[Molecule]:
             for prop in ("zpve", "U0", "U", "H", "G", "Cv"):
                 ref_energy = 0
                 for t, c in atom_types_of_this.items():
-                    ref_energy += data_constants.REFERENCE_THERMOCHEMICAL_ENERGIES[t][prop] * data_constants.HARTREE * c
+                    ref_energy += data_constants.REFERENCE_THERMOCHEMICAL_ENERGIES[t][prop] * c
                 properties[prop] -= ref_energy
 
             # convert to eV
