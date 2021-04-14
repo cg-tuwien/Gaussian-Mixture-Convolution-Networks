@@ -12,11 +12,11 @@ c.bn_place = Config.BN_PLACE_NOWHERE
 c.convolution_config.dropout = 0.0
 c.dataDropout = 0.0
 # c.log_tensorboard_renderings = False
-c.n_epochs = 4
-c.training_end_index = 10000
-c.validation_start_index = 10000
-c.validation_end_index = 10200
-c.batch_size = 50
+c.n_epochs = 10
+# c.training_end_index = 10000
+# c.validation_start_index = 10000
+# c.validation_end_index = 10200
+c.batch_size = 25
 c.log_interval = 2500
 c.kernel_learning_rate = 0.005
 
@@ -46,23 +46,35 @@ c.kernel_learning_rate = 0.005
 # c.mlp = (-1, 1)
 # main.experiment(device=device, desc_string=f"qm9_{c.produce_description()}", config=c)
 #
-c.layers = [Layer(8, 1.0, 32),
-            Layer(16, 1.0, 32),
-            Layer(32, 1.0, -1)]
-c.mlp = (-1, 1)
-main.experiment(device=device, desc_string=f"qm9_{c.produce_description()}", config=c)
+# c.layers = [Layer(8, 1.0, 32),
+#             Layer(16, 1.0, 32),
+#             Layer(32, 1.0, -1)]
+# c.mlp = (-1, 1)
+# main.experiment(device=device, desc_string=f"qm9_{c.produce_description()}", config=c)
+#
+# c.mlp_dropout = 0.0
+# c.layers = [Layer(8, 1.0, 32),
+#             Layer(16, 1.0, 32),
+#             Layer(32, 1.0, -1)]
+# c.mlp = (-1, 1)
+# main.experiment(device=device, desc_string=f"qm9_{c.produce_description()}", config=c)
 
-c.mlp_dropout = 0.0
-c.layers = [Layer(8, 1.0, 32),
-            Layer(16, 1.0, 32),
-            Layer(32, 1.0, -1)]
+c.layers = [Layer(16, 1.0, 8),
+            Layer(32, 1.0, 8),
+            Layer(64, 1.0, -1)]
 c.mlp = (-1, 1)
 main.experiment(device=device, desc_string=f"qm9_{c.produce_description()}", config=c)
 
 c.layers = [Layer(8, 1.0, 16),
             Layer(16, 1.0, 16),
             Layer(32, 1.0, -1)]
-c.mlp = (-1, 1)
+c.mlp = (1, )
+main.experiment(device=device, desc_string=f"qm9_{c.produce_description()}", config=c)
+
+c.layers = [Layer(8, 1.0, 16),
+            Layer(16, 1.0, 16),
+            Layer(32, 1.0, -1)]
+c.mlp = (-1, 1, )
 main.experiment(device=device, desc_string=f"qm9_{c.produce_description()}", config=c)
 
 c.layers = [Layer(8, 1.0, 8),
@@ -70,6 +82,31 @@ c.layers = [Layer(8, 1.0, 8),
             Layer(32, 1.0, -1)]
 c.mlp = (-1, 1)
 main.experiment(device=device, desc_string=f"qm9_{c.produce_description()}", config=c)
+
+c.layers = [Layer(16, 1.0, 8),
+            Layer(32, 1.0, 8),
+            Layer(64, 1.0, -1)]
+c.mlp = (-1, 1)
+main.experiment(device=device, desc_string=f"qm9_{c.produce_description()}", config=c)
+
+c.layers = [Layer(8, 1.0, 8),
+            Layer(16, 1.0, 8),
+            Layer(32, 1.0, -1)]
+c.mlp = (1, )
+main.experiment(device=device, desc_string=f"qm9_{c.produce_description()}", config=c)
+
+c.layers = [Layer(16, 1.0, 8),
+            Layer(32, 1.0, 8),
+            Layer(64, 1.0, -1)]
+c.mlp = (1, )
+main.experiment(device=device, desc_string=f"qm9_{c.produce_description()}", config=c)
+
+c.layers = [Layer(16, 1.0, 16),
+            Layer(32, 1.0, 16),
+            Layer(64, 1.0, -1)]
+c.mlp = (-1, 1)
+main.experiment(device=device, desc_string=f"qm9_{c.produce_description()}", config=c)
+
 #
 # c.layers = [Layer(8, 1.5, 32),
 #             Layer(16, 1.5, 32),

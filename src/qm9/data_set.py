@@ -12,45 +12,13 @@ import gmc.cpp.gm_vis.gm_vis as gm_vis
 from qm9.config import Config
 from qm9.exclude_list import exclude_list
 import qm9.data_constants as data_constants
+from qm9.molecule import Molecule, AtomData
 
 # nature article: https://www.nature.com/articles/sdata201422
 # download here: https://figshare.com/collections/Quantum_chemistry_structures_and_properties_of_134_kilo_molecules/978904
 #                (some download links don't work. remove %XX codes and points, e.g. link.com/Blah%3A_bluh_H%2C_bleh./something => link.com/Blah_bluh_H_bleh/something)
 # sota benchmarks: https://paperswithcode.com/dataset/qm9
 # description of the dataset from a university course: https://notebook.community/beangoben/dataDrivenChemistry/mainCode
-
-class AtomData:
-    def __init__(self, x: float, y: float, z: float, mulliken_charge: float):
-        self.x = x
-        self.y = y
-        self.z = z
-        self.mulliken_charge = mulliken_charge
-
-
-class Molecule:
-    ATOM_TYPES = {'H': 0, 'C': 1, 'N': 2, 'O': 3, 'F': 4}
-    N_ATOMS_MAX_PER_TYPE = 20
-
-    def __init__(self, atoms: typing.Dict[str, typing.Set[AtomData]], properties: typing.Dict[str, float]):
-        self.atoms = atoms
-        self.properties = properties
-
-    def as_gaussian_mixture(self):
-        weights = torch.zeros(1, len(Molecule.ATOM_TYPES), Molecule.N_ATOMS_MAX_PER_TYPE, 1)
-        positions = torch.zeros(1, len(Molecule.ATOM_TYPES), Molecule.N_ATOMS_MAX_PER_TYPE, 3)
-        radii = torch.ones(1, len(Molecule.ATOM_TYPES), Molecule.N_ATOMS_MAX_PER_TYPE, 1)
-
-        for t, atom_data in self.atoms.items():
-            t_id = Molecule.ATOM_TYPES[t]
-            for g_id, d in enumerate(atom_data):
-                weights[0, t_id, g_id, 0] = 0.1 # math.sqrt(data_constants.atomic_weight(t))
-                positions[0, t_id, g_id, 0] = d.x
-                positions[0, t_id, g_id, 1] = d.y
-                positions[0, t_id, g_id, 2] = d.z
-                radii[0, t_id, g_id, 0] = data_constants.atomic_radius_empirical(t)
-
-        covariance = torch.diag(torch.ones(3)).view(1, 1, 1, 3, 3) * (radii.unsqueeze(-1) * 2) ** 2
-        return gm.pack_mixture(weights, positions, covariance)
 
 
 # the qm9 dataset doesn't have actual xyz files. there is a fourth atom column, which is also read here.
@@ -152,24 +120,25 @@ def render_dataset(molecules: typing.List[Molecule], tensor_board: torch.utils.t
 
 
 class DataSet(torch.utils.data.Dataset):
-    def __init__(self, config: Config, start_index: int, end_index: int):
+    def __init__(self, config: Config, start_index: int, end_index: int, learnable_atom_weights: torch.Tensor, learnable_atom_radii: torch.Tensor):
         data = read_dataset(config)
         random.Random(0).shuffle(data)
-        data = data[start_index:end_index]
-        gm_data = list()
+        self.data = data[start_index:end_index]
         self.targets = list()
-        for d in data:
-            gm_data.append(d.as_gaussian_mixture())
-            self.targets.append(torch.tensor(d.properties[config.inference_on], dtype=torch.float))
+        self.learnable_atom_weights = learnable_atom_weights
+        self.learnable_atom_radii = learnable_atom_radii
 
-        gm_data = torch.cat(gm_data, 0)
+        for d in data:
+            self.targets.append(d.properties[config.inference_on])
+
+        # gm_data = torch.cat(gm_data, 0)
         # # needs an edit to include only molecules that have an atom for a given molecule (something like torch.sum() / torch.sum(weight > 0) )
         # x_abs_integral = gm.integrate(gm_data).abs()
         # x_abs_integral = torch.mean(x_abs_integral, dim=0, keepdim=True)
         # x_abs_integral = torch.max(x_abs_integral, torch.tensor(0.01))
         # new_weights = gm.weights(gm_data) / torch.unsqueeze(x_abs_integral, dim=-1)
         # gm_data = gm.pack_mixture(new_weights, gm.positions(gm_data), gm.covariances(gm_data))
-        self.data = gm_data
+        # self.data = gm_data
 
         # // test reading again. how much memory is taken? can we convert directly to torch.tensor (on cpu)?
         # // implement storage, __len__ ,and get_item
@@ -178,7 +147,8 @@ class DataSet(torch.utils.data.Dataset):
         return len(self.data)
 
     def __getitem__(self, index):
-        mixture = self.data[index:index+1, :, :, :]
+        molecule = self.data[index]
+        mixture = molecule.as_gaussian_mixture(self.learnable_atom_weights, self.learnable_atom_radii)
 
         assert len(mixture.shape) == 4
 
@@ -187,4 +157,4 @@ class DataSet(torch.utils.data.Dataset):
         assert gm.n_components(mixture) > 0
         assert gm.n_dimensions(mixture) == 3
 
-        return mixture[0], self.targets[index]
+        return mixture[0], torch.tensor(self.targets[index], dtype=torch.float, device=mixture.device)

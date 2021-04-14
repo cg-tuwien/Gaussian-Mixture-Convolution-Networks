@@ -51,7 +51,6 @@ def train(model: qm9.model.Net, device: str, train_loader: torch.utils.data.Data
           kernel_optimiser: Optimizer, weight_decay_optimiser: Optimizer, epoch: int, tensor_board_writer: torch.utils.tensorboard.SummaryWriter, config: Config):
     model.train()
     for batch_idx, (data, target) in enumerate(train_loader):
-        data, target = data.to(device), target.to(device)
         step = epoch * (len(train_loader.dataset) - len(train_loader.dataset) % len(data)) + batch_idx * len(data)  # modulo, because we are dropping non-full batches
 
         batch_start_time = time.perf_counter()
@@ -144,7 +143,6 @@ def test(model: qm9.model.Net, device: str, test_loader: torch.utils.data.DataLo
     test_mae = 0
     with torch.no_grad():
         for data, target in test_loader:
-            data, target = data.to(device), target.to(device)
             output = model(data)
             test_loss += F.mse_loss(output, -target/100, reduction='sum').item()  # sum up batch loss
             test_mae += ((output * -100) - target).abs().sum().item()
@@ -161,17 +159,17 @@ def experiment(device: str = 'cuda', desc_string: str = "", config: Config = Non
     # Training settings
     torch.manual_seed(0)
 
-    train_loader = torch.utils.data.DataLoader(DataSet(config, start_index=config.training_start_index, end_index=config.training_end_index),
-                                               batch_size=config.batch_size, num_workers=config.num_dataloader_workers, shuffle=True, drop_last=True)
-    test_loader = torch.utils.data.DataLoader(DataSet(config, start_index=config.validation_start_index, end_index=config.validation_end_index),
-                                              batch_size=config.batch_size, num_workers=config.num_dataloader_workers)
-
     model = qm9.model.Net(name=desc_string,
                           learn_positions=config.learn_positions_after == 0,
                           learn_covariances=config.learn_covariances_after == 0,
                           config=config)
     model.load()
     model = model.to(device)
+
+    train_loader = torch.utils.data.DataLoader(DataSet(config, config.training_start_index, config.training_end_index, model.learnable_atom_weights, model.learnable_atom_radii),
+                                               batch_size=config.batch_size, num_workers=config.num_dataloader_workers, shuffle=True, drop_last=True)
+    test_loader = torch.utils.data.DataLoader(DataSet(config, config.validation_start_index, config.validation_end_index, model.learnable_atom_weights, model.learnable_atom_radii),
+                                              batch_size=config.batch_size, num_workers=config.num_dataloader_workers)
 
     kernel_optimiser = optim.Adam(model.parameters(), lr=config.kernel_learning_rate)
     # kernel_optimiser = optim.SGD(model.parameters(), lr=config.kernel_learning_rate)

@@ -53,11 +53,7 @@ class Config:
         self.test_end_index = 130831
 
         # run settings
-        self.num_dataloader_workers = 24   # 0 -> main thread, otherwise number of threads. no auto available.
-        # https://stackoverflow.com/questions/38634988/check-if-program-runs-in-debug-mode
-        if getattr(sys, 'gettrace', None) is not None and getattr(sys, 'gettrace')():
-            # running in debugger
-            self.num_dataloader_workers = 0
+        self.num_dataloader_workers = 0   # 0 -> main thread, can't multithread due to cuda and trainable radii
 
         self.batch_size = 21
         self.n_epochs = 80

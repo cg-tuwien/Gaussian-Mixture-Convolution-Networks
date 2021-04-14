@@ -16,6 +16,7 @@ import gmc.mixture as gm
 import gmc.modules as gmc_modules
 import gmc.mat_tools as mat_tools
 import qm9.prototype_modules as prototype_modules
+from qm9.molecule import Molecule
 
 
 class BatchNormStack:
@@ -43,6 +44,9 @@ class Net(nn.Module):
 
         self.config = config
 
+        self.learnable_atom_weights = torch.nn.Parameter(torch.abs(torch.randn(2, len(Molecule.ATOM_TYPES)) * 0.01 + 0.1))  # first dim: group of input layers, second dim: atoms
+        self.learnable_atom_radii = torch.nn.Parameter(Molecule.atomic_radii_as_tensor())
+
         bias_0 = 0.0
         if self.config.bias_type == Config.BIAS_TYPE_NEGATIVE_SOFTPLUS:
             bias_0 = -0.1
@@ -56,8 +60,8 @@ class Net(nn.Module):
         self.relus = torch.nn.modules.ModuleList()
 
         if config.layers[-1].n_feature_layers == -1:
-            config.layers[-1].n_feature_layers = config.n_classes
-        n_feature_layers_in = 5
+            config.layers[-1].n_feature_layers = 1
+        n_feature_layers_in = 10
         last_n_fitting_components = -1
         for i, l in enumerate(config.layers):
             self.gmcs.append(gmc_modules.Convolution(config.convolution_config, n_layers_in=n_feature_layers_in, n_layers_out=l.n_feature_layers, n_kernel_components=config.n_kernel_components,
