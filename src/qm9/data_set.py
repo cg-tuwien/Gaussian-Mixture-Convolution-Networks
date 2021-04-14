@@ -109,6 +109,17 @@ def read_dataset(config: Config) -> typing.List[Molecule]:
                 atom_types_of_this[atom_type] = atom_types_of_this[atom_type] + 1
                 atoms[atom_type].add(AtomData(atom_x, atom_y, atom_z, atom_mulliken_charge))
 
+            # subtract reference energies, same as
+            for prop in ("zpve", "U0", "U", "H", "G", "Cv"):
+                ref_energy = 0
+                for t, c in atom_types_of_this.items():
+                    ref_energy += data_constants.REFERENCE_THERMOCHEMICAL_ENERGIES[t][prop] * data_constants.HARTREE * c
+                properties[prop] -= ref_energy
+
+            # convert to eV
+            for prop in ("e_homo", "e_lumo", "e_gap", "zpve", "U0", "U", "H", "G"):
+                properties[prop] = properties[prop] * data_constants.HARTREE
+
             for c in atom_types_of_this.values():
                 n_atoms_max_per_type = max(n_atoms_max_per_type, c)
 

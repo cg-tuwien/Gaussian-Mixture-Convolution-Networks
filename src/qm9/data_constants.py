@@ -1,3 +1,4 @@
+HARTREE = 27.211386024367243
 
 # https://figshare.com/articles/dataset/Atomref_Reference_thermochemical_energies_of_H_C_N_O_F_atoms/1057643?backTo=/collections/Quantum_chemistry_structures_and_properties_of_134_kilo_molecules/978904?backTo=/collections/Quantum_chemistry_structures_and_properties_of_134_kilo_molecules/978904
 # first index atom type (string), second index prediction property (string)
