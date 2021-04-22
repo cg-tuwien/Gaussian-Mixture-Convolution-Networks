@@ -312,9 +312,13 @@ class CovScaleNorm(torch.nn.modules.Module):
     this norm scales the covariances and positions so that the average covariance trace is n_dimensions.
     scaling is uniform in all spatial directions (x, y, and z)
     """
-    def __init__(self, norm_over_batch: bool = True):
+    def __init__(self, batch_norm: bool = True):
+        """
+        Parameters:
+            batch_norm (bool): True if this is a normal batch norm, False if normalisation should be performed per training sample (e.g., for the input).
+        """
         super(CovScaleNorm, self).__init__()
-        self.norm_over_batch = norm_over_batch
+        self.norm_over_batch = batch_norm
 
     def forward(self, x: Tensor, x_constant: Tensor = None) -> typing.Tuple[Tensor, Tensor]:
         # according to the following link the scaling and mean computations do not detach the gradient.
@@ -337,3 +341,54 @@ class CovScaleNorm(torch.nn.modules.Module):
             y_constant = x_constant
 
         return y, y_constant
+
+
+class BatchNorm(torch.nn.modules.Module):
+    """
+    this norm scales the weights so that that variance of the gm is 1 within pos_min and pos_max.
+    """
+    def __init__(self, batch_norm: bool = True, n_layers: typing.Optional[int] = None):
+        """
+        Parameters:
+        batch_norm (bool): True if this is a normal batch norm, False if normalisation should be performed per training sample (e.g., for the input).
+        n_layers (optional int): Number of layers if a learnable scaling parameter should be used, None otherwise.
+        """
+        super(BatchNorm, self).__init__()
+        self.batch_norm = batch_norm
+        if n_layers is not None:
+            self.learnable_scaling = torch.nn.Parameter(torch.ones(n_layers))
+        else:
+            self.learnable_scaling = None
+
+    def forward(self, x: Tensor, x_constant: Tensor = None) -> typing.Tuple[Tensor, Tensor]:
+        # according to the following link the scaling and mean computations do not detach the gradient.
+        # https://kratzert.github.io/2016/02/12/understanding-the-gradient-flow-through-the-batch-normalization-layer.html
+
+        if x_constant is None:
+            x_constant = torch.zeros(1, 1, device=x.device)
+
+        assert gm.is_valid_mixture_and_constant(x, x_constant)
+
+        n_batch = gm.n_batch(x)
+        n_channels = gm.n_layers(x)
+        n_dim = gm.n_dimensions(x)
+        n_sampling_positions = 1000 // n_batch
+
+        # sampling position per training sample
+        pos_min = torch.min(gm.positions(x).view(n_batch, -1, n_dim), dim=1)[0].view(n_batch, 1, 1, n_dim)
+        pos_max = torch.max(gm.positions(x).view(n_batch, -1, n_dim), dim=1)[0].view(n_batch, 1, 1, n_dim)
+
+        sampling_positions = torch.rand(n_batch, n_channels, n_sampling_positions, n_dim) * (pos_max - pos_min) + pos_min
+        sample_values = gm.evaluate(x, sampling_positions) + x_constant
+        # channel_sd, channel_mean = torch.std_mean(sample_values.transpose(0, 1).reshape(n_channels, n_batch * n_sampling_positions), dim=1)
+        channel_sd, channel_mean = torch.std_mean(sample_values, dim=(0, 2))
+
+        scaling_factor = 1 / channel_sd
+        if self.learnable_scaling is not None:
+            scaling_factor = scaling_factor * self.learnable_scaling
+
+        scaling_factor = scaling_factor.view(1, n_channels, 1)
+
+        new_weights = gm.weights(x) * scaling_factor
+
+        return gm.pack_mixture(new_weights, gm.positions(x), gm.covariances(x)), x_constant - channel_mean
