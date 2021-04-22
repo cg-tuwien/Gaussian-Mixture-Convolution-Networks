@@ -123,6 +123,7 @@ class DataSet(torch.utils.data.Dataset):
     def __init__(self, config: Config, start_index: int, end_index: int, learnable_atom_weights: torch.Tensor, learnable_atom_radii: torch.Tensor):
         data = read_dataset(config)
         random.Random(0).shuffle(data)
+        self.config = config
         self.data = data[start_index:end_index]
         self.targets = list()
         self.learnable_atom_weights = learnable_atom_weights
@@ -148,7 +149,7 @@ class DataSet(torch.utils.data.Dataset):
 
     def __getitem__(self, index):
         molecule = self.data[index]
-        mixture = molecule.as_gaussian_mixture(self.learnable_atom_weights, self.learnable_atom_radii)
+        mixture = molecule.as_gaussian_mixture(self.config, self.learnable_atom_weights, self.learnable_atom_radii)
 
         assert len(mixture.shape) == 4
 

@@ -60,6 +60,8 @@ class Config:
         self.kernel_learning_rate = 0.001
         self.learn_covariances_after = 0
         self.learn_positions_after = 0
+        self.heavy = False
+        self.learnable_atoms = False
 
         # complexity / power / number of parameters
         self.n_kernel_components = 5
@@ -89,11 +91,15 @@ class Config:
         self.fitting_test_data_store_n_batches = 10
         self.fitting_test_data_store_path = f"{self.data_base_path}/qm9/fitting_input"
 
+    def n_atom_properties(self):
+        return 2 if self.heavy else 1
+
     def produce_description(self):
         mlp_string = ""
         if self.mlp is not None:
             mlp_string = f"_MLP_do{int(self.mlp_dropout * 100)}"
             for l in self.mlp:
                 mlp_string = f"{mlp_string}_{l}"
-        return f"BN{self.bn_place}{self.bn_type}_cnDrp{int(self.convolution_config.dropout * 100)}_dtaDrp{int(self.dataDropout * 100)}_wDec{int(self.weight_decay_rate * 100)}_b{self.batch_size}_nK{self.n_kernel_components}_{produce_name(self.layers)}{mlp_string}_"
+        return f"{self.inference_on}{'_hvy' if self.heavy else ''}{'_lrnAtms' if self.learnable_atoms else ''}_BN{self.bn_place}{self.bn_type}_cnDrp{int(self.convolution_config.dropout * 100)}" \
+               f"_dtaDrp{int(self.dataDropout * 100)}_wDec{int(self.weight_decay_rate * 100)}_b{self.batch_size}_nK{self.n_kernel_components}_{produce_name(self.layers)}{mlp_string}_"
 

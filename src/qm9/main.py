@@ -60,7 +60,8 @@ def train(model: qm9.model.Net, device: str, train_loader: torch.utils.data.Data
         # if step % args.log_interval == 0:
         #     temp_tb = tensor_board_writer
         output = model(data, temp_tb)
-        loss = F.mse_loss(output, -target/100)
+        loss = F.mse_loss(config.target_range * output, target)
+
         ty = time.perf_counter()
         # regularisation_loss = model.regularisation_loss() * len(data)
         training_loss = loss  # (loss + regularisation_loss)
@@ -79,7 +80,9 @@ def train(model: qm9.model.Net, device: str, train_loader: torch.utils.data.Data
         batch_end_time = time.perf_counter()
 
         if step % config.log_interval == 0:
+            mae = F.l1_loss(config.target_range * output, target)
             tensor_board_writer.add_scalar("00. RMSE training loss", training_loss.sqrt().item(), step)
+            tensor_board_writer.add_scalar("00.2 training MAE", mae.item(), step)
             tensor_board_writer.add_scalar("01.1 Mean Output", output.mean().item(), step)
             tensor_board_writer.add_scalar("01.2 Mean Abs Output", output.abs().mean().item(), step)
             tensor_board_writer.add_scalar("02. kernel loss", loss.item(), step)
@@ -107,7 +110,7 @@ def train(model: qm9.model.Net, device: str, train_loader: torch.utils.data.Data
                 render_debug_images_to_tensorboard(model, step, tensor_board_writer, config)
 
             print(f'Training kernels: {epoch}/{step} [{batch_idx}/{len(train_loader)} '
-                  f'({100. * batch_idx / len(train_loader):.0f}%)]\tRMSE loss: {training_loss.sqrt().item():.6f}, '
+                  f'({100. * batch_idx / len(train_loader):.0f}%)]\tRMSE: {training_loss.sqrt().item():.6f}, MAE: {mae.item():.6f}, '
                   f'Cuda max memory allocated: {torch.cuda.max_memory_allocated() / 1024 / 1024 / 1024}G, '
                   f'batch time: {batch_end_time - batch_start_time}')
             tensor_board_writer.add_scalar("11. CUDA max memory allocated [GiB]", torch.cuda.max_memory_allocated() / 1024 / 1024 / 1024, step)
@@ -137,15 +140,15 @@ def train(model: qm9.model.Net, device: str, train_loader: torch.utils.data.Data
             c.save(f"{config.fitting_test_data_store_path}/after_fixed_point_batch{batch_idx}.pt")
 
 
-def test(model: qm9.model.Net, device: str, test_loader: torch.utils.data.DataLoader, epoch: int, tensor_board_writer: torch.utils.tensorboard.SummaryWriter):
+def test(model: qm9.model.Net, device: str, test_loader: torch.utils.data.DataLoader, epoch: int, tensor_board_writer: torch.utils.tensorboard.SummaryWriter, config: Config):
     model.eval()
     test_loss = 0
     test_mae = 0
     with torch.no_grad():
         for data, target in test_loader:
             output = model(data)
-            test_loss += F.mse_loss(output, -target/100, reduction='sum').item()  # sum up batch loss
-            test_mae += ((output * -100) - target).abs().sum().item()
+            test_loss += F.mse_loss(config.target_range * output, target, reduction='sum').item()  # sum up batch loss
+            test_mae += F.l1_loss(config.target_range * output, target, reduction='sum').item()  # sum up batch loss
 
     test_loss /= len(test_loader.dataset)
     test_loss = math.sqrt(test_loss)
@@ -183,7 +186,7 @@ def experiment(device: str = 'cuda', desc_string: str = "", config: Config = Non
         model.set_position_learning(epoch >= config.learn_positions_after)
         model.set_covariance_learning(epoch >= config.learn_covariances_after)
         train(model, device, train_loader, kernel_optimiser=kernel_optimiser, weight_decay_optimiser=weight_decay_optimiser, epoch=epoch, tensor_board_writer=tensor_board_writer, config=config)
-        test(model, device, test_loader, epoch, tensor_board_writer=tensor_board_writer)
+        test(model, device, test_loader, epoch, tensor_board_writer=tensor_board_writer, config=config)
         # scheduler.step()
 
         if config.save_model:

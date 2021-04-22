@@ -45,9 +45,9 @@ class CentroidWeightNorm(torch.nn.modules.Module):
 
 
 # class IntegralNorm(torch.nn.modules.Module):
-#     def __init__(self, config: Config, norm_over_batch: bool = True):
+#     def __init__(self, config: Config, batch_norm: bool = True):
 #         super(IntegralNorm, self).__init__()
-#         self.norm_over_batch = norm_over_batch
+#         self.batch_norm = batch_norm
 #         self.config = config
 # 
 #     def forward(self, x: Tensor, x_constant: Tensor = None) -> typing.Tuple[Tensor, Tensor]:
@@ -67,7 +67,7 @@ class CentroidWeightNorm(torch.nn.modules.Module):
 # 
 #         abs_x = gm.pack_mixture(torch.max(gm.weights(x), torch.zeros(1, 1, 1, device=x.device)), gm.positions(x), gm.covariances(x))
 #         integral_abs = gm.integrate(abs_x)
-#         if self.norm_over_batch:
+#         if self.batch_norm:
 #             integral_abs = torch.mean(integral_abs, dim=0, keepdim=True)
 #             if self.config.bn_mean_over_layers:
 #                 integral_abs = torch.mean(integral_abs, dim=1, keepdim=True)

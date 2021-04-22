@@ -44,8 +44,13 @@ class Net(nn.Module):
 
         self.config = config
 
-        self.learnable_atom_weights = torch.nn.Parameter(torch.abs(torch.randn(2, len(Molecule.ATOM_TYPES)) * 0.01 + 0.1))  # first dim: group of input layers, second dim: atoms
-        self.learnable_atom_radii = torch.nn.Parameter(Molecule.atomic_radii_as_tensor())
+        nap = config.n_atom_properties()
+        if config.learnable_atoms:
+            self.learnable_atom_weights = torch.nn.Parameter(torch.abs(torch.randn(nap, len(Molecule.ATOM_TYPES)) * (0.01 / nap) + 0.1 / nap))  # first dim: group of input layers, second dim: atoms
+            self.learnable_atom_radii = torch.nn.Parameter(Molecule.atomic_radii_as_tensor())
+        else:
+            self.learnable_atom_weights = torch.abs(torch.randn(nap, len(Molecule.ATOM_TYPES)) * (0.01 / nap) + 0.1 / nap).cuda()  # first dim: group of input layers, second dim: atoms
+            self.learnable_atom_radii = Molecule.atomic_radii_as_tensor().cuda()
 
         bias_0 = 0.0
         if self.config.bias_type == Config.BIAS_TYPE_NEGATIVE_SOFTPLUS:
@@ -61,7 +66,7 @@ class Net(nn.Module):
 
         if config.layers[-1].n_feature_layers == -1:
             config.layers[-1].n_feature_layers = 1
-        n_feature_layers_in = 10
+        n_feature_layers_in = 10 if config.heavy else 5
         last_n_fitting_components = -1
         for i, l in enumerate(config.layers):
             self.gmcs.append(gmc_modules.Convolution(config.convolution_config, n_layers_in=n_feature_layers_in, n_layers_out=l.n_feature_layers, n_kernel_components=config.n_kernel_components,
@@ -73,7 +78,7 @@ class Net(nn.Module):
             last_n_fitting_components = l.n_fitting_components
             n_feature_layers_in = l.n_feature_layers
 
-        # self.norm0 = BatchNormStack((  # gmc_modules.CovScaleNorm(norm_over_batch=False),
+        # self.norm0 = BatchNormStack((  # gmc_modules.CovScaleNorm(batch_norm=False),
         #                              prototype_modules.IntegralNorm(config, True),))
 
         if config.bn_type == Config.BN_TYPE_COVARIANCE_INTEGRAL:
@@ -86,8 +91,8 @@ class Net(nn.Module):
         elif config.bn_type == Config.BN_TYPE_INTEGRAL_COVARIANCE:
             self.norm = BatchNormStack((prototype_modules.IntegralNorm(config),
                                         gmc_modules.CovScaleNorm(),))
-        # self.weight_norm0 = prototype_modules.CentroidWeightNorm(norm_over_batch=False)
-        # self.weight_norm = prototype_modules.CentroidWeightNorm(norm_over_batch=True)
+        # self.weight_norm0 = prototype_modules.CentroidWeightNorm(batch_norm=False)
+        # self.weight_norm = prototype_modules.CentroidWeightNorm(batch_norm=True)
 
         if config.mlp is not None:
             if config.mlp[-1] == -1:
@@ -102,9 +107,9 @@ class Net(nn.Module):
                     mlp.append(nn.Dropout(p=config.mlp_dropout))
                 else:
                     mlp.append(nn.BatchNorm1d(n_feature_layers_in))
+                    # mlp.append(nn.ReLU())
                     mlp.append(nn.Linear(n_feature_layers_in, l))
                     n_feature_layers_in = l
-                    mlp.append(nn.ReLU())
             self.mlp = nn.Sequential(*mlp)
         else:
             self.mlp = None
