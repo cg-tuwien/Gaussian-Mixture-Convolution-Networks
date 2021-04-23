@@ -6,7 +6,7 @@ from mnist_classification.config import Config, Layer
 device = "cuda"
 
 c: Config = Config()
-c.bn_type = Config.BN_TYPE_COVARIANCE
+c.bn_type = Config.BN_TYPE_ONLY_COVARIANCE
 c.bn_place = Config.BN_PLACE_AFTER_RELU
 c.convolution_config.dropout = 0.0
 c.dataDropout = 0.0
