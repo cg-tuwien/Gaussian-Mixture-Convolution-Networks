@@ -320,27 +320,31 @@ class CovScaleNorm(torch.nn.modules.Module):
         super(CovScaleNorm, self).__init__()
         self.norm_over_batch = batch_norm
 
-    def forward(self, x: Tensor, x_constant: Tensor = None) -> typing.Tuple[Tensor, Tensor]:
+    def forward(self, x: typing.Tuple[Tensor, typing.Optional[Tensor]]) -> typing.Tuple[Tensor, Tensor]:
         # according to the following link the scaling and mean computations do not detach the gradient.
         # https://kratzert.github.io/2016/02/12/understanding-the-gradient-flow-through-the-batch-normalization-layer.html
-        assert gm.is_valid_mixture(x)
 
-        scaling_factor = mat_tools.trace(gm.covariances(x)).mean(-1) / gm.n_dimensions(x)  # mean over components and trace elements
-        n_batch = gm.n_batch(x)
+        x_constant = x[1]
+        x_gm = x[0]
+
+        assert gm.is_valid_mixture(x_gm)
+
+        scaling_factor = mat_tools.trace(gm.covariances(x_gm)).mean(-1) / gm.n_dimensions(x_gm)  # mean over components and trace elements
+        n_batch = gm.n_batch(x_gm)
         if self.norm_over_batch:
             scaling_factor = scaling_factor.mean(0)
             n_batch = 1
 
-        scaling_factor = (1 / scaling_factor).view(n_batch, gm.n_layers(x), 1)
+        scaling_factor = (1 / scaling_factor).view(n_batch, gm.n_layers(x_gm), 1)
         scaling_factor = torch.sqrt(scaling_factor)
-        y = gm.spatial_scale(x, scaling_factor)
+        y_gm = gm.spatial_scale(x_gm, scaling_factor)
 
         if x_constant is None:
-            y_constant = torch.zeros(1, 1, device=x.device)
+            y_constant = torch.zeros(1, 1, device=x_gm.device)
         else:
             y_constant = x_constant
 
-        return y, y_constant
+        return y_gm, y_constant
 
 
 class BatchNorm(torch.nn.modules.Module):
@@ -360,35 +364,45 @@ class BatchNorm(torch.nn.modules.Module):
         else:
             self.learnable_scaling = None
 
-    def forward(self, x: Tensor, x_constant: Tensor = None) -> typing.Tuple[Tensor, Tensor]:
+    def forward(self, x: typing.Tuple[Tensor, typing.Optional[Tensor]]) -> typing.Tuple[Tensor, Tensor]:
         # according to the following link the scaling and mean computations do not detach the gradient.
         # https://kratzert.github.io/2016/02/12/understanding-the-gradient-flow-through-the-batch-normalization-layer.html
 
+        x_gm = x[0]
+        x_constant = x[1]
+
         if x_constant is None:
-            x_constant = torch.zeros(1, 1, device=x.device)
+            x_constant = torch.zeros(1, 1, device=x_gm.device)
 
-        assert gm.is_valid_mixture_and_constant(x, x_constant)
+        assert gm.is_valid_mixture_and_constant(x_gm, x_constant)
 
-        n_batch = gm.n_batch(x)
-        n_channels = gm.n_layers(x)
-        n_dim = gm.n_dimensions(x)
-        n_sampling_positions = 1000 // n_batch
+        n_batch = gm.n_batch(x_gm)
+        n_channels = gm.n_layers(x_gm)
+        n_dim = gm.n_dimensions(x_gm)
+        n_sampling_positions = 10000 // n_batch
 
         # sampling position per training sample
-        pos_min = torch.min(gm.positions(x).view(n_batch, -1, n_dim), dim=1)[0].view(n_batch, 1, 1, n_dim)
-        pos_max = torch.max(gm.positions(x).view(n_batch, -1, n_dim), dim=1)[0].view(n_batch, 1, 1, n_dim)
+        pos_min = torch.min(gm.positions(x_gm).view(n_batch, -1, n_dim), dim=1)[0].view(n_batch, 1, 1, n_dim).detach()
+        pos_max = torch.max(gm.positions(x_gm).view(n_batch, -1, n_dim), dim=1)[0].view(n_batch, 1, 1, n_dim).detach()
 
-        sampling_positions = torch.rand(n_batch, n_channels, n_sampling_positions, n_dim) * (pos_max - pos_min) + pos_min
-        sample_values = gm.evaluate(x, sampling_positions) + x_constant
+        sampling_positions = torch.rand(n_batch, n_channels, n_sampling_positions, n_dim, device=x_gm.device) * (pos_max - pos_min) + pos_min
+        sample_values = gm.evaluate(x_gm, sampling_positions) + x_constant
         # channel_sd, channel_mean = torch.std_mean(sample_values.transpose(0, 1).reshape(n_channels, n_batch * n_sampling_positions), dim=1)
-        channel_sd, channel_mean = torch.std_mean(sample_values, dim=(0, 2))
+        if self.batch_norm:
+            channel_sd, channel_mean = torch.std_mean(sample_values, dim=(0, 2))
+        else:
+            channel_sd, channel_mean = torch.std_mean(sample_values, dim=2)
+        channel_sd = torch.max(channel_sd, torch.tensor([0.001], dtype=torch.float, device=x_gm.device))
 
         scaling_factor = 1 / channel_sd
         if self.learnable_scaling is not None:
             scaling_factor = scaling_factor * self.learnable_scaling
 
-        scaling_factor = scaling_factor.view(1, n_channels, 1)
+        scaling_factor = scaling_factor.view(-1, n_channels, 1)
+        assert not torch.any(torch.isnan(scaling_factor))
+        assert not torch.any(torch.isinf(scaling_factor))
 
-        new_weights = gm.weights(x) * scaling_factor
+        new_weights = gm.weights(x_gm) * scaling_factor
 
-        return gm.pack_mixture(new_weights, gm.positions(x), gm.covariances(x)), x_constant - channel_mean
+        return gm.pack_mixture(new_weights, gm.positions(x_gm), gm.covariances(x_gm)), x_constant - channel_mean
+

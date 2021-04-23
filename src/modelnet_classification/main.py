@@ -185,8 +185,8 @@ def test(model: modelnet_classification.model.Net, device: str, test_loader: tor
             correct += pred.eq(target.view_as(pred)).sum().item()
 
     test_loss /= len(test_loader.dataset)
-    tensor_board_writer.add_scalar("99. mnist test loss", test_loss, epoch)
-    tensor_board_writer.add_scalar("98. mnist test accuracy", 100. * correct / len(test_loader.dataset), epoch)
+    tensor_board_writer.add_scalar("99. modelnet test loss", test_loss, epoch)
+    tensor_board_writer.add_scalar("98. modelnet test accuracy", 100. * correct / len(test_loader.dataset), epoch)
     print(f'\nTest set: Average loss: {test_loss:.4f}, Accuracy: {correct}/{len(test_loader.dataset)} ({100. * correct / len(test_loader.dataset):.0f}%)\n')
 
 
@@ -208,7 +208,6 @@ def experiment(device: str = 'cuda', desc_string: str = "", config: Config = Non
 
     kernel_optimiser = optim.Adam(model.parameters(), lr=config.kernel_learning_rate)
     weight_decay_optimiser = optim.SGD(model.parameters(), lr=(config.weight_decay_rate * config.kernel_learning_rate))
-    #todo: load optimiser state
     tensor_board_writer = torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard' / f'{desc_string}_{datetime.datetime.now().strftime("%m%d_%H%M")}')
 
     # scheduler = StepLR(kernel_optimiser, step_size=1, gamma=args.gamma)
