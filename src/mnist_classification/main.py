@@ -47,16 +47,10 @@ class GmMnistDataSet(torch.utils.data.Dataset):
 
 
 def render_debug_images_to_tensorboard(model, epoch, tensor_board_writer):
-    tensor_board_writer.add_image("mnist conv 1", model.gmcs[0].debug_render(clamp=[-0.80, 0.80]), epoch, dataformats='HWC')
-    tensor_board_writer.add_image("mnist conv 2", model.gmcs[1].debug_render(clamp=[-0.32, 0.32]), epoch, dataformats='HWC')
-    tensor_board_writer.add_image("mnist conv 3", model.gmcs[2].debug_render(clamp=[-0.20, 0.20]), epoch, dataformats='HWC')
-
-    # tensor_board_writer.add_image("mnist relu 1", model.relus[0].debug_render(position_range=[-14, -14, 42, 42], clamp=[-4 / (28 ** 2), 16.0 / (28 ** 2)]), epoch, dataformats='HWC')
-    # tensor_board_writer.add_image("mnist relu 2", model.relus[1].debug_render(position_range=[-14, -14, 42, 42], clamp=[-20 / (28 ** 2), 80.0 / (28 ** 2)]), epoch, dataformats='HWC')
-    # tensor_board_writer.add_image("mnist relu 3", model.relus[2].debug_render(position_range=[-14, -14, 42, 42], clamp=[-6 / (28 ** 2), 24.0 / (28 ** 2)]), epoch, dataformats='HWC')
-    tensor_board_writer.add_image("mnist relu 1", model.relus[0].debug_render(), epoch, dataformats='HWC')
-    tensor_board_writer.add_image("mnist relu 2", model.relus[1].debug_render(), epoch, dataformats='HWC')
-    tensor_board_writer.add_image("mnist relu 3", model.relus[2].debug_render(), epoch, dataformats='HWC')
+    for i, gmc in enumerate(model.gmcs):
+        tensor_board_writer.add_image(f"mnist conv {i}", gmc.debug_render(clamp=[-2.2, 2.2]), epoch, dataformats='HWC')
+    for i, relu in enumerate(model.relus):
+        tensor_board_writer.add_image(f"mnist relu {i}", relu.debug_render(), epoch, dataformats='HWC')
 
 
 def train(model: mnist_classification.model.Net, device: torch.device, train_loader: torch.utils.data.DataLoader,

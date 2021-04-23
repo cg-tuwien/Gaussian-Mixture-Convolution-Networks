@@ -176,10 +176,11 @@ class Convolution(torch.nn.modules.Module):
             position_range = self.position_range * 2
 
         images = list()
-        for i in range(self.n_layers_out):
+        for i in range(min(self.n_layers_out, 5)):
             kernel = self.kernel(i)
             assert kernel.shape[0] == 1
-            kernel_rendering = gmc.render.render(kernel, torch.zeros(1, 1, device=kernel.device),
+            l = min(gm.n_layers(kernel), 5)
+            kernel_rendering = gmc.render.render(kernel, torch.zeros(1, 1, device=kernel.device), layers=(0, l),
                                          x_low=-position_range*1.25, x_high=position_range*1.25, y_low=-position_range*1.25, y_high=position_range*1.25, width=image_size, height=image_size)
             images.append(kernel_rendering)
         images = torch.cat(images, dim=1)
@@ -272,13 +273,13 @@ class ReLUFitting(torch.nn.modules.Module):
             abs_diff = max_weight - min_weight
             clamp = (min_weight - abs_diff * 2, min_weight + abs_diff * 2)
 
-        last_in = gmc.render.render(self.last_in[0], self.last_in[1], batches=(0, 1), layers=(0, None),
+        last_in = gmc.render.render(self.last_in[0], self.last_in[1], batches=(0, 1), layers=(0, 5),
                                     x_low=position_range[0], y_low=position_range[1], x_high=position_range[2], y_high=position_range[3],
                                     width=image_size, height=image_size)
-        target = gmc.render.render_with_relu(self.last_in[0], self.last_in[1], batches=(0, 1), layers=(0, None),
+        target = gmc.render.render_with_relu(self.last_in[0], self.last_in[1], batches=(0, 1), layers=(0, 5),
                                              x_low=position_range[0], y_low=position_range[1], x_high=position_range[2], y_high=position_range[3],
                                              width=image_size, height=image_size)
-        prediction = gmc.render.render(self.last_out[0], self.last_out[1], batches=(0, 1), layers=(0, None),
+        prediction = gmc.render.render(self.last_out[0], self.last_out[1], batches=(0, 1), layers=(0, 5),
                                        x_low=position_range[0], y_low=position_range[1], x_high=position_range[2], y_high=position_range[3],
                                        width=image_size, height=image_size)
         images = [last_in, target, prediction]
