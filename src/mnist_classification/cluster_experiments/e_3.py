@@ -23,4 +23,7 @@ for r in (2.0, 2.333, 2.666, 3.0):
                 Layer(10, r, -1)]
     #c.mlp = (-1, 10)
 
-    main.experiment(device=device, desc_string=f"mnist_{c.produce_description()}", config=c)
+    try:
+        main.experiment(device=device, desc_string=f"mnist_{c.produce_description()}", config=c)
+    except:
+        print("Unexpected error:", sys.exc_info()[0])
