@@ -174,16 +174,15 @@ def test(model: mnist_classification.model.Net, device: torch.device, test_loade
     print(f'\nTest set: Average loss: {test_loss:.4f}, Accuracy: {correct}/{len(test_loader.dataset)} ({100. * correct / len(test_loader.dataset):.0f}%)\n')
 
 
-def experiment(device: str = 'cuda', n_epochs: int = 20, kernel_learning_rate: float = 0.001, log_interval: int = 100,
-               learn_positions_after: int = 0, learn_covariances_after: int = 0, desc_string: str = "", config = None):
+def experiment(device: str = 'cuda', desc_string: str = "", config: typing.Optional[Config] = None):
     # Training settings
     torch.manual_seed(0)
 
     train_loader = torch.utils.data.DataLoader(GmMnistDataSet('mnist/train_', begin=0, end=60000), batch_size=config.batch_size, num_workers=config.num_dataloader_workers, shuffle=True)
     test_loader = torch.utils.data.DataLoader(GmMnistDataSet('mnist/test_', begin=0, end=10000), batch_size=config.batch_size, num_workers=config.num_dataloader_workers)
 
-    model = mnist_classification.model.Net(learn_positions=learn_positions_after == 0,
-                                           learn_covariances=learn_covariances_after == 0,
+    model = mnist_classification.model.Net(learn_positions=config.learn_positions_after == 0,
+                                           learn_covariances=config.learn_covariances_after == 0,
                                            config=config)
     model = model.to(device)
 
@@ -193,9 +192,9 @@ def experiment(device: str = 'cuda', n_epochs: int = 20, kernel_learning_rate: f
 
     # scheduler = StepLR(kernel_optimiser, step_size=1, gamma=args.gamma)
 
-    for epoch in range(n_epochs):
-        model.set_position_learning(epoch >= learn_positions_after)
-        model.set_covariance_learning(epoch >= learn_covariances_after)
+    for epoch in range(config.n_epochs):
+        model.set_position_learning(epoch >= config.learn_positions_after)
+        model.set_covariance_learning(epoch >= config.learn_covariances_after)
         train(model, device, train_loader, kernel_optimiser=kernel_optimiser, weight_decay_optimiser=weight_decay_optimiser, epoch=epoch, tensor_board_writer=tensor_board_writer, config=config)
         test(model, device, test_loader, epoch, tensor_board_writer=tensor_board_writer)
         # scheduler.step()
