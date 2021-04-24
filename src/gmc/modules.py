@@ -22,7 +22,7 @@ class Convolution(torch.nn.modules.Module):
     def __init__(self, config: ConvolutionConfig, n_layers_in: int, n_layers_out: int, n_kernel_components: int = 4, n_dims: int = 2,
                  position_range: float = 1, covariance_range: float = 0.25, weight_sd=0.1, weight_mean=0.0,
                  learn_positions: bool = True, learn_covariances: bool = True,
-                 covariance_epsilon: float = 0.0001):
+                 covariance_epsilon: float = 0.05):
         super(Convolution, self).__init__()
         self.config = config
         self.n_layers_in = n_layers_in
