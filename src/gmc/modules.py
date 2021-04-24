@@ -336,8 +336,14 @@ class CovScaleNorm(torch.nn.modules.Module):
             scaling_factor = scaling_factor.mean(0)
             n_batch = 1
 
+        assert (scaling_factor > 0).all().item();
+
         scaling_factor = (1 / scaling_factor).view(n_batch, gm.n_layers(x_gm), 1)
         scaling_factor = torch.sqrt(scaling_factor)
+
+        assert not torch.any(torch.isnan(scaling_factor))
+        assert not torch.any(torch.isinf(scaling_factor))
+
         y_gm = gm.spatial_scale(x_gm, scaling_factor)
 
         if x_constant is None:
