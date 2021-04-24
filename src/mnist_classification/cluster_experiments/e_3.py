@@ -1,4 +1,5 @@
 import sys
+import traceback
 import mnist_classification.main as main
 from mnist_classification.config import Config, Layer
 
@@ -26,4 +27,4 @@ for r in (2.0, 2.333, 2.666, 3.0):
     try:
         main.experiment(device=device, desc_string=f"mnist_{c.produce_description()}", config=c)
     except:
-        print("Unexpected error:", sys.exc_info()[0])
+        traceback.print_exception(*sys.exc_info())
