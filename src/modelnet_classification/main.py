@@ -13,7 +13,7 @@ import torch.utils.tensorboard
 import typing
 
 import gmc.mixture as gm
-import modelnet_classification.model
+import gmc.model
 import gmc.fitting
 import modelnet_classification.config as Config
 
@@ -81,7 +81,7 @@ def render_debug_images_to_tensorboard(model, epoch, tensor_board_writer, config
         relu.debug_save3d(f"{config.data_base_path}/debug_out/activations/relu{i+1}")
 
 
-def train(model: modelnet_classification.model.Net, device: str, train_loader: torch.utils.data.DataLoader,
+def train(model: gmc.model.Net, device: str, train_loader: torch.utils.data.DataLoader,
           kernel_optimiser: Optimizer, weight_decay_optimiser: Optimizer, epoch: int, tensor_board_writer: torch.utils.tensorboard.SummaryWriter, config: Config):
     model.train()
     for batch_idx, (data, target) in enumerate(train_loader):
@@ -172,7 +172,7 @@ def train(model: modelnet_classification.model.Net, device: str, train_loader: t
             c.save(f"{config.fitting_test_data_store_path}/after_fixed_point_batch{batch_idx}.pt")
 
 
-def test(model: modelnet_classification.model.Net, device: str, test_loader: torch.utils.data.DataLoader, epoch: int, tensor_board_writer: torch.utils.tensorboard.SummaryWriter):
+def test(model: gmc.model.Net, device: str, test_loader: torch.utils.data.DataLoader, epoch: int, tensor_board_writer: torch.utils.tensorboard.SummaryWriter):
     model.eval()
     test_loss = 0
     correct = 0
@@ -199,11 +199,9 @@ def experiment(device: str = 'cuda', desc_string: str = "", config: Config = Non
     test_loader  = torch.utils.data.DataLoader(ModelNetDataSet(config.modelnet_data_path, config.modelnet_category_list_file, config.modelnet_test_sample_names_file),
                                                batch_size=config.batch_size, num_workers=config.num_dataloader_workers)
 
-    model = modelnet_classification.model.Net(name=desc_string,
-                                              learn_positions=config.learn_positions_after == 0,
-                                              learn_covariances=config.learn_covariances_after == 0,
-                                              config=config)
-    model.load()
+    model = gmc.model.Net(learn_positions=config.learn_positions_after == 0,
+                          learn_covariances=config.learn_covariances_after == 0,
+                          config=config.model)
     model = model.to(device)
 
     kernel_optimiser = optim.Adam(model.parameters(), lr=config.kernel_learning_rate)
@@ -218,8 +216,3 @@ def experiment(device: str = 'cuda', desc_string: str = "", config: Config = Non
         train(model, device, train_loader, kernel_optimiser=kernel_optimiser, weight_decay_optimiser=weight_decay_optimiser, epoch=epoch, tensor_board_writer=tensor_board_writer, config=config)
         test(model, device, test_loader, epoch, tensor_board_writer=tensor_board_writer)
         # scheduler.step()
-
-        if config.save_model:
-            model.save_model()
-            torch.save(kernel_optimiser.state_dict(), f"{model.storage_path}.optimiser")
-            torch.save(weight_decay_optimiser.state_dict(), f"{model.storage_path}.optimiser")
