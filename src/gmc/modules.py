@@ -358,7 +358,7 @@ class BatchNorm(torch.nn.modules.Module):
     """
     this norm scales the weights so that that variance of the gm is 1 within pos_min and pos_max.
     """
-    def __init__(self, batch_norm: bool = True, n_layers: typing.Optional[int] = None):
+    def __init__(self, n_layers: int, batch_norm: bool = True, learn_scaling: bool = True):
         """
         Parameters:
         batch_norm (bool): True if this is a normal batch norm, False if normalisation should be performed per training sample (e.g., for the input).
@@ -366,10 +366,12 @@ class BatchNorm(torch.nn.modules.Module):
         """
         super(BatchNorm, self).__init__()
         self.batch_norm = batch_norm
-        if n_layers is not None:
+        if learn_scaling:
             self.learnable_scaling = torch.nn.Parameter(torch.ones(n_layers))
         else:
             self.learnable_scaling = None
+
+        self.register_buffer("averaged_channel_sd", torch.ones(n_layers))
 
     def forward(self, x: typing.Tuple[Tensor, typing.Optional[Tensor]]) -> typing.Tuple[Tensor, Tensor]:
         # according to the following link the scaling and mean computations do not detach the gradient.
@@ -397,10 +399,13 @@ class BatchNorm(torch.nn.modules.Module):
         # channel_sd, channel_mean = torch.std_mean(sample_values.transpose(0, 1).reshape(n_channels, n_batch * n_sampling_positions), dim=1)
         if self.batch_norm:
             channel_sd, channel_mean = torch.std_mean(sample_values, dim=(0, 2))
+            if self.training:
+                self.averaged_channel_sd = (0.95 * self.averaged_channel_sd + 0.05 * channel_sd).detach()
+            channel_sd = self.averaged_channel_sd.detach()
         else:
             channel_sd, channel_mean = torch.std_mean(sample_values, dim=2)
-        channel_sd = torch.max(channel_sd, torch.tensor([0.001], dtype=torch.float, device=x_gm.device))
 
+        channel_sd = torch.max(channel_sd, torch.tensor([0.001], dtype=torch.float, device=x_gm.device))
         scaling_factor = 1 / channel_sd
         if self.learnable_scaling is not None:
             scaling_factor = scaling_factor * self.learnable_scaling
