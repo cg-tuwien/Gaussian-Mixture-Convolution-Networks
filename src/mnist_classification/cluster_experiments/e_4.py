@@ -3,8 +3,8 @@ import mnist_classification.main as main
 from mnist_classification.config import Config
 from gmc.model import Layer, Config as ModelConfig
 
-# device = list(sys.argv)[1]
-device = "cuda"
+device = list(sys.argv)[1]
+# device = "cuda"
 
 c: Config = Config()
 c.model.bn_type = ModelConfig.BN_TYPE_COVARIANCE_STD

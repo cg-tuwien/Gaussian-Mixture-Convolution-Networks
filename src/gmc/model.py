@@ -1,5 +1,6 @@
 from __future__ import print_function
 import time
+import typing
 
 import torch
 from torch import Tensor
@@ -8,10 +9,70 @@ import torch.nn.functional as F
 import torch.utils.data
 from torch.utils.tensorboard import SummaryWriter as TensorboardWriter
 
-from mnist_classification.config import Config
 import gmc.mixture as gm
-import gmc.modules as gmc_modules
+import gmc.modules
 import gmc.mat_tools as mat_tools
+
+
+class Layer:
+    def __init__(self, n_feature_maps, kernel_radius, n_fitting_components):
+        self.n_feature_layers = n_feature_maps
+        self.kernel_radius = kernel_radius
+        self.n_fitting_components = n_fitting_components
+
+
+class Config:
+    BN_CONSTANT_COMPUTATION_ZERO = 0
+    BN_CONSTANT_COMPUTATION_MEAN_IN_CONST = 1
+    BN_CONSTANT_COMPUTATION_INTEGRAL = 2
+    BN_CONSTANT_COMPUTATION_WEIGHTED = 3
+
+    BIAS_TYPE_NONE = 0
+    BIAS_TYPE_NORMAL = 1
+    BIAS_TYPE_NEGATIVE_SOFTPLUS = 2
+
+    BN_TYPE_ONLY_STD = "Std"
+    BN_TYPE_ONLY_COVARIANCE = "Cov"
+    BN_TYPE_COVARIANCE_STD = "CovStd"
+
+    BN_PLACE_NOWHERE = "None"
+    BN_PLACE_AFTER_GMC = "aCn"
+    BN_PLACE_AFTER_RELU = "aRl"
+
+    def __init__(self, n_dims):
+        self.n_dims = n_dims
+        self.n_classes = 10
+
+        # complexity / power / number of parameters
+        self.n_kernel_components = 5
+        self.layers: typing.List[Layer] = [Layer(8, 1, 32),
+                                           Layer(16, 1, 16),
+                                           Layer(10, 1, -1)]
+        self.bias_type = Config.BIAS_TYPE_NONE
+        self.mlp: typing.Optional[typing.List[int]] = None
+
+        # auxiliary architectural options
+        self.bn_place = Config.BN_PLACE_AFTER_RELU
+        self.bn_type = Config.BN_TYPE_COVARIANCE_STD
+        self.dataDropout = 0.5
+
+        self.relu_config: gmc.modules.ReLUFittingConfig = gmc.modules.ReLUFittingConfig()
+        self.convolution_config: gmc.modules.ConvolutionConfig = gmc.modules.ConvolutionConfig(dropout=0.1)
+
+    def produce_gmc_layers_description(self) -> str:
+        name = "L"
+        for l in self.layers:
+            name = f"{name}_{l.n_feature_layers}f_{int(l.kernel_radius * 10)}r_{int(l.n_fitting_components)}c"
+        return name
+
+    def produce_description(self):
+        mlp_string = ""
+        if self.mlp is not None:
+            mlp_string = "_MLP"
+            for l in self.mlp:
+                mlp_string = f"{mlp_string}_{l}"
+        return f"BN{self.bn_place}{self.bn_type}_cnDrp{int(self.convolution_config.dropout * 100)}_dtaDrp{int(self.dataDropout * 100)}" \
+               f"_nK{self.n_kernel_components}_{self.produce_gmc_layers_description()}{mlp_string}_"
 
 
 class Net(nn.Module):
@@ -29,8 +90,8 @@ class Net(nn.Module):
 
         def pos2cov(p): return (p / 3) ** 2
 
-        self.norm0 = nn.Sequential(gmc_modules.CovScaleNorm(batch_norm=False),
-                                   gmc_modules.BatchNorm(batch_norm=False))
+        self.norm0 = nn.Sequential(gmc.modules.CovScaleNorm(batch_norm=False),
+                                   gmc.modules.BatchNorm(batch_norm=False))
         self.biases = torch.nn.ParameterList()
         self.gmcs = torch.nn.modules.ModuleList()
         self.relus = torch.nn.modules.ModuleList()
@@ -38,18 +99,18 @@ class Net(nn.Module):
 
         n_feature_channels_in = 1
         for i, l in enumerate(config.layers):
-            self.gmcs.append(gmc_modules.Convolution(config.convolution_config, n_layers_in=n_feature_channels_in, n_layers_out=l.n_feature_layers, n_kernel_components=config.n_kernel_components,
+            self.gmcs.append(gmc.modules.Convolution(config.convolution_config, n_layers_in=n_feature_channels_in, n_layers_out=l.n_feature_layers, n_kernel_components=config.n_kernel_components,
                                                      position_range=l.kernel_radius, covariance_range=pos2cov(l.kernel_radius),
                                                      learn_positions=learn_positions, learn_covariances=learn_covariances,
-                                                     weight_sd=1, weight_mean=0.1, n_dims=2))
+                                                     weight_sd=1, weight_mean=0.1, n_dims=config.n_dims))
             self.biases.append(torch.nn.Parameter(torch.zeros(1, l.n_feature_layers) + bias_0))
-            self.relus.append(gmc_modules.ReLUFitting(config.relu_config, layer_id=f"{i}c", n_layers=l.n_feature_layers, n_output_gaussians=l.n_fitting_components))
+            self.relus.append(gmc.modules.ReLUFitting(config.relu_config, layer_id=f"{i}c", n_layers=l.n_feature_layers, n_output_gaussians=l.n_fitting_components))
             if config.bn_type == Config.BN_TYPE_COVARIANCE_STD:
-                norm = nn.Sequential(gmc_modules.CovScaleNorm(), gmc_modules.BatchNorm(n_layers=l.n_feature_layers))
+                norm = nn.Sequential(gmc.modules.CovScaleNorm(), gmc.modules.BatchNorm(n_layers=l.n_feature_layers))
             elif config.bn_type == Config.BN_TYPE_ONLY_COVARIANCE:
-                norm = gmc_modules.CovScaleNorm()
+                norm = gmc.modules.CovScaleNorm()
             else:
-                norm = gmc_modules.BatchNorm(n_layers=l.n_feature_layers)
+                norm = gmc.modules.BatchNorm(n_layers=l.n_feature_layers)
             self.norms.append(norm)
             n_feature_channels_in = l.n_feature_layers
 

@@ -11,10 +11,9 @@ import torch.utils.data
 import torch.utils.tensorboard
 import typing
 
-import gmc.mixture as gm
 import gmc.fitting
 import gmc.inout
-import mnist_classification.model
+import gmc.model
 from mnist_classification.config import Config
 
 # based on https://github.com/pytorch/examples/blob/master/mnist/main.py
@@ -53,7 +52,7 @@ def render_debug_images_to_tensorboard(model, epoch, tensor_board_writer):
         tensor_board_writer.add_image(f"mnist relu {i}", relu.debug_render(), epoch, dataformats='HWC')
 
 
-def train(model: mnist_classification.model.Net, device: torch.device, train_loader: torch.utils.data.DataLoader,
+def train(model: gmc.model.Net, device: torch.device, train_loader: torch.utils.data.DataLoader,
           kernel_optimiser: Optimizer, weight_decay_optimiser: Optimizer, epoch: int, tensor_board_writer: torch.utils.tensorboard.SummaryWriter, config: Config):
     model.train()
     start_time = time.perf_counter()
@@ -150,7 +149,7 @@ def train(model: mnist_classification.model.Net, device: torch.device, train_loa
     tensor_board_writer.add_scalar("10. batch_duration", end_time - start_time, step)
 
 
-def test(model: mnist_classification.model.Net, device: torch.device, test_loader: torch.utils.data.DataLoader, epoch: int, tensor_board_writer: torch.utils.tensorboard.SummaryWriter):
+def test(model: gmc.model.Net, device: torch.device, test_loader: torch.utils.data.DataLoader, epoch: int, tensor_board_writer: torch.utils.tensorboard.SummaryWriter):
     model.eval()
     test_loss = 0
     correct = 0
@@ -175,9 +174,9 @@ def experiment(device: str = 'cuda', desc_string: str = "", config: typing.Optio
     train_loader = torch.utils.data.DataLoader(GmMnistDataSet('mnist/train_', begin=0, end=60000), batch_size=config.batch_size, num_workers=config.num_dataloader_workers, shuffle=True)
     test_loader = torch.utils.data.DataLoader(GmMnistDataSet('mnist/test_', begin=0, end=10000), batch_size=config.batch_size, num_workers=config.num_dataloader_workers)
 
-    model = mnist_classification.model.Net(learn_positions=config.learn_positions_after == 0,
-                                           learn_covariances=config.learn_covariances_after == 0,
-                                           config=config)
+    model = gmc.model.Net(learn_positions=config.learn_positions_after == 0,
+                          learn_covariances=config.learn_covariances_after == 0,
+                          config=config.model)
     model = model.to(device)
 
     kernel_optimiser = optim.Adam(model.parameters(), lr=config.kernel_learning_rate)
