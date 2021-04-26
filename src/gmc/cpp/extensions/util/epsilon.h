@@ -8,8 +8,8 @@
 namespace gpe {
 template <typename scalar_t = float>
 struct Epsilon {
-    static constexpr scalar_t small = scalar_t(0.00000000001);
-    static constexpr scalar_t large = scalar_t(0.000001);
+    static constexpr scalar_t small = scalar_t(0.0000001);
+    static constexpr scalar_t large = scalar_t(0.0001);
     static EXECUTION_DEVICES scalar_t clip(scalar_t v) { return gpe::max(v, small); }
     static EXECUTION_DEVICES scalar_t grad_clip(scalar_t v, scalar_t incoming_grad) { return (v > small) ? incoming_grad : 0; }
 };
