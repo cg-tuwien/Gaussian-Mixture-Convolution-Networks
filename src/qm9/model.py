@@ -2,6 +2,7 @@ from __future__ import print_function
 import pathlib
 import time
 import typing
+import math
 
 import torch
 from torch import Tensor
@@ -10,10 +11,12 @@ import torch.nn.functional as F
 import torch.utils.data
 from torch.utils.tensorboard import SummaryWriter as TensorboardWriter
 
-from modelnet_classification.config import Config
+from qm9.config import Config
 import gmc.mixture as gm
 import gmc.modules as gmc_modules
-import modelnet_classification.prototype_modules as prototype_modules
+import gmc.mat_tools as mat_tools
+import qm9.prototype_modules as prototype_modules
+from qm9.molecule import Molecule
 
 
 class BatchNormStack:
@@ -41,45 +44,55 @@ class Net(nn.Module):
 
         self.config = config
 
+        nap = config.n_atom_properties()
+        if config.learnable_atoms:
+            self.learnable_atom_weights = torch.nn.Parameter(torch.abs(torch.randn(nap, len(Molecule.ATOM_TYPES)) * (0.01 / nap) + 0.1 / nap))  # first dim: group of input layers, second dim: atoms
+            self.learnable_atom_radii = torch.nn.Parameter(Molecule.atomic_radii_as_tensor())
+        else:
+            self.learnable_atom_weights = torch.abs(torch.randn(nap, len(Molecule.ATOM_TYPES)) * (0.01 / nap) + 0.1 / nap).cuda()  # first dim: group of input layers, second dim: atoms
+            self.learnable_atom_radii = Molecule.atomic_radii_as_tensor().cuda()
+
         bias_0 = 0.0
         if self.config.bias_type == Config.BIAS_TYPE_NEGATIVE_SOFTPLUS:
             bias_0 = -0.1
 
-        pos2cov = lambda p: (p / 3) ** 2
+        radius2cov = lambda p: (p / 3) ** 2
+        # will return a weight that would integrate to 1 with the given radius
+        radius2weight = lambda r: 1 / (config.n_kernel_components * math.sqrt((math.pi * radius2cov(r) * 2) ** 3))  # integral(gaussian) = sqrt(..)
 
         self.biases = torch.nn.ParameterList()
         self.gmcs = torch.nn.modules.ModuleList()
         self.relus = torch.nn.modules.ModuleList()
 
         if config.layers[-1].n_feature_layers == -1:
-            config.layers[-1].n_feature_layers = config.n_classes
-        n_feature_layers_in = 1
+            config.layers[-1].n_feature_layers = 1
+        n_feature_layers_in = 10 if config.heavy else 5
         last_n_fitting_components = -1
         for i, l in enumerate(config.layers):
             self.gmcs.append(gmc_modules.Convolution(config.convolution_config, n_layers_in=n_feature_layers_in, n_layers_out=l.n_feature_layers, n_kernel_components=config.n_kernel_components,
-                                                     position_range=l.kernel_radius, covariance_range=pos2cov(l.kernel_radius),
+                                                     position_range=l.kernel_radius, covariance_range=radius2cov(l.kernel_radius),
                                                      learn_positions=learn_positions, learn_covariances=learn_covariances,
-                                                     weight_sd=0.4, weight_mean=0.04, n_dims=3))
+                                                     weight_sd=0.5 * radius2weight(l.kernel_radius), weight_mean=0.05 * radius2weight(l.kernel_radius), n_dims=3))
             self.biases.append(torch.nn.Parameter(torch.zeros(1, l.n_feature_layers) + bias_0))
             self.relus.append(gmc_modules.ReLUFitting(config.relu_config, layer_id=f"{i}c", n_layers=l.n_feature_layers, n_output_gaussians=l.n_fitting_components))
             last_n_fitting_components = l.n_fitting_components
             n_feature_layers_in = l.n_feature_layers
 
-        self.norm0 = BatchNormStack((gmc_modules.CovScaleNorm(norm_over_batch=False),
-                                     prototype_modules.OldBatchNorm(config, True),))
+        # self.norm0 = BatchNormStack((  # gmc_modules.CovScaleNorm(batch_norm=False),
+        #                              prototype_modules.IntegralNorm(config, True),))
 
         if config.bn_type == Config.BN_TYPE_COVARIANCE_INTEGRAL:
             self.norm = BatchNormStack((gmc_modules.CovScaleNorm(),
-                                        prototype_modules.OldBatchNorm(config),))
+                                        prototype_modules.IntegralNorm(config),))
         elif config.bn_type == Config.BN_TYPE_ONLY_COVARIANCE:
             self.norm = BatchNormStack((gmc_modules.CovScaleNorm(), ))
         elif config.bn_type == Config.BN_TYPE_ONLY_INTEGRAL:
-            self.norm = BatchNormStack((prototype_modules.OldBatchNorm(config),))
+            self.norm = BatchNormStack((prototype_modules.IntegralNorm(config),))
         elif config.bn_type == Config.BN_TYPE_INTEGRAL_COVARIANCE:
-            self.norm = BatchNormStack((prototype_modules.OldBatchNorm(config),
+            self.norm = BatchNormStack((prototype_modules.IntegralNorm(config),
                                         gmc_modules.CovScaleNorm(),))
-        # self.weight_norm0 = prototype_modules.CentroidWeightNorm(norm_over_batch=False)
-        # self.weight_norm = prototype_modules.CentroidWeightNorm(norm_over_batch=True)
+        # self.weight_norm0 = prototype_modules.CentroidWeightNorm(batch_norm=False)
+        # self.weight_norm = prototype_modules.CentroidWeightNorm(batch_norm=True)
 
         if config.mlp is not None:
             if config.mlp[-1] == -1:
@@ -91,12 +104,12 @@ class Net(nn.Module):
             mlp = list()
             for l in config.mlp:
                 if l == -1:
-                    mlp.append(nn.Dropout(p=0.5))
+                    mlp.append(nn.Dropout(p=config.mlp_dropout))
                 else:
                     mlp.append(nn.BatchNorm1d(n_feature_layers_in))
+                    # mlp.append(nn.ReLU())
                     mlp.append(nn.Linear(n_feature_layers_in, l))
                     n_feature_layers_in = l
-                    mlp.append(nn.ReLU())
             self.mlp = nn.Sequential(*mlp)
         else:
             self.mlp = None
@@ -141,9 +154,23 @@ class Net(nn.Module):
         #
         # in our case: BN just scales and centres. the constant input to BN is ignored, so the constant convolution would be ignored if we place BN before ReLU.
         # but that might perform better anyway, we'll have to test.
-        x, x_const = self.norm0(in_x)
+        # x, x_const = self.norm0(in_x)
+        x = in_x
+        x_const = torch.zeros(1, 1, device=x.device)
 
         for i in range(len(self.config.layers)):
+            if self.config.dataDropout > 0:
+                if self.training:
+                    n_selected_components = int(gm.n_components(x) * (1.0 - self.config.dataDropout))
+                    indices = list()
+                    for l in range(gm.n_layers(x)):
+                        indices.append(torch.randperm(gm.n_components(x))[:n_selected_components].view(1, 1, -1))
+                    indices = torch.cat(indices, 1)
+                    x = mat_tools.my_index_select(x, indices.to(device=x.device))
+                else:
+                    weights = gm.weights(x) * (1.0 - self.config.dataDropout)
+                    x = gm.pack_mixture(weights, gm.positions(x), gm.covariances(x))
+
             x, x_const = self.gmcs[i](x, x_const)
 
             if self.config.bn_place == Config.BN_PLACE_AFTER_GMC:
@@ -172,8 +199,7 @@ class Net(nn.Module):
 
         if self.mlp is not None:
             x = self.mlp(x)
-        x = F.log_softmax(x, dim=1)
-        return x.view(-1, self.config.n_classes)
+        return x.view(-1)
 
     def save_model(self):
         print(f"experiment_model.Net.save: saving model to {self.storage_path}")

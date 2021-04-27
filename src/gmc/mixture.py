@@ -24,6 +24,9 @@ def n_batch(mixture: Tensor) -> int:
 
 
 def n_layers(mixture: Tensor) -> int:
+    """
+    n_feature_channels. naming could have been better.
+    """
     return mixture.shape[1]
 
 
@@ -158,6 +161,9 @@ def old_evaluate_inversed(mixture: Tensor, xes: Tensor) -> Tensor:
 
 
 def evaluate(mixture: Tensor, xes: Tensor) -> Tensor:
+    """
+    @return: tensor with dimensions n_batch, n_layers, n_xes
+    """
     # torch inverse returns a transposed matrix (v 1.3.1). our matrix is symmetric however, and we want to take a view, so the transpose avoids a copy.
     return evaluate_inversed(pack_mixture(weights(mixture), positions(mixture), mat_tools.inverse(covariances(mixture)).transpose(-1, -2)), xes)
 
