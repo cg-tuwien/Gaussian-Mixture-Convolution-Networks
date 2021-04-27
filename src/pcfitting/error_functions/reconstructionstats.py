@@ -19,17 +19,18 @@ class ReconstructionStats(EvalFunction):
     def __init__(self,
                  rmsd_pure: bool = False,
                  rmsd_scaled_bb_diag: bool = False,
-                 rmsd_scaled_by_area: bool = True, #
-                 rmsd_scaled_by_nn: bool = False,
+                 rmsd_scaled_by_area: bool = False,
+                 rmsd_scaled_by_nn: bool = True,
                  md_pure: bool = False,
                  md_scaled_bb_diag: bool = False,
-                 md_scaled_by_area: bool = True, #
-                 md_scaled_by_nn: bool = False,
+                 md_scaled_by_area: bool = False, #
+                 md_scaled_by_nn: bool = True,
                  stdev: bool = False,
                  stdev_scaled_bb_diag: bool = False,
-                 stdev_scaled_by_area: bool = True, #
-                 stdev_scaled_by_nn: bool = False,
+                 stdev_scaled_by_area: bool = False, #
+                 stdev_scaled_by_nn: bool = True,
                  cv: bool = True, #
+                 kurtosis: bool = False, #
                  psnr: bool = False,
                  maxdist: bool = False,
                  maxdist_norm_area: bool = False,
@@ -42,7 +43,8 @@ class ReconstructionStats(EvalFunction):
                  hausdorff: bool = False,
                  hausdorff_norm_area: bool = False,
                  hausdorff_norm_nn: bool = False,
-                 cov_measure: bool = True, #
+                 cov_measure: bool = False, #
+                 cov_measure_scaled_by_area: bool = False,
                  sample_points: int = 100000):
         self._rmsd_pure = rmsd_pure
         self._rmsd_scaled_bb_diag = rmsd_scaled_bb_diag
@@ -57,6 +59,7 @@ class ReconstructionStats(EvalFunction):
         self._stdev_scaled_by_area = stdev_scaled_by_area
         self._stdev_scaled_by_nn = stdev_scaled_by_nn
         self._cv = cv
+        self._kurtosis = kurtosis
         self._psnr = psnr
         self._maxdist = maxdist
         self._maxdist_norm_area = maxdist_norm_area
@@ -71,13 +74,14 @@ class ReconstructionStats(EvalFunction):
         self._hausdorff_norm_nn = hausdorff_norm_nn
         self._samplepoints = sample_points
         self._cov_measure = cov_measure
+        self._cov_measure_std_scaled_by_area = cov_measure_scaled_by_area
         self._nmeth = (self._rmsd_pure + self._rmsd_scaled_bb_diag + self._rmsd_scaled_by_area +
                        self._rmsd_scaled_by_nn + self._md_pure + self._md_scaled_bb_diag + self._md_scaled_by_area +
                        self._md_scaled_by_nn + self._stdev + self._stdev_scaled_bb_diag + self._stdev_scaled_by_area +
                        self._stdev_scaled_by_nn + self._cv + self._psnr + self._maxdist + self._maxdist_norm_area
-                       + self._maxdist_norm_nn) *\
+                       + self._maxdist_norm_nn + self._kurtosis) *\
                         (2 if self._inverse else 1 ) + 2*(self._chamfer + self._chamfer_norm_area + self._chamfer_norm_nn) + \
-                        self._hausdorff + self._hausdorff_norm_area + self._hausdorff_norm_nn + self._cov_measure * 2
+                        self._hausdorff + self._hausdorff_norm_area + self._hausdorff_norm_nn + self._cov_measure * 2 + self._cov_measure_std_scaled_by_area
         pass
 
     def calculate_score_on_reconstructed(self, pcbatch: torch.Tensor, sampled: torch.Tensor,
@@ -94,16 +98,16 @@ class ReconstructionStats(EvalFunction):
         bbscale = torch.norm(pmax - pmin).item()
 
         i = 0
-        rmsd, md, stdev, maxd = pyeval.eval_rmsd_unscaled(pcbatch.view(-1, 3), sampled.view(-1, 3))
-        rmsdI, mdI, stdevI, maxdI = (None, None, None, None)
+        rmsd, md, stdev, maxd, kurtosis = pyeval.eval_rmsd_unscaled(pcbatch.view(-1, 3), sampled.view(-1, 3))
+        rmsdI, mdI, stdevI, maxdI, kurtosisI = (None, None, None, None, None)
         if self._inverse or self._chamfer or self._chamfer_norm_area or self._chamfer_norm_nn:
             if self._inverse_exact:
-                rmsdI, mdI, stdevI, maxdI = self.calc_inverse_exact(sampled.view(-1, 3), modelpath)
+                rmsdI, mdI, stdevI, maxdI, kurtosisI = self.calc_inverse_exact(sampled.view(-1, 3), modelpath)
             else:
-                rmsdI, mdI, stdevI, maxdI = pyeval.eval_rmsd_unscaled(sampled.view(-1, 3), pcbatch.view(-1, 3))
+                rmsdI, mdI, stdevI, maxdI, kurtosisI = pyeval.eval_rmsd_unscaled(sampled.view(-1, 3), pcbatch.view(-1, 3))
         scalefactor = 1
         if self._stdev_scaled_by_area or self._md_scaled_by_area or self._stdev_scaled_by_area or \
-                self._chamfer_norm_area or self._hausdorff_norm_area:
+                self._chamfer_norm_area or self._hausdorff_norm_area or self._cov_measure_std_scaled_by_area:
             scalefactor = self.calculate_scale_factor(modelpath)
         scalefactorNN = 1
         if self._stdev_scaled_by_nn or self._md_scaled_by_nn or self._stdev_scaled_by_nn or self._chamfer_norm_nn or \
@@ -111,81 +115,115 @@ class ReconstructionStats(EvalFunction):
             scalefactorNN = self.calculate_scale_factor_nn(pcbatch)
         if self._rmsd_pure:
             result[i, 0] = rmsd
+            result.rmsd_pure = result[i, 0].item()
             i += 1
             if self._inverse:
                 result[i, 0] = rmsdI
+                result.rmsd_pure_I = result[i, 0].item()
                 i += 1
         if self._rmsd_scaled_bb_diag:
             result[i, 0] = rmsd / bbscale
+            result.rmsd_scaled_bb_diag = result[i, 0].item()
             i += 1
             if self._inverse:
                 result[i, 0] = rmsdI / bbscale
+                result.rmsd_scaled_bb_diag_I = result[i, 0].item()
                 i += 1
         if self._rmsd_scaled_by_area:
             result[i, 0] = rmsd * scalefactor
+            result.rmsd_scaled_by_area = result[i, 0].item()
             i += 1
             if self._inverse:
                 result[i, 0] = rmsdI * scalefactor
+                result.rmsd_scaled_by_area_I = result[i, 0].item()
                 i += 1
         if self._rmsd_scaled_by_nn:
             result[i, 0] = rmsd * scalefactorNN
+            result.rmsd_scaled_by_nn = result[i, 0].item()
             i += 1
             if self._inverse:
                 result[i, 0] = rmsdI * scalefactorNN
+                result.rmsd_scaled_by_nn_I = result[i, 0].item()
                 i += 1
         if self._md_pure:
             result[i, 0] = md
+            result.md_pure = result[i, 0].item()
             i += 1
             if self._inverse:
                 result[i, 0] = mdI
+                result.md_pure_I = result[i, 0].item()
                 i += 1
         if self._md_scaled_bb_diag:
             result[i, 0] = md / bbscale
+            result.md_scaled_bb_diag = result[i, 0].item()
             i += 1
             if self._inverse:
                 result[i, 0] = mdI / bbscale
+                result.md_scaled_bb_diag_I = result[i, 0].item()
                 i += 1
         if self._md_scaled_by_area:
             result[i, 0] = md * scalefactor
+            result.md_scaled_by_area = result[i, 0].item()
             i += 1
             if self._inverse:
                 result[i, 0] = mdI * scalefactor
+                result.md_scaled_by_area_I = result[i, 0].item()
                 i += 1
         if self._md_scaled_by_nn:
             result[i, 0] = md * scalefactorNN
+            result.md_scaled_by_nn = result[i, 0].item()
             i += 1
             if self._inverse:
                 result[i, 0] = mdI * scalefactorNN
+                result.md_scaled_by_nn_I = result[i, 0].item()
                 i += 1
         if self._stdev:
             result[i, 0] = stdev
+            result.stdev = result[i, 0].item()
             i += 1
             if self._inverse:
                 result[i, 0] = stdevI
+                result.stdev_I = result[i, 0].item()
                 i += 1
         if self._stdev_scaled_bb_diag:
             result[i, 0] = stdev / bbscale
+            result.stdev_scaled_bb_diag = result[i, 0].item()
             i += 1
             if self._inverse:
                 result[i, 0] = stdevI / bbscale
+                result.stdev_scaled_bb_diag_I = result[i, 0].item()
                 i += 1
         if self._stdev_scaled_by_area:
             result[i, 0] = stdev * scalefactor
+            result.stdev_scaled_by_area = result[i, 0].item()
             i += 1
             if self._inverse:
                 result[i, 0] = stdevI * scalefactor
+                result.stdev_scaled_by_area_I = result[i, 0].item()
                 i += 1
         if self._stdev_scaled_by_nn:
             result[i, 0] = stdev * scalefactorNN
+            result.stdev_scaled_by_nn = result[i, 0].item()
             i += 1
             if self._inverse:
                 result[i, 0] = stdevI * scalefactorNN
+                result.stdev_scaled_by_nn_I = result[i, 0].item()
                 i += 1
         if self._cv:
             result[i, 0] = stdev / md
+            result.cv = result[i, 0].item()
             i += 1
             if self._inverse:
                 result[i, 0] = stdevI / mdI
+                result.cv_I = result[i, 0].item()
+                i += 1
+        if self._kurtosis:
+            result[i, 0] = kurtosis
+            result.kurtosis = result[i, 0].item()
+            i += 1
+            if self._inverse:
+                result[i, 0] = kurtosisI
+                result.kurtosisI = result[i, 0].item()
                 i += 1
         if self._psnr:
             result[i, 0] = 20*math.log10(bbscale / rmsd)
@@ -234,11 +272,18 @@ class ReconstructionStats(EvalFunction):
         if self._hausdorff_norm_nn:
             result[i, 0] = max(maxd, maxdI) * scalefactorNN
             i += 1
-        if self._cov_measure:
+        if self._cov_measure or self._cov_measure_std_scaled_by_area:
             (covm, covmstd) = pyeval.cov_measure(sampled.view(-1, 3))
-            result[i, 0] = covm
-            result[i+1, 0] = covmstd
-            i += 2
+            if self._cov_measure:
+                result[i, 0] = covm
+                result.cov_measure = result[i, 0].item()
+                result[i+1, 0] = covmstd
+                result.cov_measure_std = result[i+1, 0].item()
+                i += 2
+            if self._cov_measure_std_scaled_by_area:
+                result[i, 0] = covmstd * scalefactor
+                result.cov_measure_std_scaled_by_area = result[i, 0].item()
+                i += 1
 
         end = time.time()
         print ("Time taken: ", (end-start))
@@ -252,7 +297,7 @@ class ReconstructionStats(EvalFunction):
         assert batch_size == 1
 
         gmm = gm.convert_amplitudes_to_priors(gm.pack_mixture(gmamplitudes, gmpositions, gmcovariances))
-        sampled = GMSampler.sample(gmm, self._samplepoints)
+        sampled = GMSampler.sampleGMM(gmm, self._samplepoints)
 
         return self.calculate_score_on_reconstructed(pcbatch, sampled, modelpath)
 
@@ -316,6 +361,10 @@ class ReconstructionStats(EvalFunction):
             nlst.append("PSNR")
             if self._inverse:
                 nlst.append("Inverse PSNR")
+        if self._kurtosis:
+            nlst.append("Kurtosis")
+            if self._inverse:
+                nlst.append("Inverse Kurtosis")
         if self._maxdist:
             nlst.append("Maxdist")
             if self._inverse:
@@ -346,6 +395,8 @@ class ReconstructionStats(EvalFunction):
         if self._cov_measure:
             nlst.append("COV measure")
             nlst.append("COV measure std")
+        if self._cov_measure_std_scaled_by_area:
+            nlst.append("COV measure std NormAR")
         return nlst
 
     def calculate_scale_factor(self, modelpath: str):

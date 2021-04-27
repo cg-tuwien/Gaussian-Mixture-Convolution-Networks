@@ -11,10 +11,14 @@ from pcfitting.error_functions import LikelihoodLoss, PSNR, GMMStats, AvgDensiti
 # fitpc_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_vt_evaluation/fitpcs"
 # evalpc_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_vt_evaluation/evalpcs"
 # gengmm_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_vt_evaluation/gmms"
-model_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_diff_scales/models-onlytoilet"
-fitpc_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_diff_scales/fitpcs"
-evalpc_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_diff_scales/evalpcs"
-gengmm_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_diff_scales/gmms"
+# model_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_diff_scales/models-onlytoilet"
+# fitpc_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_diff_scales/fitpcs"
+# evalpc_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_diff_scales/evalpcs"
+# gengmm_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_diff_scales/gmms"
+model_path = r"F:\DA-Eval\dataset20\models"
+fitpc_path = r"F:\DA-Eval\dataset20\fitpcs"
+evalpc_path = r"F:\DA-Eval\dataset20\evalpcs"
+gengmm_path = r"F:\DA-Eval\dataset20\gmms-significance"
 # model_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_planes/models"
 # fitpc_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_planes/fitpcs"
 # evalpc_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_planes/evalpcs"
@@ -42,7 +46,8 @@ eval_points = 100000#5000000
 #                           "bed03gms-r0.1", "bed03gms-r0.6", "bed03gms-r0.9", "bed03gms-r1.5"]
 # generator_identifiers = ["fpsmax1e-5"]
 # generator_identifiers = ["fpsmax", "EMrnp", "EMfps", "Eckbb", "Eckrnp", "Eckfps", "Eckeigen", "Preiner-0.9-5"]
-generator_identifiers = ["fpsmax", "EMfps", "Eckeigen", "Preiner-0.9-5"]
+# generator_identifiers = ["fpsmax", "EMfps", "Eckeigen", "Preiner-0.9-5"]
+generator_identifiers = [""]
 # generator_identifiers = ["Preiner-0.9-5"]
 # generator_identifiers = ["fpsmax", "fpsmax64", "fpsmax10k", "EMfps", "EMfps64", "EMfps10k", "Eckeigen", "Eckeigen64",
 #                          "Eckeigen10k", "Preiner", "Preiner64", "Preiner10k"]
@@ -54,9 +59,9 @@ generator_identifiers = ["fpsmax", "EMfps", "Eckeigen", "Preiner-0.9-5"]
 #error_functions: List[EvalFunction] = [AvgDensities(), AvgDensities(enlarge_evs=True, smallest_ev=0.03), ReconstructionStats(), GMMStats()]
 #error_functions: List[EvalFunction] = [ReconstructionStatsProjected()]#, GMMStats()]
 #error_functions: List[EvalFunction] = [AvgDensities(), ReconstructionStats(), ReconstructionStatsProjected(), GMMStats()]
-error_functions: List[EvalFunction] = [AvgDensities(), GMMStats()]
-# smallest_ev = None
-smallest_ev = 0.00007759
+error_functions: List[EvalFunction] = [ReconstructionStats()]
+smallest_ev = None
+# smallest_ev = 0.00007759
 # smallest_ev = 0.012807717
 # smallest_ev = 0.03
 # smallest_ev = 0.0007234354270622134
@@ -69,10 +74,11 @@ scaling_interval = (0, 1)
 # --- DO NOT CHANGE FROM HERE ---
 # Read in Name
 #training_name = input('Name for training to evaluate: ')
-training_name = '210306-01-EmEckPre'
+# training_name = '210306-01-EmEckPre'
 # training_name = '210312-EMepsvar'
 # training_name = '210312-ng64'
 # training_name = '210406-EmEckPre'
+training_name = ''
 
 programs.execute_evaluation(training_name, model_path, evalpc_path, None, gengmm_path, n_points, eval_points,
                             generator_identifiers, error_functions, scaling_active, scaling_interval, smallest_ev)
