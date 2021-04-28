@@ -11,12 +11,12 @@ device = "cuda"
 tmp_gmm_base_path = "/scratch/acelarek/gmms/e1"
 
 fitconf = pcfit.Config(n_gaussians=128, eps=0.00001, gengmm_path=tmp_gmm_base_path)
-pcfit.fit(fitconf)
+# pcfit.fit(fitconf)
 
 c: Config = Config(gmms_fitting=fitconf.name, gengmm_path=tmp_gmm_base_path, n_classes=10)
 c.model.bn_type = ModelConfig.BN_TYPE_COVARIANCE_STD
 c.model.convolution_config.dropout = 0.3
-c.model.dataDropout = 0.3
+c.model.dataDropout = 0.0
 c.log_tensorboard_renderings = False
 c.n_epochs = 160
 
