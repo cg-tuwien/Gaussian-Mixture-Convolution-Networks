@@ -40,7 +40,7 @@ def fixed_point_and_bvh_mhem(mixture: Tensor, constant: Tensor, n_components: in
         t2 = time.perf_counter()
         tensorboard.add_scalar(f"50.2 fitting {mixture.shape} -> {n_components} fixed_point_iteration_to_relu time =", t2 - t1, 0)
 
-    fitting = cppBvhMhemFit.apply(fp_fitting, max(config.n_reduction, n_components), config.n_reduction)
+    fitting = tree_hem(fp_fitting, max(config.n_reduction, n_components), config.n_reduction)
 
     if tensorboard is not None:
         torch.cuda.synchronize()
@@ -52,6 +52,26 @@ def fixed_point_and_bvh_mhem(mixture: Tensor, constant: Tensor, n_components: in
         fitting = mhem_fit_a_to_b(reduced_fitting, fitting, config)
 
     return fitting, ret_const, [initial_fitting, fp_fitting]
+
+
+def tree_hem(m: Tensor, n_components: int, n_reduction: int) -> Tensor:
+    # scale the mixture to some sort of standard in order to improve numerical stability
+
+    cov_scaling_factor = mat_tools.trace(gm.covariances(m)).mean(-1, keepdim=True) / gm.n_dimensions(m)  # mean over components and trace elements
+    assert (cov_scaling_factor > 0).all().item()
+    backward_cov_scaling_factor = torch.sqrt(cov_scaling_factor)
+    cov_scaling_factor = (1 / backward_cov_scaling_factor)
+
+    assert not torch.any(torch.isnan(backward_cov_scaling_factor))
+    assert not torch.any(torch.isinf(backward_cov_scaling_factor))
+    assert not torch.any(torch.isnan(cov_scaling_factor))
+    assert not torch.any(torch.isinf(cov_scaling_factor))
+
+    m = gm.spatial_scale(m, cov_scaling_factor)
+    m = cppBvhMhemFit.apply(m, n_components, n_reduction)
+    m = gm.spatial_scale(m, backward_cov_scaling_factor)
+    return m
+
 
 
 def initial_approx_to_relu(mixture: Tensor, constant: Tensor) -> Tensor:
