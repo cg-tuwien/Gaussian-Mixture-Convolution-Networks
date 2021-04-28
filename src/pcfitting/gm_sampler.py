@@ -6,7 +6,12 @@ import numpy
 class GMSampler:
 
     @staticmethod
-    def sample(gmm: torch.Tensor, count: int):
+    def sampleGM(gm: torch.Tensor, count: int):
+        gmm = gmc.mixture.convert_amplitudes_to_priors(gm)
+        return GMSampler.sampleGMM(gmm, count)
+
+    @staticmethod
+    def sampleGMM(gmm: torch.Tensor, count: int):
         # Samples count points from the given mixture model
         # result size: [bs,n,3]
         batch_size = gmm.shape[0]

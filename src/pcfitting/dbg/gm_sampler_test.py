@@ -17,5 +17,5 @@ weights = torch.tensor([[[
     0.4, 0.6
 ]]])
 
-pc = GMSampler.sample(mixture.pack_mixture(weights, positions, covariances), 50)
+pc = GMSampler.sampleGMM(mixture.pack_mixture(weights, positions, covariances), 50)
 write_pc_to_off("C:\\Users\\SimonFraiss\\Desktop\\test.off", pc)

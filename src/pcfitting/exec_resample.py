@@ -1,10 +1,10 @@
 import os
 from pcfitting import data_loading, GMSampler
 
-gmm_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_diff_scales/gmms/"
-out_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_diff_scales/resampled/"
+gmm_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_plane/gmms/"
+out_path = "D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/data/dataset_plane/resampled/"
 
-single_file_name = "toilet_0001.off.gma.ply"
+single_file_name = "plane0-original.off.gma.ply"
 
 n_points = 100000
 
@@ -12,9 +12,11 @@ gmm = False
 
 # training_name = "210406-EmEckPre"
 # training_name = "210405-Plane1G-small"
-training_name = '210306-01-EmEckPre'
+# training_name = '210306-01-EmEckPre'
 # training_name = '210312-EMepsvar'
 # training_name = '210312-ng64'
+# training_name = "210413-1-preinercheck"
+training_name = "210421-em579"
 
 gmm_path += training_name
 out_path += "n" + str(n_points) + "/" + training_name
@@ -26,5 +28,5 @@ for root, dirs, files in os.walk(gmm_path):
             relpath = path[len(gmm_path) + 1:]
             print(relpath)
             gm = data_loading.read_gm_from_ply(path, gmm)
-            pc = GMSampler.sample(gm, n_points)
+            pc = GMSampler.sampleGM(gm, n_points)
             data_loading.write_pc_to_off(os.path.join(out_path, relpath + ".off"), pc)

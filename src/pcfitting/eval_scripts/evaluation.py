@@ -116,7 +116,7 @@ while dataset_fit.has_next():
         densvalues_fit = evaldensity.calculate_score_packed(batch, gmbatch, modelpath=modelpath)
         densvalues_eval = evaldensity.calculate_score_packed(batch_eval_dens, gmbatch, modelpath=modelpath)
         statvalues = evalstats.calculate_score_packed(batch, gmbatch, modelpath=modelpath)
-        reconstructed = GMSampler.sample(gmmbatch, n_eval_points_distance)
+        reconstructed = GMSampler.sampleGMM(gmmbatch, n_eval_points_distance)
         distvalues = evaldistane.calculate_score_on_reconstructed(batch_eval_dist, reconstructed, modelpath=modelpath)
 
         # Render
@@ -153,8 +153,8 @@ while dataset_fit.has_next():
                                   statvalues[12].item(), statvalues[13].item(), statvalues[14].item(),
                                   statvalues[15].item(), statvalues[16].item(), statvalues[17].item(), runid)
 
-        # mimg.imsave(os.path.join(rendering_path, "recpc-" + str(runid).zfill(9) + ".png"), res[0, 0])
-        # mimg.imsave(os.path.join(rendering_path, "density-" + str(runid).zfill(9) + ".png"), res[0, 1])
+        mimg.imsave(os.path.join(rendering_path, "recpc-" + str(runid).zfill(9) + ".png"), res[0, 0])
+        mimg.imsave(os.path.join(rendering_path, "density-" + str(runid).zfill(9) + ".png"), res[0, 1])
 
         # Save GMM and resampled pc
         gma = gmc.mixture.weights(gmbatch)

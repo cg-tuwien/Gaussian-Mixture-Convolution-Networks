@@ -70,6 +70,7 @@ class PreinerGenerator(GMMGenerator):
         self._params.reductionfactor = reductionfactor
         self._params.ngaussians = ngaussians
         self._params.avoidorphans = avoidorphans
+        self._logger = None
 
     def set_logging(self, logger: GMLogger = None):
         # Sets logging options. Note that logging increases the execution time,
