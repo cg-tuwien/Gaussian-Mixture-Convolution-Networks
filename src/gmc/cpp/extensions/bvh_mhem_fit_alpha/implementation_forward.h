@@ -292,7 +292,7 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_em(const gpe::Vector
     auto fittingCovariances = gpe::reduce_cols(weightedCovs, cov_t(0), fun::plus<cov_t, cov_t, cov_t>);
     fittingCovariances = gpe::cwise_fun(fittingCovariances, fitting_pure_weights, [](cov_t cov, scalar_t w) {  // no influence on gradient.
         if (w < gpe::Epsilon<scalar_t>::large)
-            cov += cov_t(1) * scalar_t(gpe::Epsilon<scalar_t>::large);
+            return cov_t(1);
         return cov;
     });
     assert(!has_nan(fittingCovariances));

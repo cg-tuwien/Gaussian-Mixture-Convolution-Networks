@@ -15,7 +15,7 @@ ForwardOutput dispatch_forward_dim(at::Tensor mixture, const Config& config, int
         return forward_impl_t<REDUCTION_N, scalar_t, 3>(mixture, config);
 #endif // GPE_ONLY_2D
     default:
-        std::cout << "unsupported mixture.scalar_type()" << std::endl;
+        std::cout << "unsupported mixture dim" << std::endl;
         exit(1);
     }
 }
@@ -45,7 +45,7 @@ torch::Tensor dispatch_backward_dim(at::Tensor grad, const ForwardOutput& forwar
         return backward_impl_t<REDUCTION_N, scalar_t, 3>(grad, forward_out, config);
 #endif // GPE_ONLY_2D
     default:
-        std::cout << "unsupported mixture.scalar_type()" << std::endl;
+        std::cout << "unsupported mixture dim" << std::endl;
         exit(1);
     }
 }

@@ -85,6 +85,14 @@ void runTest(const std::vector<std::pair<torch::Tensor, torch::Tensor>>& test_ca
                 forward_error += e;
                 max_error_forward = std::max(max_error_forward, e);
 
+                if (std::isnan(a) || std::isnan(b)) {
+                    std::cout << "a: " << a << "  b: " << b << std::endl;
+//                    std::cout << "fitting: " << fitting << std::endl;
+//                    std::cout << "fitting_reference: " << fitting_reference << std::endl;
+                }
+                REQUIRE(!std::isnan(a));
+                REQUIRE(!std::isnan(b));
+
                 auto similar = are_similar(a, b, threshold);
                 if (!similar) {
 //                    std::cout << "target: " << forward_out.target << std::endl;
@@ -114,17 +122,23 @@ void runTest(const std::vector<std::pair<torch::Tensor, torch::Tensor>>& test_ca
                 backward_error += e;
                 max_error_backward = std::max(max_error_backward, e);
 
+                if (std::isnan(a) || std::isnan(b)) {
+//                    std::cout << "fitting: " << forward_out.fitting << std::endl;
+//                    std::cout << "gradient_fitting: " << gradient_fitting << std::endl;
+                }
+                REQUIRE(!std::isnan(a));
+                REQUIRE(!std::isnan(b));
 
                 auto similar = are_similar(a, b, threshold);
                 if (!similar) {
-                    std::cout << "target: " << mixture << std::endl;
-                    std::cout << "fitting: " << forward_out.fitting << std::endl;
-                    std::cout << "gradient target: " << gradient << std::endl;
-                    std::cout << "gradient target (reference): " << gradient_reference << std::endl;
-                    std::cout << "gradient_fitting: " << gradient_fitting << std::endl;
-                    std::cout << "i = " << i << "; difference: " << a << " - " << b << " = " << a - b << std::endl;
+//                    std::cout << "target: " << mixture << std::endl;
+//                    std::cout << "fitting: " << forward_out.fitting << std::endl;
+//                    std::cout << "gradient target: " << gradient << std::endl;
+//                    std::cout << "gradient target (reference): " << gradient_reference << std::endl;
+//                    std::cout << "gradient_fitting: " << gradient_fitting << std::endl;
+//                    std::cout << "i = " << i << "; difference: " << a << " - " << b << " = " << a - b << std::endl;
                     WARN(QString("backward difference: %1 - %2 = %3").arg(a).arg(b).arg(a-b).toStdString());
-//                    WARN(std::string("backward difference: ") + std::to_string(a) + " - " + std::to_string(b) + " = " + std::to_string(a - b));
+////                    WARN(std::string("backward difference: ") + std::to_string(a) + " - " + std::to_string(b) + " = " + std::to_string(a - b));
                 }
                 REQUIRE(similar);
             }
@@ -148,8 +162,8 @@ constexpr double gpe_float_explosion_size = 8e-2;
 constexpr double gpe_float_precision = 4e-5;
 constexpr double gpe_double_precision = 1e-11;
 
-TEMPLATE_TEST_CASE( "testing working against alpha reference", "[bvh_mhem_fit]", use_cuda_type, use_cpu_type) {
-//    std::cout << "01. ";
+TEMPLATE_TEST_CASE( "testing working against alpha reference", "[bvh_mhem_fit]", use_cpu_type, use_cuda_type) {
+    std::cout << "01. ";
     SECTION("2 component fitting double") {
         runTest<TestType::value, 2, double>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d2GsGrads()},
                                                                  {_collectionOf2dMixtures_with4Gs(),
@@ -327,4 +341,26 @@ TEMPLATE_TEST_CASE( "testing working against alpha reference", "[bvh_mhem_fit]",
                           gpe_double_precision);
     }
 #endif
+
+    SECTION("24 component fitting float of real world, that produced NaNs") {
+        using namespace torch::indexing;
+        std::vector<torch::Tensor> mixtures;
+//        torch::jit::script::Module mixture_container = torch::jit::load("/home/madam/Documents/work/tuw/gmc_net/data/fitting_input/bad_mixture.pt");
+//        auto mixture = mixture_container.attr("0").toTensor();
+        auto mixture = torch::empty({1});
+        torch::load(mixture, "/home/madam/Documents/work/tuw/gmc_net/data/cpp_forward_bad_mixture.pt");
+        std::cout << "mixture size: " << mixture.sizes() << std::endl;
+        mixture = gpe::pack_mixture(torch::abs(gpe::weights(mixture)), gpe::positions(mixture), gpe::covariances(mixture));
+        mixtures.push_back(mixture);
+
+
+        std::vector<torch::Tensor> grads;
+//        grads.emplace_back(torch::tensor({0.0f}).view({1, 1, 1, 1}).repeat({1, 1, 24, 13}));
+//        grads.emplace_back(torch::tensor({1.0f}).view({1, 1, 1, 1}).repeat({1, 1, 24, 13}));
+
+        torch::jit::script::Module gradient_container = torch::jit::load("/home/madam/Documents/work/tuw/gmc_net/data/fitting_input/bad_mixture_gradient.pt");
+        grads.emplace_back(gradient_container.attr("0").toTensor());
+
+        runTest<TestType::value, 4, float, 24>(_combineCollectionsOfGradsAndMixtures({grads}, {mixtures}), gpe_float_explosion_size);
+    }
 }

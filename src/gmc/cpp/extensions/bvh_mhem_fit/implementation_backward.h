@@ -137,7 +137,7 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_TARGET> grad_em(const gpe::Vector
     auto fittingCovariances = gpe::reduce_cols(weightedCovs, cov_t(0), fun::plus<cov_t>);
     fittingCovariances = gpe::cwise_fun(fittingCovariances, fitting_pure_weights, [](cov_t cov, scalar_t w) {  // no influence on gradient.
         if (w < gpe::Epsilon<scalar_t>::large)
-            cov += cov_t(1) * scalar_t(gpe::Epsilon<scalar_t>::large);
+            return cov_t(1);
         return cov;
     });
 
@@ -207,6 +207,17 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_TARGET> grad_em(const gpe::Vector
     // const auto fitting_normal_amplitudes = gpe::transform(fittingCovariances, gpe::gaussian_amplitude<scalar_t, N_DIMS>);
     gpe::grad::transform(fittingCovariances, grad_fitting_normal_amplitudes, gpe::grad::gaussian_amplitude<scalar_t, N_DIMS>).addTo(&grad_fittingCovariances);
     assert(!has_nan(grad_fittingCovariances));
+
+//    fittingCovariances = gpe::cwise_fun(fittingCovariances, fitting_pure_weights, [](cov_t cov, scalar_t w) {  // no influence on gradient.
+//        if (w < gpe::Epsilon<scalar_t>::large)
+//            cov = cov_t(1);
+//        return cov;
+//    });
+    grad_fittingCovariances = gpe::cwise_fun(grad_fittingCovariances, fitting_pure_weights, [](cov_t gcov, scalar_t w) {  // no influence on gradient.
+            if (w < gpe::Epsilon<scalar_t>::large)
+                return cov_t(0);
+            return gcov;
+        });
 
     // auto fittingCovariances = gpe::reduce_cols(weightedCovs, cov_t(0), fun::plus<cov_t>);
     gpe::grad::sum_cols(weightedCovs, grad_fittingCovariances).addTo(&grad_weightedCovs);

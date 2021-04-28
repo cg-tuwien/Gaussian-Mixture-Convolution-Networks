@@ -13,9 +13,9 @@ set(CMAKE_CUDA_ARCHITECTURES 75)
 # set(CMAKE_CUDA_FLAGS
 #     "-D_GLIBCXX_USE_CXX11_ABI=0 -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --expt-relaxed-constexpr --compiler-options '-fPIC' -O3 --use_fast_math -std=c++14"
 #     )
-string(APPEND CMAKE_CUDA_FLAGS " -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --expt-extended-lambda --expt-relaxed-constexpr")
+string(APPEND CMAKE_CUDA_FLAGS " -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --expt-extended-lambda --expt-relaxed-constexpr") #
 string(APPEND CMAKE_CUDA_FLAGS " -Xcompiler '-fPIC,-fopenmp,-ffast-math,-fno-finite-math-only'  --use_fast_math")
-string(APPEND CMAKE_CUDA_FLAGS_RELEASE " --generate-line-info -Xcompiler '-O4,-march=native'")
+string(APPEND CMAKE_CUDA_FLAGS_RELEASE " --generate-line-info -Xcompiler '-O4,-march=native' -O3")
 #string(APPEND CMAKE_CUDA_FLAGS_DEBUG " -g -G")
 
 # ASan:
@@ -46,7 +46,7 @@ add_compile_definitions(GLM_FORCE_XYZW_ONLY)
 
 #add_compile_definitions(GPE_LIMIT_N_REDUCTION)
 #add_compile_definitions(GPE_ONLY_FLOAT)
-add_compile_definitions(GPE_ONLY_2D)
+#add_compile_definitions(GPE_ONLY_2D)
 find_package(QT NAMES Qt5 COMPONENTS Core Widgets REQUIRED)
 find_package(Qt5 COMPONENTS Core Widgets Test REQUIRED)
 

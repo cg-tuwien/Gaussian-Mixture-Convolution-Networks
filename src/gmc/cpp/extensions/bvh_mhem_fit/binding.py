@@ -1,7 +1,9 @@
 from torch.utils.cpp_extension import load
 import os
 import torch.autograd
+
 from gmc.cpp.extensions.compile_flags import *
+import gmc.inout
 
 source_dir = os.path.dirname(__file__)
 
@@ -35,6 +37,25 @@ class BvhMhemFit(torch.autograd.Function):
 
         fitting_mixture, target_mixture, bvh_nodes, bvh_attribs, n_components_fitting, reduction_n = ctx.saved_tensors
         grad_target_mixture = cpp_binding.backward(grad_output, fitting_mixture, target_mixture, bvh_nodes, bvh_attribs, n_components_fitting.item(), reduction_n.item())
+
+        if torch.any(torch.isnan(grad_target_mixture)):
+            print(f"grad_target_mixture: {grad_target_mixture}")
+            print(f"target_mixture has nans: {torch.any(torch.isnan(target_mixture)).item()}")
+            print(f"grad_output has nans: {torch.any(torch.isnan(grad_output)).item()}")
+            print(f"number of nans in torch.isnan(grad_target_mixture): {torch.isnan(grad_target_mixture[7,23]).sum(dim=-1).sum(dim=-1)}")
+            print(f"grad_target_mixture.shape = {grad_target_mixture.shape}")
+            print(f"target_mixture.shape = {target_mixture.shape}")
+            print(f"target_mixture[7:8][23:24].shape = {target_mixture[7:8, 23:24].shape}")
+            print(f"grad_output.shape = {grad_output.shape}")
+            print(f"reduction_n = {reduction_n}")
+            print(f"n_components_fitting = {n_components_fitting}")
+            gmc.inout.save(grad_output, "/home/madam/Documents/work/tuw/gmc_net/data/bad_mixture_gradient.torch")
+            gmc.inout.save(target_mixture, "/home/madam/Documents/work/tuw/gmc_net/data/bad_mixture.torch")
+            print(f"ahhh")
+            exit(1)
+
+        # assert not torch.any(torch.isinf(mixture))
+
         return grad_target_mixture, None, None
 
 

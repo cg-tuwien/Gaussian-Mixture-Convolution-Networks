@@ -4,10 +4,10 @@
 #define CATCH_CONFIG_MAIN
 #include <catch2/catch.hpp>
 
-#ifndef NDEBUG
-constexpr bool asserts_are_enabled = true;
-#else
+#ifdef NDEBUG
 constexpr bool asserts_are_enabled = false;
+#else
+constexpr bool asserts_are_enabled = true;
 #endif
 
 TEST_CASE("check that asserts are enabled") {
@@ -17,6 +17,7 @@ TEST_CASE("check that asserts are enabled") {
 
 TEST_CASE("check that NaNs are enabled (-ffast-math removes support, -fno-finite-math-only puts it back in)") {
     REQUIRE(std::isnan(std::numeric_limits<float>::quiet_NaN() * float(std::chrono::system_clock::now().time_since_epoch().count())));
+    REQUIRE(std::isnan(double(std::numeric_limits<float>::quiet_NaN() * float(std::chrono::system_clock::now().time_since_epoch().count()))));
 }
 
 TEST_CASE("check that we are also testing n_reduction 8 test cases (disable for faster building)") {
