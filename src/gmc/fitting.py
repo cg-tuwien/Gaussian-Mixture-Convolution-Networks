@@ -25,8 +25,9 @@ def mse_testing_fitting_fun(mixture: Tensor, constant: Tensor, n_components: int
     fixed_point_and_mhem(mixture, constant, 8, config, (tensorboard[0][0], tensorboard[-1]))
     fixed_point_and_mhem(mixture, constant, 16, config, (tensorboard[0][1], tensorboard[-1]))
     fixed_point_and_mhem(mixture, constant, 32, config, (tensorboard[0][2], tensorboard[-1]))
-    fixed_point_and_mhem(mixture, constant, 64, config, (tensorboard[0][3], tensorboard[-1]))
-    if gm.n_components(mixture) < 1280:     # out of memory
+    if gm.n_layers(mixture) * gm.n_components(mixture) < 40960:
+        fixed_point_and_mhem(mixture, constant, 64, config, (tensorboard[0][3], tensorboard[-1]))
+    if gm.n_layers(mixture) * gm.n_components(mixture) < 17920:     # out of memory
         fixed_point_and_mhem(mixture, constant, 128, config, (tensorboard[0][4], tensorboard[-1]))
 
     fixed_point_and_tree_hem(mixture, constant, 8, config, (tensorboard[0][5], tensorboard[-1]))
