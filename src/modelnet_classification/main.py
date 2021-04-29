@@ -154,7 +154,7 @@ def train(model: gmc.model.Net, device: str, train_loader: torch.utils.data.Data
                 full_input[f"{i}"] = relu.last_in[0].detach().cpu()
                 full_input[f"{i}_bias"] = relu.last_in[1].detach().cpu()
 
-                fp_fitting, fp_const, _ = gmc.fitting.fixed_point_and_bvh_mhem(relu.last_in[0].detach(), relu.last_in[1].detach(), n_components=-1)
+                fp_fitting, fp_const, _ = gmc.fitting.fixed_point_and_tree_hem(relu.last_in[0].detach(), relu.last_in[1].detach(), n_components=-1)
                 after_fixed_point[f"{i}"] = fp_fitting.cpu()
                 after_fixed_point[f"{i}_constant"] = fp_const.cpu()
                 # gm.save(relu.last_in[0], f"fitting_input/fitting_input_batch{batch_idx}_netlayer{i}", relu.last_in[1].detach().cpu())

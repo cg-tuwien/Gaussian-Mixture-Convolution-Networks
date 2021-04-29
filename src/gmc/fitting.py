@@ -16,7 +16,7 @@ class Config:
         self.KL_divergence_threshold = 2.0
 
 
-def fixed_point_and_bvh_mhem(mixture: Tensor, constant: Tensor, n_components: int, config: Config = Config(), tensorboard: TensorboardWriter = None) -> typing.Tuple[Tensor, Tensor, typing.List[Tensor]]:
+def fixed_point_and_tree_hem(mixture: Tensor, constant: Tensor, n_components: int, config: Config = Config(), tensorboard: TensorboardWriter = None) -> typing.Tuple[Tensor, Tensor, typing.List[Tensor]]:
     if n_components < 0:
         initial_fitting = initial_approx_to_relu(mixture, constant)
         fitting, ret_const = fixed_point_iteration_to_relu(mixture, constant, initial_fitting)
@@ -54,6 +54,39 @@ def fixed_point_and_bvh_mhem(mixture: Tensor, constant: Tensor, n_components: in
     return fitting, ret_const, [initial_fitting, fp_fitting]
 
 
+def fixed_point_and_mhem(mixture: Tensor, constant: Tensor, n_components: int, config: Config = Config(), tensorboard: TensorboardWriter = None) -> typing.Tuple[Tensor, Tensor, typing.List[Tensor]]:
+    if tensorboard is not None:
+        torch.cuda.synchronize()
+        t0 = time.perf_counter()
+
+    initial_fitting = initial_approx_to_relu(mixture, constant)
+
+    if tensorboard is not None:
+        torch.cuda.synchronize()
+        t1 = time.perf_counter()
+        tensorboard.add_scalar(f"50.1 fitting {mixture.shape} -> {n_components} initial_approx_to_relu time =", t1 - t0, 0)
+
+    fp_fitting, ret_const = fixed_point_iteration_to_relu(mixture, constant, initial_fitting)
+
+    if n_components < 0:
+        return fp_fitting, ret_const, [initial_fitting]
+
+    if tensorboard is not None:
+        torch.cuda.synchronize()
+        t2 = time.perf_counter()
+        tensorboard.add_scalar(f"50.2 fitting {mixture.shape} -> {n_components} fixed_point_iteration_to_relu time =", t2 - t1, 0)
+
+    reduced_fitting = representative_select_for_relu(fp_fitting, n_components, config)
+    fitting = mhem_fit_a_to_b(reduced_fitting, fp_fitting, config)
+
+    if tensorboard is not None:
+        torch.cuda.synchronize()
+        t3 = time.perf_counter()
+        tensorboard.add_scalar(f"50.5 fitting {mixture.shape} -> {n_components} bvh_mhem_fit time=", t3 - t2, 0)
+
+    return fitting, ret_const, [initial_fitting, fp_fitting, reduced_fitting]
+
+
 def tree_hem(m: Tensor, n_components: int, n_reduction: int) -> Tensor:
     # scale the mixture to some sort of standard in order to improve numerical stability
 
@@ -71,7 +104,6 @@ def tree_hem(m: Tensor, n_components: int, n_reduction: int) -> Tensor:
     m = cppBvhMhemFit.apply(m, n_components, n_reduction)
     m = gm.spatial_scale(m, backward_cov_scaling_factor)
     return m
-
 
 
 def initial_approx_to_relu(mixture: Tensor, constant: Tensor) -> Tensor:
@@ -261,7 +293,7 @@ def mhem_fit_a_to_b(fitting_mixture: Tensor, target_mixture: Tensor, config: Con
     # likelihoods = likelihoods * (KL_divergence < config.KL_divergence_threshold) * sign_match
 
     likelihoods_sum = likelihoods.sum(3, keepdim=True)
-    responsibilities = likelihoods / (likelihoods_sum + 0.00001)
+    responsibilities = likelihoods / torch.max(likelihoods_sum, torch.tensor([0.00001], device=likelihoods_sum.device).view(1, 1, 1, 1))
 
     if tensorboard is not None:
         torch.cuda.synchronize()
@@ -276,7 +308,7 @@ def mhem_fit_a_to_b(fitting_mixture: Tensor, target_mixture: Tensor, config: Con
     assert not torch.any(torch.isnan(responsibilities))
 
     assert not torch.any(torch.isnan(newWeights))
-    responsibilities = responsibilities / (newWeights + 0.00001).view(n_batch, n_layers, 1, n_components_fitting)
+    responsibilities = responsibilities / torch.max(newWeights, torch.tensor([0.00001], device=likelihoods_sum.device).view(1, 1, 1)).view(n_batch, n_layers, 1, n_components_fitting)
     assert torch.all(responsibilities >= 0)
     assert not torch.any(torch.isnan(responsibilities))
     newPositions = torch.sum(responsibilities.unsqueeze(-1) * gm.positions(target_double_gmm).view(n_batch, n_layers, n_components_target, 1, n_dims), 2)
