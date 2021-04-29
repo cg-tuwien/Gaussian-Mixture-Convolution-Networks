@@ -249,7 +249,7 @@ class ReLUFitting(torch.nn.modules.Module):
         self.last_in = None
         self.last_out = None
 
-    def forward(self, x_m: Tensor, x_constant: Tensor, tensorboard: TensorboardWriter = None) -> typing.Tuple[Tensor, Tensor]:
+    def forward(self, x_m: Tensor, x_constant: Tensor, tensorboard: typing.Optional[typing.Tuple[TensorboardWriter, int]] = None) -> typing.Tuple[Tensor, Tensor]:
         y_m, y_constant, _ = self.config.fitting_method(x_m, x_constant, self.n_output_gaussians, self.config.fitting_config, tensorboard)
 
         self.last_in = (x_m.detach(), x_constant.detach())

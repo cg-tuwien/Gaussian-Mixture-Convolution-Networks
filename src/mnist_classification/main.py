@@ -149,22 +149,25 @@ def train(model: gmc.model.Net, device: torch.device, train_loader: torch.utils.
     tensor_board_writer.add_scalar("10. batch_duration", end_time - start_time, step)
 
 
-def test(model: gmc.model.Net, device: torch.device, test_loader: torch.utils.data.DataLoader, epoch: int, tensor_board_writer: torch.utils.tensorboard.SummaryWriter):
+def test(model: gmc.model.Net, device: torch.device, test_loader: torch.utils.data.DataLoader, epoch: int, tensor_board_writer: torch.utils.tensorboard.SummaryWriter, fitting_tensorboards):
     model.eval()
     test_loss = 0
     correct = 0
+    start_time = time.perf_counter()
     with torch.no_grad():
-        for data, target in test_loader:
+        for batch_id, (data, target) in enumerate(test_loader):
+            step = epoch * len(test_loader) + (batch_id + 1)
             data, target = data.to(device), target.to(device)
-            output = model(data)
+            output = model(data, (fitting_tensorboards, step))
             test_loss += F.nll_loss(output, target, reduction='sum').item()  # sum up batch loss
             pred = output.argmax(dim=1, keepdim=True)  # get the index of the max log-probability
             correct += pred.eq(target.view_as(pred)).sum().item()
+    end_time = time.perf_counter()
 
     test_loss /= len(test_loader.dataset)
     tensor_board_writer.add_scalar("99. mnist test loss", test_loss, epoch)
     tensor_board_writer.add_scalar("98. mnist test accuracy", 100. * correct / len(test_loader.dataset), epoch)
-    print(f'\nTest set: Average loss: {test_loss:.4f}, Accuracy: {correct}/{len(test_loader.dataset)} ({100. * correct / len(test_loader.dataset):.0f}%)\n')
+    print(f'\nTest set: Average loss: {test_loss:.4f}, Accuracy: {correct}/{len(test_loader.dataset)} ({100. * correct / len(test_loader.dataset):.0f}%), test time: {end_time - start_time}\n')
 
 
 def experiment(device: str = 'cuda', desc_string: str = "", config: typing.Optional[Config] = None):
@@ -182,6 +185,17 @@ def experiment(device: str = 'cuda', desc_string: str = "", config: typing.Optio
     kernel_optimiser = optim.Adam(model.parameters(), lr=config.kernel_learning_rate)
     weight_decay_optimiser = optim.SGD(model.parameters(), lr=(config.weight_decay_rate * config.kernel_learning_rate))
     tensor_board_writer = torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard' / f'{desc_string}_{datetime.datetime.now().strftime("%m%d_%H%M")}')
+    fitting_tensorboards = (torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard' / f'MHEM_008_{desc_string}_{datetime.datetime.now().strftime("%m%d_%H%M")}'),
+                            torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard' / f'MHEM_016_{desc_string}_{datetime.datetime.now().strftime("%m%d_%H%M")}'),
+                            torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard' / f'MHEM_032_{desc_string}_{datetime.datetime.now().strftime("%m%d_%H%M")}'),
+                            torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard' / f'MHEM_064_{desc_string}_{datetime.datetime.now().strftime("%m%d_%H%M")}'),
+                            torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard' / f'MHEM_128_{desc_string}_{datetime.datetime.now().strftime("%m%d_%H%M")}'),
+                            torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard' / f'TreeHEM_008_{desc_string}_{datetime.datetime.now().strftime("%m%d_%H%M")}'),
+                            torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard' / f'TreeHEM_016_{desc_string}_{datetime.datetime.now().strftime("%m%d_%H%M")}'),
+                            torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard' / f'TreeHEM_032_{desc_string}_{datetime.datetime.now().strftime("%m%d_%H%M")}'),
+                            torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard' / f'TreeHEM_064_{desc_string}_{datetime.datetime.now().strftime("%m%d_%H%M")}'),
+                            torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard' / f'TreeHEM_128_{desc_string}_{datetime.datetime.now().strftime("%m%d_%H%M")}'),
+                            )
 
     # scheduler = StepLR(kernel_optimiser, step_size=1, gamma=args.gamma)
 
@@ -189,5 +203,5 @@ def experiment(device: str = 'cuda', desc_string: str = "", config: typing.Optio
         model.set_position_learning(epoch >= config.learn_positions_after)
         model.set_covariance_learning(epoch >= config.learn_covariances_after)
         train(model, device, train_loader, kernel_optimiser=kernel_optimiser, weight_decay_optimiser=weight_decay_optimiser, epoch=epoch, tensor_board_writer=tensor_board_writer, config=config)
-        test(model, device, test_loader, epoch, tensor_board_writer=tensor_board_writer)
+    test(model, device, test_loader, config.n_epochs, tensor_board_writer=tensor_board_writer, fitting_tensorboards=fitting_tensorboards)
         # scheduler.step()
