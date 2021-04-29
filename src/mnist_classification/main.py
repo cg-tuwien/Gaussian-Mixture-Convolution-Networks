@@ -184,17 +184,17 @@ def experiment(device: str = 'cuda', desc_string: str = "", config: typing.Optio
 
     kernel_optimiser = optim.Adam(model.parameters(), lr=config.kernel_learning_rate)
     weight_decay_optimiser = optim.SGD(model.parameters(), lr=(config.weight_decay_rate * config.kernel_learning_rate))
-    tensor_board_writer = torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard' / f'{desc_string}_{datetime.datetime.now().strftime("%m%d_%H%M")}')
-    fitting_tensorboards = (torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard' / f'MHEM_008_{desc_string}_{datetime.datetime.now().strftime("%m%d_%H%M")}'),
-                            torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard' / f'MHEM_016_{desc_string}_{datetime.datetime.now().strftime("%m%d_%H%M")}'),
-                            torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard' / f'MHEM_032_{desc_string}_{datetime.datetime.now().strftime("%m%d_%H%M")}'),
-                            torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard' / f'MHEM_064_{desc_string}_{datetime.datetime.now().strftime("%m%d_%H%M")}'),
-                            torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard' / f'MHEM_128_{desc_string}_{datetime.datetime.now().strftime("%m%d_%H%M")}'),
-                            torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard' / f'TreeHEM_008_{desc_string}_{datetime.datetime.now().strftime("%m%d_%H%M")}'),
-                            torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard' / f'TreeHEM_016_{desc_string}_{datetime.datetime.now().strftime("%m%d_%H%M")}'),
-                            torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard' / f'TreeHEM_032_{desc_string}_{datetime.datetime.now().strftime("%m%d_%H%M")}'),
-                            torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard' / f'TreeHEM_064_{desc_string}_{datetime.datetime.now().strftime("%m%d_%H%M")}'),
-                            torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard' / f'TreeHEM_128_{desc_string}_{datetime.datetime.now().strftime("%m%d_%H%M")}'),
+    tensor_board_writer = torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard_mnist' / f'{desc_string}_{datetime.datetime.now().strftime("%m%d_%H%M")}')
+    fitting_tensorboards = (torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard_mnist' / f'MHEM_008_{desc_string}_{datetime.datetime.now().strftime("%m%d_%H%M")}'),
+                            torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard_mnist' / f'MHEM_016_{desc_string}_{datetime.datetime.now().strftime("%m%d_%H%M")}'),
+                            torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard_mnist' / f'MHEM_032_{desc_string}_{datetime.datetime.now().strftime("%m%d_%H%M")}'),
+                            torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard_mnist' / f'MHEM_064_{desc_string}_{datetime.datetime.now().strftime("%m%d_%H%M")}'),
+                            torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard_mnist' / f'MHEM_128_{desc_string}_{datetime.datetime.now().strftime("%m%d_%H%M")}'),
+                            torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard_mnist' / f'TreeHEM_008_{desc_string}_{datetime.datetime.now().strftime("%m%d_%H%M")}'),
+                            torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard_mnist' / f'TreeHEM_016_{desc_string}_{datetime.datetime.now().strftime("%m%d_%H%M")}'),
+                            torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard_mnist' / f'TreeHEM_032_{desc_string}_{datetime.datetime.now().strftime("%m%d_%H%M")}'),
+                            torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard_mnist' / f'TreeHEM_064_{desc_string}_{datetime.datetime.now().strftime("%m%d_%H%M")}'),
+                            torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard_mnist' / f'TreeHEM_128_{desc_string}_{datetime.datetime.now().strftime("%m%d_%H%M")}'),
                             )
 
     # scheduler = StepLR(kernel_optimiser, step_size=1, gamma=args.gamma)
@@ -203,5 +203,5 @@ def experiment(device: str = 'cuda', desc_string: str = "", config: typing.Optio
         model.set_position_learning(epoch >= config.learn_positions_after)
         model.set_covariance_learning(epoch >= config.learn_covariances_after)
         train(model, device, train_loader, kernel_optimiser=kernel_optimiser, weight_decay_optimiser=weight_decay_optimiser, epoch=epoch, tensor_board_writer=tensor_board_writer, config=config)
-    test(model, device, test_loader, config.n_epochs, tensor_board_writer=tensor_board_writer, fitting_tensorboards=fitting_tensorboards)
+        test(model, device, test_loader, epoch, tensor_board_writer=tensor_board_writer, fitting_tensorboards=fitting_tensorboards)
         # scheduler.step()

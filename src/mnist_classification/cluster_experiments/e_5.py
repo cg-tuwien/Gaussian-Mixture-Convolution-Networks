@@ -30,7 +30,8 @@ c.log_interval = 1000
 # network size
 c.model.layers = [Layer(8, 1.5, 28),
                   Layer(16, 2.0, 16),
-                  Layer(32, 2.5, -1),]
-c.model.mlp = (-1, 10)
+                  Layer(32, 2.5, 8),
+                  Layer(10, 2.5, -1)]
+# c.model.mlp = (-1, 10)
 
 main.experiment(device=device, desc_string=f"{c.produce_description()}", config=c)

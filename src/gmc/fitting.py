@@ -17,6 +17,28 @@ class Config:
         self.KL_divergence_threshold = 2.0
 
 
+def mse_testing_fitting_fun(mixture: Tensor, constant: Tensor, n_components: int, config: Config = Config(), tensorboard = None):
+    if tensorboard is None:
+        return fixed_point_and_tree_hem(mixture, constant, n_components, config)
+
+    # run tests, they'll log to tensorboard
+    fixed_point_and_mhem(mixture, constant, 8, config, (tensorboard[0][0], tensorboard[-1]))
+    fixed_point_and_mhem(mixture, constant, 16, config, (tensorboard[0][1], tensorboard[-1]))
+    fixed_point_and_mhem(mixture, constant, 32, config, (tensorboard[0][2], tensorboard[-1]))
+    fixed_point_and_mhem(mixture, constant, 64, config, (tensorboard[0][3], tensorboard[-1]))
+    if gm.n_components(mixture) < 1280:     # out of memory
+        fixed_point_and_mhem(mixture, constant, 128, config, (tensorboard[0][4], tensorboard[-1]))
+
+    fixed_point_and_tree_hem(mixture, constant, 8, config, (tensorboard[0][5], tensorboard[-1]))
+    fixed_point_and_tree_hem(mixture, constant, 16, config, (tensorboard[0][6], tensorboard[-1]))
+    fixed_point_and_tree_hem(mixture, constant, 32, config, (tensorboard[0][7], tensorboard[-1]))
+    fixed_point_and_tree_hem(mixture, constant, 64, config, (tensorboard[0][8], tensorboard[-1]))
+    fixed_point_and_tree_hem(mixture, constant, 128, config, (tensorboard[0][9], tensorboard[-1]))
+
+    # compute the mixture for the next level (ensuring the same input is used for measuring error of mhem and tree hem.
+    return fixed_point_and_tree_hem(mixture, constant, n_components, config)
+
+
 def fixed_point_and_tree_hem(mixture: Tensor, constant: Tensor, n_components: int, config: Config = Config(), tensorboard: typing.Optional[typing.Tuple[TensorboardWriter, int]] = None) -> typing.Tuple[Tensor, Tensor, typing.List[Tensor]]:
     if n_components < 0:
         initial_fitting = initial_approx_to_relu(mixture, constant)
@@ -69,7 +91,6 @@ def fixed_point_and_mhem(mixture: Tensor, constant: Tensor, n_components: int, c
         torch.cuda.synchronize()
         t1 = time.perf_counter()
         tensorboard[0].add_scalar(f"50.1 fitting {mixture.shape} initial_approx_to_relu time =", t1 - t0, tensorboard[1])
-        tensorboard[0].add_scalar(f"51.1 fitting {mixture.shape} initial_approx_to_relu rmse =", mse(mixture, constant, initial_fitting, constant, 1000), tensorboard[1])
 
     fp_fitting, ret_const = fixed_point_iteration_to_relu(mixture, constant, initial_fitting)
 
