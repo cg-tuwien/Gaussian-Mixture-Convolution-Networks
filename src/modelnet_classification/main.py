@@ -198,7 +198,7 @@ def experiment(device: str = 'cuda', desc_string: str = "", config: Config = Non
     train_loader = torch.utils.data.DataLoader(ModelNetDataSet(config.modelnet_data_path, config.modelnet_category_list_file, config.modelnet_training_sample_names_file),
                                                batch_size=config.batch_size, num_workers=config.num_dataloader_workers, shuffle=True, drop_last=True)
     test_loader  = torch.utils.data.DataLoader(ModelNetDataSet(config.modelnet_data_path, config.modelnet_category_list_file, config.modelnet_test_sample_names_file),
-                                               batch_size=config.batch_size, num_workers=config.num_dataloader_workers, drop_last=True)
+                                               batch_size=config.batch_size, num_workers=config.num_dataloader_workers)
 
     model = gmc.model.Net(learn_positions=config.learn_positions_after == 0,
                           learn_covariances=config.learn_covariances_after == 0,
@@ -226,5 +226,5 @@ def experiment(device: str = 'cuda', desc_string: str = "", config: Config = Non
         model.set_position_learning(epoch >= config.learn_positions_after)
         model.set_covariance_learning(epoch >= config.learn_covariances_after)
         train(model, device, train_loader, kernel_optimiser=kernel_optimiser, weight_decay_optimiser=weight_decay_optimiser, epoch=epoch, tensor_board_writer=tensor_board_writer, config=config)
-    test(model, device, test_loader, epoch, tensor_board_writer=tensor_board_writer, fitting_tensorboards=fitting_tensorboards)
+        test(model, device, test_loader, epoch, tensor_board_writer=tensor_board_writer, fitting_tensorboards=fitting_tensorboards)
         # scheduler.step()
