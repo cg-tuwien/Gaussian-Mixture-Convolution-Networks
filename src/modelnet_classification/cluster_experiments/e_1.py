@@ -20,6 +20,7 @@ c.model.convolution_config.dropout = 0.0
 c.model.dataDropout = 0.0
 c.log_tensorboard_renderings = False
 c.n_epochs = 160
+c.batch_size = 18
 
 # network size
 c.model.layers = [Layer(8, 2.5, 128),
