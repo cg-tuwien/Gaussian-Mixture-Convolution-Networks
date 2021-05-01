@@ -8,8 +8,8 @@ import cluster_experiments.pc_fit as pcfit
 # device = list(sys.argv)[1]
 device = "cuda"
 
-# tmp_gmm_base_path = "/scratch/acelarek/gmms/e0"
-tmp_gmm_base_path = None
+tmp_gmm_base_path = "/scratch/acelarek/gmms/e0"
+# tmp_gmm_base_path = None
 
 fitconf = pcfit.Config(n_gaussians=64, eps=0.00001, gengmm_path=tmp_gmm_base_path)
 # pcfit.fit(fitconf)
