@@ -22,7 +22,8 @@ c.model.dataDropout = 0.0
 c.model.relu_config.fitting_method = gmc.fitting.mse_testing_fitting_fun
 
 c.log_tensorboard_renderings = False
-c.n_epochs = 160
+c.n_epochs = 16
+c.batch_size = 3
 
 # network size
 c.model.layers = [Layer(8, 2.5, 32),
