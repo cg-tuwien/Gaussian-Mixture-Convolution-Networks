@@ -167,7 +167,7 @@ class Net(nn.Module):
         return wdl
 
     # noinspection PyCallingNonCallable
-    def forward(self, in_x: Tensor, tensorboard: typing.Optional[typing.Tuple[TensorboardWriter, int]] = None) -> Tensor:
+    def forward(self, in_x: Tensor, tensorboard: TensorboardWriter = None) -> Tensor:
         # Andrew Ng says that most of the time batch norm (BN) is applied before activation.
         # That would allow to merge the beta and bias learnable parameters
         # https://www.youtube.com/watch?v=tNIpEZLv_eg
@@ -207,6 +207,7 @@ class Net(nn.Module):
             self.reset_timer()
             x, x_const = self.relus[i](x, x_const, tensorboard)
             self.time_lap(f"relu{i}")
+            # x = self.maxPool1(x)
 
             if self.config.bn_place == Config.BN_PLACE_AFTER_RELU:
                 x, x_const = self.norms[i]((x, x_const))

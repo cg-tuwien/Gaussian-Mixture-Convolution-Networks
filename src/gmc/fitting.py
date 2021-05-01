@@ -1,5 +1,4 @@
 import typing
-import math
 import time
 
 import torch
@@ -17,7 +16,7 @@ class Config:
         self.KL_divergence_threshold = 2.0
 
 
-def fixed_point_and_tree_hem(mixture: Tensor, constant: Tensor, n_components: int, config: Config = Config(), tensorboard: typing.Optional[typing.Tuple[TensorboardWriter, int]] = None) -> typing.Tuple[Tensor, Tensor, typing.List[Tensor]]:
+def fixed_point_and_tree_hem(mixture: Tensor, constant: Tensor, n_components: int, config: Config = Config(), tensorboard: TensorboardWriter = None) -> typing.Tuple[Tensor, Tensor, typing.List[Tensor]]:
     if n_components < 0:
         initial_fitting = initial_approx_to_relu(mixture, constant)
         fitting, ret_const = fixed_point_iteration_to_relu(mixture, constant, initial_fitting)
@@ -32,24 +31,21 @@ def fixed_point_and_tree_hem(mixture: Tensor, constant: Tensor, n_components: in
     if tensorboard is not None:
         torch.cuda.synchronize()
         t1 = time.perf_counter()
-        tensorboard[0].add_scalar(f"50.1 fitting {mixture.shape} initial_approx_to_relu time =", t1 - t0, tensorboard[1])
+        tensorboard.add_scalar(f"50.1 fitting {mixture.shape} -> {n_components} initial_approx_to_relu time =", t1 - t0, 0)
 
     fp_fitting, ret_const = fixed_point_iteration_to_relu(mixture, constant, initial_fitting)
 
     if tensorboard is not None:
         torch.cuda.synchronize()
         t2 = time.perf_counter()
-        tensorboard[0].add_scalar(f"50.2 fitting {mixture.shape} fixed_point_iteration_to_relu time =", t2 - t1, tensorboard[1])
-        tensorboard[0].add_scalar(f"51.2 fitting {mixture.shape} fixed_point_iteration_to_relu rmse =", mse(mixture, constant, fp_fitting, ret_const, 1000), tensorboard[1])
+        tensorboard.add_scalar(f"50.2 fitting {mixture.shape} -> {n_components} fixed_point_iteration_to_relu time =", t2 - t1, 0)
 
     fitting = tree_hem(fp_fitting, max(config.n_reduction, n_components), config.n_reduction)
 
     if tensorboard is not None:
         torch.cuda.synchronize()
         t3 = time.perf_counter()
-        tensorboard[0].add_scalar(f"50.3 fitting {mixture.shape} fit time=", t3 - t2, tensorboard[1])
-        tensorboard[0].add_scalar(f"51.3 fitting {mixture.shape} fit vs gt rmse =", mse(mixture, constant, fitting, ret_const, 1000), tensorboard[1])
-        tensorboard[0].add_scalar(f"51.4 fitting {mixture.shape} fit vs fixed_point rmse =", mse(fp_fitting, ret_const, fitting, ret_const, 1000, with_activation=False), tensorboard[1])
+        tensorboard.add_scalar(f"50.5 fitting {mixture.shape} -> {n_components} bvh_mhem_fit time=", t3 - t2, 0)
 
     if n_components < config.n_reduction:
         reduced_fitting = representative_select_for_relu(fitting, n_components, config)
@@ -58,7 +54,7 @@ def fixed_point_and_tree_hem(mixture: Tensor, constant: Tensor, n_components: in
     return fitting, ret_const, [initial_fitting, fp_fitting]
 
 
-def fixed_point_and_mhem(mixture: Tensor, constant: Tensor, n_components: int, config: Config = Config(), tensorboard: typing.Optional[typing.Tuple[TensorboardWriter, int]] = None) -> typing.Tuple[Tensor, Tensor, typing.List[Tensor]]:
+def fixed_point_and_mhem(mixture: Tensor, constant: Tensor, n_components: int, config: Config = Config(), tensorboard: TensorboardWriter = None) -> typing.Tuple[Tensor, Tensor, typing.List[Tensor]]:
     if tensorboard is not None:
         torch.cuda.synchronize()
         t0 = time.perf_counter()
@@ -68,8 +64,7 @@ def fixed_point_and_mhem(mixture: Tensor, constant: Tensor, n_components: int, c
     if tensorboard is not None:
         torch.cuda.synchronize()
         t1 = time.perf_counter()
-        tensorboard[0].add_scalar(f"50.1 fitting {mixture.shape} initial_approx_to_relu time =", t1 - t0, tensorboard[1])
-        tensorboard[0].add_scalar(f"51.1 fitting {mixture.shape} initial_approx_to_relu rmse =", mse(mixture, constant, initial_fitting, constant, 1000), tensorboard[1])
+        tensorboard.add_scalar(f"50.1 fitting {mixture.shape} -> {n_components} initial_approx_to_relu time =", t1 - t0, 0)
 
     fp_fitting, ret_const = fixed_point_iteration_to_relu(mixture, constant, initial_fitting)
 
@@ -79,8 +74,7 @@ def fixed_point_and_mhem(mixture: Tensor, constant: Tensor, n_components: int, c
     if tensorboard is not None:
         torch.cuda.synchronize()
         t2 = time.perf_counter()
-        tensorboard[0].add_scalar(f"50.2 fitting {mixture.shape} fixed_point_iteration_to_relu time =", t2 - t1, tensorboard[1])
-        tensorboard[0].add_scalar(f"51.2 fitting {mixture.shape} fixed_point_iteration_to_relu rmse =", mse(mixture, constant, fp_fitting, ret_const, 1000), tensorboard[1])
+        tensorboard.add_scalar(f"50.2 fitting {mixture.shape} -> {n_components} fixed_point_iteration_to_relu time =", t2 - t1, 0)
 
     reduced_fitting = representative_select_for_relu(fp_fitting, n_components, config)
     fitting = mhem_fit_a_to_b(reduced_fitting, fp_fitting, config)
@@ -88,9 +82,7 @@ def fixed_point_and_mhem(mixture: Tensor, constant: Tensor, n_components: int, c
     if tensorboard is not None:
         torch.cuda.synchronize()
         t3 = time.perf_counter()
-        tensorboard[0].add_scalar(f"50.3 fitting {mixture.shape} fit time=", t3 - t2, tensorboard[1])
-        tensorboard[0].add_scalar(f"51.3 fitting {mixture.shape} fit vs gt rmse =", mse(mixture, constant, fitting, ret_const, 1000), tensorboard[1])
-        tensorboard[0].add_scalar(f"51.4 fitting {mixture.shape} fit vs fixed_point rmse =", mse(fp_fitting, ret_const, fitting, ret_const, 1000, with_activation=False), tensorboard[1])
+        tensorboard.add_scalar(f"50.5 fitting {mixture.shape} -> {n_components} bvh_mhem_fit time=", t3 - t2, 0)
 
     return fitting, ret_const, [initial_fitting, fp_fitting, reduced_fitting]
 
@@ -160,12 +152,9 @@ def generate_random_sampling(m: Tensor, n: int) -> Tensor:
     return sampling
 
 
-def mse(target_mixture: Tensor, target_constant: Tensor, fitting_mixture: Tensor, fitting_constant: Tensor, n_test_points: int = 500, with_activation: bool = True) -> float:
+def mse(target_mixture: Tensor, target_constant: Tensor, fitting_mixture: Tensor, fitting_constant: Tensor, n_test_points: int = 500) -> float:
     xes = generate_random_sampling(target_mixture, n_test_points)
-    if with_activation:
-        ground_truth = gm.evaluate_with_activation_fun(target_mixture, target_constant, xes)
-    else:
-        ground_truth = gm.evaluate(target_mixture, xes)
+    ground_truth = gm.evaluate_with_activation_fun(target_mixture, target_constant, xes)
     gt_mean = ground_truth.mean()
     gt_sd = ground_truth.std()
     ground_truth = (ground_truth - gt_mean) / gt_sd
