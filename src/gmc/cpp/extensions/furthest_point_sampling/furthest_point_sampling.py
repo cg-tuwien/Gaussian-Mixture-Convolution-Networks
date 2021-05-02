@@ -14,5 +14,7 @@ cuda = load('furthest_point_sampling_cuda', [source_dir + '/furthest_point_sampl
            #verbose=True, extra_cflags=cpp_extra_cflags, extra_ldflags=["-lpthread"])
 
 def apply(points: torch.Tensor, n_sample_points: int) -> torch.Tensor:
-    assert points.is_cuda
-    return cuda.apply(points, n_sample_points)
+    if points.is_cuda:
+        return cuda.apply(points, n_sample_points)
+    else:
+        return cuda.apply(points.cuda(), n_sample_points).cpu()

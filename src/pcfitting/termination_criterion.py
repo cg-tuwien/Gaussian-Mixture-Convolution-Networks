@@ -3,6 +3,8 @@ from typing import List
 
 import torch
 
+import pcfitting.config as general_config
+
 
 class TerminationCriterion(ABC):
 
@@ -34,11 +36,11 @@ class RelChangeTerminationCriterion(TerminationCriterion):
     def __init__(self, relchange: float, itercount: int):
         self.relchange = relchange
         self.itercount = itercount
-        self.last_losses = torch.zeros(1, itercount, device='cuda')
+        self.last_losses = torch.zeros(1, itercount, device=general_config.device)
         self.current_loss_index = -1
         self.current_loss_iteration = -1
         self.running = False
-        self.continuing = torch.ones(1, dtype=torch.bool, device='cuda')
+        self.continuing = torch.ones(1, dtype=torch.bool, device=general_config.device)
 
     def may_continue(self, iteration: int, losses: torch.Tensor) -> bool:
         # has to be called every iteration!
@@ -67,8 +69,8 @@ class RelChangeTerminationCriterion(TerminationCriterion):
         return self.continuing
 
     def reset(self):
-        self.last_losses = torch.zeros(1, self.itercount, device='cuda')
-        self.continuing = torch.ones(1, dtype=torch.bool, device='cuda')
+        self.last_losses = torch.zeros(1, self.itercount, device=general_config.device)
+        self.continuing = torch.ones(1, dtype=torch.bool, device=general_config.device)
         self.current_loss_index = -1
         self.current_loss_iteration = -1
         self.running = False

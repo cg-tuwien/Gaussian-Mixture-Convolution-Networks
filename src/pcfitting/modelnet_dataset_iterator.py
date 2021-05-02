@@ -6,6 +6,8 @@ import math
 import numpy as np
 import pcfitting.pc_dataset_iterator
 
+import pcfitting.config as general_config
+
 
 def load_points_from_file_to_numpy(filename,
                                    delimiter=',',
@@ -76,7 +78,7 @@ class ModelNetDatasetIterator(pcfitting.pc_dataset_iterator.DatasetIterator):
         # also returns a list of names of the point clouds
         current_batch_size = min(self._batch_size, self._file_queue.qsize())
 
-        batch = torch.zeros(current_batch_size, self._point_count, 3, device=torch.device("cuda"))
+        batch = torch.zeros(current_batch_size, self._point_count, 3, device=general_config.device)
         names = [None] * current_batch_size
         for i in range(current_batch_size):
             assert(not self._file_queue.empty())

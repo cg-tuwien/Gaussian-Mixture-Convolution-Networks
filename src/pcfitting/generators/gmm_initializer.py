@@ -11,6 +11,8 @@ from pcfitting import data_loading
 from gmc.cpp.extensions.furthest_point_sampling import furthest_point_sampling
 from .em_tools import EMTools
 
+import pcfitting.config as general_config
+
 
 class GMMInitializer:
     # Capsules all the possible GMM-initialization methods for the EM algorithm(s)
@@ -41,7 +43,7 @@ class GMMInitializer:
         self._dtype = dtype
         self._epsilons = epsilons
         if type(self._epsilons) is not torch.Tensor:
-            self._epsilons = torch.tensor(epsilons, dtype=dtype, device='cuda')
+            self._epsilons = torch.tensor(epsilons, dtype=dtype, device=general_config.device)
         self._epsilons = self._epsilons.view(-1, 1, 1, 1, 1)
 
     def initialize_by_method_name(self, method_name: str, pcbatch: torch.Tensor, n_gaussians: int,
@@ -118,21 +120,21 @@ class GMMInitializer:
         # Calculated mean prior.
         meanweight = 1.0 / (n_gaussians + (noise_cluster is not None))
 
-        eps = (torch.eye(3, 3, dtype=dtype, device='cuda')).view(1, 1, 1, 3, 3) \
+        eps = (torch.eye(3, 3, dtype=dtype, device=general_config.device)).view(1, 1, 1, 3, 3) \
             .expand(batch_size, 1, 1, 3, 3) * self._epsilons
 
         # Sample positions from Gaussian -> shape: (bs, 1, ng, 3)
-        positions = torch.zeros(batch_size, 1, n_gaussians, 3, dtype=dtype, device='cuda')
+        positions = torch.zeros(batch_size, 1, n_gaussians, 3, dtype=dtype, device=general_config.device)
         for i in range(batch_size):
             positions[i, 0, :, :] = torch.tensor(
-                np.random.multivariate_normal(meanpos[i, :].cpu(), meancov[i, :, :].cpu(), n_gaussians), device='cuda')
+                np.random.multivariate_normal(meanpos[i, :].cpu(), meancov[i, :, :].cpu(), n_gaussians), device=general_config.device)
         # Repeat covariances for each Gaussian -> shape: (bs, 1, ng, 3, 3)
         covariances = meancov.view(batch_size, 1, 1, 3, 3).expand(batch_size, 1, n_gaussians, 3, 3) + eps
         invcovariances = mat_tools.inverse(covariances).contiguous()
         EMTools.replace_invalid_matrices(covariances, invcovariances, eps)
 
         # Set weight for each Gaussian -> shape: (bs, 1, ng)
-        weights = torch.zeros(batch_size, 1, n_gaussians, dtype=dtype, device='cuda')
+        weights = torch.zeros(batch_size, 1, n_gaussians, dtype=dtype, device=general_config.device)
         weights[:, :, :] = meanweight
 
         # pack gmm-mixture
@@ -161,13 +163,13 @@ class GMMInitializer:
         else:
             sample_points = pcbatch
 
-        eps = (torch.eye(3, 3, dtype=dtype, device='cuda')).view(1, 1, 1, 3, 3) \
+        eps = (torch.eye(3, 3, dtype=dtype, device=general_config.device)).view(1, 1, 1, 3, 3) \
             .expand(batch_size, 1, 1, 3, 3) * self._epsilons
 
         assignments = torch.randint(low=0, high=n_gaussians, size=(batch_size * n_sample_points,))
         point_indizes = torch.arange(0, n_sample_points).repeat(batch_size)
         batch_indizes = torch.arange(0, batch_size).repeat(n_sample_points, 1).transpose(-1, -2).reshape(-1)
-        responsibilities = torch.zeros(batch_size, n_sample_points, n_gaussians, dtype=self._dtype, device='cuda')
+        responsibilities = torch.zeros(batch_size, n_sample_points, n_gaussians, dtype=self._dtype, device=general_config.device)
         responsibilities[batch_indizes, point_indizes, assignments] = 1
         responsibilities = responsibilities.unsqueeze(1)
 
@@ -191,17 +193,17 @@ class GMMInitializer:
         #       If None, no noise cluster is used.
         batch_size = pcbatch.shape[0]
 
-        eps = (torch.eye(3, 3, dtype=self._dtype, device='cuda')).view(1, 1, 1, 3, 3) \
+        eps = (torch.eye(3, 3, dtype=self._dtype, device=general_config.device)).view(1, 1, 1, 3, 3) \
             .expand(batch_size, 1, 1, 3, 3) * self._epsilons
 
         sampled = furthest_point_sampling.apply(pcbatch.float(), n_gaussians).to(torch.long).reshape(-1)
         batch_indizes = torch.arange(0, batch_size).repeat(n_gaussians, 1).transpose(-1, -2).reshape(-1)
         gmpositions = pcbatch[batch_indizes, sampled, :].view(batch_size, 1, n_gaussians, 3)
-        gmcovariances = torch.zeros(batch_size, 1, n_gaussians, 3, 3, dtype=self._dtype, device='cuda') + eps
+        gmcovariances = torch.zeros(batch_size, 1, n_gaussians, 3, 3, dtype=self._dtype, device=general_config.device) + eps
         maxextends = torch.max(pcbatch.max(dim=1)[0] - pcbatch.min(dim=1)[0], dim=1)[0].view(-1, 1)
-        gmcovariances[:, 0, :] = torch.eye(3, dtype=self._dtype, device='cuda')\
+        gmcovariances[:, 0, :] = torch.eye(3, dtype=self._dtype, device=general_config.device)\
                 .unsqueeze(0).unsqueeze(0).expand(batch_size, 1, 3, 3) * maxextends.unsqueeze(2).unsqueeze(1)
-        gmpriors = torch.zeros(batch_size, 1, n_gaussians, dtype=self._dtype, device='cuda')
+        gmpriors = torch.zeros(batch_size, 1, n_gaussians, dtype=self._dtype, device=general_config.device)
         gmpriors[:, :, :] = 1 / (n_gaussians + (noise_cluster is not None))
 
         return gm.pack_mixture(gmpriors, gmpositions, gmcovariances)
@@ -230,7 +232,7 @@ class GMMInitializer:
         else:
             sample_points = pcbatch
 
-        eps = (torch.eye(3, 3, dtype=self._dtype, device='cuda')).view(1, 1, 1, 3, 3) \
+        eps = (torch.eye(3, 3, dtype=self._dtype, device=general_config.device)).view(1, 1, 1, 3, 3) \
             .expand(batch_size, 1, 1, 3, 3) * self._epsilons
 
         mix = self.initialize_fps(pcbatch, n_gaussians, noise_cluster)
@@ -253,7 +255,7 @@ class GMMInitializer:
         assignments = responsibilities.argmax(dim=3).view(-1)
         point_indizes = torch.arange(0, n_sample_points).repeat(batch_size)
         batch_indizes = torch.arange(0, batch_size).repeat(n_sample_points, 1).transpose(-1, -2).reshape(-1)
-        assignedresps = torch.zeros(batch_size, n_sample_points, n_gaussians, dtype=self._dtype, device='cuda')
+        assignedresps = torch.zeros(batch_size, n_sample_points, n_gaussians, dtype=self._dtype, device=general_config.device)
         assignedresps[batch_indizes, point_indizes, assignments] = 1
         assignedresps = assignedresps.unsqueeze(1)
 
@@ -278,11 +280,11 @@ class GMMInitializer:
         batch_size = pcbatch.shape[0]
         point_count = pcbatch.shape[1]
 
-        positions = torch.zeros(batch_size, 1, n_gaussians, 3, dtype=self._dtype, device='cuda')
-        covariances = torch.zeros(batch_size, 1, n_gaussians, 3, 3, dtype=self._dtype, device='cuda')
-        priors = torch.zeros(batch_size, 1, n_gaussians, dtype=self._dtype, device='cuda')
+        positions = torch.zeros(batch_size, 1, n_gaussians, 3, dtype=self._dtype, device=general_config.device)
+        covariances = torch.zeros(batch_size, 1, n_gaussians, 3, 3, dtype=self._dtype, device=general_config.device)
+        priors = torch.zeros(batch_size, 1, n_gaussians, dtype=self._dtype, device=general_config.device)
 
-        eps = (torch.eye(3, 3, dtype=self._dtype, device='cuda')).view(1, 1, 1, 3, 3) \
+        eps = (torch.eye(3, 3, dtype=self._dtype, device=general_config.device)).view(1, 1, 1, 3, 3) \
             .expand(batch_size, 1, 1, 3, 3) * self._epsilons
 
         if weights is not None:
@@ -295,9 +297,9 @@ class GMMInitializer:
             else:
                 km = KMeans(n_gaussians)\
                     .fit(pcbatch[batch].cpu(), sample_weight=weights[batch].cpu() if weights is not None else None)
-            positions[batch, 0] = torch.tensor(km.cluster_centers_, device='cuda')
-            labels = torch.tensor(km.labels_, device='cuda')
-            allidcs = torch.tensor(range(n_gaussians), device='cuda')
+            positions[batch, 0] = torch.tensor(km.cluster_centers_, device=general_config.device)
+            labels = torch.tensor(km.labels_, device=general_config.device)
+            allidcs = torch.tensor(range(n_gaussians), device=general_config.device)
             # mask: (ng, np) True where there is an assignment
             mask = labels.eq(allidcs.view(-1, 1))
             count_per_cluster = mask.sum(1)

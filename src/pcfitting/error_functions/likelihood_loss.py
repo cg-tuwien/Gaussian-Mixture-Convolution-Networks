@@ -4,6 +4,7 @@ from typing import List
 from pcfitting import EvalFunction
 import torch
 import gmc.mixture as gm
+import pcfitting.config as general_config
 
 
 class LikelihoodLoss(EvalFunction):
@@ -22,7 +23,7 @@ class LikelihoodLoss(EvalFunction):
         points = pcbatch.view(batch_size, 1, -1, 3)
         point_count = points.shape[2]
         mixture_with_inversed_cov = gm.pack_mixture(gmamplitudes, gmpositions, gminvcovariances)
-        output = torch.zeros(batch_size, point_count, dtype=points.dtype, device='cuda')
+        output = torch.zeros(batch_size, point_count, dtype=points.dtype, device=general_config.device)
         subbatches = math.ceil((batch_size * point_count) / 65535)
         subbatch_pointcount = math.ceil(point_count / subbatches)
         for p in range(subbatches):
