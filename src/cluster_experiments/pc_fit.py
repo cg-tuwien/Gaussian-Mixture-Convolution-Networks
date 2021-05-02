@@ -1,7 +1,7 @@
 import typing
 
-from pcfitting import programs, MaxIterationTerminationCriterion
-from pcfitting.generators import EMGenerator
+from pcfitting import programs, MaxIterationTerminationCriterion, RelChangeTerminationCriterion
+from pcfitting.generators import EMGenerator, PreinerGenerator, EckartGeneratorSP
 import pcfitting.modelnet_dataset_iterator
 import pcfitting.config as general_config
 
@@ -31,31 +31,35 @@ class Config:
         # Path where to store the generated mixtures
         # Are stored as .gma.ply-files (can be read in via gmc.mixture.read_gm_from_ply(path))
         # And as .torch-files (can be read in with torch.load)
-        if gengmm_path is None:
-            self.gengmm_path = f"{general_config.data_base_path}/modelnet/gmms"
-        else:
-            self.gengmm_path = gengmm_path
+        self.gengmm_path = gengmm_path
 
 
 def fit(config: Config):
-    # Define GMM Generators
-    generators = [
+    run(config.name,
         EMGenerator(n_gaussians=config.n_gaussians, initialization_method='fpsmax', n_sample_points=config.n_points,
                     termination_criterion=MaxIterationTerminationCriterion(0), em_step_points_subbatchsize=10000, eps=config.eps,
                     em_step_gaussians_subbatchsize=512, verbosity=general_config.verbosity),
-    ]
-    # generator_identifiers = ["EM32", "EM64", "EM128", "EM256", "EM512"]  # "EM32",
-    generator_identifiers = [config.name]
+        config.gengmm_path,
+        config.batch_size
+        )
+
+
+def run(name, generator, gengmm_path, batch_size):
+    generators = [generator, ]
+    generator_identifiers = [name]
 
     log_loss = 0
     if general_config.verbosity > 2:
         log_loss = 20
 
+    if gengmm_path is None:
+        gengmm_path = f"{general_config.data_base_path}/modelnet/gmms"
+
     programs.execute_fitting2(training_name=None,
-                              dataset=pcfitting.modelnet_dataset_iterator.ModelNetDatasetIterator(batch_size=config.batch_size, dataset_path=pc_path),
+                              dataset=pcfitting.modelnet_dataset_iterator.ModelNetDatasetIterator(batch_size=batch_size, dataset_path=pc_path),
                               generators=generators,
                               generator_identifiers=generator_identifiers,
-                              gengmm_path=config.gengmm_path,
+                              gengmm_path=gengmm_path,
                               formats=[".gma.ply", ".torch"],
                               log_loss_console=log_loss,
                               verbosity=general_config.verbosity)
