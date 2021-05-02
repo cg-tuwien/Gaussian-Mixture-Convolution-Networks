@@ -2,6 +2,7 @@ import gmc.mixture as gm
 import torch
 from gmc import mat_tools
 
+import pcfitting.config as general_config
 
 class EMTools:
     # This class capsules the core EM functionality, which is used by both
@@ -58,7 +59,7 @@ class EMTools:
             point_subbatch_size = n_sample_points
 
         likelihood_log = \
-            torch.zeros(running_batch_size, 1, n_sample_points, n_gaussians + has_noise, dtype=dtype, device='cuda')
+            torch.zeros(running_batch_size, 1, n_sample_points, n_gaussians + has_noise, dtype=dtype, device=general_config.device)
         gmpos = gm_data.get_positions()
         gmicov = gm_data.get_inversed_covariances()
         gmloga = gm_data.get_logarithmized_amplitudes()
@@ -98,11 +99,11 @@ class EMTools:
         llh_sum = torch.logsumexp(likelihood_log, dim=3, keepdim=True)
         # Logarithmized Mean Likelihood for all points. shape: (bs)
         if losses is None:
-            losses = torch.zeros(batch_size, dtype=dtype, device='cuda')
+            losses = torch.zeros(batch_size, dtype=dtype, device=general_config.device)
         losses[running] = -llh_sum.mean(dim=2).view(running_batch_size)
         # Calculating responsibilities
         responsibilities = torch.zeros(batch_size, 1, n_sample_points, n_gaussians + has_noise, dtype=dtype,
-                                       device='cuda')
+                                       device=general_config.device)
         responsibilities[running] = torch.exp(likelihood_log - llh_sum)
 
         # Calculating responsibilities and returning them and the mean loglikelihoods
@@ -156,8 +157,8 @@ class EMTools:
             actual_gauss_subbatch_size = min(n_gaussians, j_end) - j_start
             # Initialize T-Variables for these Gaussians, will be filled in the upcoming loop
             # Positions/Covariances/Priors are calculated from these (see Eckart-Paper)
-            t_0 = torch.zeros(n_running, 1, actual_gauss_subbatch_size, dtype=dtype, device='cuda')
-            t_1 = torch.zeros(n_running, 1, actual_gauss_subbatch_size, 3, dtype=dtype, device='cuda')
+            t_0 = torch.zeros(n_running, 1, actual_gauss_subbatch_size, dtype=dtype, device=general_config.device)
+            t_1 = torch.zeros(n_running, 1, actual_gauss_subbatch_size, 3, dtype=dtype, device=general_config.device)
 
             # Iterate over Point-Subbatches
             for i_start in range(0, n_sample_points, point_subbatch_size):
@@ -175,7 +176,7 @@ class EMTools:
             new_positions[:, :, j_start:j_end] = t_1 / t_0.unsqueeze(3)  # (bs, 1, ng, 3)
 
             del t_1
-            t_2 = torch.zeros(n_running, 1, actual_gauss_subbatch_size, 3, 3, dtype=dtype, device='cuda')
+            t_2 = torch.zeros(n_running, 1, actual_gauss_subbatch_size, 3, 3, dtype=dtype, device=general_config.device)
 
             for i_start in range(0, n_sample_points, point_subbatch_size):
                 i_end = i_start + point_subbatch_size
@@ -200,7 +201,7 @@ class EMTools:
         # To avoid NaNs, we will then replace those invalid values with 0 (pos) and eps (cov).
         # if (new_priors == 0).sum() > 0:
             # print("detected ", (new_priors == 0).sum().item(), "0-priors!")
-        new_positions[new_priors == 0] = torch.tensor([0.0, 0.0, 0.0], dtype=dtype, device='cuda')
+        new_positions[new_priors == 0] = torch.tensor([0.0, 0.0, 0.0], dtype=dtype, device=general_config.device)
         new_covariances[new_priors == 0] = eps[0, 0, 0, :, :]
 
         # Update GMData
@@ -275,14 +276,14 @@ class EMTools:
         # otherwise the conversion is not correct anymore.
 
         def __init__(self, batch_size, n_gaussians, dtype, epsilons):
-            self._positions = torch.zeros(batch_size, 1, n_gaussians, 3, dtype=dtype, device='cuda')
-            self._logamplitudes = torch.zeros(batch_size, 1, n_gaussians, dtype=dtype, device='cuda')
-            self._priors = torch.zeros(batch_size, 1, n_gaussians, dtype=dtype, device='cuda')
-            self._covariances = torch.eye(3, 3, dtype=dtype, device='cuda').view(1, 1, 1, 3, 3)\
+            self._positions = torch.zeros(batch_size, 1, n_gaussians, 3, dtype=dtype, device=general_config.device)
+            self._logamplitudes = torch.zeros(batch_size, 1, n_gaussians, dtype=dtype, device=general_config.device)
+            self._priors = torch.zeros(batch_size, 1, n_gaussians, dtype=dtype, device=general_config.device)
+            self._covariances = torch.eye(3, 3, dtype=dtype, device=general_config.device).view(1, 1, 1, 3, 3)\
                 .repeat(batch_size, 1, n_gaussians, 1, 1) * epsilons
             self._inversed_covariances = mat_tools.inverse(self._covariances).contiguous()
-            self._noise_weight = torch.zeros(batch_size, dtype=dtype, device='cuda')
-            self._noise_val = torch.zeros(batch_size, dtype=dtype, device='cuda')
+            self._noise_weight = torch.zeros(batch_size, dtype=dtype, device=general_config.device)
+            self._noise_val = torch.zeros(batch_size, dtype=dtype, device=general_config.device)
 
         def set_positions(self, positions, running):
             # running indicates which batch entries should be replaced

@@ -4,6 +4,8 @@ import torch
 import gmc.mixture as gm
 from enum import Enum
 
+import pcfitting.config as general_config
+
 
 class ScalingMethod(Enum):
     SMALLEST_SIDE_TO_MAX = 1
@@ -57,8 +59,8 @@ class Scaler:
             self._offsetP = (bbmin / self._scaleP.unsqueeze(1) - self._min).view(-1, 1, 3)
             self._scaleP = self._scaleP.view(-1, 1, 1)  # shape: (m,1,1)
         else:
-            self._scaleP = torch.ones(batch_size, 1, 1, dtype=pcbatch.dtype, device='cuda')  # shape: (m,1,1)
-            self._offsetP = torch.zeros(batch_size, 1, 3, dtype=pcbatch.dtype, device='cuda')
+            self._scaleP = torch.ones(batch_size, 1, 1, dtype=pcbatch.dtype, device=general_config.device)  # shape: (m,1,1)
+            self._offsetP = torch.zeros(batch_size, 1, 3, dtype=pcbatch.dtype, device=general_config.device)
 
         self._scaleA = torch.pow(self._scaleP, 3)  # shape: (m,1,1)
         self._scaleC = (self._scaleP ** 2).view(-1, 1, 1, 1, 1)  # shape: (m,1,1)
