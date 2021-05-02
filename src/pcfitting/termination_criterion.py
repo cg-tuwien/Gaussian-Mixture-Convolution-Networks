@@ -14,6 +14,10 @@ class TerminationCriterion(ABC):
     def reset(self):
         pass
 
+    @abstractmethod
+    def __str__(self):
+        pass
+
 
 class MaxIterationTerminationCriterion(TerminationCriterion):
 
@@ -25,6 +29,9 @@ class MaxIterationTerminationCriterion(TerminationCriterion):
 
     def reset(self):
         pass
+
+    def __str__(self):
+        return "MaxIter(" + str(self.maxiter) + ")"
 
 
 class RelChangeTerminationCriterion(TerminationCriterion):
@@ -73,6 +80,9 @@ class RelChangeTerminationCriterion(TerminationCriterion):
         self.current_loss_iteration = -1
         self.running = False
 
+    def __str__(self):
+        return "RelChange(" + str(self.relchange) + "," + str(self.itercount) + ")"
+
 
 class AndCombinedTerminationCriterion(TerminationCriterion):
 
@@ -89,15 +99,21 @@ class AndCombinedTerminationCriterion(TerminationCriterion):
         for c in self.criteria:
             c.reset()
 
+    def __str__(self):
+        return "Combined"
+
 
 class OrCombinedTerminationCriterion(TerminationCriterion):
 
     def __init__(self, criteria: List[TerminationCriterion]):
         self.criteria = criteria
 
-    def may_continue(self, iteration: int, loss: float) -> bool:
-        return any([x.may_continue(iteration, loss) for x in self.criteria])
+    def may_continue(self, iteration: int, losses: torch.Tensor) -> bool:
+        return any([x.may_continue(iteration, losses) for x in self.criteria])
 
     def reset(self):
         for c in self.criteria:
             c.reset()
+
+    def __str__(self):
+        return "Combined"
