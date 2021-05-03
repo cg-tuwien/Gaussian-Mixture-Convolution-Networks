@@ -11,10 +11,10 @@ import cluster_experiments.pc_fit as pcfit
 # device = list(sys.argv)[1]
 device = "cuda"
 
-# tmp_gmm_base_path = "/scratch/acelarek/gmms/e0"
-tmp_gmm_base_path = None
+tmp_gmm_base_path = "/scratch/acelarek/gmms/"
+# tmp_gmm_base_path = None
 
-fitting_name = "Preiner"
+fitting_name = "Preiner64"
 pcfit.run(fitting_name,
           PreinerGenerator(fixeddist=0.9, ngaussians=64, alpha=5, avoidorphans=False),
           gengmm_path=tmp_gmm_base_path,
@@ -29,9 +29,9 @@ c.log_tensorboard_renderings = False
 c.n_epochs = 160
 
 # network size
-c.model.layers = [Layer(8, 2.5, 128),
-                  Layer(16, 2.5, 64),
-                  Layer(32, 2.5, 32),
+c.model.layers = [Layer(8, 2.5, 64),
+                  Layer(16, 2.5, 32),
+                  Layer(32, 2.5, 16),
                   Layer(10, 2.5, -1)]
 # c.model.mlp = (-1, 40)
 
