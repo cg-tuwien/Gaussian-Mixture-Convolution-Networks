@@ -101,7 +101,8 @@ class Convolution(torch.nn.modules.Module):
             weights = weights * (1.0 - self.config.dropout)
 
         A = self.covariance_factors[index]
-        covariances = A @ A.transpose(-1, -2) + torch.eye(self.n_dims, dtype=torch.float32, device=A.device) * self.covariance_epsilon
+        covariances = A @ A.transpose(-1, -2)
+        covariances = covariances + torch.eye(self.n_dims, dtype=torch.float32, device=A.device) * self.covariance_epsilon * max(1.0, torch.max(covariances.detach().abs()).item())
         # kernel = torch.cat((self.weights[index], self.positions[index], covariances.view(1, self.n_layers_in, self.n_kernel_components, self.n_dims * self.n_dims)), dim=-1)
 
         kernel = gm.pack_mixture(weights, self.positions[index] * self.position_range, covariances * self.covariance_range)
@@ -313,13 +314,14 @@ class CovScaleNorm(torch.nn.modules.Module):
     this norm scales the covariances and positions so that the average covariance trace is n_dimensions.
     scaling is uniform in all spatial directions (x, y, and z)
     """
-    def __init__(self, batch_norm: bool = True):
+    def __init__(self, n_layers: int, batch_norm: bool = True):
         """
         Parameters:
             batch_norm (bool): True if this is a normal batch norm, False if normalisation should be performed per training sample (e.g., for the input).
         """
         super(CovScaleNorm, self).__init__()
-        self.norm_over_batch = batch_norm
+        self.batch_norm = batch_norm
+        self.register_buffer("averaged_cov_trace", torch.ones(n_layers))
 
     def forward(self, x: typing.Tuple[Tensor, typing.Optional[Tensor]]) -> typing.Tuple[Tensor, Tensor]:
         # according to the following link the scaling and mean computations do not detach the gradient.
@@ -330,11 +332,19 @@ class CovScaleNorm(torch.nn.modules.Module):
 
         assert gm.is_valid_mixture(x_gm)
 
-        scaling_factor = mat_tools.trace(gm.covariances(x_gm)).mean(-1) / gm.n_dimensions(x_gm)  # mean over components and trace elements
+        traces = mat_tools.trace(gm.covariances(x_gm))
         n_batch = gm.n_batch(x_gm)
-        if self.norm_over_batch:
-            scaling_factor = scaling_factor.mean(0)
+        if self.batch_norm:
+            avg_cov_trace = torch.mean(traces, dim=(0, 2))
+            if self.training:
+                alpha = min(n_batch / 1000, 0.2)
+                self.averaged_cov_trace = ((1.0 - alpha) * self.averaged_cov_trace + alpha * avg_cov_trace).detach()
             n_batch = 1
+            avg_cov_trace = self.averaged_cov_trace.detach()
+        else:
+            avg_cov_trace = torch.mean(traces, dim=(2, ))
+
+        scaling_factor = avg_cov_trace / gm.n_dimensions(x_gm)
 
         assert (scaling_factor > 0).all().item();
 
@@ -400,7 +410,8 @@ class BatchNorm(torch.nn.modules.Module):
         if self.batch_norm:
             channel_sd, channel_mean = torch.std_mean(sample_values, dim=(0, 2))
             if self.training:
-                self.averaged_channel_sd = (0.95 * self.averaged_channel_sd + 0.05 * channel_sd).detach()
+                alpha = min(n_batch / 1000, 0.1)
+                self.averaged_channel_sd = ((1.0 - alpha) * self.averaged_channel_sd + alpha * channel_sd).detach()
             channel_sd = self.averaged_channel_sd.detach()
         else:
             channel_sd, channel_mean = torch.std_mean(sample_values, dim=2)

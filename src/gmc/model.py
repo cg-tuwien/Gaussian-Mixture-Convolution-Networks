@@ -90,7 +90,7 @@ class Net(nn.Module):
 
         def pos2cov(p): return (p / 3) ** 2
 
-        self.norm0 = nn.Sequential(gmc.modules.CovScaleNorm(batch_norm=False),
+        self.norm0 = nn.Sequential(gmc.modules.CovScaleNorm(1, batch_norm=False),
                                    gmc.modules.BatchNorm(1, batch_norm=False))
         self.biases = torch.nn.ParameterList()
         self.gmcs = torch.nn.modules.ModuleList()
@@ -106,9 +106,9 @@ class Net(nn.Module):
             self.biases.append(torch.nn.Parameter(torch.zeros(1, l.n_feature_layers) + bias_0))
             self.relus.append(gmc.modules.ReLUFitting(config.relu_config, layer_id=f"{i}c", n_layers=l.n_feature_layers, n_output_gaussians=l.n_fitting_components))
             if config.bn_type == Config.BN_TYPE_COVARIANCE_STD:
-                norm = nn.Sequential(gmc.modules.CovScaleNorm(), gmc.modules.BatchNorm(n_layers=l.n_feature_layers))
+                norm = nn.Sequential(gmc.modules.CovScaleNorm(n_layers=l.n_feature_layers), gmc.modules.BatchNorm(n_layers=l.n_feature_layers))
             elif config.bn_type == Config.BN_TYPE_COVARIANCE:
-                norm = gmc.modules.CovScaleNorm()
+                norm = gmc.modules.CovScaleNorm(n_layers=l.n_feature_layers)
             elif config.bn_type == Config.BN_TYPE_STD:
                 norm = gmc.modules.BatchNorm(n_layers=l.n_feature_layers)
             else:

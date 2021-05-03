@@ -69,7 +69,7 @@ def save_gms(gmbatch: torch.Tensor, gmmbatch: torch.Tensor, basepath: str, names
         if ".gma.ply" in formats:
             write_gm_to_ply(gma, gmp, gmc, i, f"{basepath}/{names[i]}.gma.ply")
         if ".torch" in formats:
-            torch.save(gmbatch[i:(i+1)], f"{basepath}/{names[i]}.torch")
+            torch.save(gmbatch[i:(i+1)].to(dtype=torch.float), f"{basepath}/{names[i]}.torch")
 
 
 def add_noise(pcbatch: torch.Tensor, n_noisepoints: int):
