@@ -62,4 +62,4 @@ def run(name, generator, gengmm_path, batch_size):
                               gengmm_path=gengmm_path,
                               formats=[".gma.ply", ".torch"],
                               log_loss_console=log_loss,
-                              verbosity=general_config.verbosity)
+                              verbosity=2)

@@ -14,15 +14,15 @@ device = "cuda"
 tmp_gmm_base_path = "/scratch/acelarek/gmms/"
 # tmp_gmm_base_path = None
 
-fitting_name = "init64"
+fitting_name = "init-7-64"
 pcfit.run(fitting_name,
-          EMGenerator(n_gaussians=64, initialization_method="fpsmax", termination_criterion=MaxIterationTerminationCriterion(0), em_step_points_subbatchsize=10000),
+          EMGenerator(n_gaussians=64, initialization_method="fpsmax", termination_criterion=MaxIterationTerminationCriterion(0), em_step_points_subbatchsize=10000, eps=1e-7),
           gengmm_path=tmp_gmm_base_path,
           batch_size=25)
 
 
 c: Config = Config(gmms_fitting=fitting_name, gengmm_path=tmp_gmm_base_path, n_classes=10)
-c.model.bn_type = ModelConfig.BN_TYPE_COVARIANCE_STD
+c.model.bn_type = ModelConfig.BN_TYPE_COVARIANCE
 c.model.convolution_config.dropout = 0.0
 c.model.dataDropout = 0.0
 c.log_tensorboard_renderings = False
