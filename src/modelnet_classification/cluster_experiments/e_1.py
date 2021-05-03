@@ -14,9 +14,9 @@ device = "cuda"
 tmp_gmm_base_path = "/scratch/acelarek/gmms/"
 # tmp_gmm_base_path = None
 
-fitting_name = "EMrnp-7-64"
+fitting_name = "EMrnp-5-64"
 pcfit.run(fitting_name,
-          EMGenerator(n_gaussians=64, initialization_method="randnormpos", termination_criterion=RelChangeTerminationCriterion(0.1, 20), em_step_points_subbatchsize=10000, eps=1e-7),
+          EMGenerator(n_gaussians=64, initialization_method="randnormpos", termination_criterion=RelChangeTerminationCriterion(0.1, 20), em_step_points_subbatchsize=10000, eps=1e-5),
           gengmm_path=tmp_gmm_base_path,
           batch_size=25)
 
