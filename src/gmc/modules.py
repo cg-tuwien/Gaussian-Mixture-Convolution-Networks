@@ -101,7 +101,8 @@ class Convolution(torch.nn.modules.Module):
             weights = weights * (1.0 - self.config.dropout)
 
         A = self.covariance_factors[index]
-        covariances = A @ A.transpose(-1, -2) + torch.eye(self.n_dims, dtype=torch.float32, device=A.device) * self.covariance_epsilon
+        covariances = A @ A.transpose(-1, -2)
+        covariances = covariances + torch.eye(self.n_dims, dtype=torch.float32, device=A.device) * self.covariance_epsilon * max(1.0, torch.max(covariances.detach().abs()).item())
         # kernel = torch.cat((self.weights[index], self.positions[index], covariances.view(1, self.n_layers_in, self.n_kernel_components, self.n_dims * self.n_dims)), dim=-1)
 
         kernel = gm.pack_mixture(weights, self.positions[index] * self.position_range, covariances * self.covariance_range)
