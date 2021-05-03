@@ -1,4 +1,5 @@
 import numpy
+import multiprocessing
 
 from gmc import mat_tools
 from pcfitting import GMMGenerator, GMLogger
@@ -27,7 +28,8 @@ class PreinerGenerator(GMMGenerator):
                  levels: int = 20,
                  reductionfactor: float = 3,
                  ngaussians: int = 0,
-                 avoidorphans: bool = False):
+                 avoidorphans: bool = False,
+                 verbosity: int = 2):
         # Creates a new PreinerGenerator
         # Parameters:
         #   alpha: float
@@ -70,6 +72,8 @@ class PreinerGenerator(GMMGenerator):
         self._params.reductionfactor = reductionfactor
         self._params.ngaussians = ngaussians
         self._params.avoidorphans = avoidorphans
+        self._params.verbose = verbosity >= 2
+        self._params.threads = multiprocessing.cpu_count()
         self._logger = None
 
     def set_logging(self, logger: GMLogger = None):
@@ -104,6 +108,10 @@ class PreinerGenerator(GMMGenerator):
             self._logger.log(0, loss, gma)
             self._logger.log(100, loss, gma)
 
-        print("Number of Gaussians: ", gma.shape[2])
+        if self._params.verbose:
+            print("Number of Gaussians: ", gma.shape[2])
+
+        if self._params.ngaussians != gma.shape[2]:
+            print("Warning: number of Gaussians not correct!")
 
         return gma, gmm

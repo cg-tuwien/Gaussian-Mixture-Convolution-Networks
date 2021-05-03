@@ -11,12 +11,12 @@ import cluster_experiments.pc_fit as pcfit
 # device = list(sys.argv)[1]
 device = "cuda"
 
-tmp_gmm_base_path = "/scratch/acelarek/gmms/"
-# tmp_gmm_base_path = None
+# tmp_gmm_base_path = "/scratch/acelarek/gmms/"
+tmp_gmm_base_path = None
 
 fitting_name = "Preiner64"
 pcfit.run(fitting_name,
-          PreinerGenerator(fixeddist=0.9, ngaussians=64, alpha=5, avoidorphans=False),
+          PreinerGenerator(fixeddist=0.9, ngaussians=64, alpha=5, avoidorphans=True, verbosity=0),
           gengmm_path=tmp_gmm_base_path,
           batch_size=1)
 
