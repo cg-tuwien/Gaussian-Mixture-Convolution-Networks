@@ -14,8 +14,8 @@ import cluster_experiments.pc_fit as pcfit
 # device = list(sys.argv)[1]
 device = "cuda"
 
-tmp_gmm_base_path = "/scratch/acelarek/gmms/e0"
-# tmp_gmm_base_path = None
+# tmp_gmm_base_path = "/scratch/acelarek/gmms/e0"
+tmp_gmm_base_path = None
 
 fitting_name = "Eckart64"
 pcfit.run(fitting_name,
