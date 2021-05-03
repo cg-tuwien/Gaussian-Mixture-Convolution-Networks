@@ -293,7 +293,7 @@ class EckartGeneratorSP(GMMGenerator):
             pcount = pwfp_relevant[:, i].sum()
             if pcount < self._n_gaussians_per_node:
                 gmdata.positions[0, 0, gidx_start:gidx_end] = 0.0
-                gmdata.covariances[0, 0, gidx_start:gidx_end] = eps
+                gmdata.covariances[0, 0, gidx_start:gidx_end] = 1
                 gmdata.priors[0, 0, gidx_start:gidx_end] = 0.0
                 gmdata.positions[0, 0, gidx_start:gidx_start + pcount] = rel_points
                 gmdata.covariances[0, 0, gidx_start:gidx_start + pcount] = 0.1 * torch.eye(3, dtype=self._dtype,
@@ -362,7 +362,7 @@ class EckartGeneratorSP(GMMGenerator):
             pweights = (pweights / pweights.sum()).unsqueeze(1)
             if pcount < self._n_gaussians_per_node:
                 gmdata.positions[0, 0, gidx_start:gidx_end] = 0.0
-                gmdata.covariances[0, 0, gidx_start:gidx_end] = eps
+                gmdata.covariances[0, 0, gidx_start:gidx_end] = 1
                 gmdata.priors[0, 0, gidx_start:gidx_end] = 0.0
                 gmdata.positions[0, 0, gidx_start:gidx_start + pcount] = relpoints
                 gmdata.covariances[0, 0, gidx_start:gidx_start + pcount] = 0.1 * torch.eye(3, dtype=self._dtype,
