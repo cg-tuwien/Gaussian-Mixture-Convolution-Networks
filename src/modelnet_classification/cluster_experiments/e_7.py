@@ -18,11 +18,11 @@ device = "cuda"
 tmp_gmm_base_path = None
 
 fitting_name = "Eckart64"
-pcfit.run(fitting_name,
-          EckartGeneratorSP(n_gaussians_per_node=8, n_levels=2, termination_criterion=RelChangeTerminationCriterion(0.1, 20), initialization_method="fpsmax", partition_threshold=0.1, m_step_points_subbatchsize=10000,
-                            e_step_pair_subbatchsize=5120000, dtype=torch.float32, eps=1e-5),  #
-          gengmm_path=tmp_gmm_base_path,
-          batch_size=1)
+# pcfit.run(fitting_name,
+#           EckartGeneratorSP(n_gaussians_per_node=8, n_levels=2, termination_criterion=RelChangeTerminationCriterion(0.1, 20), initialization_method="fpsmax", partition_threshold=0.1, m_step_points_subbatchsize=10000,
+#                             e_step_pair_subbatchsize=5120000, dtype=torch.float32, eps=1e-5),  #
+#           gengmm_path=tmp_gmm_base_path,
+#           batch_size=1)
 
 
 c: Config = Config(gmms_fitting=fitting_name, gengmm_path=tmp_gmm_base_path, n_classes=10)
