@@ -14,9 +14,8 @@ import gmc.cpp.gm_vis.gm_vis as gm_vis
 
 
 class ConvolutionConfig:
-    def __init__(self, dropout: float = 0.0):
-        self.dropout = dropout
-
+    def __init__(self):
+        pass
 
 class Convolution(torch.nn.modules.Module):
     def __init__(self, config: ConvolutionConfig, n_layers_in: int, n_layers_out: int, n_kernel_components: int = 4, n_dims: int = 2,
@@ -97,8 +96,6 @@ class Convolution(torch.nn.modules.Module):
     def kernel(self, index: int) -> Tensor:
         # a psd matrix can be generated with AA'. we learn A and generate a pd matrix via  AA' + eye * epsilon
         weights = self.weights[index] * self.weight_sd + self.weight_mean
-        if not self.training:
-            weights = weights * (1.0 - self.config.dropout)
 
         A = self.covariance_factors[index]
         covariances = A @ A.transpose(-1, -2)
@@ -106,10 +103,6 @@ class Convolution(torch.nn.modules.Module):
         # kernel = torch.cat((self.weights[index], self.positions[index], covariances.view(1, self.n_layers_in, self.n_kernel_components, self.n_dims * self.n_dims)), dim=-1)
 
         kernel = gm.pack_mixture(weights, self.positions[index] * self.position_range, covariances * self.covariance_range)
-        if self.training:
-            dropouts = torch.rand(self.n_layers_in, dtype=torch.float32) < self.config.dropout
-            kernel[:, dropouts, :, :] = 0
-            gm.covariances(kernel)[:, dropouts, :, :, :] = torch.eye(self.n_dims, dtype=torch.float32, device=A.device)
 
         assert gm.is_valid_mixture(kernel)
         return kernel
@@ -239,10 +232,9 @@ class ReLUFittingConfig:
 
 
 class ReLUFitting(torch.nn.modules.Module):
-    def __init__(self, config: ReLUFittingConfig, layer_id: str, n_layers: int, n_output_gaussians: int, n_input_gaussians: int = -1):
+    def __init__(self, config: ReLUFittingConfig, n_layers: int, n_output_gaussians: int, n_input_gaussians: int = -1):
         super(ReLUFitting, self).__init__()
         self.config = config
-        self.layer_id = layer_id
         self.n_layers = n_layers
         self.n_input_gaussians = n_input_gaussians
         self.n_output_gaussians = n_output_gaussians
@@ -307,6 +299,45 @@ class ReLUFitting(torch.nn.modules.Module):
     def debug_save3d(self, base_name: str, n_batch_samples: int = 1, n_layers: int = None):
         gmio.write_gm_to_ply2(self.last_in[0][0:n_batch_samples, 0:n_layers], f"{base_name}_in")
         gmio.write_gm_to_ply2(self.last_out[0][0:n_batch_samples, 0:n_layers], f"{base_name}_out")
+
+
+class Dropout(torch.nn.modules.Module):
+    """
+    drops a certain percentage of layers (i.e., sets the weights to zero)
+    """
+    def __init__(self, drop_percentage: float):
+        super(Dropout, self).__init__()
+        self.drop_percentage = drop_percentage
+
+    def forward(self, x: typing.Tuple[Tensor, typing.Optional[Tensor]]) -> typing.Tuple[Tensor, Tensor]:
+        x_constant = x[1]
+        x_gm = x[0]
+
+        assert gm.is_valid_mixture(x_gm)
+
+        if self.training:
+            n_channels = gm.n_layers(x_gm)
+            n_batch = gm.n_batch(x_gm)
+            n_dims = gm.n_dimensions(x_gm)
+            dropouts = (torch.rand(n_batch, n_channels, dtype=torch.float32, device=x_gm.device) < self.drop_percentage).unsqueeze(-1)
+
+            weights = torch.where(dropouts,
+                                  torch.scalar_tensor(0.0, dtype=torch.float32, device=x_gm.device),
+                                  gm.weights(x_gm) * (1.0 / (1 - self.drop_percentage)))
+
+            positions = torch.where(dropouts.unsqueeze(-1),
+                                    torch.scalar_tensor(0, dtype=torch.float32, device=x_gm.device),
+                                    gm.positions(x_gm))
+
+            covs = torch.where(dropouts.unsqueeze(-1).unsqueeze(-1),
+                               torch.eye(n_dims, dtype=torch.float32, device=x_gm.device).view(1, 1, 1, n_dims, n_dims),
+                               gm.covariances(x_gm))
+
+            y_gm = gm.pack_mixture(weights, positions, covs)
+
+            return y_gm, x_constant
+
+        return x_gm, x_constant
 
 
 class CovScaleNorm(torch.nn.modules.Module):

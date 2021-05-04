@@ -23,10 +23,9 @@ pcfit.run(fitting_name,
 
 c: Config = Config(gmms_fitting=fitting_name, gengmm_path=tmp_gmm_base_path, n_classes=10)
 c.model.bn_type = ModelConfig.BN_TYPE_COVARIANCE
-c.model.convolution_config.dropout = 0.0
-c.model.dataDropout = 0.0
+c.dropout = 0.3
 c.log_tensorboard_renderings = False
-c.n_epochs = 160
+c.n_epochs = 121
 
 # network size
 c.model.layers = [Layer(8, 2.5, 64),

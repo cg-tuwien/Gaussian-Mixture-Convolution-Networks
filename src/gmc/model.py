@@ -54,10 +54,10 @@ class Config:
         # auxiliary architectural options
         self.bn_place = Config.BN_PLACE_AFTER_RELU
         self.bn_type = Config.BN_TYPE_COVARIANCE_STD
-        self.dataDropout = 0.5
+        self.dropout = 0.0
 
         self.relu_config: gmc.modules.ReLUFittingConfig = gmc.modules.ReLUFittingConfig()
-        self.convolution_config: gmc.modules.ConvolutionConfig = gmc.modules.ConvolutionConfig(dropout=0.1)
+        self.convolution_config: gmc.modules.ConvolutionConfig = gmc.modules.ConvolutionConfig()
 
     def produce_gmc_layers_description(self) -> str:
         name = "L"
@@ -71,7 +71,7 @@ class Config:
             mlp_string = "_MLP"
             for l in self.mlp:
                 mlp_string = f"{mlp_string}_{l}"
-        return f"BN{self.bn_place}{self.bn_type}_cnDrp{int(self.convolution_config.dropout * 100)}_dtaDrp{int(self.dataDropout * 100)}" \
+        return f"BN{self.bn_place}{self.bn_type}_Drp{int(self.dropout * 100)}" \
                f"_nK{self.n_kernel_components}_{self.produce_gmc_layers_description()}{mlp_string}_"
 
 
@@ -96,6 +96,7 @@ class Net(nn.Module):
         self.gmcs = torch.nn.modules.ModuleList()
         self.relus = torch.nn.modules.ModuleList()
         self.norms = torch.nn.modules.ModuleList()
+        self.dropout = gmc.modules.Dropout(config.dropout)
 
         n_feature_channels_in = 1
         for i, l in enumerate(config.layers):
@@ -104,7 +105,7 @@ class Net(nn.Module):
                                                      learn_positions=learn_positions, learn_covariances=learn_covariances,
                                                      weight_sd=1, weight_mean=0.1, n_dims=config.n_dims))
             self.biases.append(torch.nn.Parameter(torch.zeros(1, l.n_feature_layers) + bias_0))
-            self.relus.append(gmc.modules.ReLUFitting(config.relu_config, layer_id=f"{i}c", n_layers=l.n_feature_layers, n_output_gaussians=l.n_fitting_components))
+            self.relus.append(gmc.modules.ReLUFitting(config.relu_config, n_layers=l.n_feature_layers, n_output_gaussians=l.n_fitting_components))
             if config.bn_type == Config.BN_TYPE_COVARIANCE_STD:
                 norm = nn.Sequential(gmc.modules.CovScaleNorm(n_layers=l.n_feature_layers), gmc.modules.BatchNorm(n_layers=l.n_feature_layers))
             elif config.bn_type == Config.BN_TYPE_COVARIANCE:
@@ -179,17 +180,8 @@ class Net(nn.Module):
         n_batch = gm.n_batch(x)
 
         for i in range(len(self.config.layers)):
-            if self.config.dataDropout > 0:
-                if self.training:
-                    n_selected_components = int(gm.n_components(x) * (1.0 - self.config.dataDropout))
-                    indices = list()
-                    for l in range(gm.n_layers(x)):
-                        indices.append(torch.randperm(gm.n_components(x))[:n_selected_components].view(1, 1, -1))
-                    indices = torch.cat(indices, 1)
-                    x = mat_tools.my_index_select(x, indices.to(device=x.device))
-                else:
-                    weights = gm.weights(x) * (1.0 - self.config.dataDropout)
-                    x = gm.pack_mixture(weights, gm.positions(x), gm.covariances(x))
+            if gm.n_layers(x) > 8:
+                x, x_const = self.droput((x, x_const))
 
             x, x_const = self.gmcs[i](x, x_const)
 
