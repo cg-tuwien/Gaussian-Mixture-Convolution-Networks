@@ -181,7 +181,7 @@ class Net(nn.Module):
 
         for i in range(len(self.config.layers)):
             if gm.n_layers(x) > 8:
-                x, x_const = self.droput((x, x_const))
+                x, x_const = self.dropout((x, x_const))
 
             x, x_const = self.gmcs[i](x, x_const)
 
