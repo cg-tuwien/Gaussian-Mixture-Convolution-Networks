@@ -202,7 +202,7 @@ class EMTools:
         # if (new_priors == 0).sum() > 0:
             # print("detected ", (new_priors == 0).sum().item(), "0-priors!")
         new_positions[new_priors == 0] = torch.tensor([0.0, 0.0, 0.0], dtype=dtype, device=general_config.device)
-        new_covariances[new_priors == 0] = eps[0, 0, 0, :, :]
+        new_covariances[new_priors == 0] = 1
 
         # Update GMData
         gm_data.set_positions(new_positions, running)
