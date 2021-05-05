@@ -225,7 +225,7 @@ class EckartGeneratorHP(GMMGenerator):
                 gmdata.positions[0, 0, gidx_start:gidx_start + pcount] = relpoints
                 gmdata.covariances[0, 0, gidx_start:gidx_start + pcount] = 0.1 * torch.eye(3, dtype=self._dtype,
                                                                                            device='cuda')
-                gmdata.priors[0, 0, gidx_start:gidx_start + pcount] = 1 / pcount
+                gmdata.priors[0, 0, gidx_start:gidx_start + pcount] = 1 / pcount.to(self._dtype)
             else:
                 subgm = self._gmminitializer.initialize_by_method_name(self._initialization_method,
                                                                        relpoints.unsqueeze(0),
@@ -352,7 +352,7 @@ class EckartGeneratorHP(GMMGenerator):
                 gmdata.positions[0, 0, gidx_start:gidx_start + pcount] = relpoints
                 gmdata.covariances[0, 0, gidx_start:gidx_start + pcount] = 0.1 * torch.eye(3, dtype=self._dtype,
                                                                                            device='cuda')
-                gmdata.priors[0, 0, gidx_start:gidx_start + pcount] = 1 / pcount
+                gmdata.priors[0, 0, gidx_start:gidx_start + pcount] = 1 / pcount.to(self._dtype)
             else:
                 meanpos = relpoints.mean(dim=0, keepdim=True)
                 diffs = (relpoints - meanpos.expand(pcount, 3)).unsqueeze(2)
