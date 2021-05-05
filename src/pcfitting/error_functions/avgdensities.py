@@ -18,10 +18,7 @@ class AvgDensities(EvalFunction):
                  calculate_logavg: bool = False,
                  calculate_logavg_scaled_area: bool = False,
                  calculate_logavg_scaled_nn: bool = True,
-                 calculate_logstdv: bool = False,
-                 calculate_logstdv_scaled_nn: bool = True,
-                 calculate_logcv: bool = False,
-                 calculate_logcv_scaled_nn: bool = True,
+                 calculate_logstdv: bool = True,
                  calculate_avg: bool = False,
                  calculate_stdev: bool = False,
                  calculate_avg_scaled_area: bool = False,
@@ -35,8 +32,6 @@ class AvgDensities(EvalFunction):
         self._logstdv = calculate_logstdv
         self._logavg_scaled_area = calculate_logavg_scaled_area
         self._logavg_scaled_nn = calculate_logavg_scaled_nn
-        self._logstdv_scaled_nn = calculate_logstdv_scaled_nn
-        self._logcv = calculate_logcv
         self._avg = calculate_avg
         self._stdev = calculate_stdev
         self._avg_scaled_area = calculate_avg_scaled_area
@@ -44,8 +39,7 @@ class AvgDensities(EvalFunction):
         self._stdev_scaled_area = calculate_stdev_scaled_area
         self._stdev_scaled_nn = calculate_stdev_scaled_nn
         self._cv = calculate_cv
-        self._n = self._logavg + self._logstdv + self._logavg_scaled_area + self._logavg_scaled_nn + \
-                  self._logstdv_scaled_nn + self._logcv + self._avg + \
+        self._n = self._logavg + self._logstdv + self._logavg_scaled_area + self._logavg_scaled_nn + self._avg + \
                   self._stdev + self._avg_scaled_area + self._avg_scaled_nn + self._stdev_scaled_area + \
                   self._stdev_scaled_nn + self._cv
         self._enlarge_evs = enlarge_evs
@@ -84,7 +78,7 @@ class AvgDensities(EvalFunction):
         sfnnl = 1
         if self._avg_scaled_area or self._stdev_scaled_area:
             sf = self.calculate_scale_factor(modelpath)
-        if self._logavg_scaled_nn or self._logstdv_scaled_nn or self._avg_scaled_nn or self._stdev_scaled_nn:
+        if self._logavg_scaled_nn or self._avg_scaled_nn or self._stdev_scaled_nn:
             sfnn, sfnnl = self.calculate_scale_factors_nn(pcbatch)
         i = 0
         if self._logavg:
@@ -102,14 +96,6 @@ class AvgDensities(EvalFunction):
         if self._logstdv:
             res[i, :] = lgstd
             res.logstdv = res[i, 0].item()
-            i += 1
-        if self._logstdv_scaled_nn:
-            res[i, :] = lgstd + sfnnl
-            res.logstdv_scaled_nn = res[i, 0].item()
-            i += 1
-        if self._logcv:
-            res[i, :] = lgstd / lgmean
-            res.logcv = res[i, 0].item()
             i += 1
         if self._avg:
             res[i, :] = mean
@@ -151,10 +137,6 @@ class AvgDensities(EvalFunction):
             nlst.append("Average Log Density NN-Scaled" + ("(evcorrected)" if self._enlarge_evs else ""))
         if self._logstdv:
             nlst.append("Stdev of Log Density" + ("(evcorrected)" if self._enlarge_evs else ""))
-        if self._logstdv_scaled_nn:
-            nlst.append("Stdev of Log Density NN-Scaled" + ("(evcorrected)" if self._enlarge_evs else ""))
-        if self._logcv:
-            nlst.append("Coefficient of Variation Log" + ("(evcorrected)" if self._enlarge_evs else ""))
         if self._avg:
             nlst.append("Average Density" + ("(evcorrected)" if self._enlarge_evs else ""))
         if self._stdev:

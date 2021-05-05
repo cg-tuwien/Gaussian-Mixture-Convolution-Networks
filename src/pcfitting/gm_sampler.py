@@ -1,7 +1,7 @@
 import torch
 import gmc.mixture
 import numpy
-
+from pcfitting.cpp.gmeval import pyeval
 
 class GMSampler:
 
@@ -33,3 +33,7 @@ class GMSampler:
                 if selected_samples.sum().item() > 0:
                     samples[b, selected_samples, :] = torch.tensor(numpy.random.multivariate_normal(means[b,0,g].cpu(), covs[b,0,g].cpu(), selected_samples.sum().item()), dtype=gmm.dtype, device=gmm.device)
         return samples
+
+    @staticmethod
+    def sampleGMM_ext(gmm: torch.Tensor, count: int) -> torch.Tensor:
+        return pyeval.sample_gmm(gmm[0, 0].cpu(), count).to(gmm.device)

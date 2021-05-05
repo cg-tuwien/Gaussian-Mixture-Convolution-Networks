@@ -98,13 +98,13 @@ class ReconstructionStats(EvalFunction):
         bbscale = torch.norm(pmax - pmin).item()
 
         i = 0
-        rmsd, md, stdev, maxd, kurtosis = pyeval.eval_rmsd_unscaled(pcbatch.view(-1, 3), sampled.view(-1, 3))
-        rmsdI, mdI, stdevI, maxdI, kurtosisI = (None, None, None, None, None)
+        rmsd, md, stdev, maxd = pyeval.eval_rmsd_unscaled(pcbatch.view(-1, 3), sampled.view(-1, 3))
+        rmsdI, mdI, stdevI, maxdI = (None, None, None, None)
         if self._inverse or self._chamfer or self._chamfer_norm_area or self._chamfer_norm_nn:
             if self._inverse_exact:
-                rmsdI, mdI, stdevI, maxdI, kurtosisI = self.calc_inverse_exact(sampled.view(-1, 3), modelpath)
+                rmsdI, mdI, stdevI, maxdI = self.calc_inverse_exact(sampled.view(-1, 3), modelpath)
             else:
-                rmsdI, mdI, stdevI, maxdI, kurtosisI = pyeval.eval_rmsd_unscaled(sampled.view(-1, 3), pcbatch.view(-1, 3))
+                rmsdI, mdI, stdevI, maxdI = pyeval.eval_rmsd_unscaled(sampled.view(-1, 3), pcbatch.view(-1, 3))
         scalefactor = 1
         if self._stdev_scaled_by_area or self._md_scaled_by_area or self._stdev_scaled_by_area or \
                 self._chamfer_norm_area or self._hausdorff_norm_area or self._cov_measure_std_scaled_by_area:
@@ -218,6 +218,7 @@ class ReconstructionStats(EvalFunction):
                 result.cv_I = result[i, 0].item()
                 i += 1
         if self._kurtosis:
+            # currently disabled. change pyeval and add it as a return value of the calculations to use it again
             result[i, 0] = kurtosis
             result.kurtosis = result[i, 0].item()
             i += 1
