@@ -33,8 +33,9 @@ def sum_losses(losses: typing.List[torch.Tensor]):
 
 
 class ModelNetDataSet(torch.utils.data.Dataset):
-    def __init__(self, data_base_path: pathlib.Path, category_list_file: pathlib.Path, sample_names_file: pathlib.Path):
+    def __init__(self, config: Config, data_base_path: pathlib.Path, category_list_file: pathlib.Path, sample_names_file: pathlib.Path):
         self.data_base_path = data_base_path
+        self.config = config
         category_names = []
         with open(category_list_file) as inFile:
             for line in inFile:
@@ -64,6 +65,10 @@ class ModelNetDataSet(torch.utils.data.Dataset):
         assert gmc.mixture.n_layers(mixture) == 1
         assert gmc.mixture.n_components(mixture) > 0
         assert gmc.mixture.n_dimensions(mixture) == 3
+        if self.config.n_input_gaussians != -1:
+            m = torch.zeros(1, 1, self.config.n_input_gaussians - gmc.mixture.n_components(mixture), 13)
+            m[0, 0, :, -9:] = torch.eye(3).view(1, 1, 1, 9)
+            mixture = torch.cat((mixture, m), dim=2)
 
         return mixture[0], torch.tensor(self.sample_labels[index])
 
@@ -194,9 +199,9 @@ def experiment(device: str = 'cuda', desc_string: str = "", config: Config = Non
     # Training settings
     torch.manual_seed(0)
 
-    train_loader = torch.utils.data.DataLoader(ModelNetDataSet(config.modelnet_data_path, config.modelnet_category_list_file, config.modelnet_training_sample_names_file),
+    train_loader = torch.utils.data.DataLoader(ModelNetDataSet(config, config.modelnet_data_path, config.modelnet_category_list_file, config.modelnet_training_sample_names_file),
                                                batch_size=config.batch_size, num_workers=config.num_dataloader_workers, shuffle=True, drop_last=True)
-    test_loader  = torch.utils.data.DataLoader(ModelNetDataSet(config.modelnet_data_path, config.modelnet_category_list_file, config.modelnet_test_sample_names_file),
+    test_loader  = torch.utils.data.DataLoader(ModelNetDataSet(config, config.modelnet_data_path, config.modelnet_category_list_file, config.modelnet_test_sample_names_file),
                                                batch_size=config.batch_size, num_workers=config.num_dataloader_workers)
 
     model = gmc.model.Net(learn_positions=config.learn_positions_after == 0,

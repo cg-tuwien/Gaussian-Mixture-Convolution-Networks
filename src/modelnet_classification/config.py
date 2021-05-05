@@ -31,6 +31,7 @@ class Config:
         self.model.n_classes = n_classes
         self.n_classes = n_classes
 
+        self.n_input_gaussians = -1
         self.batch_size = 21
         self.n_epochs = 80
         self.kernel_learning_rate = 0.001
