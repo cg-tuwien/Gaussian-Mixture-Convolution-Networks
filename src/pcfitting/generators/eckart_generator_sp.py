@@ -571,6 +571,7 @@ class EckartGeneratorSP(GMMGenerator):
         nans = torch.isnan(gm_data.priors) | (gm_data.priors == 0)
         gm_data.positions[nans] = torch.tensor([0.0, 0.0, 0.0], dtype=self._dtype, device=general_config.device)
         gm_data.covariances[nans] = torch.eye(3, dtype=self._dtype, device=general_config.device)
+        gm_data.inverse_covariances[nans] = torch.eye(3, dtype=self._dtype, device=general_config.device)
         gm_data.priors[nans] = 0
 
     @staticmethod
