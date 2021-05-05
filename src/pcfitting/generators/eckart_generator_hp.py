@@ -541,8 +541,8 @@ class EckartGeneratorHP(GMMGenerator):
         # To avoid NaNs, we will then replace those invalid values with 0 (pos) and eps (cov).
         nans = torch.isnan(gm_data.priors) | (gm_data.priors == 0)
         gm_data.positions[nans] = torch.tensor([0.0, 0.0, 0.0], dtype=self._dtype, device='cuda')
-        gm_data.covariances[nans] = eps[0, 0, 0, :, :]
-        gm_data.inverse_covariances[nans] = eps[0, 0, 0, :, :]
+        gm_data.covariances[nans] = torch.eye(3, dtype=self._dtype, device='cuda')
+        gm_data.inverse_covariances[nans] = torch.eye(3, dtype=self._dtype, device='cuda')
         gm_data.priors[nans] = 0
 
     @staticmethod
