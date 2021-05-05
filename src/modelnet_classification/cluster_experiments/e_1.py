@@ -14,16 +14,18 @@ device = "cuda"
 tmp_gmm_base_path = "/scratch/acelarek/gmms/"
 # tmp_gmm_base_path = None
 
-fitting_name = "EMrnp-5-64"
+n_g = 125
+fitting_name = f"EMrnp-5-{n_g}"
 pcfit.run(fitting_name,
-          EMGenerator(n_gaussians=64, initialization_method="randnormpos", termination_criterion=RelChangeTerminationCriterion(0.1, 20), em_step_points_subbatchsize=10000, eps=1e-5),
+          EMGenerator(n_gaussians=n_g, initialization_method="randnormpos", termination_criterion=RelChangeTerminationCriterion(0.1, 20), em_step_points_subbatchsize=10000, eps=1e-5),
           gengmm_path=tmp_gmm_base_path,
           batch_size=25)
 
 
 c: Config = Config(gmms_fitting=fitting_name, gengmm_path=tmp_gmm_base_path, n_classes=10)
+c.n_input_gaussians = n_g
 c.model.bn_type = ModelConfig.BN_TYPE_COVARIANCE
-c.model.dropout = 0.5
+c.model.dropout = 0.0
 c.log_tensorboard_renderings = False
 c.n_epochs = 121
 
