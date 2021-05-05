@@ -212,7 +212,7 @@ class EMTools:
 
     @staticmethod
     def find_valid_matrices(covariances: torch.Tensor, invcovs: torch.Tensor, strong: bool = False) -> torch.Tensor:
-        # Returns a boolean tensor describing which of the given covariances are valid positice definite matrices.
+        # Returns a boolean tensor describing which of the given covariances are valid positive definite matrices.
         # Parameters:
         #   covariances: torch.Tensor of size (bs, 1, ng, 3, 3)
         #       Tensor of covariances.
@@ -224,20 +224,20 @@ class EMTools:
         #       This shouldn't make a difference in most cases. There are only very rare cases where the results
         #       are different. However, this option takes much longer, so it is not very usable in practice.
         # returns a bool-tensor of size (bs, 1, ng)
-        relcovs = ~(torch.isnan(covariances.det().sqrt()) | covariances[:, :, :, 0:2, 0:2].det().lt(0)
-                    | covariances[:, :, :, 0, 0].lt(0) | invcovs.det().lt(0) |
-                    invcovs[:, :, :, 0:2, 0:2].det().lt(0) | invcovs[:, :, :, 0, 0].lt(0))
+        relcovs = ~(torch.isnan(covariances.det().sqrt()) | covariances[:, :, :, 0:2, 0:2].det().le(0)
+                    | covariances[:, :, :, 0, 0].le(0) | invcovs.det().le(0) |
+                    invcovs[:, :, :, 0:2, 0:2].det().le(0) | invcovs[:, :, :, 0, 0].le(0))
         # # More reliable way to check!
         if strong:
             asd = relcovs.clone()
             for i in range(covariances.shape[0]):
                 for j in range(covariances.shape[2]):
                     relcovs[i, :, j] &= ~covariances[i, :, j].det().sqrt().isnan().any()
-                    relcovs[i, :, j] &= ~covariances[i, :, j, 0:2, 0:2].det().lt(0).any()
-                    relcovs[i, :, j] &= ~covariances[i, :, j, 0, 0].lt(0).any()
+                    relcovs[i, :, j] &= ~covariances[i, :, j, 0:2, 0:2].det().le(0).any()
+                    relcovs[i, :, j] &= ~covariances[i, :, j, 0, 0].le(0).any()
                     relcovs[i, :, j] &= ~invcovs[i, :, j].det().sqrt().isnan().any()
-                    relcovs[i, :, j] &= ~invcovs[i, :, j, 0:2, 0:2].det().lt(0).any()
-                    relcovs[i, :, j] &= ~invcovs[i, :, j, 0, 0].lt(0).any()
+                    relcovs[i, :, j] &= ~invcovs[i, :, j, 0:2, 0:2].det().le(0).any()
+                    relcovs[i, :, j] &= ~invcovs[i, :, j, 0, 0].le(0).any()
             if not asd.eq(relcovs).all():
                 print("strong ditching was active!")
         return relcovs
