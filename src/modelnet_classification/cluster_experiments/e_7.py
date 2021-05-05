@@ -17,17 +17,19 @@ device = "cuda"
 # tmp_gmm_base_path = "/scratch/acelarek/gmms/e0"
 tmp_gmm_base_path = None
 
-fitting_name = "Eckart64"
-# pcfit.run(fitting_name,
-#           EckartGeneratorSP(n_gaussians_per_node=8, n_levels=2, termination_criterion=RelChangeTerminationCriterion(0.1, 20), initialization_method="fpsmax", partition_threshold=0.1, m_step_points_subbatchsize=10000,
-#                             e_step_pair_subbatchsize=5120000, dtype=torch.float32, eps=1e-5),  #
-#           gengmm_path=tmp_gmm_base_path,
-#           batch_size=1)
+nGs_per_node = 5
+nLevels = 3
+fitting_name = f"Eckart_{nGs_per_node}_{nLevels}"
+pcfit.run(fitting_name,
+          EckartGeneratorSP(n_gaussians_per_node=nGs_per_node, n_levels=nLevels, termination_criterion=RelChangeTerminationCriterion(0.1, 20), initialization_method="fpsmax", partition_threshold=0.1, m_step_points_subbatchsize=10000,
+                            e_step_pair_subbatchsize=5120000, dtype=torch.float32, eps=1e-5),  #
+          gengmm_path=tmp_gmm_base_path,
+          batch_size=1)
 
 
 c: Config = Config(gmms_fitting=fitting_name, gengmm_path=tmp_gmm_base_path, n_classes=10)
 c.model.bn_type = ModelConfig.BN_TYPE_COVARIANCE
-c.model.dropout = 0.5
+c.model.dropout = 0.0
 c.log_tensorboard_renderings = False
 c.n_epochs = 121
 

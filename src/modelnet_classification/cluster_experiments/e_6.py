@@ -14,16 +14,17 @@ device = "cuda"
 # tmp_gmm_base_path = "/scratch/acelarek/gmms/"
 tmp_gmm_base_path = None
 
-fitting_name = "Preiner64"
-# pcfit.run(fitting_name,
-#           PreinerGenerator(fixeddist=0.9, ngaussians=64, alpha=5, avoidorphans=True, verbosity=0),
-#           gengmm_path=tmp_gmm_base_path,
-#           batch_size=1)
+n_g = 125
+fitting_name = f"Preiner{n_g}"
+pcfit.run(fitting_name,
+          PreinerGenerator(fixeddist=0.9, ngaussians=n_g, alpha=5, avoidorphans=True, verbosity=0),
+          gengmm_path=tmp_gmm_base_path,
+          batch_size=1)
 
 
 c: Config = Config(gmms_fitting=fitting_name, gengmm_path=tmp_gmm_base_path, n_classes=10)
 c.model.bn_type = ModelConfig.BN_TYPE_COVARIANCE
-c.model.dropout = 0.5
+c.model.dropout = 0.0
 c.log_tensorboard_renderings = False
 c.n_epochs = 121
 
