@@ -298,7 +298,7 @@ class EckartGeneratorSP(GMMGenerator):
                 gmdata.positions[0, 0, gidx_start:gidx_start + pcount] = rel_points
                 gmdata.covariances[0, 0, gidx_start:gidx_start + pcount] = 0.1 * torch.eye(3, dtype=self._dtype,
                                                                                            device=general_config.device)
-                gmdata.priors[0, 0, gidx_start:gidx_start + pcount] = 1 / pcount
+                gmdata.priors[0, 0, gidx_start:gidx_start + pcount] = 1.0 / pcount.to(dtype=torch.float32)
             else:
                 if self._initialization_method == "kmeans-unw":
                     subgm = self._gmminitializer.initialize_by_method_name("kmeans",
