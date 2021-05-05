@@ -316,7 +316,8 @@ class EckartGeneratorSP(GMMGenerator):
                 gmdata.priors[0, 0, gidx_start:gidx_end] = gm.weights(subgm)
 
         gmdata.inverse_covariances = mat_tools.inverse(gmdata.covariances)
-        EMTools.replace_invalid_matrices(gmdata.covariances, gmdata.inverse_covariances, eps, mat_tools.inverse(eps))
+        eye = torch.eye(3, dtype=self._dtype, device=general_config.device)
+        EMTools.replace_invalid_matrices(gmdata.covariances, gmdata.inverse_covariances, eye, eye)
         gmdata.parentweights = parentweights
 
         return gmdata
