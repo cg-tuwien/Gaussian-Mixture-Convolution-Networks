@@ -196,6 +196,7 @@ def test(model: gmc.model.Net, device: str, test_loader: torch.utils.data.DataLo
 
 
 def experiment(device: str = 'cuda', desc_string: str = "", config: Config = None):
+    print(f"starting {desc_string}")
     # Training settings
     torch.manual_seed(0)
 
