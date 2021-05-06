@@ -89,7 +89,7 @@ class ReconstructionStats(EvalFunction):
         batch_size = pcbatch.shape[0]
         assert batch_size == 1
 
-        start = time.time()
+        # start = time.time()
 
         result = torch.zeros(self._nmeth, batch_size, device=pcbatch.device, dtype=pcbatch.dtype)
 
@@ -98,13 +98,16 @@ class ReconstructionStats(EvalFunction):
         bbscale = torch.norm(pmax - pmin).item()
 
         i = 0
-        rmsd, md, stdev, maxd = pyeval.eval_rmsd_unscaled(pcbatch.view(-1, 3), sampled.view(-1, 3))
-        rmsdI, mdI, stdevI, maxdI = (None, None, None, None)
-        if self._inverse or self._chamfer or self._chamfer_norm_area or self._chamfer_norm_nn:
-            if self._inverse_exact:
-                rmsdI, mdI, stdevI, maxdI = self.calc_inverse_exact(sampled.view(-1, 3), modelpath)
-            else:
-                rmsdI, mdI, stdevI, maxdI = pyeval.eval_rmsd_unscaled(sampled.view(-1, 3), pcbatch.view(-1, 3))
+        if (self._inverse or self._chamfer or self._chamfer_norm_area or self._chamfer_norm_nn) and not self._inverse_exact:
+            rmsd, md, stdev, maxd, rmsdI, mdI, stdevI, maxdI = pyeval.eval_rmsd_both_sides(pcbatch.view(-1, 3), sampled.view(-1, 3))
+        else:
+            rmsd, md, stdev, maxd = pyeval.eval_rmsd_unscaled(pcbatch.view(-1, 3), sampled.view(-1, 3))
+            rmsdI, mdI, stdevI, maxdI = (None, None, None, None)
+            if self._inverse or self._chamfer or self._chamfer_norm_area or self._chamfer_norm_nn:
+                if self._inverse_exact:
+                    rmsdI, mdI, stdevI, maxdI = self.calc_inverse_exact(sampled.view(-1, 3), modelpath)
+                else:
+                    rmsdI, mdI, stdevI, maxdI = pyeval.eval_rmsd_unscaled(sampled.view(-1, 3), pcbatch.view(-1, 3))
         scalefactor = 1
         if self._stdev_scaled_by_area or self._md_scaled_by_area or self._stdev_scaled_by_area or \
                 self._chamfer_norm_area or self._hausdorff_norm_area or self._cov_measure_std_scaled_by_area:
@@ -286,8 +289,8 @@ class ReconstructionStats(EvalFunction):
                 result.cov_measure_std_scaled_by_area = result[i, 0].item()
                 i += 1
 
-        end = time.time()
-        print ("Time taken: ", (end-start))
+        # end = time.time()
+        # print ("Time taken: ", (end-start))
         return result
 
 
