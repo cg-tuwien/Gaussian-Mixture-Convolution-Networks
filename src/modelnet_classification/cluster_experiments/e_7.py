@@ -31,7 +31,7 @@ fitting_name = f"Eckart_{nGs_per_node}_{nLevels}"
 c: Config = Config(gmms_fitting=fitting_name, gengmm_path=tmp_gmm_base_path, n_classes=10)
 c.n_input_gaussians = n_g
 c.model.bn_type = ModelConfig.BN_TYPE_COVARIANCE
-c.model.dropout = 0.5
+c.model.dropout = 0.35
 c.log_tensorboard_renderings = False
 c.n_epochs = 121
 
