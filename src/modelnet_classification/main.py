@@ -212,7 +212,7 @@ def experiment(device: str = 'cuda', desc_string: str = "", config: Config = Non
 
     kernel_optimiser = optim.Adam(model.parameters(), lr=config.kernel_learning_rate)
     weight_decay_optimiser = optim.SGD(model.parameters(), lr=(config.weight_decay_rate * config.kernel_learning_rate))
-    tensor_board_writer = torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard_fitting_ablation' / f'{desc_string}_{datetime.datetime.now().strftime("%m%d_%H%M")}')
+    tensor_board_writer = torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard_m2mFitting_ablation' / f'{desc_string}_{datetime.datetime.now().strftime("%m%d_%H%M")}')
 
     # scheduler = StepLR(kernel_optimiser, step_size=1, gamma=args.gamma)
 
