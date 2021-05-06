@@ -78,16 +78,16 @@ py::tuple eval_rmse_psnr(torch::Tensor pointcloudSource, torch::Tensor pointclou
     float rmsd = std::sqrt(summinsqdiffs / nS);
     float averagediff = summindiffs / nS;
     float sumdeviations = 0;
-    float sumdeviationsM4 = 0;
+    //float sumdeviationsM4 = 0;
     for (int i = 0; i < nS; ++i)
     {
         float deviation = sqrt(sqdiffs[i]) - averagediff;
         sumdeviations += pow(deviation, 2);
-        sumdeviationsM4 += pow(deviation, 4);
+        //sumdeviationsM4 += pow(deviation, 4);
     }
     float standarddev = sqrt(sumdeviations / (nS - 1));
-    float moment4 = sumdeviationsM4 / nS;
-    float kurtosis = moment4 / pow(standarddev, 4);
+    //float moment4 = sumdeviationsM4 / nS;
+    //float kurtosis = moment4 / pow(standarddev, 4);
     if (psnr) {
         float psnr = bboxPointsS.diagonal() / rmsd;
         psnr = 20 * std::log10(psnr);
@@ -96,9 +96,9 @@ py::tuple eval_rmse_psnr(torch::Tensor pointcloudSource, torch::Tensor pointclou
     else {
         if (scaled)
         {
-            return py::make_tuple(rmsd / bboxPointsS.diagonal(), averagediff / bboxPointsS.diagonal(), standarddev / bboxPointsS.diagonal(), maxdiff / bboxPointsS.diagonal(), kurtosis);
+            return py::make_tuple(rmsd / bboxPointsS.diagonal(), averagediff / bboxPointsS.diagonal(), standarddev / bboxPointsS.diagonal(), maxdiff / bboxPointsS.diagonal());// , kurtosis);
         }
-        return py::make_tuple(rmsd, averagediff, standarddev, maxdiff, kurtosis);
+        return py::make_tuple(rmsd, averagediff, standarddev, maxdiff);//, kurtosis);
     }
 }
 
@@ -212,8 +212,11 @@ py::tuple cov_measure(torch::Tensor pointcloud)
     return py::make_tuple(std / avgmindiff, std);
 }
 
+#include "sampler.hpp"
+
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("eval_rmse_psnr", &eval_rmse_psnr);
     m.def("calc_rmsd_to_itself", &calc_rmsd_to_itself);
     m.def("cov_measure", &cov_measure);
+    m.def("sample_gmm", &sample_gmm);
 }

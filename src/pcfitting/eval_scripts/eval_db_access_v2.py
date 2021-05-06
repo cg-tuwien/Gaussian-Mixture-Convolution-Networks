@@ -73,14 +73,13 @@ class EvalDbAccessV2:
     def insert_eval_density(self,
                             mu_l: float,
                             sigma_l: float,
-                            v_l: float,
                             mu_d: float,
                             sigma_d: float,
                             v_d: float,
                             run_id: int) -> int:
-        sql = "INSERT INTO EvalDensity(mu_L, sigma_L, v_L, mu_D, sigma_D, v_D) VALUES (?,?,?,?,?,?) "
+        sql = "INSERT INTO EvalDensity(mu_L, sigma_L, mu_D, sigma_D, v_D, run) VALUES (?,?,?,?,?,?) "
         cur = self._con.cursor()
-        cur.execute(sql, (mu_l, sigma_l, v_l, mu_d, sigma_d, v_d))
+        cur.execute(sql, (mu_l, sigma_l, mu_d, sigma_d, v_d, run_id))
         self._con.commit()
         return cur.lastrowid
 
@@ -94,13 +93,13 @@ class EvalDbAccessV2:
                              std_g: float,
                              cv_g: float,
                              run: int) -> int:
-        sql = "INSERT INTO EvalDistance(rmsd_s, md_s, std_s, cv_s, rmsd_g, md_g, std_g, cv_g) VALUES (?,?,?,?,?,?,?,?) "
+        sql = "INSERT INTO EvalDistance(rmsd_s, md_s, std_s, cv_s, rmsd_g, md_g, std_g, cv_g, run) VALUES (?,?,?,?,?,?,?,?, ?) "
         cur = self._con.cursor()
         cur.execute(sql, (rmsd_s, md_s, std_s, cv_s, rmsd_g, md_g, std_g, cv_g, run))
         self._con.commit()
         return cur.lastrowid
 
-    def insert_stat_eval(self,
+    def insert_eval_stat(self,
                          avg_trace: float,
                          std_traces: float,
                          avg_l_ev: float,
@@ -241,6 +240,12 @@ class EvalDbAccessV2:
                           avoidorphans))
         list = cur.fetchall()
         return len(list) > 0
+
+    def get_nn_scale_factor(self, modelfile: str):
+        sql = "SELECT factor FROM NNScaling where modelfile = ?"
+        cur = self._con.cursor()
+        cur.execute(sql, (modelfile,))
+        return cur.fetchone()[0]
 
     def __del__(self):
         self._con.close()

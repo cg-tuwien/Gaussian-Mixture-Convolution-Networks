@@ -27,28 +27,17 @@ vals_n_gaussians = [64, 256, 512]
 vals_eps = [1e-4, 1e-5, 1e-6, 1e-7]
 vals_inits = ["randnormpos", "fpsmax", "kmeans"]
 
-generators = [
-    # Initialization
-    EMGenerator(n_gaussians=64, initialization_method="fpsmax", termination_criterion=initterm, em_step_points_subbatchsize=10000, verbosity=0, eps=1e-5),
-    EMGenerator(n_gaussians=64, initialization_method="fpsmax", termination_criterion=initterm, em_step_points_subbatchsize=10000, verbosity=0, eps=1e-6),
-    EMGenerator(n_gaussians=64, initialization_method="fpsmax", termination_criterion=initterm, em_step_points_subbatchsize=10000, verbosity=0, eps=1e-7),
-    EMGenerator(n_gaussians=256, initialization_method="fpsmax", termination_criterion=initterm, em_step_points_subbatchsize=10000, verbosity=0, eps=1e-5),
-    EMGenerator(n_gaussians=256, initialization_method="fpsmax", termination_criterion=initterm, em_step_points_subbatchsize=10000, verbosity=0, eps=1e-6),
-    EMGenerator(n_gaussians=256, initialization_method="fpsmax", termination_criterion=initterm, em_step_points_subbatchsize=10000, verbosity=0, eps=1e-7),
-    EMGenerator(n_gaussians=512, initialization_method="fpsmax", termination_criterion=initterm, em_step_points_subbatchsize=10000, verbosity=0, eps=1e-5),
-    EMGenerator(n_gaussians=512, initialization_method="fpsmax", termination_criterion=initterm, em_step_points_subbatchsize=10000, verbosity=0, eps=1e-6),
-    EMGenerator(n_gaussians=512, initialization_method="fpsmax", termination_criterion=initterm, em_step_points_subbatchsize=10000, verbosity=0, eps=1e-7),
-]
+generators = []
 
 init_combinations = [(ng, eps) for eps in vals_eps for ng in vals_n_gaussians]
 for (ng, eps) in init_combinations:
     generators.append(EMGenerator(n_gaussians=ng, initialization_method="fpsmax", termination_criterion=initterm, em_step_points_subbatchsize=10000, verbosity=0, eps=eps))
 
-em_combinations = [(ng, eps, init) for init in vals_inits for eps in vals_eps for ng in vals_n_gaussians]
-for (ng, eps, init) in em_combinations:
-    generators.append(EMGenerator(n_gaussians=ng, initialization_method=init, termination_criterion=terminator2, em_step_points_subbatchsize=10000, verbosity=0, eps=eps))
+# em_combinations = [(ng, eps, init) for init in vals_inits for eps in vals_eps for ng in vals_n_gaussians]
+# for (ng, eps, init) in em_combinations:
+#     generators.append(EMGenerator(n_gaussians=ng, initialization_method=init, termination_criterion=terminator2, em_step_points_subbatchsize=10000, verbosity=0, eps=eps))
 
-n_fit_points = 100000
+n_fit_points = 10000
 n_eval_points_density = 1000000
 n_eval_points_distance = 100000
 
@@ -72,6 +61,9 @@ while dataset_fit.has_next():
     batch, names = dataset_fit.next_batch()
     batch_eval_dens, _ = dataset_eval_dens.next_batch()
     batch_eval_dist, _ = dataset_eval_dist.next_batch()
+    nns = dbaccess.get_nn_scale_factor(names[0])
+    batch_eval_dens.nnscalefactor = nns
+    batch_eval_dist.nnscalefactor = nns
     for j in range(len(generators)):
         print(100 * ((i / batchcount) + (j / len(generators) / batchcount)), "%")
         print("Generator ", (j+1), "/", len(generators), " on ", names)
@@ -111,13 +103,13 @@ while dataset_fit.has_next():
                                           "float32", generators[j]._epsvar, True)
         runid = dbaccess.insert_run(names[0], n_fit_points, generators[j]._n_gaussians, gmbatch.shape[2],
                                     "EM", emid, (end - start))
-        
-        dbaccess.insert_eval_density(densvalues_eval.logavg_scaled_nn, densvalues_eval.logstdv_scaled_nn, densvalues_eval.logcv,
+
+        dbaccess.insert_eval_density(densvalues_eval.logavg_scaled_nn, densvalues_eval.logstdv,
                                      densvalues_eval.avg_scaled_nn, densvalues_eval.stdev_scaled_nn, densvalues_eval.cv,
                                      runid)
-        dbaccess.insert_distance_eval(distvalues.rmsd_scaled_by_nn, distvalues.md_scaled_by_nn, distvalues.stdev_scaled_by_nn, distvalues.cv,
-                                      distvalues.rmsd_scaled_by_nn_I, distvalues.md_scaled_by_nn_I, distvalues.stdev_scaled_by_nn_I, distvalues.cv_I)
-        dbaccess.insert_stat_eval(statvalues[0].item(), statvalues[1].item(), statvalues[2].item(),
+        dbaccess.insert_eval_distance(distvalues.rmsd_scaled_by_nn, distvalues.md_scaled_by_nn, distvalues.stdev_scaled_by_nn, distvalues.cv,
+                                      distvalues.rmsd_scaled_by_nn_I, distvalues.md_scaled_by_nn_I, distvalues.stdev_scaled_by_nn_I, distvalues.cv_I, runid)
+        dbaccess.insert_eval_stat(statvalues[0].item(), statvalues[1].item(), statvalues[2].item(),
                                   statvalues[3].item(), statvalues[4].item(), statvalues[5].item(),
                                   statvalues[6].item(), statvalues[7].item(), statvalues[8].item(),
                                   statvalues[9].item(), statvalues[10].item(), statvalues[11].item(),
