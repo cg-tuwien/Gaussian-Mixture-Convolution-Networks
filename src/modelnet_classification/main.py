@@ -182,9 +182,10 @@ def test(model: gmc.model.Net, device: str, test_loader: torch.utils.data.DataLo
     test_loss = 0
     correct = 0
     with torch.no_grad():
-        for data, target in test_loader:
+        for batch_id, (data, target) in enumerate(test_loader):
             data, target = data.to(device), target.to(device)
-            output = model(data)
+            step = epoch * len(test_loader) + (batch_id + 1)
+            output = model(data, (tensor_board_writer, step))
             test_loss += F.nll_loss(output, target, reduction='sum').item()  # sum up batch loss
             pred = output.argmax(dim=1, keepdim=True)  # get the index of the max log-probability
             correct += pred.eq(target.view_as(pred)).sum().item()
@@ -203,7 +204,7 @@ def experiment(device: str = 'cuda', desc_string: str = "", config: Config = Non
     train_loader = torch.utils.data.DataLoader(ModelNetDataSet(config, config.modelnet_data_path, config.modelnet_category_list_file, config.modelnet_training_sample_names_file),
                                                batch_size=config.batch_size, num_workers=config.num_dataloader_workers, shuffle=True, drop_last=True)
     test_loader  = torch.utils.data.DataLoader(ModelNetDataSet(config, config.modelnet_data_path, config.modelnet_category_list_file, config.modelnet_test_sample_names_file),
-                                               batch_size=config.batch_size, num_workers=config.num_dataloader_workers)
+                                               batch_size=config.batch_size, num_workers=config.num_dataloader_workers, shuffle=True, drop_last=True)
 
     model = gmc.model.Net(learn_positions=config.learn_positions_after == 0,
                           learn_covariances=config.learn_covariances_after == 0,
