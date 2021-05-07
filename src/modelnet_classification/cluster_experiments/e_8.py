@@ -20,8 +20,8 @@ c.log_tensorboard_renderings = False
 c.n_epochs = 162
 
 # network size
-c.model.layers = [Layer(16, 2.5, 4),
-                  Layer(32, 2.5, 4),
+c.model.layers = [Layer(32, 2.5, 4),
                   Layer(64, 2.5, 4),
+                  Layer(128, 2.5, 4),
                   Layer(10, 2.5, -1)]
 main.experiment(device=device, desc_string=f"{fitconf.name}_{c.produce_description()}", config=c)
