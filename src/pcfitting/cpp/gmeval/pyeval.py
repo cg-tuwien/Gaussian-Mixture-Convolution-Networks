@@ -28,6 +28,7 @@ def eval_rmse(point_cloud_source: torch.Tensor, point_cloud_generated: torch.Ten
 
 def eval_rmsd_unscaled(point_cloud_source: torch.Tensor, point_cloud_generated: torch.Tensor) -> (float, float, float, float):
     # Returns rmsd, md, stdev, max
+    print("Note: consider calling eval_rmsd_both_sides!")
     return bindings.eval_rmse_psnr(point_cloud_source, point_cloud_generated, False, False)
 
 
@@ -40,3 +41,6 @@ def cov_measure(point_cloud: torch.Tensor) -> (float, float):
 
 def sample_gmm(gmm: torch.Tensor, count: int) -> torch.Tensor:
     return bindings.sample_gmm(gmm, count)
+
+def eval_rmsd_both_sides(point_cloud_source: torch.Tensor, point_cloud_generated: torch.Tensor) -> (float, float, float, float, float, float, float, float):
+    return bindings.eval_rmsd_both_sides(point_cloud_source, point_cloud_generated)

@@ -37,7 +37,7 @@ for (ng, eps) in init_combinations:
 # for (ng, eps, init) in em_combinations:
 #     generators.append(EMGenerator(n_gaussians=ng, initialization_method=init, termination_criterion=terminator2, em_step_points_subbatchsize=10000, verbosity=0, eps=eps))
 
-n_fit_points = 10000
+n_fit_points = 100000
 n_eval_points_density = 1000000
 n_eval_points_distance = 100000
 
@@ -88,7 +88,7 @@ while dataset_fit.has_next():
         print ("Evaluating")
         densvalues_eval = evaldensity.calculate_score_packed(batch_eval_dens, gmbatch, modelpath=modelpath)
         statvalues = evalstats.calculate_score_packed(batch, gmbatch, modelpath=modelpath)
-        reconstructed = GMSampler.sampleGMM(gmmbatch, n_eval_points_distance)
+        reconstructed = GMSampler.sampleGMM_ext(gmmbatch, n_eval_points_distance)
         distvalues = evaldistane.calculate_score_on_reconstructed(batch_eval_dist, reconstructed, modelpath=modelpath)
 
         # Render

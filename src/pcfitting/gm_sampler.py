@@ -12,6 +12,7 @@ class GMSampler:
 
     @staticmethod
     def sampleGMM(gmm: torch.Tensor, count: int):
+        print("Consider using sampleGMM_ext!")
         # Samples count points from the given mixture model
         # result size: [bs,n,3]
         batch_size = gmm.shape[0]
@@ -36,4 +37,4 @@ class GMSampler:
 
     @staticmethod
     def sampleGMM_ext(gmm: torch.Tensor, count: int) -> torch.Tensor:
-        return pyeval.sample_gmm(gmm[0, 0].cpu(), count).to(gmm.device)
+        return pyeval.sample_gmm(gmm[0, 0].cpu(), count).to(gmm.device).view(1, -1, 3)
