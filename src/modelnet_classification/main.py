@@ -193,7 +193,8 @@ def test(model: gmc.model.Net, device: str, test_loader: torch.utils.data.DataLo
     test_loss /= len(test_loader.dataset)
     tensor_board_writer.add_scalar("99. modelnet test loss", test_loss, epoch)
     tensor_board_writer.add_scalar("98. modelnet test accuracy", 100. * correct / len(test_loader.dataset), epoch)
-    print(f'\nTest set: Average loss: {test_loss:.4f}, Accuracy: {correct}/{len(test_loader.dataset)} ({100. * correct / len(test_loader.dataset):.0f}%)\n')
+    print(f'\nTest set: Average loss: {test_loss:.4f}, Accuracy: {correct}/{len(test_loader.dataset)} ({100. * correct / len(test_loader.dataset):.2f}%)\n')
+    return correct / len(test_loader.dataset)
 
 
 def experiment(device: str = 'cuda', desc_string: str = "", config: Config = None):
@@ -215,11 +216,13 @@ def experiment(device: str = 'cuda', desc_string: str = "", config: Config = Non
     weight_decay_optimiser = optim.SGD(model.parameters(), lr=(config.weight_decay_rate * config.kernel_learning_rate))
     tensor_board_writer = torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard_m2mFitting_ablation' / f'{desc_string}_{datetime.datetime.now().strftime("%m%d_%H%M")}')
 
-    # scheduler = StepLR(kernel_optimiser, step_size=1, gamma=args.gamma)
+    kernel_scheduler = optim.lr_scheduler.ReduceLROnPlateau(kernel_optimiser, mode="max", threshold=0.0002, factor=0.1, patience=5, cooldown=8, verbose=True, eps=1e-8)
+    weight_decay_scheduler = optim.lr_scheduler.ReduceLROnPlateau(kernel_optimiser, mode="max", threshold=0.0002, factor=0.1, patience=5, cooldown=8, verbose=True, eps=1e-9)
 
     for epoch in range(config.n_epochs):
         model.set_position_learning(epoch >= config.learn_positions_after)
         model.set_covariance_learning(epoch >= config.learn_covariances_after)
         train(model, device, train_loader, kernel_optimiser=kernel_optimiser, weight_decay_optimiser=weight_decay_optimiser, epoch=epoch, tensor_board_writer=tensor_board_writer, config=config)
-        test(model, device, test_loader, epoch, tensor_board_writer=tensor_board_writer)
-        # scheduler.step()
+        test_loss = test(model, device, test_loader, epoch, tensor_board_writer=tensor_board_writer)
+        kernel_scheduler.step(test_loss)
+        weight_decay_scheduler.step(test_loss)
