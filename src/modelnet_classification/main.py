@@ -205,7 +205,7 @@ def experiment(device: str = 'cuda', desc_string: str = "", config: Config = Non
     train_loader = torch.utils.data.DataLoader(ModelNetDataSet(config, config.modelnet_data_path, config.modelnet_category_list_file, config.modelnet_training_sample_names_file),
                                                batch_size=config.batch_size, num_workers=config.num_dataloader_workers, shuffle=True, drop_last=True)
     test_loader  = torch.utils.data.DataLoader(ModelNetDataSet(config, config.modelnet_data_path, config.modelnet_category_list_file, config.modelnet_test_sample_names_file),
-                                               batch_size=config.batch_size, num_workers=config.num_dataloader_workers, shuffle=True, drop_last=True)
+                                               batch_size=config.batch_size, num_workers=config.num_dataloader_workers)
 
     model = gmc.model.Net(learn_positions=config.learn_positions_after == 0,
                           learn_covariances=config.learn_covariances_after == 0,
@@ -214,7 +214,7 @@ def experiment(device: str = 'cuda', desc_string: str = "", config: Config = Non
 
     kernel_optimiser = optim.Adam(model.parameters(), lr=config.kernel_learning_rate)
     weight_decay_optimiser = optim.SGD(model.parameters(), lr=(config.weight_decay_rate * config.kernel_learning_rate))
-    tensor_board_writer = torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard_m2mFitting_ablation' / f'{desc_string}_{datetime.datetime.now().strftime("%m%d_%H%M")}')
+    tensor_board_writer = torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard_m2mFitting_ablation2' / f'{desc_string}_{datetime.datetime.now().strftime("%m%d_%H%M")}')
 
     kernel_scheduler = optim.lr_scheduler.ReduceLROnPlateau(kernel_optimiser, mode="max", threshold=0.0002, factor=0.1, patience=5, cooldown=8, verbose=True, eps=1e-8)
     weight_decay_scheduler = optim.lr_scheduler.ReduceLROnPlateau(kernel_optimiser, mode="max", threshold=0.0002, factor=0.1, patience=5, cooldown=8, verbose=True, eps=1e-9)

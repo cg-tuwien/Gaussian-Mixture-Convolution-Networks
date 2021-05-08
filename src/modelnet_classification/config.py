@@ -33,7 +33,7 @@ class Config:
 
         self.n_input_gaussians = -1
         self.batch_size = 21
-        self.n_epochs = 80
+        self.n_epochs = 162
         self.kernel_learning_rate = 0.001
         self.weight_decay_rate = 0.05  # times kernel learning rate
         self.learn_covariances_after = 0
