@@ -54,7 +54,7 @@ class Config:
         # auxiliary architectural options
         self.bn_place = Config.BN_PLACE_AFTER_RELU
         self.bn_type = Config.BN_TYPE_COVARIANCE_STD
-        self.dropout = 0.0
+        self.dropout = 0.35
 
         self.relu_config: gmc.modules.ReLUFittingConfig = gmc.modules.ReLUFittingConfig()
         self.convolution_config: gmc.modules.ConvolutionConfig = gmc.modules.ConvolutionConfig()
@@ -105,7 +105,7 @@ class Net(nn.Module):
                                                      learn_positions=learn_positions, learn_covariances=learn_covariances,
                                                      weight_sd=1, weight_mean=0.1, n_dims=config.n_dims))
             self.biases.append(torch.nn.Parameter(torch.zeros(1, l.n_feature_layers) + bias_0))
-            self.relus.append(gmc.modules.ReLUFitting(config.relu_config, n_layers=l.n_feature_layers, n_output_gaussians=l.n_fitting_components))
+            self.relus.append(gmc.modules.ReLUFitting(config.relu_config, n_layers=l.n_feature_layers, n_output_gaussians=l.n_fitting_components, convolution_layer=f"{i}"))
             if config.bn_type == Config.BN_TYPE_COVARIANCE_STD:
                 norm = nn.Sequential(gmc.modules.CovScaleNorm(n_layers=l.n_feature_layers), gmc.modules.BatchNorm(n_layers=l.n_feature_layers))
             elif config.bn_type == Config.BN_TYPE_COVARIANCE:

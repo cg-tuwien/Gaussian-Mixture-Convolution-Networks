@@ -232,18 +232,19 @@ class ReLUFittingConfig:
 
 
 class ReLUFitting(torch.nn.modules.Module):
-    def __init__(self, config: ReLUFittingConfig, n_layers: int, n_output_gaussians: int, n_input_gaussians: int = -1):
+    def __init__(self, config: ReLUFittingConfig, n_layers: int, n_output_gaussians: int, n_input_gaussians: int = -1, convolution_layer: str = ""):
         super(ReLUFitting, self).__init__()
         self.config = config
         self.n_layers = n_layers
         self.n_input_gaussians = n_input_gaussians
         self.n_output_gaussians = n_output_gaussians
+        self.convolution_layer = convolution_layer
 
         self.last_in = None
         self.last_out = None
 
     def forward(self, x_m: Tensor, x_constant: Tensor, tensorboard: TensorboardWriter = None) -> typing.Tuple[Tensor, Tensor]:
-        y_m, y_constant, _ = self.config.fitting_method(x_m, x_constant, self.n_output_gaussians, self.config.fitting_config, tensorboard)
+        y_m, y_constant, _ = self.config.fitting_method(x_m, x_constant, self.n_output_gaussians, self.config.fitting_config, tensorboard, convolution_layer=self.convolution_layer)
 
         self.last_in = (x_m.detach(), x_constant.detach())
         self.last_out = (y_m.detach(), y_constant.detach())
