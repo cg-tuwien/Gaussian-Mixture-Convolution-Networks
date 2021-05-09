@@ -22,5 +22,5 @@ c.model.layers = [Layer(8, 2.5, 32),
                   Layer(10, 2.5, -1)]
 main.experiment(device=device, desc_string=f"{fitconf.name}_{c.produce_description()}", config=c, ablation_name="network_length")
 
-c.model.layers = [Layer(8, 2.5, 32)]
+c.model.layers = [Layer(10, 2.5, -1)]
 main.experiment(device=device, desc_string=f"{fitconf.name}_{c.produce_description()}", config=c, ablation_name="network_length")
