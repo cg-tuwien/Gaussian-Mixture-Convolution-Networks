@@ -16,6 +16,11 @@ class Config:
         self.KL_divergence_threshold = 2.0
 
 
+def fixed_point_and_tree_hem2(mixture: Tensor, constant: Tensor, n_components: int, config: Config = Config(), tensorboard_epoch: TensorboardWriter = None, convolution_layer: str = None) -> typing.Tuple[Tensor, Tensor, typing.List[Tensor]]:
+    config.n_reduction = 2
+    fixed_point_and_tree_hem(mixture, constant, n_components, config, tensorboard_epoch, convolution_layer)
+
+
 def fixed_point_and_tree_hem(mixture: Tensor, constant: Tensor, n_components: int, config: Config = Config(), tensorboard_epoch: TensorboardWriter = None, convolution_layer: str = None) -> typing.Tuple[Tensor, Tensor, typing.List[Tensor]]:
     if tensorboard_epoch is not None:
         # torch.cuda.synchronize()

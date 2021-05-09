@@ -54,7 +54,7 @@ class Config:
         # auxiliary architectural options
         self.bn_place = Config.BN_PLACE_AFTER_RELU
         self.bn_type = Config.BN_TYPE_COVARIANCE_STD
-        self.dropout = 0.35
+        self.dropout = 0.0
 
         self.relu_config: gmc.modules.ReLUFittingConfig = gmc.modules.ReLUFittingConfig()
         self.convolution_config: gmc.modules.ConvolutionConfig = gmc.modules.ConvolutionConfig()

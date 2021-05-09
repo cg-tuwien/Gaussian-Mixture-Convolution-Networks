@@ -197,7 +197,7 @@ def test(model: gmc.model.Net, device: str, test_loader: torch.utils.data.DataLo
     return correct / len(test_loader.dataset)
 
 
-def experiment(device: str = 'cuda', desc_string: str = "", config: Config = None):
+def experiment(device: str = 'cuda', desc_string: str = "", config: Config = None, ablation_name: str = ""):
     print(f"starting {desc_string}")
     # Training settings
     torch.manual_seed(0)
@@ -214,7 +214,7 @@ def experiment(device: str = 'cuda', desc_string: str = "", config: Config = Non
 
     kernel_optimiser = optim.Adam(model.parameters(), lr=config.kernel_learning_rate)
     weight_decay_optimiser = optim.SGD(model.parameters(), lr=(config.weight_decay_rate * config.kernel_learning_rate))
-    tensor_board_writer = torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard_m2mFitting_ablation2' / f'{desc_string}_{datetime.datetime.now().strftime("%m%d_%H%M")}')
+    tensor_board_writer = torch.utils.tensorboard.SummaryWriter(config.data_base_path / f'tensorboard_{ablation_name}' / f'{desc_string}_{datetime.datetime.now().strftime("%m%d_%H%M")}')
 
     kernel_scheduler = optim.lr_scheduler.ReduceLROnPlateau(kernel_optimiser, mode="max", threshold=0.0002, factor=0.1, patience=5, cooldown=8, verbose=True, eps=1e-8)
     weight_decay_scheduler = optim.lr_scheduler.ReduceLROnPlateau(kernel_optimiser, mode="max", threshold=0.0002, factor=0.1, patience=5, cooldown=8, verbose=True, eps=1e-9)
