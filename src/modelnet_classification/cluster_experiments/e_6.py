@@ -11,13 +11,13 @@ device = "cuda"
 tmp_gmm_base_path = None
 
 fitconf = pcfit.Config(n_gaussians=256, eps=0.00001, gengmm_path=tmp_gmm_base_path)
-pcfit.fit(fitconf)
+# pcfit.fit(fitconf)
 
 c: Config = Config(gmms_fitting=fitconf.name, gengmm_path=tmp_gmm_base_path, n_classes=10)
 c.model.bn_type = ModelConfig.BN_TYPE_COVARIANCE
 c.log_tensorboard_renderings = False
+c.model.dropout = 0.0
 
-# network size
 c.model.layers = [Layer(8, 2.5, 64),
                   Layer(16, 2.5, 16),
                   Layer(32, 2.5, 4),
