@@ -11,20 +11,20 @@ device = "cuda"
 
 tmp_gmm_base_path = None
 
-fitconf = pcfit.Config(n_gaussians=64, eps=0.00001, gengmm_path=tmp_gmm_base_path)
-# pcfit.fit(fitconf)
+fitconf = pcfit.Config(n_gaussians=128, eps=0.00001, gengmm_path=tmp_gmm_base_path)
+pcfit.fit(fitconf)
 
-c: Config = Config(gmms_fitting=fitconf.name, gengmm_path=tmp_gmm_base_path, n_classes=10)
+c: Config = Config(gmms_fitting=fitconf.name, gengmm_path=tmp_gmm_base_path, n_classes=40)
 c.model.bn_type = ModelConfig.BN_TYPE_COVARIANCE
 c.model.relu_config.fitting_method = fitting.fixed_point_and_tree_hem2
 c.log_tensorboard_renderings = False
 c.model.dropout = 0.0
 c.batch_size = 21
 
-c.model.layers = [Layer(8, 2.5, 32),
-                  Layer(16, 2.5, 16),
-                  Layer(32, 2.5, 8),
-                  Layer(64, 2.5, 4),
-                  Layer(128, 2.5, 2),
-                  Layer(10, 2.5, -1)]
-main.experiment(device=device, desc_string=f"{fitconf.name}_{c.produce_description()}", config=c, ablation_name="network_length")
+c.model.layers = [Layer(8, 2.5, 64),
+                  Layer(16, 2.5, 32),
+                  Layer(32, 2.5, 16),
+                  Layer(64, 2.5, 8),
+                  Layer(40, 2.5, -1)]
+
+main.experiment(device=device, desc_string=f"bs21_{fitconf.name}_{c.produce_description()}", config=c, ablation_name="modelnet40")
