@@ -170,7 +170,7 @@ def test(model: gmc.model.Net, device: torch.device, test_loader: torch.utils.da
     print(f'\nTest set: Average loss: {test_loss:.4f}, Accuracy: {correct}/{len(test_loader.dataset)} ({100. * correct / len(test_loader.dataset):.2f}%)\n')
 
 
-def experiment(device: str = 'cuda', desc_string: str = "", config: typing.Optional[Config] = None):
+def experiment(device: str = 'cuda', desc_string: str = "", config: typing.Optional[Config] = None, ablation_name: str = ""):
     # Training settings
     torch.manual_seed(0)
     input_fitting.fit(config)
@@ -187,7 +187,7 @@ def experiment(device: str = 'cuda', desc_string: str = "", config: typing.Optio
 
     kernel_optimiser = optim.Adam(model.parameters(), lr=config.kernel_learning_rate)
     weight_decay_optimiser = optim.SGD(model.parameters(), lr=(config.weight_decay_rate * config.kernel_learning_rate))
-    tensor_board_writer = torch.utils.tensorboard.SummaryWriter(config.data_base_path / 'tensorboard' / f'{desc_string}_{datetime.datetime.now().strftime("%m%d_%H%M")}')
+    tensor_board_writer = torch.utils.tensorboard.SummaryWriter(config.data_base_path / f'tensorboard_{ablation_name}' / f'{desc_string}_{datetime.datetime.now().strftime("%m%d_%H%M")}')
 
     # scheduler = StepLR(kernel_optimiser, step_size=1, gamma=args.gamma)
 

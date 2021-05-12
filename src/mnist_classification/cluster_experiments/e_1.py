@@ -34,4 +34,4 @@ c.model.layers = [Layer(8, 1.5, 4),
 # c.test_set_start = 5000
 # c.test_set_end = 5600
 
-main.experiment(device=device, desc_string=f"{c.produce_description()}", config=c)
+main.experiment(device=device, desc_string=f"{c.produce_description()}", config=c, ablation_name="mnist_input_fitting")
