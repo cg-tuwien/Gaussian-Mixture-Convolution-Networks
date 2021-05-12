@@ -32,6 +32,14 @@ c.model.layers = [Layer(8, 1.5, 4),
                   Layer(10, 2.5, -1)]
 # c.model.mlp = (-1, 10)
 
+import torch.utils.data
+from torchvision import datasets, transforms
+train_loader = torch.utils.data.DataLoader(
+        datasets.MNIST(c.data_base_path / "mnist_raw", train=True, download=True, transform=transforms.ToTensor()),
+        batch_size=1)
+
+exit()
+
 c.training_set_start = 0
 c.training_set_end = 14000
 threading.Thread(target=main.experiment, name="t1", kwargs={'device': device,
