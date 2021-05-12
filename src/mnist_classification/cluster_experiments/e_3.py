@@ -32,11 +32,13 @@ c.model.layers = [Layer(8, 1.5, 4),
                   Layer(10, 2.5, -1)]
 # c.model.mlp = (-1, 10)
 
+c.training_set_start = 0
+c.training_set_end = 0
 c.test_set_start = 0
 c.test_set_end = 0
-for i in range(24, 30):
-    c.training_set_start = int(i * 2000)
-    c.training_set_end = int((i+1) * 2000)
+for i in range(0, 1):
+    c.test_set_start = int(i * 2000)
+    c.test_set_end = int((i+1) * 2000)
     Process(target=main.experiment, name=f"t{i}", kwargs={'device': device,
                                                           'desc_string': f"{c.produce_description()}",
                                                           "config": copy.deepcopy(c),
