@@ -12,7 +12,7 @@ from mnist_classification.config import Config
 device = "cuda"
 
 c: Config = Config()
-c.data_base_path = pathlib.Path("/scratch/acelarek/gmms/")
+# c.data_base_path = pathlib.Path("/scratch/acelarek/gmms/")
 c.input_fitting_iterations = 100
 c.input_fitting_components = 64
 c.model.bn_type = ModelConfig.BN_TYPE_COVARIANCE_STD
