@@ -1,4 +1,6 @@
-import sys
+import pathlib
+import threading
+import copy
 
 import gmc.fitting
 from gmc.model import Layer, Config as ModelConfig
@@ -32,9 +34,23 @@ c.model.layers = [Layer(8, 1.5, 32),
                   Layer(10, 2.5, -1)]
 # c.model.mlp = (-1, 10)
 
-# c.training_set_start = 10000
-# c.training_set_end = 11000
-# c.test_set_start = 5000
-# c.test_set_end = 5600
+c.test_set_start = 0
+c.test_set_end = 0
+for i in range(6):
+    c.training_set_start = int(i * 10000)
+    c.training_set_end = int((i+1) * 10000)
+    threading.Thread(target=main.experiment, name="t1", kwargs={'device': device,
+                                                                     'desc_string': f"{c.produce_description()}",
+                                                                     "config": copy.deepcopy(c),
+                                                                     "ablation_name": "mnist_input_fitting"}).start()
 
-main.experiment(device=device, desc_string=f"{c.produce_description()}", config=c, ablation_name="mnist_input_fitting")
+c.training_set_start = 0
+c.training_set_end = 0
+c.test_set_start = 0
+c.test_set_end = 10000
+threading.Thread(target=main.experiment, name="t1", kwargs={'device': device,
+                                                                 'desc_string': f"{c.produce_description()}",
+                                                                 "config": copy.deepcopy(c),
+                                                                 "ablation_name": "mnist_input_fitting"}).start()
+
+# main.experiment(device=device, desc_string=f"{c.produce_description()}", config=c, ablation_name="mnist_input_fitting")
