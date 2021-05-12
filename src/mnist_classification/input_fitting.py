@@ -73,7 +73,7 @@ def run_and_store(config: Config, data_loader: torch.utils.data.DataLoader, data
                 png_file = config.data_base_path / config.produce_input_description() / "png" / f"{dataset_name}_{batch_idx}.png"
                 rendering = debug_render(mixture, orig_size=(28, 28), clamp=(0, 5.0))
                 plt.imsave(png_file, rendering)
-            print(filename)
+            # print(filename)
 
 
 def fit(config: Config):
