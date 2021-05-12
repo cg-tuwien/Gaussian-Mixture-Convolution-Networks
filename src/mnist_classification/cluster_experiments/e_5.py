@@ -1,5 +1,5 @@
 import pathlib
-import threading
+from multiprocessing import Process
 import copy
 
 import gmc.fitting
@@ -36,21 +36,22 @@ c.model.layers = [Layer(8, 1.5, 32),
 
 c.test_set_start = 0
 c.test_set_end = 0
-for i in range(6):
-    c.training_set_start = int(i * 10000)
-    c.training_set_end = int((i+1) * 10000)
-    threading.Thread(target=main.experiment, name="t1", kwargs={'device': device,
-                                                                     'desc_string': f"{c.produce_description()}",
-                                                                     "config": copy.deepcopy(c),
-                                                                     "ablation_name": "mnist_input_fitting"}).start()
+for i in range(8):
+    c.training_set_start = int(i * 7500)
+    c.training_set_end = int((i+1) * 7500)
+    Process(target=main.experiment, name=f"t{i}", kwargs={'device': device,
+                                                        'desc_string': f"{c.produce_description()}",
+                                                        "config": copy.deepcopy(c),
+                                                        "ablation_name": "mnist_input_fitting"}).start()
 
 c.training_set_start = 0
 c.training_set_end = 0
 c.test_set_start = 0
 c.test_set_end = 10000
-threading.Thread(target=main.experiment, name="t1", kwargs={'device': device,
-                                                                 'desc_string': f"{c.produce_description()}",
-                                                                 "config": copy.deepcopy(c),
-                                                                 "ablation_name": "mnist_input_fitting"}).start()
+Process(target=main.experiment, name="t10", kwargs={'device': device,
+                                                    'desc_string': f"{c.produce_description()}",
+                                                    "config": copy.deepcopy(c),
+                                                    "ablation_name": "mnist_input_fitting"}).start()
+
 
 # main.experiment(device=device, desc_string=f"{c.produce_description()}", config=c, ablation_name="mnist_input_fitting")
