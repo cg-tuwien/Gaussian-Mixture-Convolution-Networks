@@ -36,7 +36,7 @@ c.training_set_start = 0
 c.training_set_end = 0
 c.test_set_start = 0
 c.test_set_end = 0
-for i in range(0, 1):
+for i in range(1, 2):
     c.test_set_start = int(i * 2000)
     c.test_set_end = int((i+1) * 2000)
     Process(target=main.experiment, name=f"t{i}", kwargs={'device': device,
