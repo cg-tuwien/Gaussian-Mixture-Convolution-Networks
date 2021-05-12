@@ -223,6 +223,8 @@ def experiment(device: str = 'cuda', desc_string: str = "", config: Config = Non
         model.set_position_learning(epoch >= config.learn_positions_after)
         model.set_covariance_learning(epoch >= config.learn_covariances_after)
         train(model, device, train_loader, kernel_optimiser=kernel_optimiser, weight_decay_optimiser=weight_decay_optimiser, epoch=epoch, tensor_board_writer=tensor_board_writer, config=config)
+        torch.cuda.empty_cache()
         test_loss = test(model, device, test_loader, epoch, tensor_board_writer=tensor_board_writer)
         kernel_scheduler.step(test_loss)
         weight_decay_scheduler.step(test_loss)
+        torch.cuda.empty_cache()
