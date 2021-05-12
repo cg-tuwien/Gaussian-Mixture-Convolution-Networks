@@ -1,6 +1,7 @@
 from __future__ import print_function
 import datetime
 import time
+import typing
 
 import torch
 import torch.jit
@@ -9,12 +10,12 @@ import torch.optim as optim
 import torch.optim.optimizer as Optimizer
 import torch.utils.data
 import torch.utils.tensorboard
-import typing
 
 import gmc.fitting
 import gmc.inout
 import gmc.model
 from mnist_classification.config import Config
+import mnist_classification.input_fitting as input_fitting
 
 # based on https://github.com/pytorch/examples/blob/master/mnist/main.py
 
@@ -41,7 +42,9 @@ class GmMnistDataSet(torch.utils.data.Dataset):
         return self.end - self.begin
 
     def __getitem__(self, index):
-        mixture, meta = gmc.inout.load(f"{self.prefix}{index}")
+        mixture, meta = gmc.inout.load(f"{self.prefix}{index + self.begin}")
+        if len(meta.shape) == 1:
+            return mixture[0], meta[0]
         return mixture[0], meta
 
 
@@ -164,15 +167,18 @@ def test(model: gmc.model.Net, device: torch.device, test_loader: torch.utils.da
     test_loss /= len(test_loader.dataset)
     tensor_board_writer.add_scalar("99. mnist test loss", test_loss, epoch)
     tensor_board_writer.add_scalar("98. mnist test accuracy", 100. * correct / len(test_loader.dataset), epoch)
-    print(f'\nTest set: Average loss: {test_loss:.4f}, Accuracy: {correct}/{len(test_loader.dataset)} ({100. * correct / len(test_loader.dataset):.0f}%)\n')
+    print(f'\nTest set: Average loss: {test_loss:.4f}, Accuracy: {correct}/{len(test_loader.dataset)} ({100. * correct / len(test_loader.dataset):.2f}%)\n')
 
 
 def experiment(device: str = 'cuda', desc_string: str = "", config: typing.Optional[Config] = None):
     # Training settings
     torch.manual_seed(0)
+    input_fitting.fit(config)
 
-    train_loader = torch.utils.data.DataLoader(GmMnistDataSet('mnist/train_', begin=0, end=60000), batch_size=config.batch_size, num_workers=config.num_dataloader_workers, shuffle=True)
-    test_loader = torch.utils.data.DataLoader(GmMnistDataSet('mnist/test_', begin=0, end=10000), batch_size=config.batch_size, num_workers=config.num_dataloader_workers)
+    train_loader = torch.utils.data.DataLoader(GmMnistDataSet(f'{config.produce_input_description()}/train_', begin=config.training_set_start, end=config.training_set_end), batch_size=config.batch_size,
+                                               num_workers=config.num_dataloader_workers, shuffle=True)
+    test_loader = torch.utils.data.DataLoader(GmMnistDataSet(f'{config.produce_input_description()}/test_', begin=config.test_set_start, end=config.test_set_end), batch_size=config.batch_size,
+                                              num_workers=config.num_dataloader_workers)
 
     model = gmc.model.Net(learn_positions=config.learn_positions_after == 0,
                           learn_covariances=config.learn_covariances_after == 0,

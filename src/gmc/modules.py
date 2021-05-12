@@ -436,7 +436,10 @@ class BatchNorm(torch.nn.modules.Module):
         pos_min = torch.min(gm.positions(x_gm).view(n_batch, -1, n_dim), dim=1)[0].view(n_batch, 1, 1, n_dim).detach()
         pos_max = torch.max(gm.positions(x_gm).view(n_batch, -1, n_dim), dim=1)[0].view(n_batch, 1, 1, n_dim).detach()
 
-        sampling_positions = torch.rand(n_batch, n_channels, n_sampling_positions, n_dim, device=x_gm.device) * (pos_max - pos_min) + pos_min
+        sampling_positions = torch.rand(n_batch, n_channels, n_sampling_positions, n_dim, device=x_gm.device)
+        if gm.n_dimensions(x_gm) == 2:
+            sampling_positions = sampling_positions * 1.3 - 0.15
+        sampling_positions = sampling_positions * (pos_max - pos_min) + pos_min
         sample_values = gm.evaluate(x_gm, sampling_positions) + x_constant
         # channel_sd, channel_mean = torch.std_mean(sample_values.transpose(0, 1).reshape(n_channels, n_batch * n_sampling_positions), dim=1)
         if self.batch_norm:

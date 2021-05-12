@@ -21,6 +21,12 @@ class Config:
         self.model = ModelConfig(n_dims=2)
         self.model.n_classes = 10
 
+        self.training_set_start = 0
+        self.training_set_end = 60000
+        self.test_set_start = 0
+        self.test_set_end = 10000
+        self.input_fitting_components = 32
+        self.input_fitting_iterations = 100
         self.batch_size = 100
         self.n_epochs = 80
         self.kernel_learning_rate = 0.001
@@ -37,5 +43,11 @@ class Config:
         self.fitting_test_data_store_path = f"{self.data_base_path}/mnist/fitting_input"
 
     def produce_description(self):
-        return f"lr{int(self.kernel_learning_rate * 1000)}_wDec{int(self.weight_decay_rate * 100)}_{self.model.produce_description()}"
+        return f"{self.produce_input_description()}_lr{int(self.kernel_learning_rate * 1000)}_wDec{int(self.weight_decay_rate * 100)}_{self.model.produce_description()}"
 
+    def produce_input_description(self):
+        if self.input_fitting_iterations == 1:
+            return f"mnist_init{self.input_fitting_components}"
+        if self.input_fitting_iterations == -1:
+            return "mnist"
+        return f"mnist_em{self.input_fitting_components}"
