@@ -21,9 +21,10 @@ c.model.dataDropout = 0.0
 c.model.relu_config.fitting_method = gmc.fitting.fixed_point_and_tree_hem2
 
 # c.log_tensorboard_renderings = False
-c.n_epochs = 62
+c.n_epochs = 32
 c.batch_size = 40
 c.log_interval = 1000
+c.weight_decay_rate = 0.1
 
 # network size
 c.model.layers = [Layer(8, 1.5, 16),
