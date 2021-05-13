@@ -80,14 +80,14 @@ def fixed_point_and_mhem(mixture: Tensor, constant: Tensor, n_components: int, c
 
     fp_fitting, ret_const = fixed_point_iteration_to_relu(mixture, constant, initial_fitting)
 
-    if n_components < 0:
-        return fp_fitting, ret_const, [initial_fitting]
-
     if tensorboard_epoch is not None:
         # torch.cuda.synchronize()
         # t2 = time.perf_counter()
         # tensorboard.add_scalar(f"50.2 fitting {convolution_layer} fixed_point_iteration_to_relu time =", t2 - t1, epoch)
         tensorboard.add_scalar(f"51.1 fitting {convolution_layer} fixed point iteration mse =", mse(mixture, constant, fp_fitting, ret_const, test_points), epoch)
+
+    if n_components < 0:
+        return fp_fitting, ret_const, [initial_fitting]
 
     reduced_fitting = representative_select_for_relu(fp_fitting, n_components, config)
     fitting = mhem_fit_a_to_b(reduced_fitting, fp_fitting, config)
