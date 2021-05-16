@@ -227,7 +227,7 @@ class Convolution(torch.nn.modules.Module):
 
 class ReLUFittingConfig:
     def __init__(self):
-        self.fitting_method = gmc.fitting.fixed_point_and_tree_hem
+        self.fitting_method = gmc.fitting.fixed_point_and_tree_hem2
         self.fitting_config = gmc.fitting.Config()
 
 

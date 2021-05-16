@@ -12,7 +12,7 @@ from mnist_classification.config import Config
 device = "cuda"
 
 c: Config = Config()
-c.input_fitting_iterations = 100
+c.input_fitting_iterations = 1
 c.input_fitting_components = 64
 c.n_epochs = 32
 c.batch_size = 40
