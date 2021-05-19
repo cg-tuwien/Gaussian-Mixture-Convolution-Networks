@@ -23,5 +23,6 @@ c.model.dropout = 0.0
 c.model.layers = [Layer(8, 2.5, 32),
                   Layer(16, 2.5, 16),
                   Layer(32, 2.5, 8),
+                  Layer(64, 2.5, 4),
                   Layer(10, 2.5, -1)]
 main.experiment(device=device, desc_string=f"treehem2_{fitconf.name}_{c.produce_description()}", config=c, ablation_name="fitting_quality")
