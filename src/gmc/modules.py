@@ -414,6 +414,7 @@ class BatchNorm(torch.nn.modules.Module):
             self.learnable_scaling = None
 
         self.register_buffer("averaged_channel_sd", torch.ones(n_layers))
+        self.register_buffer("averaged_channel_mean", torch.ones(n_layers))
 
     def forward(self, x: typing.Tuple[Tensor, typing.Optional[Tensor]]) -> typing.Tuple[Tensor, Tensor]:
         # according to the following link the scaling and mean computations do not detach the gradient.
@@ -440,14 +441,16 @@ class BatchNorm(torch.nn.modules.Module):
         if gm.n_dimensions(x_gm) == 2:
             sampling_positions = sampling_positions * 1.3 - 0.15
         sampling_positions = sampling_positions * (pos_max - pos_min) + pos_min
-        sample_values = gm.evaluate(x_gm, sampling_positions) + x_constant
+        sample_values = gm.evaluate(x_gm, sampling_positions) + x_constant.unsqueeze(-1)
         # channel_sd, channel_mean = torch.std_mean(sample_values.transpose(0, 1).reshape(n_channels, n_batch * n_sampling_positions), dim=1)
         if self.batch_norm:
             channel_sd, channel_mean = torch.std_mean(sample_values, dim=(0, 2))
             if self.training:
                 alpha = min(n_batch / 1000, 0.1)
                 self.averaged_channel_sd = ((1.0 - alpha) * self.averaged_channel_sd + alpha * channel_sd).detach()
+                self.averaged_channel_mean = ((1.0 - alpha) * self.averaged_channel_mean + alpha * channel_mean).detach()
             channel_sd = self.averaged_channel_sd.detach()
+            channel_mean = self.averaged_channel_mean.detach()
         else:
             channel_sd, channel_mean = torch.std_mean(sample_values, dim=2)
 
