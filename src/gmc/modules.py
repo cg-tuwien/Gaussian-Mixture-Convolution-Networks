@@ -267,13 +267,13 @@ class ReLUFitting(torch.nn.modules.Module):
             abs_diff = max_weight - min_weight
             clamp = (min_weight - abs_diff * 2, min_weight + abs_diff * 2)
 
-        last_in = gmc.render.render(self.last_in[0], self.last_in[1], batches=(0, 1), layers=(0, 5),
+        last_in = gmc.render.render(self.last_in[0], self.last_in[1], batches=(0, 5), layers=(0, 5),
                                     x_low=position_range[0], y_low=position_range[1], x_high=position_range[2], y_high=position_range[3],
                                     width=image_size, height=image_size)
-        target = gmc.render.render_with_relu(self.last_in[0], self.last_in[1], batches=(0, 1), layers=(0, 5),
+        target = gmc.render.render_with_relu(self.last_in[0], self.last_in[1], batches=(0, 5), layers=(0, 5),
                                              x_low=position_range[0], y_low=position_range[1], x_high=position_range[2], y_high=position_range[3],
                                              width=image_size, height=image_size)
-        prediction = gmc.render.render(self.last_out[0], self.last_out[1], batches=(0, 1), layers=(0, 5),
+        prediction = gmc.render.render(self.last_out[0], self.last_out[1], batches=(0, 5), layers=(0, 5),
                                        x_low=position_range[0], y_low=position_range[1], x_high=position_range[2], y_high=position_range[3],
                                        width=image_size, height=image_size)
         images = [last_in, target, prediction]

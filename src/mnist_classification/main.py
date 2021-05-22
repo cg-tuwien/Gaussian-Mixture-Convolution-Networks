@@ -52,7 +52,7 @@ def render_debug_images_to_tensorboard(model, epoch, tensor_board_writer):
     for i, gmc in enumerate(model.gmcs):
         tensor_board_writer.add_image(f"mnist conv {i}", gmc.debug_render(clamp=[-2.2, 2.2]), epoch, dataformats='HWC')
     for i, relu in enumerate(model.relus):
-        tensor_board_writer.add_image(f"mnist relu {i}", relu.debug_render(), epoch, dataformats='HWC')
+        tensor_board_writer.add_image(f"mnist relu {i}", relu.debug_render(clamp=[-5, 5], image_size=200), epoch, dataformats='HWC')
 
 
 def train(model: gmc.model.Net, device: str, train_loader: torch.utils.data.DataLoader,

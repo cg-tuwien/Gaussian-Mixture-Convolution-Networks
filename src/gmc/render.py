@@ -44,15 +44,18 @@ def render(mixture: Tensor, constant: Tensor, batches: index_range = (0, None), 
            width: int = 100, height: int = 100):
     assert gm.n_dimensions(mixture) == 2
     assert gm.is_valid_mixture(mixture)
-    xv, yv = torch.meshgrid([torch.arange(x_low, x_high, (x_high - x_low) / width, dtype=torch.float, device=mixture.device),
-                             torch.arange(y_low, y_high, (y_high - y_low) / height, dtype=torch.float, device=mixture.device)])
+    delta_x = (x_high - x_low) / width
+    delta_y = (y_high - y_low) / height
+    xv, yv = torch.meshgrid([torch.arange(x_low, x_high - delta_x / 2, delta_x, dtype=torch.float, device=mixture.device),
+                             torch.arange(y_low, y_high - delta_y / 2, delta_y, dtype=torch.float, device=mixture.device)])
     m = mixture.detach()[batches[0]:batches[1], layers[0]:layers[1]]
     c = constant.detach()[batches[0]:batches[1], layers[0]:layers[1]]
     n_batch = m.shape[0]
     n_layers = m.shape[1]
     xes = torch.cat((xv.reshape(-1, 1), yv.reshape(-1, 1)), 1).view(1, 1, -1, 2)
-    rendering = (gm.evaluate(m, xes) + c.unsqueeze(-1)).view(n_batch, n_layers, width, height).transpose(2, 3)
-    rendering = rendering.transpose(0, 1).reshape(n_layers * height, n_batch * width)
+    rendering = (gm.evaluate(m, xes) + c.unsqueeze(-1))
+    rendering = rendering.view(n_batch, n_layers, width, height).transpose(2, 3)
+    rendering = rendering.transpose(0, 1).reshape(n_layers * n_batch * height, width)
     return rendering
 
 
