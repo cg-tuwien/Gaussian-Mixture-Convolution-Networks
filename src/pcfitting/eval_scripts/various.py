@@ -98,45 +98,61 @@ import os
 
 # -- BENCHMARK RMSD CALCULATION --
 
-from pcfitting import data_loading, GMSampler
-import gmc.mixture
-import time
+# from pcfitting import data_loading, GMSampler
+# import gmc.mixture
+# import time
+#
+# pcbatch = data_loading.load_pc_from_off(r"D:\Simon\Studium\S-11 (WS19-20)\Diplomarbeit\data\dataset_diff_scales\evalpcs\n100000\bed_0001.off")
+# #mix = data_loading.read_gm_from_ply(r"D:\Simon\Studium\S-11 (WS19-20)\Diplomarbeit\data\dataset_diff_scales\gmms\210306-01-EmEckPre\EMfps\bed_0001.off.gma.ply", ismodel=False)
+# mix = data_loading.read_gm_from_ply(r"D:\Simon\Studium\S-11 (WS19-20)\Diplomarbeit\data\dataset_diff_scales\gmms\210306-01-EmEckPre\Preiner-0.9-5\bed_0001.off.gma.ply", ismodel=False)
+# gmm = gmc.mixture.convert_amplitudes_to_priors(mix)
+# t1 = time.time()
+# sampled = GMSampler.sampleGMM(gmm, 100000)
+# t2 = time.time()
+# print("Sampling (Py):  ", (t2 - t1))
+# t1 = time.time()
+# sampled2 = GMSampler.sampleGMM_ext(gmm, 100000)
+# t2 = time.time()
+# print("Sampling (C++): ", (t2 - t1))
+# #Damn, this also takes a lot of time
+# data_loading.write_pc_to_off(r"D:\Simon\Studium\S-11 (WS19-20)\Diplomarbeit\data\dataset_diff_scales\resampled\resP-py.off", sampled)
+# t1 = time.time()
+# data_loading.write_pc_to_off(r"D:\Simon\Studium\S-11 (WS19-20)\Diplomarbeit\data\dataset_diff_scales\resampled\resP-cp.off", sampled2)
+# t2 = time.time()
+# print("Writing      :  ", (t2 - t1))
+#
+# t1 = time.time()
+# rmsd, md, stdev, maxd = pyeval.eval_rmsd_unscaled(pcbatch.view(-1, 3), sampled.view(-1, 3))
+# t2 = time.time()
+# print(rmsd)
+# print("Evaluation(1): ", (t2 - t1))
+# t1 = time.time()
+# rmsd, md, stdev, maxd = pyeval.eval_rmsd_unscaled(pcbatch.view(-1, 3), sampled2.view(-1, 3))
+# t2 = time.time()
+# print(rmsd)
+# print("Evaluation(2): ", (t2 - t1))
+# # print("Evaluation: ", (t3 - t2))
+# # print("Total:      ", (t3 - t1))
+#
+# # Sampling:    29.20902156829834
+# # Evaluation:  6.024001121520996
+# # Total:       35.233022689819336
+#
+# # Sampling (Py):   29.334959030151367
+# # Sampling (C++):  2.0239968299865723
 
-pcbatch = data_loading.load_pc_from_off(r"D:\Simon\Studium\S-11 (WS19-20)\Diplomarbeit\data\dataset_diff_scales\evalpcs\n100000\bed_0001.off")
-#mix = data_loading.read_gm_from_ply(r"D:\Simon\Studium\S-11 (WS19-20)\Diplomarbeit\data\dataset_diff_scales\gmms\210306-01-EmEckPre\EMfps\bed_0001.off.gma.ply", ismodel=False)
-mix = data_loading.read_gm_from_ply(r"D:\Simon\Studium\S-11 (WS19-20)\Diplomarbeit\data\dataset_diff_scales\gmms\210306-01-EmEckPre\Preiner-0.9-5\bed_0001.off.gma.ply", ismodel=False)
-gmm = gmc.mixture.convert_amplitudes_to_priors(mix)
-t1 = time.time()
-sampled = GMSampler.sampleGMM(gmm, 100000)
-t2 = time.time()
-print("Sampling (Py):  ", (t2 - t1))
-t1 = time.time()
-sampled2 = GMSampler.sampleGMM_ext(gmm, 100000)
-t2 = time.time()
-print("Sampling (C++): ", (t2 - t1))
-#Damn, this also takes a lot of time
-data_loading.write_pc_to_off(r"D:\Simon\Studium\S-11 (WS19-20)\Diplomarbeit\data\dataset_diff_scales\resampled\resP-py.off", sampled)
-t1 = time.time()
-data_loading.write_pc_to_off(r"D:\Simon\Studium\S-11 (WS19-20)\Diplomarbeit\data\dataset_diff_scales\resampled\resP-cp.off", sampled2)
-t2 = time.time()
-print("Writing      :  ", (t2 - t1))
-
-t1 = time.time()
-rmsd, md, stdev, maxd = pyeval.eval_rmsd_unscaled(pcbatch.view(-1, 3), sampled.view(-1, 3))
-t2 = time.time()
-print(rmsd)
-print("Evaluation(1): ", (t2 - t1))
-t1 = time.time()
-rmsd, md, stdev, maxd = pyeval.eval_rmsd_unscaled(pcbatch.view(-1, 3), sampled2.view(-1, 3))
-t2 = time.time()
-print(rmsd)
-print("Evaluation(2): ", (t2 - t1))
-# print("Evaluation: ", (t3 - t2))
-# print("Total:      ", (t3 - t1))
-
-# Sampling:    29.20902156829834
-# Evaluation:  6.024001121520996
-# Total:       35.233022689819336
-
-# Sampling (Py):   29.334959030151367
-# Sampling (C++):  2.0239968299865723
+# -- RECALCULATE TRACES --
+from pcfitting.error_functions import GMMStats
+from pcfitting.eval_scripts.eval_db_access_v2 import EvalDbAccessV2
+model = "bench_0001.off"
+gpath = r"F:\DA-Eval\dataset_eval\gmms\000000596.gma.ply"
+gma = data_loading.read_gm_from_ply(gpath, ismodel=False)
+db = EvalDbAccessV2(r"F:\DA-Eval\EvalV2.db")
+nns = db.get_nn_scale_factor(model)
+dummypcbatch = torch.zeros(1)
+dummypcbatch.nnscalefactor = nns
+stats = GMMStats()
+names = stats.get_names()
+res = stats.calculate_score_packed(dummypcbatch, gma)
+for k in range(len(names)):
+    print("  ", names[k], res[k].item())

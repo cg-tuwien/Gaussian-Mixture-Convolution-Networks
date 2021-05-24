@@ -22,7 +22,7 @@ class GMMStats(EvalFunction):
                  sum_of_weights: bool = True,
                  zero_gaussians: bool = True,
                  invalid_gaussians: bool = True,
-                 em_default_abs_eps: bool = True):
+                 em_default_abs_eps: bool = False):
         self._avg_trace = avg_trace
         self._stdev_traces = stdev_traces
         self._avg_evs = avg_evs
@@ -48,30 +48,31 @@ class GMMStats(EvalFunction):
                         noisecontribution: torch.Tensor = None, modelpath: str = None) -> torch.Tensor:
         result = torch.zeros(self._n_activated, pcbatch.shape[0], device=pcbatch.device, dtype=pcbatch.dtype)
         i = 0
+        gmcov_filtered = gmcovariances[(~gmamplitudes.eq(0))].unsqueeze(0).unsqueeze(0)
         if self._avg_trace or self._stdev_traces:
-            traces = mat_tools.trace(gmcovariances) # (bs, 1, ng)
+            traces = mat_tools.trace(gmcov_filtered) # (bs, 1, ng)
             (std, mean) = torch.std_mean(traces, dim=2, unbiased=False)
             if self._avg_trace:
-                result[i, :] = mean.view(-1)
+                result[i, :] = mean.view(-1) * (pcbatch.nnscalefactor ** 2)
                 i += 1
             if self._stdev_traces:
-                result[i, :] = std.view(-1)
+                result[i, :] = std.view(-1) * (pcbatch.nnscalefactor ** 2)
                 i += 1
         if self._avg_evs or self._stdev_evs or self._min_ev:
-            evs, _ = torch.symeig(gmcovariances)
+            evs, _ = torch.symeig(gmcov_filtered)
             (std, mean) = torch.std_mean(evs[:, 0, :, :], dim=1, unbiased=False) # (bs, 3)
             if self._avg_evs:
-                result[i, :] = mean[:, 2]
-                result[i + 1, :] = mean[:, 1]
-                result[i + 2, :] = mean[:, 0]
+                result[i, :] = mean[:, 2] * pcbatch.nnscalefactor
+                result[i + 1, :] = mean[:, 1] * pcbatch.nnscalefactor
+                result[i + 2, :] = mean[:, 0] * pcbatch.nnscalefactor
                 i += 3
             if self._stdev_evs:
-                result[i, :] = std[:, 2]
-                result[i + 1, :] = std[:, 1]
-                result[i + 2, :] = std[:, 0]
+                result[i, :] = std[:, 2] * pcbatch.nnscalefactor
+                result[i + 1, :] = std[:, 1] * pcbatch.nnscalefactor
+                result[i + 2, :] = std[:, 0] * pcbatch.nnscalefactor
                 i += 3
             if self._min_ev:
-                result[i, :] = torch.min(evs[:, 0, :, 0], dim=1)[0]
+                result[i, :] = torch.min(evs[:, 0, :, 0], dim=1)[0] * pcbatch.nnscalefactor
                 i += 1
         if self._avg_amp or self._stdev_amp:
             (std, mean) = torch.std_mean(gmamplitudes[:, 0, :], dim=1, unbiased=False) # (bs)
@@ -82,12 +83,12 @@ class GMMStats(EvalFunction):
                 result[i, :] = std
                 i += 1
         if self._avg_det or self._stdev_det:
-            (std, mean) = torch.std_mean(gmcovariances.det()[:, 0, :], dim=1, unbiased=False) # (bs)
+            (std, mean) = torch.std_mean(gmcov_filtered.det()[:, 0, :], dim=1, unbiased=False) # (bs)
             if self._avg_det:
-                result[i, :] = mean
+                result[i, :] = mean * (pcbatch.nnscalefactor ** 6)
                 i += 1
             if self._stdev_det:
-                result[i, :] = std
+                result[i, :] = std * (pcbatch.nnscalefactor ** 6)
                 i += 1
         if self._avg_weight or self._stdev_weights or self._sum_of_weights:
             weights = gmamplitudes * (gmcovariances.det().sqrt() * 15.74960995)

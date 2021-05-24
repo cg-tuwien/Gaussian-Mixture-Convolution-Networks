@@ -6,6 +6,9 @@ class EvalDbAccessV2:
     def __init__(self, dbpath):
         self._con = sqlite3.connect(dbpath)
 
+    def connection(self):
+        return self._con
+
     def insert_options_em(self,
                           n_sample_points: int = -1,
                           termination_criterion: str = "MaxIter(100)",
@@ -121,7 +124,7 @@ class EvalDbAccessV2:
                          run: int) -> int:
         sql = "INSERT INTO EvalStats(avg_trace,std_traces,avg_l_ev,avg_m_ev,avg_s_ev,std_l_ev,std_m_ev,std_s_ev," \
               "min_ev,avg_amp,std_amp,avg_det,std_det,avg_weight,std_weight,sum_of_weights,n_zero_gaussians," \
-              "n_invalid_gaussians,run) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+              "n_invalid_gaussians,run,normalized) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)"
         cur = self._con.cursor()
         cur.execute(sql, (avg_trace,std_traces,avg_l_ev,avg_m_ev,avg_s_ev,std_l_ev,std_m_ev,std_s_ev,min_ev,avg_amp,
                           std_amp,avg_det,std_det,avg_weight,std_weight,sum_of_weights,n_zero_gaussians,
@@ -176,7 +179,7 @@ class EvalDbAccessV2:
                        dtype: str,
                        eps: float,
                        is_eps_relative: bool) -> bool:
-        sql = "SELECT Run.ID FROM Run JOIN OptionsEckartHP ON Run.method = 'EckartHP' AND Run.method_options = " \
+        sql = "SELECT Run.ID FROM Run JOIN OptionsEckartHP ON Run.method = 'EckHP' AND Run.method_options = " \
               "OptionsEckartHP.ID WHERE Run.modelfile = ? AND Run.nr_fit_points = ? AND" \
               " Run.n_gaussians_should = ? AND OptionsEckartHP.n_gaussians_per_node = ? AND OptionsEckartHP.n_levels " \
               "= ? AND OptionsEckartHP.termination_criterion = ? AND OptionsEckartHP.init_method = ? " \
@@ -199,7 +202,7 @@ class EvalDbAccessV2:
                        dtype: str,
                        eps: float,
                        is_eps_relative: bool) -> bool:
-        sql = "SELECT Run.ID FROM Run JOIN OptionsEckartSP ON Run.method = 'EckartSP' AND Run.method_options = " \
+        sql = "SELECT Run.ID FROM Run JOIN OptionsEckartSP ON Run.method = 'EckSP' AND Run.method_options = " \
               "OptionsEckartSP.ID WHERE Run.modelfile = ? AND Run.nr_fit_points = ? AND" \
               " Run.n_gaussians_should = ? AND OptionsEckartSP.n_gaussians_per_node = ? AND OptionsEckartSP.n_levels " \
               "= ? AND OptionsEckartSP.partition_threshold = ? AND OptionsEckartSP.termination_criterion = ? AND " \
