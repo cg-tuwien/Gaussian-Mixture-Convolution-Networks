@@ -25,4 +25,5 @@ c.model.layers = [Layer(8, 2.5, 64),
                   Layer(32, 2.5, 16),
                   Layer(64, 2.5, 8),
                   Layer(10, 2.5, -1)]
+
 main.experiment(device=device, desc_string=f"{fitconf.name}_{c.produce_description()}", config=c, ablation_name="n_gaussians2")
