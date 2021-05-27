@@ -431,7 +431,9 @@ class BatchNorm(torch.nn.modules.Module):
         n_batch = gm.n_batch(x_gm)
         n_channels = gm.n_layers(x_gm)
         n_dim = gm.n_dimensions(x_gm)
-        n_sampling_positions = 10000 // n_batch
+        n_sampling_positions = 1000
+        if self.batch_norm:
+            n_sampling_positions = 10000 // n_batch
 
         # sampling position per training sample
         pos_min = torch.min(gm.positions(x_gm).view(n_batch, -1, n_dim), dim=1)[0].view(n_batch, 1, 1, n_dim).detach()
