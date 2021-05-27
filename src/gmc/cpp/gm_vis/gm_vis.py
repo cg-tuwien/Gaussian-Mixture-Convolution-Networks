@@ -112,6 +112,9 @@ class GMVisualizer:
         # Sets the view matrix
         self._vis.set_view_matrix(viewmat)
 
+    def set_whitemode(self, white: bool):
+        self._vis.set_whitemode(white)
+
     def set_ellipsoids_pc_rendering(self, ellipsoids: bool, pointcloud: bool, gray: bool = True):
         # Activates or disables Ellipsoid and Pointcloud Rendering
         # Parameters:
