@@ -44,3 +44,18 @@ def sample_gmm(gmm: torch.Tensor, count: int) -> torch.Tensor:
 
 def eval_rmsd_both_sides(point_cloud_source: torch.Tensor, point_cloud_generated: torch.Tensor) -> (float, float, float, float, float, float, float, float):
     return bindings.eval_rmsd_both_sides(point_cloud_source, point_cloud_generated)
+
+def calc_std_1_5(point_cloud_source: torch.Tensor, point_cloud_generated: torch.Tensor) -> (float, float, float, float):
+    return bindings.calc_std_1_5(point_cloud_source, point_cloud_generated)
+
+def cov_measure_5(point_cloud: torch.Tensor) -> (float, float):
+    return bindings.cov_measure_5(point_cloud)
+
+def avg_kl_div(gmm: torch.Tensor) -> float:
+    return bindings.avg_kl_div(gmm)
+
+def nn_graph(pointcloud: torch.Tensor, ncount: int) -> torch.Tensor:
+    return bindings.nn_graph(pointcloud, ncount)
+
+def smoothness(responsibilities: torch.Tensor, nngraph: torch.Tensor) -> float:
+    return bindings.smoothness(responsibilities, nngraph)

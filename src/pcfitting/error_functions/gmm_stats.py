@@ -10,6 +10,7 @@ class GMMStats(EvalFunction):
     def __init__(self,
                  avg_trace: bool = True,
                  stdev_traces: bool = True,
+                 cv_traces: bool = True,
                  avg_evs: bool = True,
                  stdev_evs: bool = True,
                  min_ev: bool = True,
@@ -25,6 +26,7 @@ class GMMStats(EvalFunction):
                  em_default_abs_eps: bool = False):
         self._avg_trace = avg_trace
         self._stdev_traces = stdev_traces
+        self._cv_traces = cv_traces
         self._avg_evs = avg_evs
         self._stdev_evs = stdev_evs
         self._min_ev = min_ev
@@ -38,8 +40,8 @@ class GMMStats(EvalFunction):
         self._zero_gaussians = zero_gaussians
         self._invalid_gaussians = invalid_gaussians
         self._em_default_abs_eps = em_default_abs_eps
-        self._n_activated = avg_trace + stdev_traces + avg_evs*3 + stdev_evs*3 + min_ev + avg_amp + stdev_amp + \
-                            avg_det + stdev_det + \
+        self._n_activated = avg_trace + stdev_traces + cv_traces + avg_evs*3 + stdev_evs*3 + min_ev + avg_amp + \
+                            stdev_amp + avg_det + stdev_det + \
                             avg_weight + stdev_weights + sum_of_weights + zero_gaussians + invalid_gaussians + \
                             em_default_abs_eps
 
@@ -49,7 +51,7 @@ class GMMStats(EvalFunction):
         result = torch.zeros(self._n_activated, pcbatch.shape[0], device=pcbatch.device, dtype=pcbatch.dtype)
         i = 0
         gmcov_filtered = gmcovariances[(~gmamplitudes.eq(0))].unsqueeze(0).unsqueeze(0)
-        if self._avg_trace or self._stdev_traces:
+        if self._avg_trace or self._stdev_traces or self._cv_traces:
             traces = mat_tools.trace(gmcov_filtered) # (bs, 1, ng)
             (std, mean) = torch.std_mean(traces, dim=2, unbiased=False)
             if self._avg_trace:
@@ -57,6 +59,9 @@ class GMMStats(EvalFunction):
                 i += 1
             if self._stdev_traces:
                 result[i, :] = std.view(-1) * (pcbatch.nnscalefactor ** 2)
+                i += 1
+            if self._cv_traces:
+                result[i, :] = std.view(-1) / mean.view(-1)
                 i += 1
         if self._avg_evs or self._stdev_evs or self._min_ev:
             evs, _ = torch.symeig(gmcov_filtered)
@@ -123,6 +128,8 @@ class GMMStats(EvalFunction):
             nlst.append("Average Trace")
         if self._stdev_traces:
             nlst.append("Stdev of Traces")
+        if self._cv_traces:
+            nlst.append("CV of Traces")
         if self._avg_evs:
             nlst.append("Average largest Eigenvalue")
             nlst.append("Average medium Eigenvalue")

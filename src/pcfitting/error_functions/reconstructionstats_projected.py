@@ -21,7 +21,7 @@ class ReconstructionStatsProjected(EvalFunction):
         assert batch_size == 1
 
         gmm = gm.convert_amplitudes_to_priors(gm.pack_mixture(gmamplitudes, gmpositions, gmcovariances))
-        sampled = GMSampler.sampleGMM(gmm, self._recstat._samplepoints)
+        sampled = GMSampler.sampleGMM_ext(gmm, self._recstat._samplepoints)
 
         return self.calculate_score_on_reconstructed(pcbatch, sampled, modelpath)
 

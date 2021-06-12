@@ -42,18 +42,18 @@ generators = []
 #                            e_step_pair_subbatchsize=5120000, eps=1e-5))
 
 
-#eck_hp_combinations = [(ng, eps, init) for init in vals_inits for eps in vals_eps for ng in vals_n_gaussians]
-#for (ng, eps, init) in eck_hp_combinations:
-#    generators.append(EckartGeneratorHP(n_gaussians_per_node=ng[0], n_levels=ng[1], termination_criterion=terminator2, initialization_method=init, eps=eps, m_step_points_subbatchsize=10000))
+eck_hp_combinations = [(ng, eps, init) for init in vals_inits for eps in vals_eps for ng in vals_n_gaussians]
+for (ng, eps, init) in eck_hp_combinations:
+   generators.append(EckartGeneratorHP(n_gaussians_per_node=ng[0], n_levels=ng[1], termination_criterion=terminator2, initialization_method=init, eps=eps, m_step_points_subbatchsize=10000))
 #eck_sp_combinations = [(ng, eps, init, th) for th in vals_thresh for init in vals_inits for eps in vals_eps for ng in vals_n_gaussians]
 #for (ng, eps, init, th) in eck_sp_combinations:
 #    generators.append(EckartGeneratorSP(n_gaussians_per_node=ng[0], n_levels=ng[1], partition_threshold=th, termination_criterion=terminator2, initialization_method=init, eps=eps, m_step_points_subbatchsize=10000, e_step_pair_subbatchsize=5120000))
-generators = [
-    EMGenerator(n_gaussians=128, initialization_method="fpsmax", termination_criterion=initterm, em_step_points_subbatchsize=10000, verbosity=0, eps=1e-5),
-    EMGenerator(n_gaussians=128, initialization_method="fpsmax", termination_criterion=terminator2, em_step_points_subbatchsize=10000, verbosity=0, eps=1e-5),
-    EMGenerator(n_gaussians=128, initialization_method="randnormpos", termination_criterion=terminator2, em_step_points_subbatchsize=10000, verbosity=0, eps=1e-5),
-    EckartGeneratorSP(n_gaussians_per_node=5, n_levels=3, partition_threshold=0.1, termination_criterion=terminator2, initialization_method="fpsmax", eps=1e-5, m_step_points_subbatchsize=10000, e_step_pair_subbatchsize=5120000)
-]
+# generators = [
+#     EMGenerator(n_gaussians=128, initialization_method="fpsmax", termination_criterion=initterm, em_step_points_subbatchsize=10000, verbosity=0, eps=1e-5),
+#     EMGenerator(n_gaussians=128, initialization_method="fpsmax", termination_criterion=terminator2, em_step_points_subbatchsize=10000, verbosity=0, eps=1e-5),
+#     EMGenerator(n_gaussians=128, initialization_method="randnormpos", termination_criterion=terminator2, em_step_points_subbatchsize=10000, verbosity=0, eps=1e-5),
+#     EckartGeneratorSP(n_gaussians_per_node=5, n_levels=3, partition_threshold=0.1, termination_criterion=terminator2, initialization_method="fpsmax", eps=1e-5, m_step_points_subbatchsize=10000, e_step_pair_subbatchsize=5120000)
+# ]
 
 n_fit_points = 10000
 n_eval_points_density = 1000000
@@ -164,13 +164,15 @@ while dataset_fit.has_next():
                                      densvalues_eval.avg_scaled_nn, densvalues_eval.stdev_scaled_nn, densvalues_eval.cv,
                                      runid)
         dbaccess.insert_eval_distance(distvalues.rmsd_scaled_by_nn, distvalues.md_scaled_by_nn, distvalues.stdev_scaled_by_nn, distvalues.cv,
-                                      distvalues.rmsd_scaled_by_nn_I, distvalues.md_scaled_by_nn_I, distvalues.stdev_scaled_by_nn_I, distvalues.cv_I, runid)
+                                      distvalues.rmsd_scaled_by_nn_I, distvalues.md_scaled_by_nn_I, distvalues.stdev_scaled_by_nn_I, distvalues.cv_I,
+                                      distvalues.rcd_norm_nn, runid)
         dbaccess.insert_eval_stat(statvalues[0].item(), statvalues[1].item(), statvalues[2].item(),
                                   statvalues[3].item(), statvalues[4].item(), statvalues[5].item(),
                                   statvalues[6].item(), statvalues[7].item(), statvalues[8].item(),
                                   statvalues[9].item(), statvalues[10].item(), statvalues[11].item(),
                                   statvalues[12].item(), statvalues[13].item(), statvalues[14].item(),
-                                  statvalues[15].item(), statvalues[16].item(), statvalues[17].item(), runid)
+                                  statvalues[15].item(), statvalues[16].item(), statvalues[17].item(),
+                                  statvalues[18].item(), runid)
 
         mimg.imsave(os.path.join(rendering_path, "recpc-" + str(runid).zfill(9) + ".png"), res[0, 0])
         mimg.imsave(os.path.join(rendering_path, "density-" + str(runid).zfill(9) + ".png"), res[0, 1])

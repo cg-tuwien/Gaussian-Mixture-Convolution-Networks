@@ -3,3 +3,4 @@ from .gradient_descent_generator import GradientDescentGenerator
 from .eckart_generator_hp import EckartGeneratorHP
 from .eckart_generator_sp import EckartGeneratorSP
 from .preiner_generator import PreinerGenerator
+from .scikit_em_generator import ScikitEMGenerator

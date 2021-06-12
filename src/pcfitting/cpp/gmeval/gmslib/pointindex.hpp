@@ -298,6 +298,75 @@ namespace gms
 			return minsqdist;
 		}
 
+		vector<float> nearestKDistSearch(const vec3& queryPoint, int k, int forbiddenindex = -1, vector<size_t>* indizes = nullptr) const
+		{
+			vec3i c = getGridCoord(queryPoint);
+
+			vector<float> minsqdists = vector<float>(k, numeric_limits<float>::infinity());
+			if (indizes)
+			{
+				*indizes = vector<size_t>(k, -1);
+			}
+
+			// visit each neighbor cell and process points in there
+			for (uint i = 0; i < 27; ++i)
+			{
+				// find n in the hash grid
+				vec3i n = c + neighborOffsets[i];
+				auto pos = mGrid.find(n);
+				if (pos != mGrid.end())
+				{
+					// search point list of neighbor cell for in-range points
+					const vec2i& indexRange = pos->second;
+
+					for (int i_ = indexRange.x; i_ < indexRange.x + indexRange.y; ++i_) {
+						if (mIndices[i_] != forbiddenindex)
+						{
+							float sqd = sqdist(queryPoint, mPoints->at(mIndices[i_]));
+							for (int gi = 0; gi < k; ++gi)
+							{
+								if (sqd < minsqdists[gi])
+								{
+									for (int gj = k - 1; gj > gi; --gj)
+									{
+										minsqdists[gj] = minsqdists[gj - 1];
+										if (indizes) (*indizes)[gj] = (*indizes)[gj - 1];
+									}
+									minsqdists[gi] = sqd;
+									if (indizes) (*indizes)[gi] = mIndices[i_];
+									break;
+								}
+							}
+						}
+					}
+				}
+			}
+			if (minsqdists[k - 1] == numeric_limits<float>::infinity())
+			{
+				for (int i = 0; i < this->mPoints->size(); ++i)
+				{
+					if (i != forbiddenindex)
+					{
+						float sqd = sqdist(queryPoint, mPoints->at(i));
+						for (int gi = 0; gi < k; ++gi)
+						{
+							if (sqd < minsqdists[gi])
+							{
+								for (int gj = k - 1; gj > gi; --gj)
+								{
+									minsqdists[gj] = minsqdists[gj - 1];
+									if (indizes) (*indizes)[gj] = (*indizes)[gj - 1];
+								}
+								minsqdists[gi] = sqd;
+								if (indizes) (*indizes)[gi] = mIndices[i];
+								break;
+							}
+						}
+					}
+				}
+			}
+			return minsqdists;
+		}
 
 
 		struct NeighborProcessor

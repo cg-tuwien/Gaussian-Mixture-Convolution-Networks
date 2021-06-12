@@ -95,16 +95,18 @@ class EvalDbAccessV2:
                              md_g: float,
                              std_g: float,
                              cv_g: float,
+                             rcd: float,
                              run: int) -> int:
-        sql = "INSERT INTO EvalDistance(rmsd_s, md_s, std_s, cv_s, rmsd_g, md_g, std_g, cv_g, run) VALUES (?,?,?,?,?,?,?,?, ?) "
+        sql = "INSERT INTO EvalDistance(rmsd_s, md_s, std_s, cv_s, rmsd_g, md_g, std_g, cv_g, rcd, run) VALUES (?,?,?,?,?,?,?,?,?,?) "
         cur = self._con.cursor()
-        cur.execute(sql, (rmsd_s, md_s, std_s, cv_s, rmsd_g, md_g, std_g, cv_g, run))
+        cur.execute(sql, (rmsd_s, md_s, std_s, cv_s, rmsd_g, md_g, std_g, cv_g, rcd, run))
         self._con.commit()
         return cur.lastrowid
 
     def insert_eval_stat(self,
                          avg_trace: float,
                          std_traces: float,
+                         cv_traces: float,
                          avg_l_ev: float,
                          avg_m_ev: float,
                          avg_s_ev: float,
@@ -122,12 +124,12 @@ class EvalDbAccessV2:
                          n_zero_gaussians: int,
                          n_invalid_gaussians: int,
                          run: int) -> int:
-        sql = "INSERT INTO EvalStats(avg_trace,std_traces,avg_l_ev,avg_m_ev,avg_s_ev,std_l_ev,std_m_ev,std_s_ev," \
-              "min_ev,avg_amp,std_amp,avg_det,std_det,avg_weight,std_weight,sum_of_weights,n_zero_gaussians," \
-              "n_invalid_gaussians,run,normalized) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)"
+        sql = "INSERT INTO EvalStats(avg_trace,std_traces,cv_traces,avg_l_ev,avg_m_ev,avg_s_ev,std_l_ev,std_m_ev," \
+              "std_s_ev,min_ev,avg_amp,std_amp,avg_det,std_det,avg_weight,std_weight,sum_of_weights,n_zero_gaussians," \
+              "n_invalid_gaussians,run,normalized) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)"
         cur = self._con.cursor()
-        cur.execute(sql, (avg_trace,std_traces,avg_l_ev,avg_m_ev,avg_s_ev,std_l_ev,std_m_ev,std_s_ev,min_ev,avg_amp,
-                          std_amp,avg_det,std_det,avg_weight,std_weight,sum_of_weights,n_zero_gaussians,
+        cur.execute(sql, (avg_trace,std_traces,cv_traces,avg_l_ev,avg_m_ev,avg_s_ev,std_l_ev,std_m_ev,std_s_ev,min_ev,
+                          avg_amp,std_amp,avg_det,std_det,avg_weight,std_weight,sum_of_weights,n_zero_gaussians,
                           n_invalid_gaussians,run))
         self._con.commit()
         return cur.lastrowid

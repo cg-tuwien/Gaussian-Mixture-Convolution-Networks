@@ -39,7 +39,7 @@ class ReconstructionStats(EvalFunction):
                  inverse_exact: bool = False,
                  chamfer: bool = False,
                  chamfer_norm_area: bool = False,
-                 chamfer_norm_nn: bool = False,
+                 chamfer_norm_nn: bool = True,
                  hausdorff: bool = False,
                  hausdorff_norm_area: bool = False,
                  hausdorff_norm_nn: bool = False,
@@ -265,7 +265,9 @@ class ReconstructionStats(EvalFunction):
         if self._chamfer_norm_nn:
             chamf = (rmsd**2) + (rmsdI**2)
             result[i, 0] = chamf * (scalefactorNN**2)
+            result.chamfer_norm_nn = result[i, 0].item()
             result[i+1, 0] = math.sqrt(chamf) * scalefactorNN
+            result.rcd_norm_nn = result[i+1, 0].item()
             i += 2
         if self._hausdorff:
             result[i, 0] = max(maxd, maxdI)
@@ -301,7 +303,7 @@ class ReconstructionStats(EvalFunction):
         assert batch_size == 1
 
         gmm = gm.convert_amplitudes_to_priors(gm.pack_mixture(gmamplitudes, gmpositions, gmcovariances))
-        sampled = GMSampler.sampleGMM(gmm, self._samplepoints)
+        sampled = GMSampler.sampleGMM_ext(gmm, self._samplepoints)
 
         return self.calculate_score_on_reconstructed(pcbatch, sampled, modelpath)
 

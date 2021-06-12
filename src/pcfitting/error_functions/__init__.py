@@ -5,3 +5,5 @@ from .gmm_stats import GMMStats
 from .avgdensities import AvgDensities
 from .reconstructionstats import ReconstructionStats
 from .reconstructionstats_projected import ReconstructionStatsProjected
+from .int_uniformity import IntUniformity
+from .smoothness import Smoothness

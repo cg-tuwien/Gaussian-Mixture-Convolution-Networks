@@ -4,6 +4,7 @@ From https://stackoverflow.com/questions/6142576/sample-from-multivariate-normal
 
 #include <Eigen/Eigen>
 #include <random>
+#include "gmslib/gaussian.hpp"
 
 struct normal_random_variable
 {
@@ -77,4 +78,31 @@ torch::Tensor sample_gmm(torch::Tensor gmm, int count)
         pointcloud.index_put_({ i, 2 }, (float)sampled[i].z());
     }
     return pointcloud;
+}
+
+float avg_kl_div(torch::Tensor gmm)
+{
+    auto gmmAccess = gmm.accessor<float, 2>();
+
+    int N = gmmAccess.size(0);
+    std::vector<gms::Gaussian> gaussians;
+    gaussians.resize(N);
+    for (int i = 0; i < N; ++i)
+    {
+        gaussians[i].weight = gmmAccess[i][0];
+        gaussians[i].cov = gms::smat3(gmmAccess[i][4], gmmAccess[i][5], gmmAccess[i][6], gmmAccess[i][8], gmmAccess[i][9], gmmAccess[i][12]);
+        gaussians[i].mu = gms::vec3(gmmAccess[i][1], gmmAccess[i][2], gmmAccess[i][3]);
+    }
+    float kl = 0;
+    int count = 0;
+    for (int i = 0; i < N - 1; ++i)
+    {
+        for (int j = i + 1; j < N; ++j)
+        {
+            kl += JSD(gaussians[i], gaussians[j]);
+            ++count;
+        }
+    }
+    kl /= count;
+    return kl;
 }

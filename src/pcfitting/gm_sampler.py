@@ -38,3 +38,8 @@ class GMSampler:
     @staticmethod
     def sampleGMM_ext(gmm: torch.Tensor, count: int) -> torch.Tensor:
         return pyeval.sample_gmm(gmm[0, 0].cpu(), count).to(gmm.device).view(1, -1, 3)
+
+    @staticmethod
+    def sampleGM_ext(gm: torch.Tensor, count: int) -> torch.Tensor:
+        gmm = gmc.mixture.convert_amplitudes_to_priors(gm)
+        return GMSampler.sampleGMM_ext(gmm, count)

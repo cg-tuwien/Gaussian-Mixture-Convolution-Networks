@@ -46,6 +46,8 @@ set(GMEVAL_HEADERS
     gmslib/pointindex.hpp
     gmslib/pointset.hpp
     gmslib/vec.hpp
+    gmslib/random.hpp
+    gmslib/gaussian.hpp
 )
 set(GMEVAL_SOURCES
     
