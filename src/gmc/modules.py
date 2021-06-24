@@ -242,12 +242,14 @@ class ReLUFitting(torch.nn.modules.Module):
 
         self.last_in = None
         self.last_out = None
+        self.last_steps = None
 
     def forward(self, x_m: Tensor, x_constant: Tensor, tensorboard: TensorboardWriter = None) -> typing.Tuple[Tensor, Tensor]:
-        y_m, y_constant, _ = self.config.fitting_method(x_m, x_constant, self.n_output_gaussians, self.config.fitting_config, tensorboard, convolution_layer=self.convolution_layer)
+        y_m, y_constant, steps = self.config.fitting_method(x_m, x_constant, self.n_output_gaussians, self.config.fitting_config, tensorboard, convolution_layer=self.convolution_layer)
 
         self.last_in = (x_m.detach(), x_constant.detach())
         self.last_out = (y_m.detach(), y_constant.detach())
+        self.last_steps = [s.detach() for s in steps]
         return y_m, y_constant
 
     def debug_render(self, position_range: typing.Tuple[float, float, float, float] = None, image_size: int = 80, clamp: typing.Tuple[float, float] = None):
@@ -273,10 +275,13 @@ class ReLUFitting(torch.nn.modules.Module):
         target = gmc.render.render_with_relu(self.last_in[0], self.last_in[1], batches=(0, 5), layers=(0, 5),
                                              x_low=position_range[0], y_low=position_range[1], x_high=position_range[2], y_high=position_range[3],
                                              width=image_size, height=image_size)
+        steps = [gmc.render.render(s, self.last_in[1], batches=(0, 5), layers=(0, 5),
+                                   x_low=position_range[0], y_low=position_range[1], x_high=position_range[2], y_high=position_range[3],
+                                   width=image_size, height=image_size) for s in self.last_steps]
         prediction = gmc.render.render(self.last_out[0], self.last_out[1], batches=(0, 5), layers=(0, 5),
                                        x_low=position_range[0], y_low=position_range[1], x_high=position_range[2], y_high=position_range[3],
                                        width=image_size, height=image_size)
-        images = [last_in, target, prediction]
+        images = [last_in, target, *steps, prediction]
         images = torch.cat(images, dim=1)
         images = gmc.render.colour_mapped(images.cpu().numpy(), clamp[0], clamp[1])
         return images[:, :, :3]
