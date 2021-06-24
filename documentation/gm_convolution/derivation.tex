@@ -13,17 +13,19 @@
 \usepackage{amssymb}
 \usepackage{amsthm}
 \usepackage{supertabular}
+\usepackage{natbib}
 %\usepackage{cite}
 %\usepackage[utf8]{inputenc}
 \usepackage[font={it},labelfont={bf,up}]{caption}
 \usepackage[font={small,it}]{subcaption}
+\usepackage[dvipsnames]{xcolor}
 \usepackage{hyperref}
 \hypersetup{
 	colorlinks=true,
-	linkcolor=blue,
-	filecolor=magenta,      
-	urlcolor=blue,
-	citecolor=magenta,
+	filecolor=[rgb]{0 0.5 0},      
+	linkcolor=[rgb]{0.7 0 0},
+	citecolor=[rgb]{0 0.5 0},
+	urlcolor=[rgb]{0.5, 0, 0.5}
 }
 
 \newtheorem{theorem}{Theorem}
@@ -74,7 +76,8 @@
 % ---------------------------------------------------------------------
 
 \title{Fourier Transform and Convolution of Gaussian Mixtures}
-\author{Adam Celarek\\Research Unit of Computer Graphics, TU Wien}
+%\author{Adam Celarek\\Research Unit of Computer Graphics, TU Wien}
+\author{Anonymous}
 
 \begin{document}
 \maketitle
@@ -99,7 +102,7 @@ The purpose of this technical report is to derive the closed form solution of th
 		$\vr{x}, \vr{\omega}$
 					& Spatial (time) domain and frequency domain coordinates \\
 		$\f{f}(\vr{x})$
-					& Function in spatial space \\
+					& Function in primary space \\
 		$\f{F}(\vr{\omega})$
 					& Function in Fourier space \\
 		$\f{F} = \F \f{f}$
@@ -108,7 +111,7 @@ The purpose of this technical report is to derive the closed form solution of th
 					& Inverse Fourier transform \\
 	\end{supertabular}
 \end{center}
-Zero based indices are used and summation ends at $N-1$.
+Zero-based indices are used and summation ends at $N-1$.
 
 \subsection*{Gaussian function and mixture model}
 We define the multi dimensional Gaussian function as
@@ -122,22 +125,22 @@ This Gaussian would turn into a normal distribution if $a$ were replaced with th
 
 A Gaussian mixture is defined as
 \begin{align}
-	\f{gm}(\vr{x}, \vr{a}, B, \tr{C}) = \sum_{n=0}^{N} g(\vr{x}, \vr{a}_n, B_{n}, C_{n}),
+	\f{gm}(\vr{x}, \vr{a}, B, \tr{C}) = \sum_{n=0}^{N-1} g(\vr{x}, \vr{a}_n, B_{n}, \tr{C}_{n}),
 \end{align}
 where $N$ is the number of Gaussians.
 
-The weights are combined with the Gaussian amplitudes in $\vr{a}$.
+The weights are integrated in the Gaussian amplitudes in $\vr{a}$.
 Our definition does not include any constraints typically found in probability density functions (positive weights, integrates to 1).
 If desired, this could be included in $\vr{a}$.
 
-We also know the integral of a single dimensional Gaussian \cite{wiki_gaussian_int}:
+We also know the integral of a one-dimensional Gaussian \citep{wiki_gaussian_int}:
 \begin{align}
 	\label{eq:gaussian_integral}
 	\int_{\mathbb{R}} a e^{-(x+b)^2 c} \diff x = a\sqrt{\frac{\pi}{c}}
 \end{align}
 
 \subsection*{Fourier transformation and its inverse}
-The definition of the Fourier transform is taken from Osgood's lecture notes (be careful, there is the whole book \cite{osgood_book} and separately the corrected version of chapter 8 \cite{osgood_chapter8}, which is the important one for us ):
+The definition of the Fourier transform is taken from Osgood's lecture notes (note that there is the whole book \citep{osgood_book} and separately the corrected version of chapter 8 \citep{osgood_chapter8}, which is the relevant one for us ):
 
 \begin{align}
 	\f{F} (\vr{\omega}) = \F \f{f} (\vr{\omega}) &= \int_{\mathbb{R}^n} \f{f}(\vr{x}) e^{-2 \pi i \vr{\omega}^T \vr{x}} \diff \vr{x} \\
@@ -166,7 +169,7 @@ Properties are:
 	\end{align}
 	where $\eta$ is the number of dimensions.
 \end{theorem}
-Because the result is in the complex domain it is not generally a Gaussian, at least not by our definition in Equation \ref{eq:gaussian_definition}.
+Because the result is in the complex domain, it is not generally a Gaussian, at least not by our definition in Equation \ref{eq:gaussian_definition}.
 It becomes Gaussian when the position in spatial domain (shift $\bvec$) is zero.
 Moreover, its absolute value is Gaussian (without proof), but that is not interesting in this context.
 
@@ -313,7 +316,7 @@ Graphically this would mean, that the Gaussians have zero variance in at least o
 	In case that at least one covariance has a determinant greater 0 (it is nonsingular), then the factor is bounded by $\sqrt{\f{min}(\det(C), \det(\Gamma))}$.
 \end{theorem}
 \begin{proof}
-Since $\det(C+\Gamma) \ge \det(C) + \det(\Gamma)$ \cite{wiki_det_inequalities}, and assume wlog $\det(C) = \f{min}(\det(C), \det(\Gamma))$:
+Since $\det(C+\Gamma) \ge \det(C) + \det(\Gamma)$ \citep{wiki_det_inequalities}, and assume wlog $\det(C) = \f{min}(\det(C), \det(\Gamma))$:
 \begin{align*}
 	\frac{\sqrt{\det(C\Gamma)}}{\sqrt{\det(C+\Gamma)}} \le \frac{\sqrt{\det(C\Gamma)}}{\sqrt{\det(C) + \det(\Gamma)}} &\le \sqrt{\f{min}(\det(C), \det(\Gamma))} \\
 	\frac{\det(C\Gamma)}{\det(C) + \det(\Gamma)} &\le \det(C) \\
@@ -353,7 +356,7 @@ Convolving a Gaussian mixture with $n$ terms with another Gaussian mixture with 
 \end{align*}
 
 One of the mixtures can carry an additional constant.
-Similar to above, the constant ($d$) is convoluted with every Gaussian of the other mixture:
+Similar to above, the constant ($d$) is convolved with every Gaussian of the other mixture:
 
 \begin{align*}
 \Big( \f{gm}(\xvec, \avec&, B, \Ctns) + d \Big)  \ast \f{gm}(\xvec, \alphavec, \Pi, \Gammatns) = \\
@@ -362,12 +365,8 @@ Similar to above, the constant ($d$) is convoluted with every Gaussian of the ot
 &\quad + d \sum_n \int_{\mathbb{R}^\eta} \f{gm}(\xvec, \alphavec_n, \Pi_n, \Gammatns_n) \diff \xvec.
 \end{align*}
 
-\begin{thebibliography}{9}% 2nd arg is the width of the widest label.
-	\bibitem{wiki_gaussian_int} \url{https://en.wikipedia.org/w/index.php?title=Gaussian_integral&oldid=920544461}
-	\bibitem{wiki_eigendecomp} \url{https://en.wikipedia.org/wiki/Eigendecomposition_of_a_matrix#Eigendecomposition_of_a_matrix}
-	\bibitem{wiki_det_inequalities} \url{https://en.wikipedia.org/w/index.php?title=Determinant&oldid=922725964#Properties_of_the_determinant}
-	\bibitem{osgood_chapter8} \url{https://see.stanford.edu/materials/lsoftaee261/chap8.pdf}
-	\bibitem{osgood_book} \url{https://see.stanford.edu/materials/lsoftaee261/book-fall-07.pdf}
-\end{thebibliography}
+\bibliographystyle{abbrvnat}
+% note: if you add an entry manually, please use an additional bibliography, the mendeley one will be automatically overwritten.
+\bibliography{derivation}
 
 \end{document}
