@@ -186,7 +186,9 @@ class Net(nn.Module):
             x, x_const = self.gmcs[i](x, x_const)
 
             if self.config.bn_place == Config.BN_PLACE_AFTER_GMC:
-                x, x_const = self.norms[i]((x, x_const))
+                # might be a bug here with the constant. normalisation doesn't look like it works correctly.
+                # but that might also be due to us removing the constant afterwards.
+                x, x_const = self.norms[i]((x, torch.zeros_like(x_const)))
 
             if self.config.bias_type == Config.BIAS_TYPE_NEGATIVE_SOFTPLUS:
                 x_const = x_const - F.softplus(self.biases[i], beta=20)
