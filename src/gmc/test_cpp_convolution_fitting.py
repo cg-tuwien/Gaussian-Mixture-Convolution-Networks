@@ -6,7 +6,7 @@ import torch.autograd
 from torch import Tensor
 import matplotlib.pyplot as plt
 
-import gmc.cpp.extensions.convolution_fitting.binding as convolution_fitting
+import gmc.cpp.extensions.convolution.binding as convolution
 import gmc.mixture as gm
 import gmc.render as render
 
@@ -21,13 +21,13 @@ def debug_render(mixture: Tensor, radius: int = 3, image_size: typing.Tuple[int,
     return images[:, :, :3]
 
 
-class CppConvolutionFittingTest(unittest.TestCase):
+class CppConvolutionTest(unittest.TestCase):
     def _test_forward(self, n_dims: int):
         n_batches = 100
         gm1 = gm.generate_random_mixtures(n_batches, 1, 5, n_dims=n_dims, pos_radius=1, cov_radius=0.5)
         gm2 = gm.generate_random_mixtures(1, 1, 4, n_dims=n_dims, pos_radius=1, cov_radius=0.5)
         python_result = gm.convolve(gm1, gm2)
-        cpp_result = convolution_fitting.apply(gm1, gm2, 1, 1)[0]
+        cpp_result = convolution.apply(gm1, gm2, 1, 1)[0]
 
         # plt.imshow(debug_render(gm1))
         # plt.show()
@@ -50,6 +50,6 @@ class CppConvolutionFittingTest(unittest.TestCase):
         self._test_forward(3)
 
 
-sh = CppConvolutionFittingTest()
+sh = CppConvolutionTest()
 sh.test_forward_2d()
 sh.test_forward_3d()
