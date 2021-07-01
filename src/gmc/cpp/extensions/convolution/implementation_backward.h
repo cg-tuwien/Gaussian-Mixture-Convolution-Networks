@@ -5,7 +5,6 @@
 #include <cuda_runtime.h>
 #include <torch/types.h>
 
-#include "convolution/implementation_common.h"
 #include "common.h"
 #include "cuda_qt_creator_definitinos.h"
 #include "cuda_operations.h"
@@ -34,8 +33,8 @@
 
 namespace convolution {
 
-template<int REDUCTION_N = 4, typename scalar_t, unsigned N_DIMS>
-std::pair<torch::Tensor, torch::Tensor> backward_impl_t(const torch::Tensor& grad, const ForwardOutput& forward_out, const Config& config) {
+template<typename scalar_t, unsigned N_DIMS>
+std::pair<torch::Tensor, torch::Tensor> backward_impl_t(const torch::Tensor& grad, const ForwardOutput& forward_out) {
     using namespace torch::indexing;
     using Tree = lbvh::Bvh<N_DIMS, scalar_t>;
     return {};

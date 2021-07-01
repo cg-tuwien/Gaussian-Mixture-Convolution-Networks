@@ -6,19 +6,15 @@
 
 #include "convolution/bindings.h"
 #include "convolution/implementation.h"
-#include "convolution/Config.h"
 
-std::vector<torch::Tensor> convolution_forward(torch::Tensor data, torch::Tensor kernels, int n_components_fitting, int reduction_n) {
+std::vector<torch::Tensor> convolution_forward(torch::Tensor data, torch::Tensor kernels) {
     at::cuda::OptionalCUDAGuard device_guard;
     if (data.is_cuda()) {
         assert (device_of(data).has_value());
         device_guard.set_device(device_of(data).value());
     }
-    convolution::Config config = {};
-    config.n_components_fitting = unsigned(n_components_fitting);
-    config.reduction_n = reduction_n;
-    auto result = convolution::forward_impl(data, kernels, config);
-    return {result.fitting};
+    auto result = convolution::forward_impl(data, kernels);
+    return {result.mixture};
 }
 
 //std::pair<torch::Tensor, torch::Tensor> convolution_backward(const torch::Tensor& grad,

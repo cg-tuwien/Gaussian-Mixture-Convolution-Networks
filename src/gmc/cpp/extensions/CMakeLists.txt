@@ -261,10 +261,8 @@ target_compile_definitions(bvh_mhem_fit_alpha PUBLIC GPE_AUTODIFF)
 
 
 set(CONVOLUTION_HEADERS
-    convolution/Config.h
     convolution/bindings.h
     convolution/implementation.h
-    convolution/implementation_common.h
     convolution/implementation_template_externs.h
     convolution/implementation_backward.h
     convolution/implementation_forward.h
@@ -276,34 +274,10 @@ set(CONVOLUTION_SOURCES
     convolution/implementation_forward_instances/template_instance_implementation_forward_1_float_3.cu
     convolution/implementation_forward_instances/template_instance_implementation_forward_1_double_2.cu
     convolution/implementation_forward_instances/template_instance_implementation_forward_1_double_3.cu
-#    convolution/implementation_forward_instances/template_instance_implementation_forward_2_float_2.cu
-#    convolution/implementation_forward_instances/template_instance_implementation_forward_2_float_3.cu
-#    convolution/implementation_forward_instances/template_instance_implementation_forward_2_double_2.cu
-#    convolution/implementation_forward_instances/template_instance_implementation_forward_2_double_3.cu
-#    convolution/implementation_forward_instances/template_instance_implementation_forward_4_float_2.cu
-#    convolution/implementation_forward_instances/template_instance_implementation_forward_4_float_3.cu
-#    convolution/implementation_forward_instances/template_instance_implementation_forward_4_double_2.cu
-#    convolution/implementation_forward_instances/template_instance_implementation_forward_4_double_3.cu
-#    convolution/implementation_forward_instances/template_instance_implementation_forward_8_float_2.cu
-#    convolution/implementation_forward_instances/template_instance_implementation_forward_8_float_3.cu
-#    convolution/implementation_forward_instances/template_instance_implementation_forward_8_double_2.cu
-#    convolution/implementation_forward_instances/template_instance_implementation_forward_8_double_3.cu
     convolution/implementation_backward_instances/template_instance_implementation_backward_1_float_2.cu
     convolution/implementation_backward_instances/template_instance_implementation_backward_1_float_3.cu
     convolution/implementation_backward_instances/template_instance_implementation_backward_1_double_2.cu
     convolution/implementation_backward_instances/template_instance_implementation_backward_1_double_3.cu
-#    convolution/implementation_backward_instances/template_instance_implementation_backward_2_float_2.cu
-#    convolution/implementation_backward_instances/template_instance_implementation_backward_2_float_3.cu
-#    convolution/implementation_backward_instances/template_instance_implementation_backward_2_double_2.cu
-#    convolution/implementation_backward_instances/template_instance_implementation_backward_2_double_3.cu
-#    convolution/implementation_backward_instances/template_instance_implementation_backward_4_float_2.cu
-#    convolution/implementation_backward_instances/template_instance_implementation_backward_4_float_3.cu
-#    convolution/implementation_backward_instances/template_instance_implementation_backward_4_double_2.cu
-#    convolution/implementation_backward_instances/template_instance_implementation_backward_4_double_3.cu
-#    convolution/implementation_backward_instances/template_instance_implementation_backward_8_float_2.cu
-#    convolution/implementation_backward_instances/template_instance_implementation_backward_8_float_3.cu
-#    convolution/implementation_backward_instances/template_instance_implementation_backward_8_double_2.cu
-#    convolution/implementation_backward_instances/template_instance_implementation_backward_8_double_3.cu
 )
 add_library(convolution ${CONVOLUTION_HEADERS} ${CONVOLUTION_SOURCES})
 target_link_libraries(convolution PUBLIC OpenMP::OpenMP_CXX torch math common pieces)

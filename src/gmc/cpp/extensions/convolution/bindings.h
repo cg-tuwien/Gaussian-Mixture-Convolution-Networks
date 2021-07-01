@@ -7,7 +7,7 @@
 
 
 
-std::vector<torch::Tensor> convolution_forward(torch::Tensor data, torch::Tensor kernels, int n_components_fitting, int reduction_n);
+std::vector<torch::Tensor> convolution_forward(torch::Tensor data, torch::Tensor kernels);
 
 //std::pair<at::Tensor, at::Tensor> convolution_backward(const torch::Tensor& grad,
 //                                    const torch::Tensor& fitting_mixture,

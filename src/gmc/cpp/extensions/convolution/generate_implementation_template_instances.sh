@@ -21,9 +21,6 @@ for direction in $direction_list; do
                     echo "convolution/$filename exists already"
                 else
                     echo "convolution/$filename"
-                    if [ "$n_reduction" == "8" ] || [ "$n_reduction" == "16" ]; then
-                        echo "#ifndef GPE_LIMIT_N_REDUCTION" >> $filename
-                    fi
                     if [ "$floating_type" == "double" ]; then
                         echo "#ifndef GPE_ONLY_FLOAT" >> $filename
                     fi
@@ -37,9 +34,9 @@ for direction in $direction_list; do
                     echo 'namespace convolution {' >> $filename
                     
                     if [ "${direction}" == "forward" ]; then
-                        echo "template ForwardOutput forward_impl_t<$n_reduction, $floating_type, $dimension>(const torch::Tensor& data, const torch::Tensor& kernels, const Config& config);" >> $filename
+                        echo "template ForwardOutput forward_impl_t<$floating_type, $dimension>(const torch::Tensor& data, const torch::Tensor& kernels);" >> $filename
                     else
-                        echo "template std::pair<torch::Tensor, torch::Tensor> backward_impl_t<$n_reduction, $floating_type, $dimension>(const torch::Tensor& grad, const ForwardOutput& forward_out, const Config& config);" >> $filename
+                        echo "template std::pair<torch::Tensor, torch::Tensor> backward_impl_t<$floating_type, $dimension>(const torch::Tensor& grad, const ForwardOutput& forward_out);" >> $filename
                     fi
                     
                     echo '} // namespace convolution' >> $filename
@@ -49,9 +46,6 @@ for direction in $direction_list; do
                     fi
                     if [ "$floating_type" == "double" ]; then
                         echo "#endif // GPE_ONLY_FLOAT" >> $filename
-                    fi
-                    if [ "$n_reduction" == "8" ] || [ "$n_reduction" == "16" ]; then
-                        echo "#endif // GPE_LIMIT_N_REDUCTION" >> $filename
                     fi
                 fi
             done
