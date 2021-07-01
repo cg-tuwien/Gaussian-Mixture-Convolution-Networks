@@ -104,6 +104,17 @@ auto transform(const gpe::Array<T, N>& vec, Function fun) -> Array<decltype (fun
     return retvec;
 }
 
+template<typename T, uint32_t N, typename Function>
+__host__ __device__ GPE_ALGORITHMS_INLINE
+auto inclusive_scan(const gpe::Array<T, N>& vec, Function fun) -> Array<T, N> {
+    gpe::Array<T, N> retvec;
+    retvec[0] = vec.front();
+    for (unsigned i = 1; i < N; ++i) {
+        retvec[i] = fun(retvec[i - 1], vec[i]);
+    }
+    return retvec;
+}
+
 template<typename T, uint32_t N1, uint32_t N2, typename Function>
 __host__ __device__ GPE_ALGORITHMS_INLINE
 auto transform(const gpe::Array2d<T, N1, N2>& mat, Function fun) -> Array2d<decltype (fun(mat.front().front())), N1, N2> {

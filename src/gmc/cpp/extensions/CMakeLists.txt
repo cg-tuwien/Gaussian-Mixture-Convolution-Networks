@@ -18,6 +18,9 @@ string(APPEND CMAKE_CUDA_FLAGS " -Xcompiler '-fPIC,-fopenmp,-ffast-math,-fno-fin
 string(APPEND CMAKE_CUDA_FLAGS_RELEASE " --generate-line-info -Xcompiler '-O4,-march=native' -O3")
 #string(APPEND CMAKE_CUDA_FLAGS_DEBUG " -g -G")
 
+# gcc 10 is buggy (https://gcc.gnu.org/bugzilla/show_bug.cgi?id=100102)
+string(APPEND CMAKE_CUDA_FLAGS " -ccbin /usr/bin/g++-9")
+
 # ASan:
 #string(APPEND CMAKE_CUDA_FLAGS " -Xcompiler -fsanitize=address -Xcompiler -fno-omit-frame-pointer")
 #string(APPEND CMAKE_CXX_FLAGS " -fno-omit-frame-pointer -fsanitize=address")
@@ -33,7 +36,8 @@ string(APPEND CMAKE_CXX_FLAGS_RELEASE " -O4 -march=native")
 
 set (MY_ANACONDA_PATH "/home/madam/bin/anaconda3")
 
-list(APPEND CMAKE_PREFIX_PATH "${MY_ANACONDA_PATH}/lib/python3.7/site-packages/torch/")
+list(APPEND CMAKE_PREFIX_PATH "${MY_ANACONDA_PATH}/")
+list(APPEND CMAKE_PREFIX_PATH "${MY_ANACONDA_PATH}/lib/python3.8/site-packages/torch/")
 
 find_package(OpenMP REQUIRED)
 find_package(Torch REQUIRED)
@@ -44,15 +48,15 @@ add_compile_definitions(GMC_CMAKE_TEST_BUILD)
 add_compile_definitions(QT_NO_KEYWORDS)
 add_compile_definitions(GLM_FORCE_XYZW_ONLY)
 
-#add_compile_definitions(GPE_LIMIT_N_REDUCTION)
-#add_compile_definitions(GPE_ONLY_FLOAT)
-#add_compile_definitions(GPE_ONLY_2D)
+add_compile_definitions(GPE_LIMIT_N_REDUCTION)
+add_compile_definitions(GPE_ONLY_FLOAT)
+add_compile_definitions(GPE_ONLY_2D)
 find_package(QT NAMES Qt5 COMPONENTS Core Widgets REQUIRED)
 find_package(Qt5 COMPONENTS Core Widgets Test REQUIRED)
 
 
 set(MY_INCLUDE_PATHS
-    ${MY_ANACONDA_PATH}/include/python3.7m/
+    ${MY_ANACONDA_PATH}/include/python3.8/
     ../glm
     ../yamc/include
     ../gcem/include
@@ -113,6 +117,7 @@ set(UTIL_HEADERS
     util/grad/gaussian.h
     util/grad/mixture.h
     util/grad/scalar.h
+    util/helper.h
     util/mixture.h
     util/output.h
     util/scalar.h)
@@ -255,6 +260,55 @@ target_link_libraries(bvh_mhem_fit_alpha PUBLIC OpenMP::OpenMP_CXX torch math lb
 target_compile_definitions(bvh_mhem_fit_alpha PUBLIC GPE_AUTODIFF)
 
 
+set(CONVOLUTION_FITTING_HEADERS
+    convolution_fitting/Config.h
+    convolution_fitting/bindings.h
+    convolution_fitting/implementation.h
+    convolution_fitting/implementation_common.h
+    convolution_fitting/implementation_template_externs.h
+    convolution_fitting/implementation_backward.h
+    convolution_fitting/implementation_forward.h
+)
+set(CONVOLUTION_FITTING_SOURCES
+    convolution_fitting/bindings.cpp
+    convolution_fitting/implementation_dispatch.cpp
+    convolution_fitting/implementation_forward_instances/template_instance_implementation_forward_1_float_2.cu
+    convolution_fitting/implementation_forward_instances/template_instance_implementation_forward_1_float_3.cu
+    convolution_fitting/implementation_forward_instances/template_instance_implementation_forward_1_double_2.cu
+    convolution_fitting/implementation_forward_instances/template_instance_implementation_forward_1_double_3.cu
+#    convolution_fitting/implementation_forward_instances/template_instance_implementation_forward_2_float_2.cu
+#    convolution_fitting/implementation_forward_instances/template_instance_implementation_forward_2_float_3.cu
+#    convolution_fitting/implementation_forward_instances/template_instance_implementation_forward_2_double_2.cu
+#    convolution_fitting/implementation_forward_instances/template_instance_implementation_forward_2_double_3.cu
+#    convolution_fitting/implementation_forward_instances/template_instance_implementation_forward_4_float_2.cu
+#    convolution_fitting/implementation_forward_instances/template_instance_implementation_forward_4_float_3.cu
+#    convolution_fitting/implementation_forward_instances/template_instance_implementation_forward_4_double_2.cu
+#    convolution_fitting/implementation_forward_instances/template_instance_implementation_forward_4_double_3.cu
+#    convolution_fitting/implementation_forward_instances/template_instance_implementation_forward_8_float_2.cu
+#    convolution_fitting/implementation_forward_instances/template_instance_implementation_forward_8_float_3.cu
+#    convolution_fitting/implementation_forward_instances/template_instance_implementation_forward_8_double_2.cu
+#    convolution_fitting/implementation_forward_instances/template_instance_implementation_forward_8_double_3.cu
+    convolution_fitting/implementation_backward_instances/template_instance_implementation_backward_1_float_2.cu
+    convolution_fitting/implementation_backward_instances/template_instance_implementation_backward_1_float_3.cu
+    convolution_fitting/implementation_backward_instances/template_instance_implementation_backward_1_double_2.cu
+    convolution_fitting/implementation_backward_instances/template_instance_implementation_backward_1_double_3.cu
+#    convolution_fitting/implementation_backward_instances/template_instance_implementation_backward_2_float_2.cu
+#    convolution_fitting/implementation_backward_instances/template_instance_implementation_backward_2_float_3.cu
+#    convolution_fitting/implementation_backward_instances/template_instance_implementation_backward_2_double_2.cu
+#    convolution_fitting/implementation_backward_instances/template_instance_implementation_backward_2_double_3.cu
+#    convolution_fitting/implementation_backward_instances/template_instance_implementation_backward_4_float_2.cu
+#    convolution_fitting/implementation_backward_instances/template_instance_implementation_backward_4_float_3.cu
+#    convolution_fitting/implementation_backward_instances/template_instance_implementation_backward_4_double_2.cu
+#    convolution_fitting/implementation_backward_instances/template_instance_implementation_backward_4_double_3.cu
+#    convolution_fitting/implementation_backward_instances/template_instance_implementation_backward_8_float_2.cu
+#    convolution_fitting/implementation_backward_instances/template_instance_implementation_backward_8_float_3.cu
+#    convolution_fitting/implementation_backward_instances/template_instance_implementation_backward_8_double_2.cu
+#    convolution_fitting/implementation_backward_instances/template_instance_implementation_backward_8_double_3.cu
+)
+add_library(convolution_fitting ${CONVOLUTION_FITTING_HEADERS} ${CONVOLUTION_FITTING_SOURCES})
+target_link_libraries(convolution_fitting PUBLIC OpenMP::OpenMP_CXX torch math lbvh common pieces)
+
+
 # https://gitlab.kitware.com/cmake/cmake/-/issues/16915
 if ( TARGET Qt5::Core )
     get_property( core_options TARGET Qt5::Core PROPERTY INTERFACE_COMPILE_OPTIONS )
@@ -270,6 +324,9 @@ target_link_libraries(0_test_evaluate_inversed PUBLIC OpenMP::OpenMP_CXX torch Q
 add_executable(0_test_bvh_fit bvh_mhem_fit/test_bvh_fit.cpp)
 target_link_libraries(0_test_bvh_fit PUBLIC OpenMP::OpenMP_CXX torch Qt5::Widgets bvh_mhem_fit integrate evaluate_inversed math lbvh common)
 
+add_executable(1_test_convolution_fitting convolution_fitting/test.cpp)
+target_link_libraries(1_test_convolution_fitting PUBLIC OpenMP::OpenMP_CXX torch Qt5::Widgets convolution_fitting integrate evaluate_inversed math lbvh common)
+
 set(MATRIX_INVERSE_HEADERS
 )
 set(MATRIX_INVERSE_SOURCES
@@ -281,19 +338,19 @@ target_link_libraries(matrix_inverse PUBLIC OpenMP::OpenMP_CXX torch)
 
 
 #unit tests:
-#add_executable(0_unittests bvh_mhem_fit_alpha/unit_test_support.h bvh_mhem_fit_alpha/unittest_mixture_grad.cpp bvh_mhem_fit_alpha/unittest_algorithms_grad.cpp bvh_mhem_fit_alpha/unittest_all.cpp)
 set(UNITTESTS_HEADERS
     unittests/support.h
 )
 set(UNITTESTS_SOURCES
     unittests/algorithms.cpp
-    unittests/bvh_mhem_fit_alpha_vs_ad.cpp
-    unittests/bvh_mhem_fit_working_vs_alpha.cpp
-    unittests/bvh_mhem_fit_working_vs_binding.cpp
-    unittests/evaluate_inversed.cpp
+#    unittests/bvh_mhem_fit_alpha_vs_ad.cpp
+#    unittests/bvh_mhem_fit_working_vs_alpha.cpp
+#    unittests/bvh_mhem_fit_working_vs_binding.cpp
+#    unittests/evaluate_inversed.cpp
     unittests/grad_algorithms.cpp
     unittests/grad_mixture.cpp
     unittests/main.cpp
+    unittests/util_helpers.cpp
 )
 add_executable(0_unittests ${UNITTESTS_SOURCES} ${UNITTESTS_HEADERS})
 target_link_libraries(0_unittests PUBLIC Catch2::Catch2 OpenMP::OpenMP_CXX torch Qt5::Widgets bvh_mhem_fit_alpha bvh_mhem_fit integrate evaluate_inversed math lbvh common)

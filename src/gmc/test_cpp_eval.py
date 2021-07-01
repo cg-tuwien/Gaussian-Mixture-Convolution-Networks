@@ -2,8 +2,7 @@ import unittest
 import time
 import torch.autograd
 
-import update_syspath
-import gmc.cpp.extensions.evaluate.evaluate_inversed as cpp_inversed_eval
+import gmc.cpp.extensions.evaluate_inversed.evaluate_inversed as cpp_inversed_eval
 import gmc.mixture as gm
 
 enable_output = True
