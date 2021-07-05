@@ -155,12 +155,6 @@ class Net(nn.Module):
         for gmc in self.gmcs:
             gmc.learn_covariances = flag
 
-    def regularisation_loss(self) -> Tensor:
-        rl = torch.zeros(1, device=next(self.parameters()).device, dtype=torch.float)
-        for gmc in self.gmcs:
-            rl = rl + gmc.regularisation_loss()
-        return rl
-
     def weight_decay_loss(self) -> Tensor:
         wdl = torch.zeros(1, device=next(self.parameters()).device, dtype=torch.float)
         for gmc in self.gmcs:

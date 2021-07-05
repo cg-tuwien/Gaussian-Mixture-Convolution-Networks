@@ -22,15 +22,15 @@ cpp_binding = load('convolution_fitting', source_files,
 
 class ConvolutionFitting(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, data: torch.Tensor, kernels: torch.Tensor, n_components_fitting: int, reduction_n: int):
+    def forward(ctx, data: torch.Tensor, kernels: torch.Tensor):
         if not data.is_contiguous():
             data = data.contiguous()
         if not kernels.is_contiguous():
             kernels = kernels.contiguous()
 
-        result = cpp_binding.forward(data, kernels, n_components_fitting, reduction_n)
+        result = cpp_binding.forward(data, kernels)
         #ctx.save_for_backward(fitting_mixture, target_mixture, bvh_nodes, bvh_attribs, torch.tensor(n_components_fitting), torch.tensor(reduction_n))
-        return result
+        return result[0]
 
     @staticmethod
     def backward(ctx, grad_output):
