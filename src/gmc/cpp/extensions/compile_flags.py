@@ -12,6 +12,6 @@ if platform.system() == "Windows":
     cuda_extra_cuda_cflags.append("-Xcompiler=/openmp,/O2,/fp:fast,/DGPE_NO_CUDA_ERROR_CHECKING")
 else:
     cuda_extra_cflags = ["-O4", "-ffast-math", "-march=native", "-std=c++17", "-DGPE_LIMIT_N_REDUCTION"]
-    cpp_extra_cflags = ["-fopenmp", "-ffast-math", " -fno-finite-math-only", "-O4", "-march=native", "--std=c++17", "-DGPE_NO_CUDA_ERROR_CHECKING", "-DGPE_LIMIT_N_REDUCTION"]  # , "-DNDEBUG"
+    cpp_extra_cflags = ["-fopenmp", "-ffast-math", " -fno-finite-math-only", "-O4", "-march=native", "--std=c++17", "-DGPE_LIMIT_N_REDUCTION"]  # , "-DNDEBUG", "-DGPE_NO_CUDA_ERROR_CHECKING"
     cuda_extra_cuda_cflags.append("-Xcompiler -fopenmp -ccbin /usr/bin/g++-9")  # correct place?
 

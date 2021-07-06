@@ -6,7 +6,7 @@ namespace convolution {
 namespace  {
 
 template<typename scalar_t>
-ForwardOutput dispatch_forward_dim(const torch::Tensor& data, const torch::Tensor& kernels, int n_dims) {
+torch::Tensor dispatch_forward_dim(const torch::Tensor& data, const torch::Tensor& kernels, int n_dims) {
     switch (n_dims) {
     case 2:
         return forward_impl_t<scalar_t, 2>(data, kernels);
@@ -20,7 +20,7 @@ ForwardOutput dispatch_forward_dim(const torch::Tensor& data, const torch::Tenso
     }
 }
 
-ForwardOutput dispatch_forward_dim_and_scalar_type(const torch::Tensor& data, const torch::Tensor& kernels, int n_dims, torch::ScalarType scalar_type) {
+torch::Tensor dispatch_forward_dim_and_scalar_type(const torch::Tensor& data, const torch::Tensor& kernels, int n_dims, torch::ScalarType scalar_type) {
     switch (scalar_type) {
     case torch::ScalarType::Float:
         return dispatch_forward_dim<float>(data, kernels, n_dims);
@@ -35,10 +35,10 @@ ForwardOutput dispatch_forward_dim_and_scalar_type(const torch::Tensor& data, co
 }
 
 template<typename scalar_t>
-std::pair<torch::Tensor, torch::Tensor> dispatch_backward_dim(torch::Tensor grad, const ForwardOutput& forward_out, int n_dims) {
+std::pair<torch::Tensor, torch::Tensor> dispatch_backward_dim(torch::Tensor grad, const torch::Tensor& data, const torch::Tensor& kernels, int n_dims) {
     switch (n_dims) {
     case 2:
-        return backward_impl_t<scalar_t, 2>(grad, forward_out);
+        return backward_impl_t<scalar_t, 2>(grad, data, kernels);
 #ifndef GPE_ONLY_2D
     case 3:
         return backward_impl_t<scalar_t, 3>(grad, forward_out);
@@ -49,10 +49,10 @@ std::pair<torch::Tensor, torch::Tensor> dispatch_backward_dim(torch::Tensor grad
     }
 }
 
-std::pair<torch::Tensor, torch::Tensor> dispatch_backward_dim_and_scalar_type(torch::Tensor grad, const ForwardOutput& forward_out, int n_dims, torch::ScalarType scalar_type) {
+std::pair<torch::Tensor, torch::Tensor> dispatch_backward_dim_and_scalar_type(torch::Tensor grad, const torch::Tensor& data, const torch::Tensor& kernels, int n_dims, torch::ScalarType scalar_type) {
     switch (scalar_type) {
     case torch::ScalarType::Float:
-        return dispatch_backward_dim<float>(grad, forward_out, n_dims);
+        return dispatch_backward_dim<float>(grad, data, kernels, n_dims);
 #ifndef GPE_ONLY_FLOAT
     case torch::ScalarType::Double:
         return dispatch_backward_dim<double>(grad, forward_out, n_dims);
@@ -65,16 +65,16 @@ std::pair<torch::Tensor, torch::Tensor> dispatch_backward_dim_and_scalar_type(to
 
 }
 
-ForwardOutput forward_impl(const torch::Tensor& data, const torch::Tensor& kernels) {
+torch::Tensor forward_impl(const torch::Tensor& data, const torch::Tensor& kernels) {
     auto n_dims = gpe::n_dimensions(data);
     auto scalar_type = data.scalar_type();
     return dispatch_forward_dim_and_scalar_type(data, kernels, n_dims, scalar_type);
 }
 
-std::pair<torch::Tensor, torch::Tensor> backward_impl(torch::Tensor grad, const ForwardOutput& forward_out) {
+std::pair<torch::Tensor, torch::Tensor> backward_impl(const torch::Tensor& grad, const torch::Tensor& data, const torch::Tensor& kernels) {
     auto n_dims = gpe::n_dimensions(grad);
     auto scalar_type = grad.scalar_type();
-    return dispatch_backward_dim_and_scalar_type(grad, forward_out, n_dims, scalar_type);
+    return dispatch_backward_dim_and_scalar_type(grad, data, kernels, n_dims, scalar_type);
 }
 
 } // namespace bvh_mhem_fit

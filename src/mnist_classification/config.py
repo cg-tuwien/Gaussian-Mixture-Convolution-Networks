@@ -40,7 +40,7 @@ class Config:
         self.log_tensorboard_renderings = True
         self.fitting_test_data_store_at_epoch = 10000
         self.fitting_test_data_store_n_batches = 10
-        self.fitting_test_data_store_path = f"{self.data_base_path}/mnist/fitting_input"
+        self.fitting_test_data_store_path = f"{self.data_base_path}/mnist_intermediate_data"
 
     def produce_description(self):
         return f"{self.produce_input_description()}_lr{int(self.kernel_learning_rate * 1000)}_wDec{int(self.weight_decay_rate * 100)}_{self.model.produce_description()}"

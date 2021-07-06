@@ -37,20 +37,20 @@ class Convolution(torch.nn.modules.Module):
         self.covariance_epsilon = covariance_epsilon
         self.learn_positions = learn_positions
         self.learn_covariances = learn_covariances
+        self.last_in = None
 
-        # todo: probably can optimise performance by putting kernels into their own dimension (currently as a list)
         # positive mean produces a rather positive gm. i believe this is a better init
-        self.weights = torch.randn(self.n_channels_out, n_layers_in, n_kernel_components, 1, dtype=torch.float32)
+        self.weights = torch.nn.Parameter(torch.randn(self.n_channels_out, n_layers_in, n_kernel_components, 1, dtype=torch.float32))
 
         if self.learn_positions and False:
-            self.positions = torch.rand(self.n_channels_out, n_layers_in, n_kernel_components, n_dims, dtype=torch.float32) * 2 - 1
+            self.positions = torch.nn.Parameter(torch.rand(self.n_channels_out, n_layers_in, n_kernel_components, n_dims, dtype=torch.float32) * 2 - 1)
         elif self.n_dims == 2:
             assert (self.n_dims == 2)
             angles = torch.arange(0, 2 * math.pi, 2 * math.pi / (n_kernel_components - 1))
             xes = torch.cat((torch.zeros(1, dtype=torch.float), torch.sin(angles)), dim=0)
             yes = torch.cat((torch.zeros(1, dtype=torch.float), torch.cos(angles)), dim=0)
-            self.positions = torch.cat((xes.view(-1, 1), yes.view(-1, 1)), dim=1)
-            self.positions = self.positions.view(1, 1, n_kernel_components, 2).repeat((self.n_channels_out, n_layers_in, 1, 1))
+            positions = torch.cat((xes.view(-1, 1), yes.view(-1, 1)), dim=1)
+            self.positions = torch.nn.Parameter(positions.view(1, 1, n_kernel_components, 2).repeat((self.n_channels_out, n_layers_in, 1, 1)))
         else:
             assert (self.n_dims == 3)
             # uniform sphere distribution + one in the middle
@@ -59,16 +59,17 @@ class Convolution(torch.nn.modules.Module):
             theta = torch.rand(self.n_channels_out, n_layers_in, n_kernel_components, 1, dtype=torch.float32) * 2 * 3.14159265358979 - 3.14159265358979
             x = torch.sin(theta) * torch.sqrt(1 - z * z)
             y = torch.cos(theta) * torch.sqrt(1 - z * z)
-            self.positions = torch.cat((x, y, z), dim=3)
+            positions = torch.cat((x, y, z), dim=3)
             # positions = positions / torch.norm(positions, dim=-1, keepdim=True)
             # + one in the middle
-            self.positions[:, :, 0, :] = 0
+            positions[:, :, 0, :] = 0
+            self.positions = torch.nn.Parameter(positions)
 
         # initialise with a rather round covariance matrix
         # a psd matrix can be generated with A A'. we learn A and generate a pd matrix via  A A' + eye * epsilon
-        self.covariance_factors = torch.rand(self.n_channels_out, n_layers_in, n_kernel_components, n_dims, n_dims, dtype=torch.float32) * 2 - 1
+        covariance_factors = torch.rand(self.n_channels_out, n_layers_in, n_kernel_components, n_dims, n_dims, dtype=torch.float32) * 2 - 1
         cov_rand_factor = 0.05
-        self.covariance_factors = self.covariance_factors * cov_rand_factor + torch.eye(self.n_dims)
+        self.covariance_factors = torch.nn.Parameter(covariance_factors * cov_rand_factor + torch.eye(self.n_dims))
         assert(gm.is_valid_mixture(
             gm.pack_mixture(self.weights,
                             self.positions,
@@ -148,10 +149,11 @@ class Convolution(torch.nn.modules.Module):
 
     def forward(self, x: Tensor, x_constant: Tensor) -> typing.Tuple[Tensor, Tensor]:
         assert gm.is_valid_mixture_and_constant(x, x_constant)
+        self.last_in = (x.detach(), x_constant.detach())
 
         out_mixtures = cpp_convolution.apply(x, self.kernels())
 
-        n_batch = gm.n_batch(x)
+        n_batch = x_constant.shape[0]
         n_channels_input = gm.n_layers(x)
         n_channels_out = self.n_channels_out
         a = x_constant.view(n_batch, 1, n_channels_input)

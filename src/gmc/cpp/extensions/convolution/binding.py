@@ -8,14 +8,14 @@ import gmc.inout
 source_dir = os.path.dirname(__file__)
 
 
-source_files = [source_dir + '/bindings.cpp', source_dir + '/implementation_dispatch.cpp', source_dir + '/../lbvh/bvh.cu', source_dir + '/../CpuSynchronisationPoint.cpp', source_dir + '/../pieces/pieces.cpp', source_dir + '/../pieces/integrate.cu', source_dir + '/../pieces/matrix_inverse.cu']
+source_files = [source_dir + '/bindings.cpp', source_dir + '/implementation_dispatch.cpp', source_dir + '/../CpuSynchronisationPoint.cpp', source_dir + '/../pieces/pieces.cpp', source_dir + '/../pieces/integrate.cu', source_dir + '/../pieces/matrix_inverse.cu']
 for dtype in ['float', 'double']:
     for reduction_n in [1, ]:
         for ndims in [2, 3]:
             for direction in ['forward', 'backward']:
                 source_files.append(source_dir + f"/implementation_{direction}_instances/template_instance_implementation_{direction}_{reduction_n}_{dtype}_{ndims}.cu")
 
-cpp_binding = load('convolution_fitting', source_files,
+cpp_binding = load('convolution', source_files,
                    extra_include_paths=extra_include_paths,
                    verbose=True, extra_cflags=cuda_extra_cflags, extra_cuda_cflags=cuda_extra_cuda_cflags, extra_ldflags=["-lpthread"])
 

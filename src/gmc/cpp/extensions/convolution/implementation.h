@@ -4,17 +4,10 @@
 #include <torch/script.h>
 
 namespace convolution {
-struct ForwardOutput {
-    torch::Tensor mixture;
 
-    ForwardOutput clone() {
-        return {mixture.clone()};
-    }
-};
+torch::Tensor forward_impl(const at::Tensor& data, const at::Tensor& kernels);
 
-ForwardOutput forward_impl(const at::Tensor& data, const at::Tensor& kernels);
-
-std::pair<at::Tensor, at::Tensor> backward_impl(torch::Tensor grad, const ForwardOutput& forward_out);
+std::pair<at::Tensor, at::Tensor> backward_impl(const torch::Tensor& grad, const torch::Tensor& data, const torch::Tensor& kernels);
 
 }
 #endif

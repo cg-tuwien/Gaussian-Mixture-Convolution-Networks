@@ -29,24 +29,8 @@ namespace convolution {
 
 
 
-namespace  {
-
-template <typename scalar_t, int N_DIMS>
-__host__ __device__
-gpe::Gaussian<N_DIMS, scalar_t> convolve(const gpe::Gaussian<N_DIMS, scalar_t>& g1, const gpe::Gaussian<N_DIMS, scalar_t>& g2) {
-    constexpr auto a = gcem::pow(scalar_t(2) * glm::pi<scalar_t>(), N_DIMS * scalar_t(0.5));
-    const auto b = gpe::sqrt(glm::determinant(g1.covariance) * glm::determinant(g2.covariance));
-    gpe::Gaussian<N_DIMS, scalar_t> ret {g1.weight * g2.weight * a * b, g1.position + g2.position, g1.covariance + g2.covariance};
-    ret.weight /= gpe::sqrt(glm::determinant(ret.covariance));
-    return ret;
-}
-
-
-} // anonymous namespace
-
-
 template<typename scalar_t, unsigned N_DIMS>
-ForwardOutput forward_impl_t(const torch::Tensor& data, const torch::Tensor& kernels) {
+torch::Tensor forward_impl_t(const torch::Tensor& data, const torch::Tensor& kernels) {
     using namespace torch::indexing;
 
     const auto n = gpe::get_ns(data);
@@ -70,18 +54,21 @@ ForwardOutput forward_impl_t(const torch::Tensor& data, const torch::Tensor& ker
     auto out_mixture = torch::empty({n.batch, n_channels_out, n_target_components, data.size(-1)}, torch::TensorOptions(data.device()).dtype(data.dtype()));
     auto out_mixture_a = gpe::struct_accessor<gpe::Gaussian<N_DIMS, scalar_t>, 3, scalar_t>(out_mixture);
 
-    std::cout << "n_target_components: " << n_target_components << std::endl;
-    std::cout << "n.batch: " << n.batch << std::endl;
-    std::cout << "n_channels_out: " << n_channels_out << std::endl;
-    std::cout << "n_channels_in: " << n_channels_in << std::endl;
-    std::cout << "kernel_n.components: " << kernel_n.components << std::endl;
-    std::cout << "n.components: " << n.components << std::endl;
+//    std::cout << "n_target_components: " << n_target_components << std::endl;
+//    std::cout << "n.batch: " << n.batch << std::endl;
+//    std::cout << "n_channels_out: " << n_channels_out << std::endl;
+//    std::cout << "n_channels_in: " << n_channels_in << std::endl;
+//    std::cout << "kernel_n.components: " << kernel_n.components << std::endl;
+//    std::cout << "n.components: " << n.components << std::endl;
 
 
     dim3 dimBlock = dim3(256, 1, 1);
     dim3 dimGrid = dim3((unsigned(n_target_components) + dimBlock.x - 1) / dimBlock.x,
                         (unsigned(n.batch) + dimBlock.y - 1) / dimBlock.y,
                         (unsigned(n_channels_out) + dimBlock.z - 1) / dimBlock.z);
+//    std::cout << "dimBlock: " << dimBlock.x << "/" << dimBlock.y << "/" << dimBlock.z << std::endl;
+//    std::cout << "dimGrid: " << dimGrid.x << "/" << dimGrid.y << "/" << dimGrid.z << std::endl;
+
     gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(data), dimGrid, dimBlock, [data_a, kernel_a, out_mixture_a, n_channels_in, n_channels_out, kernel_n, n, n_target_components] __host__ __device__
                                                   (const dim3& gpe_gridDim, const dim3& gpe_blockDim, const dim3& gpe_blockIdx, const dim3& gpe_threadIdx) mutable {
 
@@ -93,6 +80,7 @@ ForwardOutput forward_impl_t(const torch::Tensor& data, const torch::Tensor& ker
         if (component_out_id >= n_target_components)
             return;
 
+//        printf("component_out_id: %d\n", component_out_id);
         const unsigned batch_id = gpe_blockIdx.y * gpe_blockDim.y + gpe_threadIdx.y;
         const unsigned channel_out_id = gpe_blockIdx.z * gpe_blockDim.z + gpe_threadIdx.z;
 
@@ -112,12 +100,13 @@ ForwardOutput forward_impl_t(const torch::Tensor& data, const torch::Tensor& ker
         const auto& kernel_gaussian = kernel_a[channel_out_id][channel_in_id][component_kernel_id];
 
         out_mixture_a[int(batch_id)][int(channel_out_id)][int(component_out_id)] = convolve(data_gaussian, kernel_gaussian);
+//        printf("b: %d, ch o: %d, cmp o: %d, cmp i: %d, ch i: %d, k i: %d\n", batch_id, channel_out_id, component_out_id, component_in_id, channel_in_id, component_kernel_id);
 
     });
 
-    return ForwardOutput{out_mixture};
+    return out_mixture;
 }
 
 
-} // namespace bvh_mhem_fit
+} // namespace convolution
 

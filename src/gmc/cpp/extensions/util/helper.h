@@ -6,7 +6,8 @@
 namespace gpe {
 
 template<typename large_type, unsigned n_dims, typename small_type = large_type>
-inline gpe::Array<small_type, n_dims> split_n_dim_index(const gpe::Array<small_type, n_dims>& dimensions, large_type idx ) {
+__host__ __device__
+gpe::Array<small_type, n_dims> split_n_dim_index(const gpe::Array<small_type, n_dims>& dimensions, large_type idx ) {
     gpe::Array<small_type, n_dims> tmp;
     tmp.front() = 1;
     for (unsigned i = 1; i < n_dims; ++i) {
@@ -22,7 +23,8 @@ inline gpe::Array<small_type, n_dims> split_n_dim_index(const gpe::Array<small_t
 }
 
 template<typename large_type, unsigned n_dims, typename small_type = large_type>
-inline large_type join_n_dim_index(const gpe::Array<small_type, n_dims>& dimensions, const gpe::Array<small_type, n_dims>& idx ) {
+__host__ __device__
+large_type join_n_dim_index(const gpe::Array<small_type, n_dims>& dimensions, const gpe::Array<small_type, n_dims>& idx ) {
     large_type joined_idx = 0;
     large_type cum_dims = 1;
     for (unsigned i = 0; i < n_dims; ++i) {

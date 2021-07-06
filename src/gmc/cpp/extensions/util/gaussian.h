@@ -132,6 +132,15 @@ EXECUTION_DEVICES scalar_t gaussian_amplitude(const glm::mat<DIMS, DIMS, scalar_
     return a / gpe::sqrt(glm::determinant(cov));
 }
 
+template <typename scalar_t, int N_DIMS>
+EXECUTION_DEVICES gpe::Gaussian<N_DIMS, scalar_t> convolve(const gpe::Gaussian<N_DIMS, scalar_t>& g1, const gpe::Gaussian<N_DIMS, scalar_t>& g2) {
+    constexpr auto a = gcem::pow(scalar_t(2) * glm::pi<scalar_t>(), N_DIMS * scalar_t(0.5));
+    const auto b = gpe::sqrt(glm::determinant(g1.covariance) * glm::determinant(g2.covariance));
+    gpe::Gaussian<N_DIMS, scalar_t> ret {g1.weight * g2.weight * a * b, g1.position + g2.position, g1.covariance + g2.covariance};
+    ret.weight /= gpe::sqrt(glm::determinant(ret.covariance));
+    return ret;
+}
+
 // todo: numerical problems when N_VIRTUAL_POINTS is large: a*b for instance 0.001, wi_bar becomes 5.6 -> bad things
 // that depends on cov magnitude => better normalise mixture to have covs in the magnitude of the identity
 template <typename scalar_t, int N_DIMS, int N_VIRTUAL_POINTS = 4>

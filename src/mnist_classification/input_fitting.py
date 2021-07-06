@@ -3,7 +3,7 @@ import typing
 import matplotlib.pyplot as plt
 from sklearn.exceptions import ConvergenceWarning
 import sklearn.mixture
-from sklearn.utils.testing import ignore_warnings
+from sklearn.utils._testing import ignore_warnings
 import torch
 from torch import Tensor
 from torch.distributions.categorical import Categorical as DiscreteDistribution
