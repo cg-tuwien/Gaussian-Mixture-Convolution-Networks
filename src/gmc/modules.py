@@ -121,6 +121,7 @@ class Convolution(torch.nn.modules.Module):
         renderings = gmc.render.render(kernels, torch.zeros(1, 1, device=kernels.device),
                                        batches=(0, min(5, gm.n_batch(kernels))), layers=(0, min(5, gm.n_layers(kernels))),
                                        x_low=-position_range*1.25, x_high=position_range*1.25, y_low=-position_range*1.25, y_high=position_range*1.25, width=image_size, height=image_size)
+        renderings = renderings.transpose(0, 1).transpose(1, 2).reshape(renderings.shape[1] * image_size, renderings.shape[0] * image_size)
         renderings = gmc.render.colour_mapped(renderings.cpu().numpy(), clamp[0], clamp[1])
         return renderings[:, :, :3]
 
