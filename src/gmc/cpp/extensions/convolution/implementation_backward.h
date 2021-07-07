@@ -43,10 +43,8 @@ std::pair<torch::Tensor, torch::Tensor> backward_impl_t(const torch::Tensor& gra
     TORCH_CHECK(data.dtype() == caffe2::TypeMeta::Make<scalar_t>(), "something wrong with dispatch, or maybe this float type is not supported.")
     TORCH_CHECK(data.device() == kernels.device(), "data and kernel devices must agree")
 
-    const auto grad_a = gpe::struct_accessor<typename gpe::Gaussian<N_DIMS, scalar_t>, 3, scalar_t>(grad);
     const auto data_a = gpe::struct_accessor<typename gpe::Gaussian<N_DIMS, scalar_t>, 3, scalar_t>(data);
     const auto kernel_a = gpe::struct_accessor<typename gpe::Gaussian<N_DIMS, scalar_t>, 3, scalar_t>(kernels);
-
     const auto incoming_grad_a = gpe::struct_accessor<gpe::Gaussian<N_DIMS, scalar_t>, 3, scalar_t>(grad);
 
     auto data_grad = torch::zeros_like(data);
@@ -70,7 +68,7 @@ std::pair<torch::Tensor, torch::Tensor> backward_impl_t(const torch::Tensor& gra
 //    std::cout << "dimBlock: " << dimBlock.x << "/" << dimBlock.y << "/" << dimBlock.z << std::endl;
 //    std::cout << "dimGrid: " << dimGrid.x << "/" << dimGrid.y << "/" << dimGrid.z << std::endl;
 
-    gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(data), dimGrid, dimBlock, [grad_a, data_a, kernel_a, data_grad_a, kernels_grad_a, incoming_grad_a, n_channels_in, n_channels_out, kernel_n, n, n_target_components] __host__ __device__
+    gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(data), dimGrid, dimBlock, [data_a, kernel_a, data_grad_a, kernels_grad_a, incoming_grad_a, n_channels_in, n_channels_out, kernel_n, n, n_target_components] __host__ __device__
                                                   (const dim3& gpe_gridDim, const dim3& gpe_blockDim, const dim3& gpe_blockIdx, const dim3& gpe_threadIdx) mutable {
 
         // index might not fit into 32 bit, i.e. when n.components == 1 << 17, n_feature_maps_in == 1 << 12 and kernel_n.components == 1 << 4
@@ -100,19 +98,19 @@ std::pair<torch::Tensor, torch::Tensor> backward_impl_t(const torch::Tensor& gra
         const auto& data_gaussian = data_a[batch_id][channel_in_id][component_in_id];
         const auto& kernel_gaussian = kernel_a[channel_out_id][channel_in_id][component_kernel_id];
 
-        gpe::Gaussian<N_DIMS, scalar_t> data_gaussian_grad;
-        gpe::Gaussian<N_DIMS, scalar_t> kernel_gaussian_grad;
+        gpe::Gaussian<N_DIMS, scalar_t> data_gaussian_grad = {};
+        gpe::Gaussian<N_DIMS, scalar_t> kernel_gaussian_grad = {};
         gpe::grad::convolve(data_gaussian, kernel_gaussian, &data_gaussian_grad, &kernel_gaussian_grad, incoming_grad_a[int(batch_id)][int(channel_out_id)][int(component_out_id)]);
 
 
         gpe::atomicAdd(&(data_grad_a[batch_id][channel_in_id][component_in_id].weight), data_gaussian_grad.weight);
-        gpe::atomicAdd(&(kernels_grad_a[batch_id][channel_in_id][component_in_id].weight), kernel_gaussian_grad.weight);
+        gpe::atomicAdd(&(kernels_grad_a[channel_out_id][channel_in_id][component_kernel_id].weight), kernel_gaussian_grad.weight);
         for (unsigned i = 0; i < N_DIMS; ++i) {
             gpe::atomicAdd(&(data_grad_a[batch_id][channel_in_id][component_in_id].position[i]), data_gaussian_grad.position[i]);
-            gpe::atomicAdd(&(kernels_grad_a[batch_id][channel_in_id][component_in_id].position[i]), kernel_gaussian_grad.position[i]);
+            gpe::atomicAdd(&(kernels_grad_a[channel_out_id][channel_in_id][component_kernel_id].position[i]), kernel_gaussian_grad.position[i]);
             for (unsigned j = 0; j < N_DIMS; ++j) {
                 gpe::atomicAdd(&(data_grad_a[batch_id][channel_in_id][component_in_id].covariance[i][j]), data_gaussian_grad.covariance[i][j]);
-                gpe::atomicAdd(&(kernels_grad_a[batch_id][channel_in_id][component_in_id].covariance[i][j]), kernel_gaussian_grad.covariance[i][j]);
+                gpe::atomicAdd(&(kernels_grad_a[channel_out_id][channel_in_id][component_kernel_id].covariance[i][j]), kernel_gaussian_grad.covariance[i][j]);
             }
         }
 

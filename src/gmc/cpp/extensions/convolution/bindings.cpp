@@ -16,7 +16,7 @@ torch::Tensor convolution_forward(torch::Tensor data, torch::Tensor kernels) {
     return convolution::forward_impl(data, kernels);
 }
 
-std::pair<torch::Tensor, torch::Tensor> convolution_backward(at::Tensor grad, at::Tensor data, at::Tensor kernels) {
+std::pair<torch::Tensor, torch::Tensor> convolution_backward(torch::Tensor grad, torch::Tensor data, torch::Tensor kernels) {
     at::cuda::OptionalCUDAGuard device_guard;
     if (grad.is_cuda()) {
         assert (device_of(grad).has_value());
@@ -24,12 +24,11 @@ std::pair<torch::Tensor, torch::Tensor> convolution_backward(at::Tensor grad, at
     }
 
     return convolution::backward_impl(grad, data, kernels);
-    return {};
 }
 
 #ifndef GMC_CMAKE_TEST_BUILD
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("forward", &convolution_forward, "convolution_forward");
-//  m.def("backward", &convolution_backward, "convolution_backward");
+  m.def("backward", &convolution_backward, "convolution_backward");
 }
 #endif

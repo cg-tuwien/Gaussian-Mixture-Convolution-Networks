@@ -41,7 +41,7 @@ std::pair<torch::Tensor, torch::Tensor> dispatch_backward_dim(torch::Tensor grad
         return backward_impl_t<scalar_t, 2>(grad, data, kernels);
 #ifndef GPE_ONLY_2D
     case 3:
-        return backward_impl_t<scalar_t, 3>(grad, forward_out);
+        return backward_impl_t<scalar_t, 3>(grad, data, kernels);
 #endif // GPE_ONLY_2D
     default:
         std::cout << "unsupported mixture.scalar_type()" << std::endl;
@@ -55,7 +55,7 @@ std::pair<torch::Tensor, torch::Tensor> dispatch_backward_dim_and_scalar_type(to
         return dispatch_backward_dim<float>(grad, data, kernels, n_dims);
 #ifndef GPE_ONLY_FLOAT
     case torch::ScalarType::Double:
-        return dispatch_backward_dim<double>(grad, forward_out, n_dims);
+        return dispatch_backward_dim<double>(grad, data, kernels, n_dims);
 #endif // GPE_ONLY_FLOAT
     default:
         std::cout << "unsupported mixture.scalar_type()" << std::endl;

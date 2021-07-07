@@ -42,7 +42,7 @@ struct UnitTests {
 
     template<int DIMS> static
     void test_gaussian_to_gaussian_functions() {
-        for (auto grad : _gaussianCollection<DIMS>()) {
+        for (auto grad : _gaussianCollection2<DIMS>()) {
             for (auto g : _gaussianCollection<DIMS>()) {
                 for (auto p : _gaussianCollection<DIMS>()) {
                     test_binarycase(g, p, grad, gpe::convolve<AutodiffScalar, DIMS>, gpe::grad::convolve<float, DIMS>);
