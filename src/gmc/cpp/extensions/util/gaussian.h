@@ -66,6 +66,12 @@ template<int N_DIMS, typename scalar_t>
 gpe::Gaussian<N_DIMS, scalar_t> extractGrad(const gpe::Gaussian<N_DIMS, autodiff::Variable<scalar_t>>& g) {
     return {extractGrad(g.weight), extractGrad(g.position), extractGrad(g.covariance)};
 }
+template<int N_DIMS, typename scalar_t>
+void propagateGrad(const gpe::Gaussian<N_DIMS, autodiff::Variable<scalar_t>>& v, const gpe::Gaussian<N_DIMS, scalar_t>& grad) {
+    propagateGrad(v.weight, grad.weight);
+    propagateGrad(v.position, grad.position);
+    propagateGrad(v.covariance, grad.covariance);
+}
 #endif
 
 template <int DIMS, typename scalar_t>
@@ -134,7 +140,8 @@ EXECUTION_DEVICES scalar_t gaussian_amplitude(const glm::mat<DIMS, DIMS, scalar_
 
 template <typename scalar_t, int N_DIMS>
 EXECUTION_DEVICES gpe::Gaussian<N_DIMS, scalar_t> convolve(const gpe::Gaussian<N_DIMS, scalar_t>& g1, const gpe::Gaussian<N_DIMS, scalar_t>& g2) {
-    constexpr auto a = gcem::pow(scalar_t(2) * glm::pi<scalar_t>(), N_DIMS * scalar_t(0.5));
+    using gradless_scalar_t = gpe::remove_grad_t<scalar_t>;
+    constexpr auto a = gcem::pow(gradless_scalar_t(2) * glm::pi<gradless_scalar_t>(), N_DIMS * gradless_scalar_t(0.5));
     const auto b = gpe::sqrt(glm::determinant(g1.covariance) * glm::determinant(g2.covariance));
     gpe::Gaussian<N_DIMS, scalar_t> ret {g1.weight * g2.weight * a * b, g1.position + g2.position, g1.covariance + g2.covariance};
     ret.weight /= gpe::sqrt(glm::determinant(ret.covariance));

@@ -34,9 +34,9 @@ for direction in $direction_list; do
                     echo 'namespace convolution {' >> $filename
                     
                     if [ "${direction}" == "forward" ]; then
-                        echo "template ForwardOutput forward_impl_t<$floating_type, $dimension>(const torch::Tensor& data, const torch::Tensor& kernels);" >> $filename
+                        echo "template torch::Tensor forward_impl_t<$floating_type, $dimension>(const torch::Tensor& data, const torch::Tensor& kernels);" >> $filename
                     else
-                        echo "template std::pair<torch::Tensor, torch::Tensor> backward_impl_t<$floating_type, $dimension>(const torch::Tensor& grad, const ForwardOutput& forward_out);" >> $filename
+                        echo "template std::pair<torch::Tensor, torch::Tensor> backward_impl_t<$floating_type, $dimension>(const torch::Tensor& grad, const torch::Tensor& data, const torch::Tensor& kernels);" >> $filename
                     fi
                     
                     echo '} // namespace convolution' >> $filename

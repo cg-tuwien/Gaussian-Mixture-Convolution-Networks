@@ -9,21 +9,17 @@
 #include "cuda_qt_creator_definitinos.h"
 #include "cuda_operations.h"
 #include "hacked_accessor.h"
-#include "lbvh/bvh.h"
 #include "util/glm.h"
 #include "util/scalar.h"
-#include "util/algorithms.h"
-#include "util/containers.h"
 #include "util/cuda.h"
 #include "util/gaussian.h"
 #include "util/gaussian_mixture.h"
-#include "util/grad/algorithms.h"
 #include "util/grad/glm.h"
 #include "util/grad/gaussian.h"
 #include "util/grad/mixture.h"
+#include "util/helper.h"
 #include "util/mixture.h"
 #include "parallel_start.h"
-#include "ParallelStack.h"
 
 
 namespace convolution {
@@ -51,14 +47,13 @@ std::pair<torch::Tensor, torch::Tensor> backward_impl_t(const torch::Tensor& gra
     const auto data_a = gpe::struct_accessor<typename gpe::Gaussian<N_DIMS, scalar_t>, 3, scalar_t>(data);
     const auto kernel_a = gpe::struct_accessor<typename gpe::Gaussian<N_DIMS, scalar_t>, 3, scalar_t>(kernels);
 
-    auto out_mixture = torch::empty({n.batch, n_channels_out, n_target_components, data.size(-1)}, torch::TensorOptions(data.device()).dtype(data.dtype()));
-    auto out_mixture_a = gpe::struct_accessor<gpe::Gaussian<N_DIMS, scalar_t>, 3, scalar_t>(out_mixture);
+    const auto incoming_grad_a = gpe::struct_accessor<gpe::Gaussian<N_DIMS, scalar_t>, 3, scalar_t>(grad);
 
-    auto grad_data = torch::empty_like(data);
-    auto grad_data_a = gpe::struct_accessor<typename gpe::Gaussian<N_DIMS, scalar_t>, 3, scalar_t>(grad_data);
+    auto data_grad = torch::zeros_like(data);
+    auto data_grad_a = gpe::struct_accessor<typename gpe::Gaussian<N_DIMS, scalar_t>, 3, scalar_t>(data_grad);
 
-    auto grad_kernels = torch::empty_like(kernels);
-    auto grad_kernels_a = gpe::struct_accessor<typename gpe::Gaussian<N_DIMS, scalar_t>, 3, scalar_t>(grad_kernels);
+    auto kernels_grad = torch::zeros_like(kernels);
+    auto kernels_grad_a = gpe::struct_accessor<typename gpe::Gaussian<N_DIMS, scalar_t>, 3, scalar_t>(kernels_grad);
 
 //    std::cout << "n_target_components: " << n_target_components << std::endl;
 //    std::cout << "n.batch: " << n.batch << std::endl;
@@ -75,7 +70,7 @@ std::pair<torch::Tensor, torch::Tensor> backward_impl_t(const torch::Tensor& gra
 //    std::cout << "dimBlock: " << dimBlock.x << "/" << dimBlock.y << "/" << dimBlock.z << std::endl;
 //    std::cout << "dimGrid: " << dimGrid.x << "/" << dimGrid.y << "/" << dimGrid.z << std::endl;
 
-    gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(data), dimGrid, dimBlock, [grad_a, data_a, kernel_a, grad_data_a, grad_kernels_a, out_mixture_a, n_channels_in, n_channels_out, kernel_n, n, n_target_components] __host__ __device__
+    gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(data), dimGrid, dimBlock, [grad_a, data_a, kernel_a, data_grad_a, kernels_grad_a, incoming_grad_a, n_channels_in, n_channels_out, kernel_n, n, n_target_components] __host__ __device__
                                                   (const dim3& gpe_gridDim, const dim3& gpe_blockDim, const dim3& gpe_blockIdx, const dim3& gpe_threadIdx) mutable {
 
         // index might not fit into 32 bit, i.e. when n.components == 1 << 17, n_feature_maps_in == 1 << 12 and kernel_n.components == 1 << 4
@@ -105,12 +100,27 @@ std::pair<torch::Tensor, torch::Tensor> backward_impl_t(const torch::Tensor& gra
         const auto& data_gaussian = data_a[batch_id][channel_in_id][component_in_id];
         const auto& kernel_gaussian = kernel_a[channel_out_id][channel_in_id][component_kernel_id];
 
-        out_mixture_a[int(batch_id)][int(channel_out_id)][int(component_out_id)] = convolve(data_gaussian, kernel_gaussian);
+        gpe::Gaussian<N_DIMS, scalar_t> data_gaussian_grad;
+        gpe::Gaussian<N_DIMS, scalar_t> kernel_gaussian_grad;
+        gpe::grad::convolve(data_gaussian, kernel_gaussian, &data_gaussian_grad, &kernel_gaussian_grad, incoming_grad_a[int(batch_id)][int(channel_out_id)][int(component_out_id)]);
+
+
+        gpe::atomicAdd(&(data_grad_a[batch_id][channel_in_id][component_in_id].weight), data_gaussian_grad.weight);
+        gpe::atomicAdd(&(kernels_grad_a[batch_id][channel_in_id][component_in_id].weight), kernel_gaussian_grad.weight);
+        for (unsigned i = 0; i < N_DIMS; ++i) {
+            gpe::atomicAdd(&(data_grad_a[batch_id][channel_in_id][component_in_id].position[i]), data_gaussian_grad.position[i]);
+            gpe::atomicAdd(&(kernels_grad_a[batch_id][channel_in_id][component_in_id].position[i]), kernel_gaussian_grad.position[i]);
+            for (unsigned j = 0; j < N_DIMS; ++j) {
+                gpe::atomicAdd(&(data_grad_a[batch_id][channel_in_id][component_in_id].covariance[i][j]), data_gaussian_grad.covariance[i][j]);
+                gpe::atomicAdd(&(kernels_grad_a[batch_id][channel_in_id][component_in_id].covariance[i][j]), kernel_gaussian_grad.covariance[i][j]);
+            }
+        }
+
 //        printf("b: %d, ch o: %d, cmp o: %d, cmp i: %d, ch i: %d, k i: %d\n", batch_id, channel_out_id, component_out_id, component_in_id, channel_in_id, component_kernel_id);
 
     });
 
-    return torch::Tensor{out_mixture};
+    return {data_grad, kernels_grad};
 }
 
 } // namespace bvh_mhem_fit

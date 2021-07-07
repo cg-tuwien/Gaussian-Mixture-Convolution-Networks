@@ -28,7 +28,8 @@ template <typename scalar_t, int N_DIMS>
 EXECUTION_DEVICES void convolve(const gpe::Gaussian<N_DIMS, scalar_t>& g1, const gpe::Gaussian<N_DIMS, scalar_t>& g2,
                                 gpe::Gaussian<N_DIMS, scalar_t>* g1_grad, gpe::Gaussian<N_DIMS, scalar_t>* g2_grad,
                                 const gpe::Gaussian<N_DIMS, scalar_t>& incoming_grad) {
-    constexpr auto a = gcem::pow(scalar_t(2) * glm::pi<scalar_t>(), N_DIMS * scalar_t(0.5));
+    using gradless_scalar_t = gpe::remove_grad_t<scalar_t>;
+    constexpr auto a = gcem::pow(gradless_scalar_t(2) * glm::pi<gradless_scalar_t>(), N_DIMS * gradless_scalar_t(0.5));
     const auto g1_cov_det = glm::determinant(g1.covariance);
     const auto g2_cov_det = glm::determinant(g2.covariance);
     const auto b = gpe::sqrt(g1_cov_det * g2_cov_det);
@@ -41,15 +42,18 @@ EXECUTION_DEVICES void convolve(const gpe::Gaussian<N_DIMS, scalar_t>& g1, const
 
     // walking grad back
     const auto tmp_weight_grad = incoming_grad.weight / sqrt_ret_cov_det;
-    const auto ret_cov_det_grad = incoming_grad.weight * tmp_weight * scalar_t(-0.5) / (sqrt_ret_cov_det * ret_cov_det);
+    const auto ret_cov_det_grad = incoming_grad.weight * tmp_weight * gradless_scalar_t(-0.5) / (sqrt_ret_cov_det * ret_cov_det);
     const auto ret_cov_grad = incoming_grad.covariance + gpe::grad::determinant(ret_cov, ret_cov_det_grad);
     const auto b_grad = tmp_weight_grad * g1.weight * g2.weight * a;
+    const auto g_cov_det_prod_grad = b_grad / (2 * b);
+
 
     g1_grad->weight = tmp_weight_grad * g2.weight * a * b;
     g2_grad->weight = tmp_weight_grad * g1.weight * a * b;
     g1_grad->position = incoming_grad.position;
     g2_grad->position = incoming_grad.position;
-
+    g1_grad->covariance = ret_cov_grad + gpe::grad::determinant(g1.covariance, g_cov_det_prod_grad * g2_cov_det);
+    g2_grad->covariance = ret_cov_grad + gpe::grad::determinant(g2.covariance, g_cov_det_prod_grad * g1_cov_det);
 }
 
 template <typename scalar_t, int DIMS>

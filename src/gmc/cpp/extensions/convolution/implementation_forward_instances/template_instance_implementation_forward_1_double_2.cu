@@ -3,6 +3,6 @@
 #include <utility>
 
 namespace convolution {
-template ForwardOutput forward_impl_t<double, 2>(const torch::Tensor& data, const torch::Tensor& kernels);
+template torch::Tensor forward_impl_t<double, 2>(const torch::Tensor& data, const torch::Tensor& kernels);
 } // namespace convolution
 #endif // GPE_ONLY_FLOAT

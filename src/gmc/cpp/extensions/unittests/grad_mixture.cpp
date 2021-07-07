@@ -29,12 +29,23 @@ struct UnitTests {
     }
 
     template<int DIMS> static
-    void test_gaussian_functions() {
+    void test_gaussian_to_scalar_functions() {
         for (auto grad : _scalarCollection()) {
             for (auto g : _gaussianCollection<DIMS>()) {
                 test_unarycase(g, grad, gpe::integrate<AutodiffScalar, DIMS>, gpe::grad::integrate<float, DIMS>);
                 for (auto p : _vecCollection<DIMS>()) {
                     test_binarycase(g, p, grad, gpe::evaluate<AutodiffScalar, DIMS>, gpe::grad::evaluate<float, DIMS>);
+                }
+            }
+        }
+    }
+
+    template<int DIMS> static
+    void test_gaussian_to_gaussian_functions() {
+        for (auto grad : _gaussianCollection<DIMS>()) {
+            for (auto g : _gaussianCollection<DIMS>()) {
+                for (auto p : _gaussianCollection<DIMS>()) {
+                    test_binarycase(g, p, grad, gpe::convolve<AutodiffScalar, DIMS>, gpe::grad::convolve<float, DIMS>);
                 }
             }
         }
@@ -121,9 +132,13 @@ TEST_CASE("grad mixture") {
         UnitTests::test_cov_functions<2>();
         UnitTests::test_cov_functions<3>();
     }
-    SECTION("gaussian functions") {
-        UnitTests::test_gaussian_functions<2>();
-        UnitTests::test_gaussian_functions<3>();
+    SECTION("gaussian to scalar functions") {
+        UnitTests::test_gaussian_to_scalar_functions<2>();
+        UnitTests::test_gaussian_to_scalar_functions<3>();
+    }
+    SECTION("gaussian to gaussian functions") {
+        UnitTests::test_gaussian_to_gaussian_functions<2>();
+        UnitTests::test_gaussian_to_gaussian_functions<3>();
     }
     SECTION("likelihood") {
         UnitTests::test_likelihood<2>();
