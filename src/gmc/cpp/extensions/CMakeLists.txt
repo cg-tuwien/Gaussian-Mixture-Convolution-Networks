@@ -347,7 +347,7 @@ add_executable(0_test_bvh_fit bvh_mhem_fit/test_bvh_fit.cpp)
 target_link_libraries(0_test_bvh_fit PUBLIC OpenMP::OpenMP_CXX torch Qt5::Widgets bvh_mhem_fit integrate evaluate_inversed math lbvh common)
 
 add_executable(1_test_convolution_fitting convolution_fitting/test.cpp)
-target_link_libraries(1_test_convolution_fitting PUBLIC OpenMP::OpenMP_CXX torch Qt5::Widgets convolution_fitting integrate evaluate_inversed math lbvh common)
+target_link_libraries(1_test_convolution_fitting PUBLIC OpenMP::OpenMP_CXX torch Qt5::Widgets convolution_fitting convolution evaluate_inversed math common)
 
 set(MATRIX_INVERSE_HEADERS
 )

@@ -12,18 +12,18 @@
 #include <cuda_runtime.h>
 
 #include "common.h"
+#include "convolution/implementation.h"
 #include "convolution_fitting/implementation.h"
 #include "evaluate_inversed/evaluate_inversed.h"
-#include "integrate/binding.h"
 #include "util/mixture.h"
 
-constexpr uint N_BATCHES = 10;
-constexpr uint CONVOLUTION_LAYER_START = 0;
-constexpr uint CONVOLUTION_LAYER_END = 3;
-constexpr uint LIMIT_N_BATCH = 100;
+constexpr uint N_BATCHES = 1;
+constexpr uint CONVOLUTION_LAYER_START = 1;
+constexpr uint CONVOLUTION_LAYER_END = 2;
+constexpr uint LIMIT_N_BATCH = 5;
 constexpr bool USE_CUDA = false;
 constexpr bool BACKWARD = false;
-constexpr bool RENDER = false;
+constexpr bool RENDER = true;
 constexpr uint RESOLUTION = 128;
 constexpr bool DO_STATS = true;
 constexpr uint N_FITTING_COMPONENTS = 32;
@@ -35,10 +35,10 @@ torch::Tensor render(torch::Tensor mixture, const int resolution, const int n_ba
     mixture = mixture.index({Slice(None, n_batch)});
     const auto n_layers = gpe::n_layers(mixture);
 
-    //    const auto weights = gpe::weights(mixture);
+    const auto weights = gpe::weights(mixture);
     const auto positions = gpe::positions(mixture);
-    //    const auto invCovs = gpe::covariances(mixture).inverse().transpose(-1, -2);
-    //    mixture = gpe::pack_mixture(weights, positions, invCovs.contiguous());
+    const auto invCovs = gpe::covariances(mixture).inverse().transpose(-1, -2);
+    mixture = gpe::pack_mixture(weights, positions, invCovs.contiguous());
 
     //    const auto minPos = positions.min().item().toFloat() - 1.1f;
     //    const auto maxPos = positions.max().item().toFloat() + 1.1f;
@@ -82,62 +82,33 @@ int main(int argc, char *argv[]) {
     std::array<std::vector<torch::Tensor>, CONVOLUTION_LAYER_END - CONVOLUTION_LAYER_START> error_data;
     std::array<std::vector<std::chrono::milliseconds>, CONVOLUTION_LAYER_END - CONVOLUTION_LAYER_START> time_data;
 
-    // test all configurations:
-//    std::vector<int> reduction_n_options = {2, 4, 8, 16};
-//    std::vector<lbvh::Config::MortonCodeAlgorithm> morton_code_options = {
-//        lbvh::Config::MortonCodeAlgorithm::Old,
-//        lbvh::Config::MortonCodeAlgorithm::Cov1_12p36pc16i,
-//        lbvh::Config::MortonCodeAlgorithm::Cov2_54pc10i,
-//        lbvh::Config::MortonCodeAlgorithm::Cov3_27p27c10i,
-//        lbvh::Config::MortonCodeAlgorithm::Cov4_27c27p10i
-//    };
-//    std::vector<BvhMhemFitConfig::FitInitialDisparityMethod> fit_initial_disparity_options = {
-//        BvhMhemFitConfig::FitInitialDisparityMethod::CentroidDistance,
-//        BvhMhemFitConfig::FitInitialDisparityMethod::Likelihood,
-//        BvhMhemFitConfig::FitInitialDisparityMethod::KLDivergence
-//    };
-//    std::vector<BvhMhemFitConfig::FitInitialClusterMergeMethod> fit_initial_cluster_merge_options = {
-//        BvhMhemFitConfig::FitInitialClusterMergeMethod::Average,
-//        BvhMhemFitConfig::FitInitialClusterMergeMethod::AverageCorrected,
-//        BvhMhemFitConfig::FitInitialClusterMergeMethod::MaxWeight,
-//        BvhMhemFitConfig::FitInitialClusterMergeMethod::MaxIntegral
-//    };
-//    std::vector<float> em_kl_div_threshold_options {0.5, 1.0f, 1.5f, 2.0f, 2.5f};
+    for (uint b = 0; b < N_BATCHES; ++b) {
+        torch::jit::script::Module container = torch::jit::load("/home/madam/Documents/work/tuw/gmc_net/data/mnist_intermediate_data/conv_inputs_" + std::to_string(b) + ".pt");
+        auto list = container.attributes();
 
-    // test specific configuration:
-#ifndef GPE_LIMIT_N_REDUCTION
-    std::vector<int> reduction_n_options = {4, 8, 16};
-#else
-    std::vector<int> reduction_n_options = {4};
-#endif
-    std::vector<lbvh::Config::MortonCodeAlgorithm> morton_code_options = {
-        lbvh::Config::MortonCodeAlgorithm::Old
-    };
-    std::vector<float> em_kl_div_threshold_options {0.5f};
-
-
-    std::vector<std::pair<std::string, convolution_fitting::Config>> configs;
-    for (auto reduction_n : reduction_n_options) {
-        for (auto morton_code_algorithm : morton_code_options) {
-            for (auto em_kl_div_threshold : em_kl_div_threshold_options) {
-//                configs.emplace_back("red_" + std::to_string(reduction_n) +
-//                                     "_morton_" + std::to_string(int(morton_code_algorithm)) +
-//                                     "_emkldivth_" + std::to_string(em_kl_div_threshold),
-//                                     bvh_mhem_fit::Config{reduction_n, lbvh::Config{morton_code_algorithm}, em_kl_div_threshold});
-                configs.emplace_back(std::to_string(reduction_n) +
-                                     ", " + std::to_string(int(morton_code_algorithm)) +
-                                     ", " + std::to_string(int(em_kl_div_threshold * 10)),
-                                     convolution_fitting::Config{reduction_n, lbvh::Config{morton_code_algorithm}, em_kl_div_threshold, N_FITTING_COMPONENTS});
+        for (uint l = CONVOLUTION_LAYER_START; l < CONVOLUTION_LAYER_END; l++) {
+            torch::Tensor data = container.attr("conv_layer_" + std::to_string(l) + "_data").toTensor();//.index({Slice(0, 1), Slice(0, 1), Slice(0, 5), Slice()});
+            torch::Tensor kernels = container.attr("conv_layer_" + std::to_string(l) + "_kernels").toTensor();//.index({Slice(0, 1), Slice(0, 1), Slice(0, 5), Slice()});
+//            auto mixture = torch::tensor({{0.02f, 0.f, 0.f, 1.01f, 1.f, 1.f, 1.0f},
+//                                          {0.02f, 5.f, 5.f, 1.01f, 0.5f, 0.5f, 4.0f}}).view({1, 1, 2, 7});
+            if (USE_CUDA) {
+                data = data.cuda();
+                kernels = kernels.cuda();
             }
+            std::cout << "layer " << l << " data: " << data.sizes() << " device: " << data.device() << std::endl;
+            std::cout << "layer " << l << " kernels: " << kernels.sizes() << " device: " << kernels.device() << std::endl;
+//            show(render(data, 128, LIMIT_N_BATCH), 128, LIMIT_N_BATCH);
+//            show(render(kernels, 128, LIMIT_N_BATCH), 128, LIMIT_N_BATCH);
+
+            const auto reference = render(convolution::forward_impl(data, kernels), 128, LIMIT_N_BATCH);
+            show(reference, 128, LIMIT_N_BATCH);
+            const auto fitting = render(convolution_fitting::forward_impl(data, kernels, {}).fitting, 128, LIMIT_N_BATCH);
+            show(fitting, 128, LIMIT_N_BATCH);
+
+            const auto diff = fitting - reference;
+            const auto mse = (diff * diff).mean().item();
+            std::cout << "MSE batch " << b << " layer " << l << ": " << mse.to<float>() << std::endl;
         }
-    }
-    std::cout << "n_red, morton, em_kldiv, layer_0, time_0, layer_1, time_1, layer_2, time_2" << std::endl;
-
-    for (const auto& named_config : configs) {
-        for (uint i = 0; i < N_BATCHES; ++i) {
-
-        }
-
     }
 
 //    torch::load(d, "/home/madam/Documents/work/tuw/gmc_net/data/fitting_input/fitting_input_batch0_netlayer0.tensor");

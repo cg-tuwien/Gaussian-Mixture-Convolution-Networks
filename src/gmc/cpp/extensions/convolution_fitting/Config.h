@@ -1,11 +1,11 @@
-#ifndef BVHMHEMFITCONFIG_H
-#define BVHMHEMFITCONFIG_H
+#ifndef CONVOLUTION_FITTING_CONFIG_H
+#define CONVOLUTION_FITTING_CONFIG_H
 
 #include "lbvh/Config.h"
 
 namespace convolution_fitting {
 struct Config {
-    int reduction_n = 4;
+    int reduction_n = 1;
     lbvh::Config bvh_config = {};
     float em_kl_div_threshold = 0.5f;
     unsigned n_components_fitting = 32;

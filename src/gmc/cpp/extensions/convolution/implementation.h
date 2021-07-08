@@ -1,5 +1,5 @@
-#ifndef BVH_MHEM_FIT_IMPLEMENTATION
-#define BVH_MHEM_FIT_IMPLEMENTATION
+#ifndef CONVOLUTION_IMPLEMENTATION
+#define CONVOLUTION_IMPLEMENTATION
 #include <tuple>
 #include <torch/script.h>
 

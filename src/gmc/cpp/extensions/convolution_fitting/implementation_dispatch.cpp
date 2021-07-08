@@ -83,7 +83,7 @@ ForwardOutput forward_impl(const torch::Tensor& data, const torch::Tensor& kerne
 //        return dispatch_forward_dim_and_scalar_type<8>(mixture, config, n_dims, scalar_type);
 //#endif
     default:
-        std::cout << "invalid BvhMhemFitConfig::reduction_n" << std::endl;
+        std::cout << "invalid convolution_fitting::Config::reduction_n" << std::endl;
         exit(1);
     }
 }
@@ -104,7 +104,7 @@ std::pair<torch::Tensor, torch::Tensor> backward_impl(torch::Tensor grad, const 
 //        return dispatch_backward_dim_and_scalar_type<8>(grad, forward_out, config, n_dims, scalar_type);
 //#endif
     default:
-        std::cout << "invalid BvhMhemFitConfig::reduction_n" << std::endl;
+        std::cout << "invalid convolution_fitting::Config::reduction_n" << std::endl;
         exit(1);
     }
 }
