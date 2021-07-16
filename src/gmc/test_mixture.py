@@ -6,6 +6,7 @@ import numpy.linalg as npla
 import scipy.signal
 import torch
 from torch import Tensor
+import gmc.cpp.extensions.convolution.binding as cpp_convolution
 
 import gmc.mixture as gm
 
@@ -106,20 +107,20 @@ class TestGM(unittest.TestCase):
     def test_convolution(self):
         n_batches = 3
         gm1 = gm.generate_random_mixtures(n_batches, 1, 3, n_dims=2, pos_radius=1, cov_radius=0.5)
-        gm2 = gm.generate_random_mixtures(n_batches, 1, 4, n_dims=2, pos_radius=1, cov_radius=0.5)
-        gmc = gm.convolve(gm1, gm2)
+        gm2 = gm.generate_random_mixtures(1, 1, 4, n_dims=2, pos_radius=1, cov_radius=0.5)
+        gmc = cpp_convolution.apply(gm1, gm2)
         samples_per_unit = 50
 
         xv, yv = torch.meshgrid([torch.arange(-6, 6, 1 / samples_per_unit, dtype=torch.float),
                                  torch.arange(-6, 6, 1 / samples_per_unit, dtype=torch.float)])
         size = xv.size()[0]
-        xes = torch.cat((xv.reshape(-1, 1), yv.reshape(-1, 1)), 1).view(1, -1, 2).expand(n_batches, 1, -1, 2)
+        xes = torch.cat((xv.reshape(-1, 1), yv.reshape(-1, 1)), 1).view(1, 1, -1, 2)
         gm1_samples = gm.evaluate(gm1, xes).view(n_batches, size, size).numpy()
-        gm2_samples = gm.evaluate(gm2, xes).view(n_batches, size, size).numpy()
+        gm2_samples = gm.evaluate(gm2, xes).view(1, size, size).numpy()
         gmc_samples = gm.evaluate(gmc, xes).view(n_batches, size, size).numpy()
 
         for i in range(n_batches):
-            reference_solution = scipy.signal.fftconvolve(gm1_samples[i, :, :], gm2_samples[i, :, :], 'same') \
+            reference_solution = scipy.signal.fftconvolve(gm1_samples[i, :, :], gm2_samples[0, :, :], 'same') \
                                  / (samples_per_unit * samples_per_unit)
             our_solution = gmc_samples[i, :, :]
             # plt.imshow(gm1_samples[i, :, :]); plt.colorbar(); plt.show()
@@ -132,6 +133,22 @@ class TestGM(unittest.TestCase):
             max_l2_err = ((reference_solution - our_solution) ** 2).max()
             # plt.imshow((reference_solution - our_solution)); plt.colorbar(); plt.show();
             self.assertLess(max_l2_err, 0.0000001)
+
+    def test_convolution_grad(self):
+        a = gm.generate_random_mixtures(3, 5, 7, n_dims=2, pos_radius=1, cov_radius=0.5).to(torch.double)
+        b = gm.generate_random_mixtures(2, 5, 4, n_dims=2, pos_radius=1, cov_radius=0.5).to(torch.double)
+        a.requires_grad = True
+        b.requires_grad = True
+
+        test = torch.autograd.gradcheck(cpp_convolution.apply, (a, b))
+        self.assertTrue(test)
+
+        a = gm.generate_random_mixtures(3, 5, 7, n_dims=3, pos_radius=1, cov_radius=0.5).to(torch.double)
+        b = gm.generate_random_mixtures(2, 5, 4, n_dims=3, pos_radius=1, cov_radius=0.5).to(torch.double)
+        a.requires_grad = True
+        b.requires_grad = True
+        test = torch.autograd.gradcheck(cpp_convolution.apply, (a, b))
+        self.assertTrue(test)
 
     def test_spatial_scale(self):
         n_batch = 10

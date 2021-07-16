@@ -55,7 +55,6 @@ def render(mixture: Tensor, constant: Tensor, batches: index_range = (0, None), 
     xes = torch.cat((xv.reshape(-1, 1), yv.reshape(-1, 1)), 1).view(1, 1, -1, 2)
     rendering = (gm.evaluate(m, xes) + c.unsqueeze(-1))
     rendering = rendering.view(n_batch, n_layers, width, height).transpose(2, 3)
-    rendering = rendering.transpose(0, 1).reshape(n_layers * n_batch * height, width)
     return rendering
 
 
@@ -93,7 +92,7 @@ def render3d(mixture: Tensor, batches: index_range = (0, None), layers: index_ra
     if end_gm_vis_object:
         gm_vis_object.finish()
 
-    return rendering_tensor.transpose(0, 1).reshape(n_l * height, n_b * width, 4)
+    return rendering_tensor
 
 
 def render_with_relu(mixture: Tensor, constant: Tensor,

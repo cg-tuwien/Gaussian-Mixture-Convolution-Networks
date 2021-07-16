@@ -155,12 +155,6 @@ class Net(nn.Module):
         for gmc in self.gmcs:
             gmc.learn_covariances = flag
 
-    def regularisation_loss(self) -> Tensor:
-        rl = torch.zeros(1, device=next(self.parameters()).device, dtype=torch.float)
-        for gmc in self.gmcs:
-            rl = rl + gmc.regularisation_loss()
-        return rl
-
     def weight_decay_loss(self) -> Tensor:
         wdl = torch.zeros(1, device=next(self.parameters()).device, dtype=torch.float)
         for gmc in self.gmcs:
@@ -186,7 +180,9 @@ class Net(nn.Module):
             x, x_const = self.gmcs[i](x, x_const)
 
             if self.config.bn_place == Config.BN_PLACE_AFTER_GMC:
-                x, x_const = self.norms[i]((x, x_const))
+                # might be a bug here with the constant. normalisation doesn't look like it works correctly.
+                # but that might also be due to us removing the constant afterwards.
+                x, x_const = self.norms[i]((x, torch.zeros_like(x_const)))
 
             if self.config.bias_type == Config.BIAS_TYPE_NEGATIVE_SOFTPLUS:
                 x_const = x_const - F.softplus(self.biases[i], beta=20)

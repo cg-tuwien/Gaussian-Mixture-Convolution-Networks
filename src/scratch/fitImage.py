@@ -4,7 +4,6 @@ import typing
 
 import matplotlib.pyplot as plt
 import numpy as np
-import pomegranate
 import sklearn.mixture
 import torch
 from torch import Tensor

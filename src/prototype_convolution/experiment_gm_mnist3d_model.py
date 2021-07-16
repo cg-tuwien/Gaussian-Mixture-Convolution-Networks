@@ -88,9 +88,6 @@ class Net(nn.Module):
         self.gmc2.learn_covariances = flag
         self.gmc3.learn_covariances = flag
 
-    def regularisation_loss(self):
-        return self.gmc1.regularisation_loss() + self.gmc2.regularisation_loss() + self.gmc3.regularisation_loss()
-
     # noinspection PyCallingNonCallable
     def forward(self, in_x: Tensor, tensorboard: TensorboardWriter = None) -> Tensor:
         # Andrew Ng says that most of the time batch norm (BN) is applied before activation.

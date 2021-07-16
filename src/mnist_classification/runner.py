@@ -31,9 +31,7 @@ c.model.layers = [Layer(8, 1.5, 16),
                   Layer(10, 2.5, -1)]
 # c.model.mlp = (-1, 10)
 
-# c.training_set_start = 10000
-# c.training_set_end = 11000
-# c.test_set_start = 5000
-# c.test_set_end = 5600
+# c.fitting_test_data_store_at_epoch = 0
+# c.fitting_test_data_store_n_batches = 5
 
 main.experiment(device=device, desc_string=f"{c.produce_description()}", config=c)

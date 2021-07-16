@@ -130,6 +130,36 @@ std::vector<gpe::Gaussian<DIMS, float>> _gaussianCollection() {
     return collection;
 }
 
+
+template<int DIMS>
+std::vector<gpe::Gaussian<DIMS, float>> _gaussianCollection2() {
+    using G = gpe::Gaussian<DIMS, float>;
+    std::vector<G> collection;
+
+    std::vector<float> weights = {0.f, -0.4f, 1.6f};
+
+    std::vector<glm::vec<DIMS, float>> positions;
+    positions.push_back(_vec<DIMS>(0, 0, 0));
+    positions.push_back(_vec<DIMS>(-1.4f, 2.5, 0.9f));
+
+    std::vector<glm::mat<DIMS, DIMS, float>> covs;
+    covs.push_back(glm::mat<DIMS, DIMS, float>(1));
+    covs.push_back(glm::mat<DIMS, DIMS, float>(1) * 2.0f - 0.5f);
+    covs.push_back(_cov<DIMS>(2.5f,  0.5f, -0.2f, 1.5f,  0.3f, 3.2f));
+    covs.push_back(_cov<DIMS>(1.0f,  0.0f, 0.0f, 0.0f, 0.0f, 0.0f));
+    covs.push_back(_cov<DIMS>(0.0f,  0.0f, 0.0f, 1.0f, 0.0f, 0.0f));
+    covs.push_back(_cov<DIMS>(0.0f,  1.0f, 0.0f, 0.0f, 0.0f, 0.0f));
+
+    for (auto weight : weights) {
+        for (auto pos : positions) {
+            for (auto cov : covs) {
+                collection.push_back(G{weight, pos, cov});
+            }
+        }
+    }
+    return collection;
+}
+
 template<typename T1, typename T2, typename T3, typename Function, typename GradFunction>
 void test_binarycase(T1 a, T2 b, T3 grad, Function fun, GradFunction gradfun) {
     auto a_ad = gpe::makeAutodiff(a);

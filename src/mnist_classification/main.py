@@ -123,29 +123,36 @@ def train(model: gmc.model.Net, device: str, train_loader: torch.utils.data.Data
 
             tensor_board_writer.add_scalar("11. CUDA max memory allocated [GiB]", torch.cuda.max_memory_allocated() / 1024 / 1024 / 1024, step)
 
-        # if epoch == config.fitting_test_data_store_at_epoch and batch_idx < config.fitting_test_data_store_n_batches:
-        #     full_input = dict()
-        #     after_fixed_point = dict()
-        #     for i, relu in enumerate(model.relus):
-        #         full_input[f"{i}"] = relu.last_in[0].detach().cpu()
-        #         full_input[f"{i}_bias"] = relu.last_in[1].detach().cpu()
-        #
-        #         fp_fitting, fp_const, _ = gmc.fitting.fixed_point_and_tree_hem(relu.last_in[0].detach(), relu.last_in[1].detach(), n_components=-1)
-        #         after_fixed_point[f"{i}"] = fp_fitting.cpu()
-        #         after_fixed_point[f"{i}_constant"] = fp_const.cpu()
-        #         # gm.save(relu.last_in[0], f"fitting_input/fitting_input_batch{batch_idx}_netlayer{i}", relu.last_in[1].detach().cpu())
-        #
-        #     class Container(torch.nn.Module):
-        #         def __init__(self, my_values):
-        #             super().__init__()
-        #             for key in my_values:
-        #                 setattr(self, key, my_values[key])
-        #
-        #     c = torch.jit.script(Container(full_input))
-        #     c.save(f"{config.fitting_test_data_store_path}/full_input_batch{batch_idx}.pt")
-        #
-        #     c = torch.jit.script(Container(after_fixed_point))
-        #     c.save(f"{config.fitting_test_data_store_path}/after_fixed_point_batch{batch_idx}.pt")
+        if epoch == config.fitting_test_data_store_at_epoch and batch_idx < config.fitting_test_data_store_n_batches:
+            conv_input = dict()
+            for i, conv in enumerate(model.gmcs):
+                conv_input[f"conv_layer_{i}_data"] = conv.last_in[0].cpu()
+                conv_input[f"conv_layer_{i}_kernels"] = conv.kernels().detach().cpu()
+            # full_input = dict()
+            # after_fixed_point = dict()
+            # for i, relu in enumerate(model.relus):
+            #     full_input[f"{i}"] = relu.last_in[0].detach().cpu()
+            #     full_input[f"{i}_bias"] = relu.last_in[1].detach().cpu()
+            #
+            #     fp_fitting, fp_const, _ = gmc.fitting.fixed_point_and_tree_hem(relu.last_in[0].detach(), relu.last_in[1].detach(), n_components=-1)
+            #     after_fixed_point[f"{i}"] = fp_fitting.cpu()
+            #     after_fixed_point[f"{i}_constant"] = fp_const.cpu()
+                # gm.save(relu.last_in[0], f"fitting_input/fitting_input_batch{batch_idx}_netlayer{i}", relu.last_in[1].detach().cpu())
+
+            class Container(torch.nn.Module):
+                def __init__(self, my_values):
+                    super().__init__()
+                    for key in my_values:
+                        setattr(self, key, my_values[key])
+
+            c = torch.jit.script(Container(conv_input))
+            c.save(f"{config.fitting_test_data_store_path}/conv_inputs_{batch_idx}.pt")
+
+            # c = torch.jit.script(Container(full_input))
+            # c.save(f"{config.fitting_test_data_store_path}/full_input_batch{batch_idx}.pt")
+            #
+            # c = torch.jit.script(Container(after_fixed_point))
+            # c.save(f"{config.fitting_test_data_store_path}/after_fixed_point_batch{batch_idx}.pt")
 
     end_time = time.perf_counter()
 

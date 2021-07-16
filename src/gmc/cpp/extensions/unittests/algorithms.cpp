@@ -354,6 +354,20 @@ struct UnitTests {
         REQUIRE(result[1] == 2*4);
         REQUIRE(result[2] == 3*5);
     }
+
+    void testInclusiveScan() {
+        const Array<int, 4> a = {1, 2, 3, 4};
+        auto b = inclusive_scan(a, functors::plus<int>);
+        auto c = inclusive_scan(a, functors::times<int>);
+        REQUIRE(b[0] == 1);
+        REQUIRE(b[1] == 1 + 2);
+        REQUIRE(b[2] == 1 + 2 + 3);
+        REQUIRE(b[3] == 1 + 2 + 3 + 4);
+        REQUIRE(c[0] == 1);
+        REQUIRE(c[1] == 1 * 2);
+        REQUIRE(c[2] == 1 * 2 * 3);
+        REQUIRE(c[3] == 1 * 2 * 3 * 4);
+    }
 };
 } // anonymous namespace
 
@@ -382,6 +396,7 @@ TEST_CASE("algorithms") {
         t.testArrayReduce2d();
         t.testArrayReduceRows();
         t.testArrayReduceCols();
+        t.testInclusiveScan();
     }
     SECTION("vectors") {
         t.testOuterProduct();
