@@ -159,7 +159,7 @@ class EckartGeneratorSP(GMMGenerator):
                 points = pcbatch.unsqueeze(1).unsqueeze(3)  # (1, 1, np, 1, 3)
 
                 # E-Step
-                responsibilities = self._expectation(points, gm_data, point_weighting_factors)
+                responsibilities = self._expectation(points, gm_data, point_weighting_factors, pwf_per_gaussian)
 
                 # Calculate Loss
                 mixture = gm_data.approximate_whole_mixture()
@@ -404,7 +404,7 @@ class EckartGeneratorSP(GMMGenerator):
 
         return gmdata
 
-    def _expectation(self, points: torch.Tensor, gm_data, point_weighting_factors: torch.Tensor) -> torch.Tensor:
+    def _expectation(self, points: torch.Tensor, gm_data, point_weighting_factors: torch.Tensor, pwf_per_gaussian: torch.Tensor) -> torch.Tensor:
         # This performs the Expectation step of the EM Algorithm. This calculates the responsibilities.
         # So the probabilities, how likely each point belongs to each gaussian.
         # The calculations are performed numerically stable in Log-Space!
@@ -429,11 +429,7 @@ class EckartGeneratorSP(GMMGenerator):
         all_gauss_count = gm_data.positions.shape[2]
 
         # mask_indizes is a list of indizes of a) points with their corresponding b) gauss (child) indizes
-        mask_indizes = torch.nonzero(point_weighting_factors, as_tuple=False)
-        mask_indizes = mask_indizes.repeat(1, 1, self._n_gaussians_per_node)
-        mask_indizes[:, :, 1::2] *= self._n_gaussians_per_node
-        mask_indizes[:, :, 1::2] += torch.arange(0, self._n_gaussians_per_node, dtype=torch.long, device=general_config.device)
-        mask_indizes = mask_indizes.view(-1, 2)
+        mask_indizes = torch.nonzero(pwf_per_gaussian, as_tuple=False)
         pairing_count = mask_indizes.shape[0]
 
         pair_subbatch_size = self._e_step_pair_subbatchsize

@@ -12,22 +12,25 @@ import matplotlib
 import matplotlib.image as mimg
 matplotlib.use('TkAgg')
 
-model_path = r"F:\DA-Eval\dataset_eval\models"
-fitpc_path = r"F:\DA-Eval\dataset_eval\fitpcs"
-evalpc_path = r"F:\DA-Eval\dataset_eval\evalpcs"
-recpc_path = r"F:\DA-Eval\dataset_eval\recpcs"
-gengmm_path = r"F:\DA-Eval\dataset_eval\gmms"
-rendering_path = r"F:\DA-Eval\dataset_eval\renderings"
-db_path = r"F:\DA-Eval\EvalV2.db"
+model_path = r"K:\DA-Eval\dataset_eval\models"
+fitpc_path = r"K:\DA-Eval\dataset_eval\fitpcs"
+evalpc_path = r"K:\DA-Eval\dataset_eval\evalpcs"
+recpc_path = r"K:\DA-Eval\dataset_eval\recpcs"
+gengmm_path = r"K:\DA-Eval\dataset_eval\gmms"
+rendering_path = r"K:\DA-Eval\dataset_eval\renderings"
+db_path = r"K:\DA-Eval\EvalV2.db"
 
 initterm = MaxIterationTerminationCriterion(0)
 terminator2 = RelChangeTerminationCriterion(0.1, 20)
 
-# vals_n_gaussians = [64, 256, 512]
-vals_n_gaussians = [[4,3], [4,4], [8,3]]
-vals_eps = [1e-4, 1e-5, 1e-6, 1e-7]
-vals_inits = ["randnormpos", "fpsmax", "bb", "eigen"]
-vals_thresh = [0.1, 0.3]
+vals_n_gaussians = [64, 256, 512]
+# vals_n_gaussians = [[4,3], [4,4], [8,3]]
+# vals_eps = [1e-4, 1e-5, 1e-6, 1e-7]
+# vals_inits = ["randnormpos", "fpsmax", "bb", "eigen"]
+# vals_thresh = [0.1, 0.3]
+vals_alpha = [4, 5, 6]
+vals_fixeddist = [0.6, 0.7, 0.8, 0.9]
+vals_avoidorphans = [0, 1, 2]
 
 generators = []
 
@@ -41,19 +44,16 @@ generators = []
 # generators.append(EckartGeneratorSP(n_gaussians_per_node=8, n_levels=3, partition_threshold=0.1, termination_criterion=terminator2, initialization_method="fpsmax", m_step_points_subbatchsize=10000,
 #                            e_step_pair_subbatchsize=5120000, eps=1e-5))
 
-
-eck_hp_combinations = [(ng, eps, init) for init in vals_inits for eps in vals_eps for ng in vals_n_gaussians]
-for (ng, eps, init) in eck_hp_combinations:
-   generators.append(EckartGeneratorHP(n_gaussians_per_node=ng[0], n_levels=ng[1], termination_criterion=terminator2, initialization_method=init, eps=eps, m_step_points_subbatchsize=10000))
+#eck_hp_combinations = [(ng, eps, init) for init in vals_inits for eps in vals_eps for ng in vals_n_gaussians]
+#for (ng, eps, init) in eck_hp_combinations:
+#   generators.append(EckartGeneratorHP(n_gaussians_per_node=ng[0], n_levels=ng[1], termination_criterion=terminator2, initialization_method=init, eps=eps, m_step_points_subbatchsize=10000))
 #eck_sp_combinations = [(ng, eps, init, th) for th in vals_thresh for init in vals_inits for eps in vals_eps for ng in vals_n_gaussians]
 #for (ng, eps, init, th) in eck_sp_combinations:
 #    generators.append(EckartGeneratorSP(n_gaussians_per_node=ng[0], n_levels=ng[1], partition_threshold=th, termination_criterion=terminator2, initialization_method=init, eps=eps, m_step_points_subbatchsize=10000, e_step_pair_subbatchsize=5120000))
-# generators = [
-#     EMGenerator(n_gaussians=128, initialization_method="fpsmax", termination_criterion=initterm, em_step_points_subbatchsize=10000, verbosity=0, eps=1e-5),
-#     EMGenerator(n_gaussians=128, initialization_method="fpsmax", termination_criterion=terminator2, em_step_points_subbatchsize=10000, verbosity=0, eps=1e-5),
-#     EMGenerator(n_gaussians=128, initialization_method="randnormpos", termination_criterion=terminator2, em_step_points_subbatchsize=10000, verbosity=0, eps=1e-5),
-#     EckartGeneratorSP(n_gaussians_per_node=5, n_levels=3, partition_threshold=0.1, termination_criterion=terminator2, initialization_method="fpsmax", eps=1e-5, m_step_points_subbatchsize=10000, e_step_pair_subbatchsize=5120000)
-# ]
+
+pre_combinations = [(ng, alpha, fdist, orph) for orph in vals_avoidorphans for fdist in vals_fixeddist for alpha in vals_alpha for ng in vals_n_gaussians]
+for (ng, alpha, fdist, orph) in pre_combinations:
+    generators.append(PreinerGenerator(alpha=alpha, fixeddist=fdist, ngaussians=ng, avoidorphansmode=orph))
 
 n_fit_points = 10000
 n_eval_points_density = 1000000
@@ -102,6 +102,11 @@ while dataset_fit.has_next():
                                    generators[j]._n_gaussians_per_node, generators[j]._n_levels,
                                    str(generators[j]._termination_criterion), generators[j]._initialization_method,
                                    "float32", generators[j]._epsvar, True)
+        elif isinstance(generators[j], PreinerGenerator):
+            p = generators[j]._params
+            exists = dbaccess.has_preiner_run(names[0], n_fit_points, p.ngaussians, p.alpha, p.pointpos, p.stdev,
+                                              p.iso, p.inittype, p.knn, p.fixeddist, p.weighted, p.levels,
+                                              p.reductionfactor, p.ngaussians, p.avoidorphans)
         else:
             print("Unknown generator")
             exit(-1)
@@ -156,6 +161,13 @@ while dataset_fit.has_next():
                                                   generators[j]._epsvar, True)
             runid = dbaccess.insert_run(names[0], n_fit_points, generators[j]._n_gaussians_per_node ** generators[j]._n_levels,
                                     gmbatch.shape[2], "EckHP", eckid, (end - start))
+        elif isinstance(generators[j], PreinerGenerator):
+            p = generators[j]._params
+            preid = dbaccess.insert_options_preiner(p.alpha, p.pointpos, p.stdev, p.iso, p.inittype, p.knn, p.fixeddist,
+                                                    p.weighted, p.levels, p.reductionfactor, p.ngaussians,
+                                                    p.avoidorphans)
+            runid = dbaccess.insert_run(names[0], n_fit_points, p.ngaussians, gmbatch.shape[2], "Preiner", preid,
+                                        (end - start))
         else:
             print("Unknown generator")
             exit(-1)

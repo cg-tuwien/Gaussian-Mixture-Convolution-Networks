@@ -28,7 +28,7 @@ class PreinerGenerator(GMMGenerator):
                  levels: int = 20,
                  reductionfactor: float = 3,
                  ngaussians: int = 0,
-                 avoidorphans: bool = False,
+                 avoidorphansmode: int = 0,
                  verbosity: int = 2):
         # Creates a new PreinerGenerator
         # Parameters:
@@ -55,8 +55,10 @@ class PreinerGenerator(GMMGenerator):
         #   ngaussians: int
         #       Fixed Number of output Gaussians if desired, otherwise zero. If not zero, levels will be ignored, and
         #       chosen automatically.
-        #   avoidorphans: bool
-        #       Assigns each Child Gaussian to at least one parent
+        #   avoidorphans: int
+        #       0: Regular Mode
+        #       1: Assigns each Child Gaussian to at least one parent
+        #       2: As mode 0 but if convergence to desired number of gaussians is not possible, switches to one
         # Quantities described with '[in %bbd]' are given in percent of the input point cloud bounding box diagonal.
         #
         self._params = gms.Params()
@@ -71,7 +73,7 @@ class PreinerGenerator(GMMGenerator):
         self._params.levels = levels
         self._params.reductionfactor = reductionfactor
         self._params.ngaussians = ngaussians
-        self._params.avoidorphans = avoidorphans
+        self._params.avoidorphans = avoidorphansmode
         self._params.verbose = verbosity >= 2
         self._params.threads = multiprocessing.cpu_count()
         self._logger = None
