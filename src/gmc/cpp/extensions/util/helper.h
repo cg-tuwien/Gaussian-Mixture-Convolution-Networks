@@ -2,6 +2,7 @@
 #define HELPER_H
 
 #include "util/containers.h"
+#include "cuda_operations.h"
 
 namespace gpe {
 

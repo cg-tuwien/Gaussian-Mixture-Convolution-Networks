@@ -135,6 +135,14 @@ inline MixtureAndXesNs check_input_and_get_ns(torch::Tensor mixture, torch::Tens
     return {n_batch, n_layers, n_components, n_dims, n_batch_xes, n_layers_xes, n_xes};
 }
 
+inline torch::Tensor aabb_from_positions(const torch::Tensor& positions) {
+    using namespace torch::indexing;
+    const auto upper = std::get<0>(positions.max(-2));
+    const auto lower = std::get<0>(positions.min(-2));
+    const auto zeroes = torch::zeros({positions.size(0), positions.size(1), 4 - positions.size(3)}, torch::TensorOptions(positions.device()).dtype(positions.dtype()));
+    return torch::cat({upper, zeroes, lower, zeroes}, -1).contiguous();
+}
+
 } // namespace gpe
 
 #endif // GPE_UTIL_MIXTURE_H

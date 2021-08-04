@@ -163,6 +163,20 @@ __host__ __device__ __forceinline__ T atomicCAS(T *addr, T compare, T val) {
     return compare;
 #endif
 }
+
+
+
+__host__ __device__ __forceinline__
+int common_upper_bits(const uint32_t lhs, const uint32_t rhs) noexcept
+{
+    return gpe::clz(lhs ^ rhs);
 }
+__host__ __device__ __forceinline__
+int common_upper_bits(const uint64_t lhs, const uint64_t rhs) noexcept
+{
+    return gpe::clz(lhs ^ rhs);
+}
+
+} // namespace gpe
 
 #endif // CUDA_OPERATIONS_H

@@ -93,6 +93,7 @@ target_link_libraries(math PUBLIC OpenMP::OpenMP_CXX torch common)
 
 set(LBVH_HEADERS
     lbvh/aabb.h
+    lbvh/building.h
     lbvh/bvh.h
     lbvh/Config.h
     lbvh/morton_code.h
@@ -290,10 +291,12 @@ set(CONVOLUTION_FITTING_HEADERS
     convolution_fitting/implementation_template_externs.h
     convolution_fitting/implementation_backward.h
     convolution_fitting/implementation_forward.h
+    convolution_fitting/Tree.h
 )
 set(CONVOLUTION_FITTING_SOURCES
     convolution_fitting/bindings.cpp
     convolution_fitting/implementation_dispatch.cpp
+    convolution_fitting/Tree.cu
     convolution_fitting/implementation_forward_instances/template_instance_implementation_forward_1_float_2.cu
     convolution_fitting/implementation_forward_instances/template_instance_implementation_forward_1_float_3.cu
     convolution_fitting/implementation_forward_instances/template_instance_implementation_forward_1_double_2.cu

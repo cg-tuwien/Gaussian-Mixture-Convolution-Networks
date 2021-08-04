@@ -2,6 +2,8 @@
 #define COMMON_H
 
 #include <cuda_runtime.h>
+#include <cstdio>
+#include <cstdlib>
 
 // avoid unused warning
 #define GPE_UNUSED(x) (void)x;
@@ -9,7 +11,7 @@
 #if defined(GPE_NO_CUDA_ERROR_CHECKING) or defined(NDEBUG)
 #define GPE_CUDA_ASSERT(ans)
 #else
-#define GPE_CUDA_ASSERT(ans) { gpeGpuAssert((ans), __FILE__, __LINE__); }
+#define GPE_CUDA_ASSERT(ans) do { gpeGpuAssert((ans), __FILE__, __LINE__); } while(false)
 inline void gpeGpuAssert(cudaError_t code, const char *file, int line, bool abort=true)
 {
     if (code != cudaSuccess)

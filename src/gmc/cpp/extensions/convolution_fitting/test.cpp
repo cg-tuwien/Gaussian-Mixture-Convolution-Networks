@@ -55,7 +55,7 @@ torch::Tensor render(torch::Tensor mixture, const int resolution, const int n_ba
     return std::get<0>(evaluate_inversed::parallel_forward(mixture, xes)).cpu().view({n_batch, n_layers, resolution, resolution});
 }
 
-void show(torch::Tensor rendering, const int resolution, const int n_batch_limit) {
+void show(torch::Tensor rendering, const int resolution, const int n_batch_limit, const QString& name = "") {
     rendering = rendering.clone();
     const auto n_layers = gpe::n_layers(rendering);
     const auto n_batch = std::min(gpe::n_batch(rendering), n_batch_limit);
@@ -72,6 +72,7 @@ void show(torch::Tensor rendering, const int resolution, const int n_batch_limit
 
     QScrollArea* scrollarea = new QScrollArea();
     scrollarea->setWidget(myLabel);
+    scrollarea->setWindowTitle(name);
     scrollarea->show();
 }
 
@@ -101,9 +102,9 @@ int main(int argc, char *argv[]) {
 //            show(render(kernels, 128, LIMIT_N_BATCH), 128, LIMIT_N_BATCH);
 
             const auto reference = render(convolution::forward_impl(data, kernels), 128, LIMIT_N_BATCH);
-            show(reference, 128, LIMIT_N_BATCH);
+            show(reference, 128, LIMIT_N_BATCH, "reference");
             const auto fitting = render(convolution_fitting::forward_impl(data, kernels, {}).fitting, 128, LIMIT_N_BATCH);
-            show(fitting, 128, LIMIT_N_BATCH);
+            show(fitting, 128, LIMIT_N_BATCH, "fitting");
 
             const auto diff = fitting - reference;
             const auto mse = (diff * diff).mean().item();

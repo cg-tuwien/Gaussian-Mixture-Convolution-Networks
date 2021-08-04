@@ -10,6 +10,7 @@
 
 #include "cuda_qt_creator_definitinos.h"
 #include "hacked_accessor.h"
+#include "lbvh/building.h"
 #include "lbvh/morton_code.h"
 #include "math/symeig_detail.h"
 #include "math/symeig_cuda.h"
@@ -19,121 +20,6 @@
 
 namespace lbvh
 {
-namespace {
-inline torch::Tensor compute_aabb_whole(const torch::Tensor& aabbs) {
-    using namespace torch::indexing;
-    const auto upper = std::get<0>(aabbs.index({Ellipsis, Slice(None, 4)}).max(-2));
-    const auto lower = std::get<0>(aabbs.index({Ellipsis, Slice(4, None)}).min(-2));
-    return torch::cat({upper, lower}, -1).contiguous();
-}
-inline torch::Tensor compute_aabb_whole_from_positions(const torch::Tensor& positions) {
-    using namespace torch::indexing;
-    const auto upper = std::get<0>(positions.max(-2));
-    const auto lower = std::get<0>(positions.min(-2));
-    const auto zeroes = torch::zeros({positions.size(0), positions.size(1), 4 - positions.size(3)}, torch::TensorOptions(positions.device()).dtype(positions.dtype()));
-    return torch::cat({upper, zeroes, lower, zeroes}, -1).contiguous();
-}
-}
-
-namespace kernels
-{
-
-template<typename UInt>
-__host__ __device__
-inline uint2 determine_range(UInt const* node_code, const unsigned int num_leaves, unsigned int idx)
-{
-    if(idx == 0)
-    {
-        return make_uint2(0, num_leaves-1);
-    }
-
-    // determine direction of the range
-    const UInt self_code = node_code[idx];
-    const int L_delta = common_upper_bits(self_code, node_code[idx-1]);
-    const int R_delta = common_upper_bits(self_code, node_code[idx+1]);
-    const int d = (R_delta > L_delta) ? 1 : -1;
-
-    // Compute upper bound for the length of the range
-    const int delta_min = gpe::min(L_delta, R_delta);
-    int l_max = 2;
-    int delta = -1;
-    int i_tmp = idx + d * l_max;
-    if(0 <= i_tmp && i_tmp < num_leaves)
-    {
-        delta = common_upper_bits(self_code, node_code[i_tmp]);
-    }
-    while(delta > delta_min)
-    {
-        l_max <<= 1;
-        i_tmp = idx + d * l_max;
-        delta = -1;
-        if(0 <= i_tmp && i_tmp < num_leaves)
-        {
-            delta = common_upper_bits(self_code, node_code[i_tmp]);
-        }
-    }
-
-    // Find the other end by binary search
-    int l = 0;
-    int t = l_max >> 1;
-    while(t > 0)
-    {
-        i_tmp = idx + (l + t) * d;
-        delta = -1;
-        if(0 <= i_tmp && i_tmp < num_leaves)
-        {
-            delta = common_upper_bits(self_code, node_code[i_tmp]);
-        }
-        if(delta > delta_min)
-        {
-            l += t;
-        }
-        t >>= 1;
-    }
-    unsigned int jdx = idx + l * d;
-    if(d < 0)
-    {
-        gpe::swap(idx, jdx); // make it sure that idx < jdx
-    }
-    return make_uint2(idx, jdx);
-}
-
-template<typename UInt>
-__host__ __device__
-inline unsigned int find_split(UInt const* node_code, const unsigned int num_leaves,
-               const unsigned int first, const unsigned int last) noexcept
-{
-    const UInt first_code = node_code[first];
-    const UInt last_code  = node_code[last];
-    if (first_code == last_code)
-    {
-        return (first + last) >> 1;
-    }
-    const int delta_node = common_upper_bits(first_code, last_code);
-
-    // binary search...
-    int split  = first;
-    int stride = last - first;
-    do
-    {
-        stride = (stride + 1) >> 1;
-        const int middle = split + stride;
-        if (middle < last)
-        {
-            const int delta = common_upper_bits(first_code, node_code[middle]);
-            if (delta > delta_node)
-            {
-                split = middle;
-            }
-        }
-    }
-    while(stride > 1);
-
-    return split;
-}
-
-} // namespace kernels
-
 template<int N_DIMS, typename scalar_t>
 void Bvh<N_DIMS, scalar_t>::construct()
 {
@@ -188,8 +74,7 @@ void Bvh<N_DIMS, scalar_t>::construct()
         watch_stop("compute_aabbs");
     }
 
-//    aabb_whole = compute_aabb_whole(object_aabbs);    // previous, discretisation of positions is less precise due to larger box.
-    aabb_whole = compute_aabb_whole_from_positions(gpe::positions(m_mixture));
+    aabb_whole = gpe::aabb_from_positions(gpe::positions(m_mixture));
     watch_stop("compute_aabb_whole");
 //    std::cout << "aabb_whole:" << aabb_whole << std::endl;
 
@@ -234,7 +119,7 @@ void Bvh<N_DIMS, scalar_t>::construct()
         watch_stop("assemble aabb array");
     }
     else {
-        morton_codes = sort_morton_codes(morton_codes);
+        morton_codes = lbvh::sort_morton_codes<morton_cuda_t, morton_torch_t>(morton_codes);
         watch_stop("sort_morton_codes");
     }
 
@@ -484,62 +369,6 @@ std::tuple<at::Tensor, at::Tensor> Bvh<N_DIMS, scalar_t>::sort_morton_codes(cons
     return std::make_tuple(sorted_morton_codes, sorted_aabbs);
 }
 
-template<int N_DIMS, typename scalar_t>
-at::Tensor Bvh<N_DIMS, scalar_t>::sort_morton_codes(const at::Tensor& morton_codes) const {
-    int num_segments = m_n.batch * m_n.layers;                    // e.g., 4
-    int num_components = m_n.components;                          // 2
-    auto sorted_morton_codes = morton_codes.clone();
-    const morton_cuda_t* d_keys_in = reinterpret_cast<const morton_cuda_t*>(morton_codes.data_ptr<morton_torch_t>());   // e.g., [8, 6, 7, 5, 3, 0, 9, 8]
-    morton_cuda_t* d_keys_out = reinterpret_cast<morton_cuda_t*>(sorted_morton_codes.data_ptr<morton_torch_t>());       // e.g., [-, -, -, -, -, -, -, -]
-
-    if (morton_codes.is_cuda()) {
-        // Declare, allocate, and initialize device-accessible pointers for sorting data
-        int num_items = int(morton_codes.numel());                         // e.g., 8
-        const auto offsets = torch::arange(0, num_segments + 1, torch::TensorOptions(morton_codes.device()).dtype(torch::ScalarType::Int)) * num_components;
-        //        std::cout << "offsets: " << offsets << std::endl;
-        int* d_offsets = offsets.data_ptr<int>();                           // e.g., [0, 2, 4, 6, 8]
-
-        // Determine temporary device storage requirements
-        void     *d_temp_storage = nullptr;
-        size_t   temp_storage_bytes = 0;
-        cub::DeviceSegmentedRadixSort::SortKeys(
-            d_temp_storage, temp_storage_bytes,
-            d_keys_in, d_keys_out,
-            num_items, num_segments,
-            d_offsets, d_offsets + 1);
-
-        GPE_CUDA_ASSERT(cudaPeekAtLastError());
-        GPE_CUDA_ASSERT(cudaDeviceSynchronize());
-
-        // Allocate temporary storage
-        cudaMalloc(&d_temp_storage, temp_storage_bytes);
-
-        GPE_CUDA_ASSERT(cudaPeekAtLastError());
-        GPE_CUDA_ASSERT(cudaDeviceSynchronize());
-        // Run sorting operation
-        cub::DeviceSegmentedRadixSort::SortKeys(
-            d_temp_storage, temp_storage_bytes,
-            d_keys_in, d_keys_out,
-            num_items, num_segments,
-            d_offsets, d_offsets + 1);
-        // d_keys_out            <-- [6, 8, 5, 7, 0, 3, 8, 9]
-        // d_values_out          <-- [1, 0, 3, 2, 5, 4, 7, 6]
-
-        GPE_CUDA_ASSERT(cudaPeekAtLastError());
-        GPE_CUDA_ASSERT(cudaDeviceSynchronize());
-
-        cudaFree(d_temp_storage);
-    }
-    else {
-        // this is most likely not the fastest possible solution, but quick to implement and only cpu code and not perf bottleneck to my knowledge (test if in doubt!)
-        #pragma omp parallel for num_threads(omp_get_num_procs())
-        for (int i = 0; i < num_segments; ++i) {
-            std::sort(d_keys_out + i*num_components, d_keys_out + (i + 1) * num_components);
-        }
-    }
-
-    return sorted_morton_codes;
-}
 
 template<int N_DIMS, typename scalar_t>
 at::Tensor Bvh<N_DIMS, scalar_t>::create_leaf_nodes(const at::Tensor& morton_codes) {
@@ -570,7 +399,7 @@ at::Tensor Bvh<N_DIMS, scalar_t>::create_leaf_nodes(const at::Tensor& morton_cod
 
         const auto& morton_code = reinterpret_cast<const morton_cuda_t&>(morton_codes_a[mixture_id][component_id]);
         auto& node = reinterpret_cast<detail::Node&>(nodes_a[mixture_id][component_id][0]);
-        node.object_idx = lbvh::detail::Node::index_type(morton_code); // imo the cast will cut away the morton code. no need for "& 0xfffffff" // uint32_t(morton_code & 0xffffffff);
+        node.object_idx = lbvh::detail::Node::index_type(morton_code); // imo the cast will cut away the morton code. no need for "& 0xfffffff" // was uint32_t(morton_code & 0xffffffff);
     };
     gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(m_mixture), dimGrid, dimBlock, fun);
     return morton_codes;

@@ -87,6 +87,49 @@
 
 namespace gpe {
 
+template<typename T>
+struct TorchTypeMapper;
+
+template<>
+struct TorchTypeMapper<int16_t> {
+    static inline constexpr torch::ScalarType id() { return torch::ScalarType::Short; }
+};
+
+template<>
+struct TorchTypeMapper<int32_t> {
+    static inline constexpr torch::ScalarType id() { return torch::ScalarType::Int; }
+};
+
+template<>
+struct TorchTypeMapper<int64_t> {
+    static inline constexpr torch::ScalarType id() { return torch::ScalarType::Long; }
+};
+
+template<>
+struct TorchTypeMapper<uint16_t> {
+    static inline constexpr torch::ScalarType id() { return torch::ScalarType::Short; }
+};
+
+template<>
+struct TorchTypeMapper<uint32_t> {
+    static inline constexpr torch::ScalarType id() { return torch::ScalarType::Int; }
+};
+
+template<>
+struct TorchTypeMapper<uint64_t> {
+    static inline constexpr torch::ScalarType id() { return torch::ScalarType::Long; }
+};
+
+template<>
+struct TorchTypeMapper<float> {
+    static inline constexpr torch::ScalarType id() { return torch::ScalarType::Float; }
+};
+
+template<>
+struct TorchTypeMapper<double> {
+    static inline constexpr torch::ScalarType id() { return torch::ScalarType::Double; }
+};
+
 template <typename T>
 struct RestrictPtrTraits {
     typedef T* __restrict__ PtrType;
@@ -295,16 +338,42 @@ template <typename T, size_t N, template <typename U> class PtrTraits = Restrict
 using PackedTensorAccessor64 = GenericPackedTensorAccessor<T, N, PtrTraits, int64_t>;
 
 
-template<typename scalar_t, size_t N>
+//template<typename scalar_t, size_t N>
+//C10_HOST auto accessor(const torch::Tensor& tensor) {
+//    auto torch_accessor = tensor.packed_accessor32<scalar_t, N, gpe::RestrictPtrTraits>();
+//    return PackedTensorAccessor32<scalar_t, N, gpe::RestrictPtrTraits>(*reinterpret_cast<PackedTensorAccessor32<scalar_t, N, gpe::RestrictPtrTraits>*>(&torch_accessor));
+//}
+
+template<typename scalar_t, size_t N, typename tensor_type>
 C10_HOST auto accessor(const torch::Tensor& tensor) {
-    auto torch_accessor = tensor.packed_accessor32<scalar_t, N, gpe::RestrictPtrTraits>();
+    assert(sizeof (scalar_t) == sizeof (tensor_type));
+    auto torch_accessor = tensor.packed_accessor32<tensor_type, N, gpe::RestrictPtrTraits>();
+//
+//    return PackedTensorAccessor32<scalar_t, N, gpe::RestrictPtrTraits>(reinterpret_cast<scalar_t*>(torch_accessor.data()), sizes.data(), strides.data());
+//
     return PackedTensorAccessor32<scalar_t, N, gpe::RestrictPtrTraits>(*reinterpret_cast<PackedTensorAccessor32<scalar_t, N, gpe::RestrictPtrTraits>*>(&torch_accessor));
 }
+
+template<typename scalar_t, size_t N>
+C10_HOST auto accessor(const torch::Tensor& tensor) {
+    switch (tensor.scalar_type()) {
+    #define DEFINE_SWITCH(_TYPE, _VALUE) \
+        case torch::ScalarType::_VALUE: \
+        return accessor<scalar_t, N, _TYPE>(tensor); \
+
+    AT_FORALL_SCALAR_TYPES(DEFINE_SWITCH)
+    #undef DEFINE_SWITCH
+    default:
+        assert(false);
+        return accessor<scalar_t, N, uint8_t>(tensor);
+    }
+}
+
 template<typename struct_t, size_t N, typename tensor_type>
 C10_HOST auto struct_accessor(const torch::Tensor& tensor) {
     static_assert(sizeof(struct_t) % sizeof(tensor_type) == 0, "struct_t size must be divisible by tensor_type size");
-    assert(tensor.dim() == N + 1);
     assert(tensor.dtype().itemsize() == sizeof(tensor_type));
+    assert(tensor.dim() == N + 1);
     assert(tensor.size(-1) == sizeof(struct_t) / sizeof(tensor_type));
     auto torch_accessor = tensor.packed_accessor32<tensor_type, N + 1, gpe::RestrictPtrTraits>();
     assert(torch_accessor.stride(N) == 1);
@@ -319,6 +388,21 @@ C10_HOST auto struct_accessor(const torch::Tensor& tensor) {
     }
 
     return PackedTensorAccessor32<struct_t, N, gpe::RestrictPtrTraits>(reinterpret_cast<struct_t*>(torch_accessor.data()), sizes.data(), strides.data());
+}
+
+template<typename struct_t, size_t N>
+C10_HOST auto struct_accessor(const torch::Tensor& tensor) {
+    switch (tensor.scalar_type()) {
+    #define DEFINE_SWITCH(_TYPE, _VALUE) \
+        case torch::ScalarType::_VALUE: \
+        return struct_accessor<struct_t, N, _TYPE>(tensor); \
+
+    AT_FORALL_SCALAR_TYPES(DEFINE_SWITCH)
+    #undef DEFINE_SWITCH
+    default:
+        assert(false);
+        return struct_accessor<struct_t, N, uint8_t>(tensor);
+    }
 }
 
 template<typename data_t, size_t N, typename index_t = int32_t>

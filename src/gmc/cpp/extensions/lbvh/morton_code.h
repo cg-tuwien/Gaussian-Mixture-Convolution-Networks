@@ -1,18 +1,78 @@
 #ifndef LBVH_MORTON_CODE_H
 #define LBVH_MORTON_CODE_H
 #include <vector_types.h>
-#include <cuda_runtime.h>
 #include <cstdint>
 
-#include "util/glm.h"
+#include <omp.h>
 
-#include "util/scalar.h"
+#include <cuda_runtime.h>
+#include <cub/device/device_segmented_radix_sort.cuh>
+#include <torch/types.h>
+
 #include "cuda_operations.h"
-
-#define EXECUTION_DEVICES __host__ __device__ __forceinline__
+#include "util/glm.h"
+#include "util/scalar.h"
+#include "common.h"
 
 namespace lbvh
 {
+
+template<typename morton_cuda_t, typename morton_torch_t>
+torch::Tensor sort_morton_codes(const torch::Tensor& morton_codes) {
+    const int num_segments = [&](){ int n_segments = 1; for (unsigned i = 0; i < morton_codes.dim() - 1; ++i) n_segments *= morton_codes.sizes()[i]; return n_segments;}();                    // e.g., 4
+    const int num_components = morton_codes.size(-1);                          // 2
+    auto sorted_morton_codes = morton_codes.clone();
+    const morton_cuda_t* d_keys_in = reinterpret_cast<const morton_cuda_t*>(morton_codes.data_ptr<morton_torch_t>());   // e.g., [8, 6, 7, 5, 3, 0, 9, 8]
+    morton_cuda_t* d_keys_out = reinterpret_cast<morton_cuda_t*>(sorted_morton_codes.data_ptr<morton_torch_t>());       // e.g., [-, -, -, -, -, -, -, -]
+
+    if (morton_codes.is_cuda()) {
+        // Declare, allocate, and initialize device-accessible pointers for sorting data
+        int num_items = int(morton_codes.numel());                         // e.g., 8
+        const torch::Tensor offsets = torch::arange(0, num_segments + 1, torch::TensorOptions(morton_codes.device()).dtype(torch::ScalarType::Int)) * num_components;
+        //        std::cout << "offsets: " << offsets << std::endl;
+        int* d_offsets = offsets.data_ptr<int>();                           // e.g., [0, 2, 4, 6, 8]
+
+        // Determine temporary device storage requirements
+        void     *d_temp_storage = nullptr;
+        size_t   temp_storage_bytes = 0;
+        cub::DeviceSegmentedRadixSort::SortKeys(
+            d_temp_storage, temp_storage_bytes,
+            d_keys_in, d_keys_out,
+            num_items, num_segments,
+            d_offsets, d_offsets + 1);
+
+        GPE_CUDA_ASSERT(cudaPeekAtLastError());
+        GPE_CUDA_ASSERT(cudaDeviceSynchronize());
+
+        // Allocate temporary storage
+        cudaMalloc(&d_temp_storage, temp_storage_bytes);
+
+        GPE_CUDA_ASSERT(cudaPeekAtLastError());
+        GPE_CUDA_ASSERT(cudaDeviceSynchronize());
+        // Run sorting operation
+        cub::DeviceSegmentedRadixSort::SortKeys(
+            d_temp_storage, temp_storage_bytes,
+            d_keys_in, d_keys_out,
+            num_items, num_segments,
+            d_offsets, d_offsets + 1);
+        // d_keys_out            <-- [6, 8, 5, 7, 0, 3, 8, 9]
+        // d_values_out          <-- [1, 0, 3, 2, 5, 4, 7, 6]
+
+        GPE_CUDA_ASSERT(cudaPeekAtLastError());
+        GPE_CUDA_ASSERT(cudaDeviceSynchronize());
+
+        cudaFree(d_temp_storage);
+    }
+    else {
+        // this is most likely not the fastest possible solution, but quick to implement and only cpu code and not perf bottleneck to my knowledge (test if in doubt!)
+        #pragma omp parallel for num_threads(omp_get_num_procs())
+        for (int i = 0; i < num_segments; ++i) {
+            std::sort(d_keys_out + i*num_components, d_keys_out + (i + 1) * num_components);
+        }
+    }
+
+    return sorted_morton_codes;
+}
 
 EXECUTION_DEVICES
 constexpr std::uint32_t expand_bits3(std::uint32_t v) noexcept
@@ -217,17 +277,6 @@ std::uint64_t morton_code(uint16_t component_id, const glm::vec<3, scalar_t>& po
         assert(false);
         return 0;
     }
-}
-
-EXECUTION_DEVICES
-int common_upper_bits(const uint32_t lhs, const uint32_t rhs) noexcept
-{
-    return gpe::clz(lhs ^ rhs);
-}
-EXECUTION_DEVICES
-int common_upper_bits(const uint64_t lhs, const uint64_t rhs) noexcept
-{
-    return gpe::clz(lhs ^ rhs);
 }
 
 } // lbvh
