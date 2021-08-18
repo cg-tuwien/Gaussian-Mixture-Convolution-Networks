@@ -51,6 +51,8 @@ ForwardOutput forward_impl_t(const torch::Tensor& data, const torch::Tensor& ker
     // - gradient for fitting alone (tests only)
     // - merge and test. [we have no trickle down now, yey.]
 
+    using TreeType = Tree<scalar_t, N_DIMS>;
+
 
     const auto n = gpe::get_ns(data);
     const auto kernel_n = gpe::get_ns(kernels);
@@ -70,7 +72,7 @@ ForwardOutput forward_impl_t(const torch::Tensor& data, const torch::Tensor& ker
     const auto data_a = gpe::struct_accessor<typename gpe::Gaussian<N_DIMS, scalar_t>, 3, scalar_t>(data);
     const auto kernel_a = gpe::struct_accessor<typename gpe::Gaussian<N_DIMS, scalar_t>, 3, scalar_t>(kernels);
 
-    Tree<scalar_t, N_DIMS> tree(data, kernels, config);
+    TreeType tree(data, kernels, config);
 
 
 //    const auto n_mixtures = n.batch * n.layers;
@@ -89,7 +91,7 @@ ForwardOutput forward_impl_t(const torch::Tensor& data, const torch::Tensor& ker
 
 
     auto out_mixture = torch::empty({n.batch, n_channels_out, n_target_components, data.size(-1)}, torch::TensorOptions(data.device()).dtype(data.dtype()));
-//    auto out_mixture_a = gpe::struct_accessor<gpe::Gaussian<N_DIMS, scalar_t>, 3, scalar_t>(out_mixture);
+    auto out_mixture_a = gpe::struct_accessor<gpe::Gaussian<N_DIMS, scalar_t>, 3, scalar_t>(out_mixture);
 
 //    std::cout << "n_target_components: " << n_target_components << std::endl;
 //    std::cout << "n.batch: " << n.batch << std::endl;
@@ -98,49 +100,48 @@ ForwardOutput forward_impl_t(const torch::Tensor& data, const torch::Tensor& ker
 //    std::cout << "kernel_n.components: " << kernel_n.components << std::endl;
 //    std::cout << "n.components: " << n.components << std::endl;
 
+    auto nodes_a = gpe::struct_accessor<typename TreeType::Node, 3>(tree.m_nodes);
 
+    dim3 dimBlock = dim3(256, 1, 1);
+    dim3 dimGrid = dim3((unsigned(n_target_components) + dimBlock.x - 1) / dimBlock.x,
+                        (unsigned(n.batch) + dimBlock.y - 1) / dimBlock.y,
+                        (unsigned(n_channels_out) + dimBlock.z - 1) / dimBlock.z);
 
+    gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(data), dimGrid, dimBlock, [data_a, kernel_a, out_mixture_a, nodes_a, tree, n_channels_in, n_channels_out, kernel_n, n, n_target_components] __host__ __device__
+                                                  (const dim3& gpe_gridDim, const dim3& gpe_blockDim, const dim3& gpe_blockIdx, const dim3& gpe_threadIdx) mutable {
 
+        // index might not fit into 32 bit, i.e. when n.components == 1 << 17, n_feature_maps_in == 1 << 12 and kernel_n.components == 1 << 4
+        // however, such large datasets would be infeasable anyways. i.e., if we have (1<<32) output components, then the morton code array alone takes 8 GB. For one output feature map. For one batch dimension.
+        // Sorting alone would probably take too long.
+        assert(uint64_t(gpe_blockIdx.x) * uint64_t(gpe_blockDim.x) + uint64_t(gpe_threadIdx.x) < (1ull << 32));
+        const unsigned component_out_id = gpe_blockIdx.x * gpe_blockDim.x + gpe_threadIdx.x;
+        if (component_out_id >= n_target_components)
+            return;
 
+//        printf("component_out_id: %d\n", component_out_id);
+        const unsigned batch_id = gpe_blockIdx.y * gpe_blockDim.y + gpe_threadIdx.y;
+        const unsigned channel_out_id = gpe_blockIdx.z * gpe_blockDim.z + gpe_threadIdx.z;
+        const typename TreeType::Node& leaf_node = nodes_a[batch_id][channel_out_id][tree.n_internal_nodes + component_out_id];
 
+        const auto gaussian_indices = gpe::split_n_dim_index<uint32_t, 3, unsigned>({unsigned(n.components), unsigned(n_channels_in), unsigned(kernel_n.components)}, leaf_node.object_idx);
+        const unsigned& component_in_id = gaussian_indices[0];
+        const unsigned& channel_in_id = gaussian_indices[1];
+        const unsigned& component_kernel_id = gaussian_indices[2];
 
-//    auto nodes_a = gpe::accessor<lbvh::detail::Node::index_type_torch, 3>(flat_bvh_nodes);
-//    auto node_attributes_a = gpe::struct_accessor<typename AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>::NodeAttributes, 2, uint8_t>(node_attributes);
+        assert(batch_id < n.batch);
+        assert(channel_in_id < n_channels_in);
+        assert(channel_out_id < n_channels_out);
+        assert(component_in_id < n.components);
+        assert(component_out_id < n_target_components);
+        assert(component_kernel_id < kernel_n.components);
 
-//    {
-//        dim3 dimBlock = dim3(32, 1, 1);
-//        dim3 dimGrid = dim3(uint(1),
-//                            (uint(n_mixtures) + dimBlock.y - 1) / dimBlock.y,
-//                            (uint(1) + dimBlock.z - 1) / dimBlock.z);
+        const auto& data_gaussian = data_a[batch_id][channel_in_id][component_in_id];
+        const auto& kernel_gaussian = kernel_a[channel_out_id][channel_in_id][component_kernel_id];
 
-//        auto fun = [mixture_a, nodes_a, flags_a, node_attributes_a, n, n_mixtures, n_internal_nodes, n_nodes, config] __host__ __device__
-//                (const dim3& gpe_gridDim, const dim3& gpe_blockDim, const dim3& gpe_blockIdx, const dim3& gpe_threadIdx) {
-//            iterate_over_nodes<scalar_t, N_DIMS, REDUCTION_N>(gpe_gridDim, gpe_blockDim, gpe_blockIdx, gpe_threadIdx,
-//                                                              mixture_a, nodes_a, flags_a, node_attributes_a,
-//                                                              n, n_mixtures, n_internal_nodes, n_nodes,
-//                                                              config);
-//        };
-//        gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(mixture), dimGrid, dimBlock, fun);
-//    }
+        out_mixture_a[int(batch_id)][int(channel_out_id)][int(component_out_id)] = convolve(data_gaussian, kernel_gaussian);
+//        printf("b: %d, ch o: %d, cmp o: %d, cmp i: %d, ch i: %d, k i: %d\n", batch_id, channel_out_id, component_out_id, component_in_id, channel_in_id, component_kernel_id);
 
-//    auto out_mixture = torch::empty({n_mixtures, config.n_components_fitting, mixture.size(-1)}, torch::TensorOptions(mixture.device()).dtype(mixture.dtype()));
-//    auto out_mixture_a = gpe::struct_accessor<gpe::Gaussian<N_DIMS, scalar_t>, 2, scalar_t>(out_mixture);
-
-//    // make it valid, in case something doesn't get filled (due to an inbalance of the tree or just not enough elements)
-//    {
-//        dim3 dimBlock = dim3(32, 1, 1);
-//        dim3 dimGrid = dim3((uint(n_mixtures) + dimBlock.x - 1) / dimBlock.x, 1, 1);
-
-//        auto fun = [mixture_a, out_mixture_a, nodes_a, flags_a, node_attributes_a, n, n_mixtures, n_internal_nodes, n_nodes, config]
-//                __host__ __device__
-//                (const dim3& gpe_gridDim, const dim3& gpe_blockDim, const dim3& gpe_blockIdx, const dim3& gpe_threadIdx) {
-//            collect_result<scalar_t, N_DIMS, REDUCTION_N>(gpe_gridDim, gpe_blockDim, gpe_blockIdx, gpe_threadIdx,
-//                                                          mixture_a, out_mixture_a, nodes_a, flags_a, node_attributes_a,
-//                                                          n, n_mixtures, n_internal_nodes, n_nodes,
-//                                                          config);
-//        };
-//        gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(mixture), dimGrid, dimBlock, fun);
-//    }
+    });
 
     return ForwardOutput{out_mixture};
 }

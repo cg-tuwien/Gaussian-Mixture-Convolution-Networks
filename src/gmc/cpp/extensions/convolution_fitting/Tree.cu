@@ -39,11 +39,11 @@ at::Tensor convolution_fitting::Tree<scalar_t, N_DIMS>::aabb_from_positions(cons
     const auto data_lower = std::get<0>(data_positions.min(-2));
     const auto kernel_upper = std::get<0>(kernel_positions.max(-2));
     const auto kernel_lower = std::get<0>(kernel_positions.min(-2));
-    const auto upper = data_upper.view({n.batch, 1, n_channels_in * n.components, -1}) + kernel_upper.view({1, n_channels_out, n_channels_in * kernel_n.components, -1});
-    const auto lower = data_lower.view({n.batch, 1, n_channels_in * n.components, -1}) + kernel_lower.view({1, n_channels_out, n_channels_in * kernel_n.components, -1});
+    const auto upper = data_upper.view({n.batch, 1, n_channels_in, -1}) + kernel_upper.view({1, n_channels_out, n_channels_in, -1});
+    const auto lower = data_lower.view({n.batch, 1, n_channels_in, -1}) + kernel_lower.view({1, n_channels_out, n_channels_in, -1});
     const auto upper_upper = std::get<0>(upper.max(2));
     const auto lower_lower = std::get<0>(lower.min(2));
-    const auto zeroes = torch::zeros({upper_upper.size(0), upper_upper.size(1), 4 - upper_upper.size(3)}, torch::TensorOptions(upper_upper.device()).dtype(upper_upper.dtype()));
+    const auto zeroes = torch::zeros({upper_upper.size(0), upper_upper.size(1), 4 - upper_upper.size(2)}, torch::TensorOptions(upper_upper.device()).dtype(upper_upper.dtype()));
     return torch::cat({upper_upper, zeroes, lower_lower, zeroes}, -1).contiguous();
 }
 
@@ -52,7 +52,7 @@ at::Tensor convolution_fitting::Tree<scalar_t, N_DIMS>::compute_morton_codes(con
     const auto data_a = gpe::struct_accessor<typename gpe::Gaussian<N_DIMS, scalar_t>, 3, scalar_t>(data);
     const auto kernel_a = gpe::struct_accessor<typename gpe::Gaussian<N_DIMS, scalar_t>, 3, scalar_t>(kernels);
 
-    auto morton_codes = torch::empty({n_channels_out, n.batch, n_target_components}, torch::TensorOptions(data.device()).dtype(torch::ScalarType::Long));
+    auto morton_codes = torch::empty({n.batch, n_channels_out, n_target_components}, torch::TensorOptions(data.device()).dtype(torch::ScalarType::Long));
     auto morton_codes_a = gpe::accessor<uint64_t, 3>(morton_codes);
     const auto aabbs = aabb_from_positions(gpe::positions(data), gpe::positions(kernels));
 
@@ -110,10 +110,10 @@ at::Tensor convolution_fitting::Tree<scalar_t, N_DIMS>::compute_morton_codes(con
 template<typename scalar_t, unsigned N_DIMS>
 at::Tensor convolution_fitting::Tree<scalar_t, N_DIMS>::create_tree_nodes(const at::Tensor& morton_codes) const {
     using namespace torch::indexing;
-    auto n_mixtures = n.batch * n.layers;
+    auto n_mixtures = unsigned(n.batch) * n_channels_out;
 
     // no support for negative slicing indexes at the time of writing v
-    auto nodes = torch::ones({n.batch, n.layers, n_nodes, 4}, torch::TensorOptions(morton_codes.device()).dtype(gpe::TorchTypeMapper<index_type>::id())) * -1;
+    auto nodes = torch::ones({n.batch, n_channels_out, n_nodes, 4}, torch::TensorOptions(morton_codes.device()).dtype(gpe::TorchTypeMapper<index_type>::id())) * -1;
     const auto morton_codes_view = morton_codes.view({n_mixtures, n_leaf_nodes});
     const auto morton_codes_a = gpe::accessor<uint64_t, 2>(morton_codes_view);
 
@@ -123,7 +123,7 @@ at::Tensor convolution_fitting::Tree<scalar_t, N_DIMS>::create_tree_nodes(const 
         auto nodes_a = gpe::struct_accessor<Node, 2>(nodes_view);
         dim3 dimBlock = dim3(1, 128, 1);
         dim3 dimGrid = dim3((unsigned(n_mixtures) + dimBlock.x - 1) / dimBlock.x,
-                            (unsigned(n_target_components) + dimBlock.y - 1) / dimBlock.y);
+                            (unsigned(n_leaf_nodes) + dimBlock.y - 1) / dimBlock.y);
 
         auto fun = [morton_codes_a, nodes_a, n_mixtures, this] __host__ __device__
                 (const dim3& gpe_gridDim, const dim3& gpe_blockDim, const dim3& gpe_blockIdx, const dim3& gpe_threadIdx) mutable {
@@ -131,7 +131,7 @@ at::Tensor convolution_fitting::Tree<scalar_t, N_DIMS>::create_tree_nodes(const 
 
                     const auto mixture_id = int(gpe_blockIdx.x * gpe_blockDim.x + gpe_threadIdx.x);
             const auto component_id = int(gpe_blockIdx.y * gpe_blockDim.y + gpe_threadIdx.y);
-            if (mixture_id >= n_mixtures || component_id >= n_target_components)
+            if (mixture_id >= n_mixtures || component_id >= n_leaf_nodes)
                 return;
 
             const auto& morton_code = morton_codes_a[mixture_id][component_id];
