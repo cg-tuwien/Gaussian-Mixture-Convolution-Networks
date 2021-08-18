@@ -155,6 +155,18 @@ std::uint32_t morton_code(const glm::vec<3, scalar_t>& vec, uint32_t resolution 
     return (xx << 2) + (yy << 1) + zz;
 }
 
+template<typename scalar_t>
+EXECUTION_DEVICES
+// 2 left most bits are 0
+// todo: could be optimised, expand only 2..
+std::uint32_t morton_code(const glm::vec<2, scalar_t>& vec, uint32_t resolution = 1024) noexcept {
+    uint32_t x = gpe::min(gpe::max(uint32_t(vec.x * resolution), 0u), resolution - 1);
+    uint32_t y = gpe::min(gpe::max(uint32_t(vec.y * resolution), 0u), resolution - 1);
+    auto xx = expand_bits3(x);
+    auto yy = expand_bits3(y);
+    return (xx << 2) + (yy << 1);
+}
+
 EXECUTION_DEVICES
 constexpr std::uint64_t mix_Cov1_12p36pc16i(uint32_t morton_pos, uint32_t morton_cov, uint16_t component_id) noexcept {
     assert((morton_pos & 0x3fff'fffful) == morton_pos);
