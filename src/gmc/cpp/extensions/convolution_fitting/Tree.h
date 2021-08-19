@@ -1,33 +1,10 @@
 #ifndef CONVOLUTION_FITTING_TREE_H
 #define CONVOLUTION_FITTING_TREE_H
 
-#include "convolution_fitting/implementation.h"
-#include <stdio.h>
-#include <type_traits>
-
-#include <cuda.h>
-#include <cuda_runtime.h>
 #include <torch/types.h>
 
-#include "convolution_fitting/implementation_common.h"
-#include "convolution_fitting/Config.h"
-#include "common.h"
-#include "cuda_qt_creator_definitinos.h"
-#include "cuda_operations.h"
-#include "hacked_accessor.h"
-#include "lbvh/building.h"
-#include "lbvh/morton_code.h"
-#include "util/glm.h"
-#include "util/scalar.h"
-#include "util/algorithms.h"
-#include "util/autodiff.h"
-#include "util/containers.h"
-#include "util/cuda.h"
-#include "util/gaussian.h"
-#include "util/gaussian_mixture.h"
-#include "util/helper.h"
 #include "util/mixture.h"
-#include "parallel_start.h"
+#include "convolution_fitting/Config.h"
 
 
 namespace convolution_fitting {
@@ -59,6 +36,12 @@ public:
         index_type right_idx;  // index of right child node
         index_type object_idx; // == 0xFFFFFFFF if internal node.
     };
+
+    struct NodeAttributes {
+        scalar_t mass;
+        index_type n_gaussians;
+    };
+
 
 
     Tree(const torch::Tensor& data, const torch::Tensor& kernels, const Config& config);

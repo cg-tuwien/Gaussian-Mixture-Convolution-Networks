@@ -371,7 +371,7 @@ C10_HOST auto accessor(const torch::Tensor& tensor) {
 
 template<typename struct_t, size_t N, typename tensor_type>
 C10_HOST auto struct_accessor(const torch::Tensor& tensor) {
-    static_assert(sizeof(struct_t) % sizeof(tensor_type) == 0, "struct_t size must be divisible by tensor_type size");
+    assert(sizeof(struct_t) % sizeof(tensor_type) == 0);
     assert(tensor.dtype().itemsize() == sizeof(tensor_type));
     assert(tensor.dim() == N + 1);
     assert(tensor.size(-1) == sizeof(struct_t) / sizeof(tensor_type));

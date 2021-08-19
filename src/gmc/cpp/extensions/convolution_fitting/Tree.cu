@@ -1,5 +1,28 @@
 #include "Tree.h"
+#include <stdio.h>
+#include <type_traits>
 
+#include <cuda.h>
+#include <cuda_runtime.h>
+#include <torch/types.h>
+
+#include "convolution_fitting/implementation_common.h"
+#include "convolution_fitting/Config.h"
+#include "common.h"
+#include "cuda_qt_creator_definitinos.h"
+#include "cuda_operations.h"
+#include "hacked_accessor.h"
+#include "lbvh/building.h"
+#include "lbvh/morton_code.h"
+#include "util/glm.h"
+#include "util/scalar.h"
+#include "util/algorithms.h"
+#include "util/containers.h"
+#include "util/cuda.h"
+#include "util/gaussian.h"
+#include "util/gaussian_mixture.h"
+#include "util/helper.h"
+#include "parallel_start.h"
 
 template<typename scalar_t, unsigned N_DIMS>
 convolution_fitting::Tree<scalar_t, N_DIMS>::Tree(const at::Tensor& data, const at::Tensor& kernels, const Config& config) : m_data(data), m_kernels(kernels), m_config(config) {
@@ -112,7 +135,6 @@ at::Tensor convolution_fitting::Tree<scalar_t, N_DIMS>::create_tree_nodes(const 
     using namespace torch::indexing;
     auto n_mixtures = unsigned(n.batch) * n_channels_out;
 
-    // no support for negative slicing indexes at the time of writing v
     auto nodes = torch::ones({n.batch, n_channels_out, n_nodes, 4}, torch::TensorOptions(morton_codes.device()).dtype(gpe::TorchTypeMapper<index_type>::id())) * -1;
     const auto morton_codes_view = morton_codes.view({n_mixtures, n_leaf_nodes});
     const auto morton_codes_a = gpe::accessor<uint64_t, 2>(morton_codes_view);

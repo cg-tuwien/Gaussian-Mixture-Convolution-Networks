@@ -83,13 +83,16 @@ int main(int argc, char *argv[]) {
     std::array<std::vector<torch::Tensor>, CONVOLUTION_LAYER_END - CONVOLUTION_LAYER_START> error_data;
     std::array<std::vector<std::chrono::milliseconds>, CONVOLUTION_LAYER_END - CONVOLUTION_LAYER_START> time_data;
 
+    convolution_fitting::Config config;
+    config.n_components_fitting = 8;
+
     for (uint b = 0; b < N_BATCHES; ++b) {
         torch::jit::script::Module container = torch::jit::load("/home/madam/Documents/work/tuw/gmc_net/data/mnist_intermediate_data/conv_inputs_" + std::to_string(b) + ".pt");
         auto list = container.attributes();
 
         for (uint l = CONVOLUTION_LAYER_START; l < CONVOLUTION_LAYER_END; l++) {
-            torch::Tensor data = container.attr("conv_layer_" + std::to_string(l) + "_data").toTensor();//.index({Slice(0, 1), Slice(0, 1), Slice(0, 5), Slice()});
-            torch::Tensor kernels = container.attr("conv_layer_" + std::to_string(l) + "_kernels").toTensor();//.index({Slice(0, 1), Slice(0, 1), Slice(0, 5), Slice()});
+            torch::Tensor data = container.attr("conv_layer_" + std::to_string(l) + "_data").toTensor().index({Slice(0, 1), Slice(0, 2), Slice(0, 5), Slice()}).contiguous();
+            torch::Tensor kernels = container.attr("conv_layer_" + std::to_string(l) + "_kernels").toTensor().index({Slice(0, 1), Slice(0, 2), Slice(0, 3), Slice()}).contiguous();
 //            auto mixture = torch::tensor({{0.02f, 0.f, 0.f, 1.01f, 1.f, 1.f, 1.0f},
 //                                          {0.02f, 5.f, 5.f, 1.01f, 0.5f, 0.5f, 4.0f}}).view({1, 1, 2, 7});
             if (USE_CUDA) {
@@ -103,7 +106,7 @@ int main(int argc, char *argv[]) {
 
             const auto reference = render(convolution::forward_impl(data, kernels), 128, LIMIT_N_BATCH);
             show(reference, 128, LIMIT_N_BATCH, "reference");
-            const auto fitting = render(convolution_fitting::forward_impl(data, kernels, {}).fitting, 128, LIMIT_N_BATCH);
+            const auto fitting = render(convolution_fitting::forward_impl(data, kernels, config).fitting, 128, LIMIT_N_BATCH);
             show(fitting, 128, LIMIT_N_BATCH, "fitting");
 
             const auto diff = fitting - reference;

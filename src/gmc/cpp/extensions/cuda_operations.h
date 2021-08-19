@@ -101,21 +101,6 @@ void swap(Assignable1 &a, Assignable2 &b)
     b = temp;
 }
 
-
-template <class T>
-__host__ __device__ __forceinline__ void atomicAdd(T *ptr, T val) {
-//    *ptr += val;
-//    return *ptr;
-#ifdef __CUDA_ARCH__
-    ::atomicAdd(ptr, val);
-#elif defined(_OPENMP)
-#pragma omp atomic
-    *ptr += val;
-#else
-#error "Requires OpenMP"
-#endif
-}
-
 /// sync_id is used only on cpu side, required to deal with spurious wakeups. every ballot_sync needs a unique sync_id (and mustn't be shared with other calls to syncthreads).
 __host__ __device__ __forceinline__ uint32_t ballot_sync(uint32_t mask, bool predicate, uint32_t thread_id, unsigned sync_id) {
 #ifdef __CUDA_ARCH__
@@ -164,6 +149,19 @@ __host__ __device__ __forceinline__ T atomicCAS(T *addr, T compare, T val) {
 #endif
 }
 
+template <class T>
+__host__ __device__ __forceinline__ T atomicAdd(T *ptr, T val) {
+#ifdef __CUDA_ARCH__
+    return ::atomicAdd(ptr, val);
+#else
+    // undefined, but works on gcc 11.2, 10.3, 9.4, 8.5, clang 10, and 11
+    // https://godbolt.org/z/7zqfMrdKr
+    auto a = reinterpret_cast<std::atomic<T>*>(ptr);
+    T old = a->load();
+    while(!a->compare_exchange_weak(old, old + val)) {}
+    return old;
+#endif
+}
 
 
 __host__ __device__ __forceinline__
