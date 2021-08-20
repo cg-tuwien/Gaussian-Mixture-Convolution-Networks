@@ -2,7 +2,6 @@
 #define GPE_UTIL_AUTODIFF_H
 
 
-
 namespace gpe {
 template <typename scalar>
 struct remove_grad {
@@ -17,7 +16,7 @@ using remove_grad_t = typename remove_grad<scalar>::type;
 #ifdef GPE_AUTODIFF
 #include <type_traits>
 
-#include <autodiff/reverse.hpp>
+#include <autodiff/reverse/var.hpp>
 #include <cuda_runtime.h>
 
 #include "util/containers.h"
@@ -46,7 +45,7 @@ scalar_t removeGrad(const autodiff::Variable<scalar_t>& v) {
 }
 
 template <typename scalar_t>
-scalar_t removeGrad(const autodiff::reverse::ExprPtr<scalar_t>& v) {
+scalar_t removeGrad(const autodiff::detail::ExprPtr<scalar_t>& v) {
     return autodiff::val(v);
 }
 
@@ -59,7 +58,7 @@ glm::vec<N_DIMS, scalar_t> removeGrad(const glm::vec<N_DIMS, autodiff::Variable<
     return r;
 }
 template <int N_DIMS, typename scalar_t>
-glm::vec<N_DIMS, scalar_t> removeGrad(const glm::vec<N_DIMS, autodiff::reverse::ExprPtr<scalar_t>>& v) {
+glm::vec<N_DIMS, scalar_t> removeGrad(const glm::vec<N_DIMS, autodiff::detail::ExprPtr<scalar_t>>& v) {
     glm::vec<N_DIMS, scalar_t> r;
     for (int i = 0; i < N_DIMS; ++i) {
         r[i] = removeGrad(v[i]);
@@ -80,7 +79,7 @@ glm::mat<N_DIMS, N_DIMS, scalar_t> removeGrad(const glm::mat<N_DIMS, N_DIMS, aut
     return r;
 }
 template <int N_DIMS, typename scalar_t>
-glm::mat<N_DIMS, N_DIMS, scalar_t> removeGrad(const glm::mat<N_DIMS, N_DIMS, autodiff::reverse::ExprPtr<scalar_t>>& v) {
+glm::mat<N_DIMS, N_DIMS, scalar_t> removeGrad(const glm::mat<N_DIMS, N_DIMS, autodiff::detail::ExprPtr<scalar_t>>& v) {
     glm::mat<N_DIMS, N_DIMS, scalar_t> r;
     for (int i = 0; i < N_DIMS; ++i) {
         r[i] = removeGrad(v[i]);
@@ -191,7 +190,7 @@ void propagateGrad(const autodiff::Variable<scalar_t>& v, scalar_t grad) {
 }
 
 template <typename scalar_t>
-void propagateGrad(const autodiff::reverse::ExprPtr<scalar_t>& v, scalar_t grad) {
+void propagateGrad(const autodiff::detail::ExprPtr<scalar_t>& v, scalar_t grad) {
     v->propagate(grad);
 }
 

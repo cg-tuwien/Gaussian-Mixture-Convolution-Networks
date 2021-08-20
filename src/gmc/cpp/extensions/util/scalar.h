@@ -208,33 +208,33 @@ inline bool isnan(T x) {
 
 #ifdef GPE_AUTODIFF
 template <typename scalar_t>
-using AutoDiffExpr = autodiff::reverse::ExprPtr<scalar_t>;
+using AutoDiffExpr = autodiff::detail::ExprPtr<scalar_t>;
 template <typename scalar_t>
 using AutoDiffVariable = autodiff::Variable<scalar_t>;
 
 template <typename scalar_t>
 inline AutoDiffVariable<scalar_t> exp(AutoDiffExpr<scalar_t> x) {
-    return autodiff::reverse::exp(x);
+    return autodiff::detail::exp(x);
 }
 
 template <typename scalar_t>
 inline AutoDiffVariable<scalar_t> pow(AutoDiffExpr<scalar_t> x, AutoDiffExpr<scalar_t> y) {
-    return autodiff::reverse::pow(x, y);
+    return autodiff::detail::pow(x, y);
 }
 
 template <typename scalar_t>
 inline AutoDiffVariable<scalar_t> log(AutoDiffExpr<scalar_t> x) {
-    return autodiff::reverse::log(x);
+    return autodiff::detail::log(x);
 }
 
 template <typename scalar_t>
 inline AutoDiffVariable<scalar_t> sqrt(AutoDiffExpr<scalar_t> x) {
-    return autodiff::reverse::sqrt(x);
+    return autodiff::detail::sqrt(x);
 }
 
 template <typename scalar_t>
 inline AutoDiffVariable<scalar_t> abs(AutoDiffExpr<scalar_t> x) {
-    return autodiff::reverse::abs(x);
+    return autodiff::detail::abs(x);
 }
 
 template <typename scalar_t>
@@ -244,35 +244,35 @@ inline bool isnan(AutoDiffExpr<scalar_t> x) {
 
 template <typename scalar_t>
 inline AutoDiffVariable<scalar_t> exp(AutoDiffVariable<scalar_t> x) {
-    return autodiff::reverse::exp(x);
+    return autodiff::detail::exp(x);
 }
 
 template <typename scalar_t>
 inline AutoDiffVariable<scalar_t> pow(AutoDiffVariable<scalar_t> x, AutoDiffVariable<scalar_t> y) {
-    return autodiff::reverse::pow(x, y);
+    return autodiff::detail::pow(x, y);
 }
 template <typename scalar_t>
 inline AutoDiffVariable<scalar_t> pow(AutoDiffVariable<scalar_t> x, AutoDiffExpr<scalar_t> y) {
-    return autodiff::reverse::pow(x.expr, y);
+    return autodiff::detail::pow(x.expr, y);
 }
 template <typename scalar_t>
 inline AutoDiffVariable<scalar_t> pow(AutoDiffExpr<scalar_t> x, AutoDiffVariable<scalar_t> y) {
-    return autodiff::reverse::pow(x, y.expr);
+    return autodiff::detail::pow(x, y.expr);
 }
 
 template <typename scalar_t>
 inline AutoDiffVariable<scalar_t> log(AutoDiffVariable<scalar_t> x) {
-    return autodiff::reverse::log(x);
+    return autodiff::detail::log(x);
 }
 
 template <typename scalar_t>
 inline AutoDiffVariable<scalar_t> sqrt(AutoDiffVariable<scalar_t> x) {
-    return autodiff::reverse::sqrt(x);
+    return autodiff::detail::sqrt(x);
 }
 
 template <typename scalar_t>
 inline AutoDiffVariable<scalar_t> abs(AutoDiffVariable<scalar_t> x) {
-    return autodiff::reverse::abs(x);
+    return autodiff::detail::abs(x);
 }
 
 template <typename scalar_t>
