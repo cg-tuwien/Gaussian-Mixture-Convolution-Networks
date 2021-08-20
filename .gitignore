@@ -45,3 +45,5 @@
 /src/gmc/cpp/build-extensions-*
 /src/gmc/cpp/build*
 src/gmc/cpp/gm_vis/build/*
+/src/gmc/cpp/gm_vis/pygmvis.cpython*
+/src/gmc/cpp/gm_vis/visualizer*
