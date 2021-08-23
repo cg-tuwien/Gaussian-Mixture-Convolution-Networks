@@ -121,7 +121,8 @@ set(UTIL_HEADERS
     util/helper.h
     util/mixture.h
     util/output.h
-    util/scalar.h)
+    util/scalar.h
+    util/welford.h)
 add_library(util ${UTIL_HEADERS} util/dummy.cpp)
 
 set(EVALUATE_INVERSED_HEADERS
@@ -376,6 +377,7 @@ set(UNITTESTS_SOURCES
     unittests/grad_mixture.cpp
     unittests/main.cpp
     unittests/util_helpers.cpp
+    unittests/welford.cpp
 )
 add_executable(0_unittests ${UNITTESTS_SOURCES} ${UNITTESTS_HEADERS})
 target_link_libraries(0_unittests PUBLIC Catch2::Catch2 OpenMP::OpenMP_CXX torch Qt5::Widgets bvh_mhem_fit_alpha bvh_mhem_fit integrate evaluate_inversed math lbvh common)
