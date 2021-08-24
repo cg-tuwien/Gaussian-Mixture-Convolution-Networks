@@ -25,33 +25,39 @@
 #include "parallel_start.h"
 
 template<typename scalar_t, unsigned N_DIMS>
-convolution_fitting::Tree<scalar_t, N_DIMS>::Tree(const at::Tensor& data, const at::Tensor& kernels, const Config& config) : m_data(data), m_kernels(kernels), m_config(config) {
-    n = gpe::get_ns(data);
-    kernel_n = gpe::get_ns(kernels);
+convolution_fitting::Tree<scalar_t, N_DIMS>::Tree(const at::Tensor* data, const at::Tensor* kernels, const Config& config) : m_config(config), m_data(data), m_kernels(kernels) {
+    n = gpe::get_ns(*data);
+    kernel_n = gpe::get_ns(*kernels);
     n_channels_in = n.layers;
     n_channels_out = kernel_n.batch;
     n_target_components = n.components * n_channels_in * kernel_n.components;
     TORCH_CHECK(n_channels_in <= (1 << constants::n_bits_for_channel_in_id), "this opperation supports at most " + std::to_string((1 << constants::n_bits_for_channel_in_id)) + " input feature maps")
-            TORCH_CHECK(n.components <= (1 << constants::n_bits_for_data_id), "this operation supports at most " + std::to_string((1 << constants::n_bits_for_data_id)) + " data Gaussians")
-            TORCH_CHECK(kernel_n.components <= (1 << constants::n_bits_for_kernel_id), "this operation supports at most " + std::to_string((1 << constants::n_bits_for_kernel_id)) + " kernel Gaussians")
-            TORCH_CHECK(n_target_components <= std::numeric_limits<index_type>::max(), "Number of components after convolution (target) must be smaller than the largest storable index.")
-            TORCH_CHECK(n.batch * n_channels_out < 65535, "n_batch x n_layers must be smaller than 65535 for CUDA")
-            TORCH_CHECK(n.components >= 1, "number of components must be greater 1 for this implementation")
-            TORCH_CHECK(kernel_n.components >= 1, "number of components must be greater 1 for this implementation")
-            TORCH_CHECK(n_channels_in == kernel_n.layers, "number of input feature maps must agree with the second kernel dimension")
-            TORCH_CHECK(n.dims == kernel_n.dims, "number of dimensions of data and kernel must agree")
-            TORCH_CHECK(n.dims == N_DIMS, "something wrong with dispatch")
-            TORCH_CHECK(data.dtype() == kernels.dtype(), "kernel and data dtypes must agree")
-            TORCH_CHECK(data.dtype() == caffe2::TypeMeta::Make<scalar_t>(), "something wrong with dispatch, or maybe this float type is not supported.")
-            TORCH_CHECK(data.device() == kernels.device(), "data and kernel devices must agree")
+    TORCH_CHECK(n.components <= (1 << constants::n_bits_for_data_id), "this operation supports at most " + std::to_string((1 << constants::n_bits_for_data_id)) + " data Gaussians")
+    TORCH_CHECK(kernel_n.components <= (1 << constants::n_bits_for_kernel_id), "this operation supports at most " + std::to_string((1 << constants::n_bits_for_kernel_id)) + " kernel Gaussians")
+    TORCH_CHECK(n_target_components <= std::numeric_limits<index_type>::max(), "Number of components after convolution (target) must be smaller than the largest storable index.")
+    TORCH_CHECK(n.batch * n_channels_out < 65535, "n_batch x n_layers must be smaller than 65535 for CUDA")
+    TORCH_CHECK(n.components >= 1, "number of components must be greater 1 for this implementation")
+    TORCH_CHECK(kernel_n.components >= 1, "number of components must be greater 1 for this implementation")
+    TORCH_CHECK(n_channels_in == kernel_n.layers, "number of input feature maps must agree with the second kernel dimension")
+    TORCH_CHECK(n.dims == kernel_n.dims, "number of dimensions of data and kernel must agree")
+    TORCH_CHECK(n.dims == N_DIMS, "something wrong with dispatch")
+    TORCH_CHECK(data->dtype() == kernels->dtype(), "kernel and data dtypes must agree")
+    TORCH_CHECK(data->dtype() == caffe2::TypeMeta::Make<scalar_t>(), "something wrong with dispatch, or maybe this float type is not supported.")
+    TORCH_CHECK(data->device() == kernels->device(), "data and kernel devices must agree")
 
 
-            n_leaf_nodes = n_target_components;
+    n_leaf_nodes = n_target_components;
     n_internal_nodes = n_leaf_nodes - 1;
     n_nodes = n_leaf_nodes + n_internal_nodes;
 
-    const auto morton_codes = compute_morton_codes(data, kernels);
-    m_nodes = create_tree_nodes(morton_codes);
+}
+
+
+template<typename scalar_t, unsigned N_DIMS>
+at::Tensor convolution_fitting::Tree<scalar_t, N_DIMS>::tree_nodes() const
+{
+    const auto morton_codes = compute_morton_codes(*m_data, *m_kernels);
+    return create_tree_nodes(morton_codes);
 }
 
 template<typename scalar_t, unsigned N_DIMS>
@@ -88,7 +94,7 @@ at::Tensor convolution_fitting::Tree<scalar_t, N_DIMS>::compute_morton_codes(con
     dim3 dimGrid = dim3((unsigned(n_target_components) + dimBlock.x - 1) / dimBlock.x,
                         (unsigned(n.batch) + dimBlock.y - 1) / dimBlock.y,
                         (unsigned(n_channels_out) + dimBlock.z - 1) / dimBlock.z);
-    gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(data), dimGrid, dimBlock, [morton_codes_a, aabb_a, data_a, kernel_a, this] __host__ __device__
+    gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(data), dimGrid, dimBlock, [morton_codes_a, aabb_a, data_a, kernel_a, *this] __host__ __device__
                                                   (const dim3& gpe_gridDim, const dim3& gpe_blockDim, const dim3& gpe_blockIdx, const dim3& gpe_threadIdx) mutable {
         GPE_UNUSED(gpe_gridDim)
                 // index might not fit into 32 bit, i.e. when n.components == 1 << 17, n_feature_maps_in == 1 << 12 and kernel_n.components == 1 << 4
@@ -147,7 +153,7 @@ at::Tensor convolution_fitting::Tree<scalar_t, N_DIMS>::create_tree_nodes(const 
         dim3 dimGrid = dim3((unsigned(n_mixtures) + dimBlock.x - 1) / dimBlock.x,
                             (unsigned(n_leaf_nodes) + dimBlock.y - 1) / dimBlock.y);
 
-        auto fun = [morton_codes_a, nodes_a, n_mixtures, this] __host__ __device__
+        auto fun = [morton_codes_a, nodes_a, n_mixtures, *this] __host__ __device__
                 (const dim3& gpe_gridDim, const dim3& gpe_blockDim, const dim3& gpe_blockIdx, const dim3& gpe_threadIdx) mutable {
             GPE_UNUSED(gpe_gridDim)
 
@@ -168,7 +174,7 @@ at::Tensor convolution_fitting::Tree<scalar_t, N_DIMS>::create_tree_nodes(const 
         dim3 dimBlock = dim3(1, 128, 1);
         dim3 dimGrid = dim3((unsigned(n_mixtures) + dimBlock.x - 1) / dimBlock.x,
                             (unsigned(n_internal_nodes) + dimBlock.y - 1) / dimBlock.y);
-        auto fun = [morton_codes_a, nodes_a, n_mixtures, this] __host__ __device__
+        auto fun = [morton_codes_a, nodes_a, n_mixtures, *this] __host__ __device__
                 (const dim3& gpe_gridDim, const dim3& gpe_blockDim, const dim3& gpe_blockIdx, const dim3& gpe_threadIdx) mutable {
             GPE_UNUSED(gpe_gridDim)
 

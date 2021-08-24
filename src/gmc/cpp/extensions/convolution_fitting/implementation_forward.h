@@ -68,7 +68,7 @@ ForwardOutput forward_impl_t(const torch::Tensor& data, const torch::Tensor& ker
     const auto data_a = gpe::struct_accessor<typename gpe::Gaussian<N_DIMS, scalar_t>, 3>(data);
     const auto kernel_a = gpe::struct_accessor<typename gpe::Gaussian<N_DIMS, scalar_t>, 3>(kernels);
 
-    Tree tree(data, kernels, config);
+    Tree tree(&data, &kernels, config);
     auto node_attributes = torch::zeros({n.batch, n_channels_out, tree.n_internal_nodes, sizeof (typename Tree::NodeAttributes)}, torch::TensorOptions(data.device()).dtype(torch::ScalarType::Byte));
     auto node_attributes_a = gpe::struct_accessor<typename Tree::NodeAttributes, 3>(node_attributes);
 
@@ -98,7 +98,8 @@ ForwardOutput forward_impl_t(const torch::Tensor& data, const torch::Tensor& ker
 //    std::cout << "kernel_n.components: " << kernel_n.components << std::endl;
 //    std::cout << "n.components: " << n.components << std::endl;
 
-    auto nodes_a = gpe::struct_accessor<typename Tree::Node, 3>(tree.m_nodes);
+    auto nodes = tree.tree_nodes();
+    auto nodes_a = gpe::struct_accessor<typename Tree::Node, 3>(nodes);
 
     { // bottom up fill node attribs (n_gaussians + mass)
         dim3 dimBlock = dim3(256, 1, 1);

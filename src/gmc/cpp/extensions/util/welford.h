@@ -16,6 +16,9 @@ struct WeightedMeanAndCov {
     mat_t C = mat_t{};
 
     EXECUTION_DEVICES
+    WeightedMeanAndCov() = default;
+
+    EXECUTION_DEVICES
     void addValue(scalar_t w, const vec_t& v) {
         w_sum += w;
         const auto v_mean_old = v_mean;
@@ -42,6 +45,9 @@ template<typename scalar_t, typename T>
 struct WeightedMean {
     scalar_t w_sum = 0;
     T v_mean = T{};
+
+    EXECUTION_DEVICES
+    WeightedMean() = default;
 
     EXECUTION_DEVICES
     void addValue(scalar_t w, const T& v) {

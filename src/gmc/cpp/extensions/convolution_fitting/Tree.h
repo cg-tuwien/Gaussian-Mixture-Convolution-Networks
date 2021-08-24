@@ -23,11 +23,10 @@ public:
     index_type n_internal_nodes = 0;
     index_type n_nodes = 0;
 
-
-    const torch::Tensor m_data;
-    const torch::Tensor m_kernels;
     const Config m_config;
-    torch::Tensor m_nodes;
+
+    const torch::Tensor* m_data = nullptr;
+    const torch::Tensor* m_kernels = nullptr;
 
     struct Node
     {
@@ -43,12 +42,14 @@ public:
     };
 
 
+    Tree(const torch::Tensor* data, const torch::Tensor* kernels, const Config& config);
+    at::Tensor tree_nodes() const;
 
-    Tree(const torch::Tensor& data, const torch::Tensor& kernels, const Config& config);
     inline torch::Tensor aabb_from_positions(const torch::Tensor& data_positions, const torch::Tensor& kernel_positions) const;
     torch::Tensor compute_morton_codes(const torch::Tensor& data, const torch::Tensor& kernels) const;
     at::Tensor create_tree_nodes(const at::Tensor& morton_codes) const;
 };
+
 
 } // namespace bvh_mhem_fit
 
