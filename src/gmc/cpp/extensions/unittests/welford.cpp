@@ -55,7 +55,7 @@ TEST_CASE("welford") {
     std::normal_distribution<double> d_y(0.0, sd_y);
     std::uniform_real_distribution<double> d_w(0, 2);
 
-    gpe::WelfordWeightedIncremental<3, double> welford;
+    gpe::WeightedMeanAndCov<3, double> welford;
 
     SECTION("bit set") {
         std::vector<std::pair<double, glm::dvec3>> data;

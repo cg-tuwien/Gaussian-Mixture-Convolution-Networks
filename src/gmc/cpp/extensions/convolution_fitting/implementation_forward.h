@@ -23,6 +23,7 @@
 #include "util/gaussian_mixture.h"
 #include "util/helper.h"
 #include "util/mixture.h"
+#include "util/welford.h"
 #include "parallel_start.h"
 
 
@@ -87,7 +88,7 @@ ForwardOutput forward_impl_t(const torch::Tensor& data, const torch::Tensor& ker
 
 
 
-    auto out_mixture = torch::empty({n.batch, n_channels_out, n_target_components, data.size(-1)}, torch::TensorOptions(data.device()).dtype(data.dtype()));
+    auto out_mixture = torch::empty({n.batch, n_channels_out, config.n_components_fitting, data.size(-1)}, torch::TensorOptions(data.device()).dtype(data.dtype()));
     auto out_mixture_a = gpe::struct_accessor<gpe::Gaussian<N_DIMS, scalar_t>, 3>(out_mixture);
 
 //    std::cout << "n_target_components: " << n_target_components << std::endl;
@@ -102,8 +103,8 @@ ForwardOutput forward_impl_t(const torch::Tensor& data, const torch::Tensor& ker
     { // bottom up fill node attribs (n_gaussians + mass)
         dim3 dimBlock = dim3(256, 1, 1);
         dim3 dimGrid = dim3((unsigned(n_target_components) + dimBlock.x - 1) / dimBlock.x,
-                            (unsigned(n.batch) + dimBlock.y - 1) / dimBlock.y,
-                            (unsigned(n_channels_out) + dimBlock.z - 1) / dimBlock.z);
+                            (unsigned(n_channels_out) + dimBlock.y - 1) / dimBlock.y,
+                            (unsigned(n.batch) + dimBlock.z - 1) / dimBlock.z);
 
         gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(data), dimGrid, dimBlock, [data_a, kernel_a, out_mixture_a, nodes_a, node_attributes_a, tree, n_channels_in, n_channels_out, kernel_n, n, n_target_components] __host__ __device__
                                                       (const dim3& gpe_gridDim, const dim3& gpe_blockDim, const dim3& gpe_blockIdx, const dim3& gpe_threadIdx) mutable {
@@ -116,8 +117,8 @@ ForwardOutput forward_impl_t(const torch::Tensor& data, const torch::Tensor& ker
                 return;
 
     //        printf("component_out_id: %d\n", component_out_id);
-            const unsigned batch_id = gpe_blockIdx.y * gpe_blockDim.y + gpe_threadIdx.y;
-            const unsigned channel_out_id = gpe_blockIdx.z * gpe_blockDim.z + gpe_threadIdx.z;
+            const unsigned channel_out_id = gpe_blockIdx.y * gpe_blockDim.y + gpe_threadIdx.y;
+            const unsigned batch_id = gpe_blockIdx.z * gpe_blockDim.z + gpe_threadIdx.z;
     //        const typename Tree::Node& leaf_node = nodes_a[batch_id][channel_out_id][tree.n_internal_nodes + component_out_id];
 
             const auto get_node = [&](typename Tree::index_type node_id) -> const auto& {
@@ -164,8 +165,8 @@ ForwardOutput forward_impl_t(const torch::Tensor& data, const torch::Tensor& ker
         });
     }
 
-    std::cout << tree.m_nodes << std::endl;
-    std::cout << node_attributes << std::endl;
+//    std::cout << tree.m_nodes << std::endl;
+//    std::cout << node_attributes << std::endl;
 
     auto fitting_subtrees = torch::ones({n.batch, n_channels_out, config.n_components_fitting}, torch::TensorOptions(data.device()).dtype(gpe::TorchTypeMapper<typename Tree::index_type>::id())) * -1;
     auto fitting_subtrees_a = gpe::accessor<typename Tree::index_type, 3>(fitting_subtrees);
@@ -249,7 +250,86 @@ ForwardOutput forward_impl_t(const torch::Tensor& data, const torch::Tensor& ker
             }
         });
     }
-    std::cout << fitting_subtrees << std::endl;
+//    std::cout << fitting_subtrees << std::endl;
+
+
+    { // fit subtrees
+        dim3 dimBlock = dim3(32, 1, 1);
+        dim3 dimGrid = dim3((unsigned(config.n_components_fitting) + dimBlock.x - 1) / dimBlock.x,
+                            (unsigned(n_channels_out) + dimBlock.y - 1) / dimBlock.y,
+                            (unsigned(n.batch) + dimBlock.z - 1) / dimBlock.z);
+        gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(data), dimGrid, dimBlock, [=] __host__ __device__
+                                                      (const dim3& gpe_gridDim, const dim3& gpe_blockDim, const dim3& gpe_blockIdx, const dim3& gpe_threadIdx) mutable {
+                                                          GPE_UNUSED(gpe_gridDim)
+                                                          using G = gpe::Gaussian<N_DIMS, scalar_t>;
+                                                          using index_type = typename Tree::index_type;
+
+                                                          const unsigned component_out_id = gpe_blockIdx.x * gpe_blockDim.x + gpe_threadIdx.x;
+                                                          if (component_out_id >= config.n_components_fitting)
+                                                              return;
+
+                                                          //        printf("component_out_id: %d\n", component_out_id);
+                                                          const unsigned channel_out_id = gpe_blockIdx.y * gpe_blockDim.y + gpe_threadIdx.y;
+                                                          const unsigned batch_id = gpe_blockIdx.z * gpe_blockDim.z + gpe_threadIdx.z;
+                                                          assert(batch_id < n.batch);
+                                                          assert(channel_out_id < n_channels_out);
+
+                                                          const auto fitting_root_node_id = fitting_subtrees_a[batch_id][channel_out_id][component_out_id];
+
+                                                          const auto get_node = [&](index_type node_id) -> const typename Tree::Node& {
+                                                              assert(node_id < tree.n_nodes);
+                                                              return nodes_a[batch_id][channel_out_id][node_id];
+                                                          };
+                                                          const auto get_attribs = [&](index_type node_id) -> typename Tree::NodeAttributes& {
+                                                              assert(node_id < tree.n_internal_nodes);
+                                                              return node_attributes_a[batch_id][channel_out_id][node_id];
+                                                          };
+
+
+                                                          // fitting one Gaussian, all target Gaussians are equally important, but posses different weights on their own.
+
+                                                          // getting start and end leaf by descending to the leftest and rightest leaf, respectively
+                                                          auto start_id = fitting_root_node_id;
+                                                          auto current_id = start_id;
+                                                          do { // left descend
+                                                              start_id = current_id;
+                                                              current_id = get_node(current_id).left_idx;
+                                                          } while (current_id != index_type(-1));
+
+                                                          auto end_id = fitting_root_node_id;
+                                                          current_id = end_id;
+                                                          do { // right descend
+                                                              end_id = current_id;
+                                                              current_id = get_node(current_id).right_idx;
+                                                          } while (current_id != index_type(-1));
+                                                          ++end_id; // it should point past the back
+
+                                                          gpe::WeightedMeanAndCov<N_DIMS, scalar_t> pos_aggregator;
+                                                          gpe::WeightedMean<scalar_t, typename G::cov_t> cov_aggregator;
+                                                          for (index_type i = start_id; i < end_id; ++i) {
+                                                              const auto target_component_id = get_node(i).object_idx;
+
+                                                              const auto gaussian_indices = gpe::split_n_dim_index<uint32_t, 3, unsigned>({unsigned(n.components), unsigned(n_channels_in), unsigned(kernel_n.components)}, target_component_id);
+                                                              const unsigned& component_in_id = gaussian_indices[0];
+                                                              const unsigned& channel_in_id = gaussian_indices[1];
+                                                              const unsigned& component_kernel_id = gaussian_indices[2];
+                                                              assert(component_in_id < n.components);
+                                                              assert(channel_in_id < n_channels_in);
+                                                              assert(component_kernel_id < kernel_n.components);
+
+                                                              const G& data_gaussian = data_a[batch_id][channel_in_id][component_in_id];
+                                                              const G& kernel_gaussian = kernel_a[channel_out_id][channel_in_id][component_kernel_id];
+                                                              const G gaussian = convolve(data_gaussian, kernel_gaussian);
+                                                              const auto weight_woa = gaussian.weight / gpe::gaussian_amplitude(gaussian.covariance);
+
+                                                              pos_aggregator.addValue(weight_woa + gpe::Epsilon<scalar_t>::small, gaussian.position);
+                                                              cov_aggregator.addValue(weight_woa + gpe::Epsilon<scalar_t>::small, gaussian.covariance);
+                                                          }
+                                                          const auto cov_mat = cov_aggregator.mean() + pos_aggregator.cov_matrix();
+                                                          const auto g = G{pos_aggregator.w_sum * gpe::gaussian_amplitude(cov_mat), pos_aggregator.mean(), cov_mat};
+                                                          out_mixture_a[int(batch_id)][int(channel_out_id)][int(component_out_id)] = g;
+                                                      });
+    }
 
 
     return ForwardOutput{out_mixture};
