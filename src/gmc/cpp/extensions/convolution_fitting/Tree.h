@@ -3,6 +3,8 @@
 
 #include <torch/types.h>
 
+#include "util/glm.h"
+#include "hacked_accessor.h"
 #include "util/mixture.h"
 #include "convolution_fitting/Config.h"
 
@@ -13,20 +15,20 @@ namespace convolution_fitting {
 template<typename scalar_t, unsigned N_DIMS>
 class Tree {
 public:
-    gpe::MixtureNs n;
-    gpe::MixtureNs kernel_n;
     using index_type = uint32_t;
-    index_type n_channels_in = 0;
-    index_type n_channels_out = 0;
-    index_type n_target_components;
-    index_type n_leaf_nodes = 0;
-    index_type n_internal_nodes = 0;
-    index_type n_nodes = 0;
+    using Vec = glm::vec<N_DIMS, scalar_t>;
+    using Mat = glm::mat<N_DIMS, N_DIMS, scalar_t>;
 
-    const Config m_config;
-
-    const torch::Tensor* m_data = nullptr;
-    const torch::Tensor* m_kernels = nullptr;
+    struct Data {
+        torch::Tensor data_weights;
+        torch::Tensor data_positions;
+        torch::Tensor data_covariances;
+        torch::Tensor kernel_weights;
+        torch::Tensor kernel_positions;
+        torch::Tensor kernel_covariances;
+        torch::Tensor nodes;
+        torch::Tensor node_attributes;
+    };
 
     struct Node
     {
@@ -40,14 +42,34 @@ public:
         scalar_t mass;
         index_type n_gaussians;
     };
+    gpe::MixtureNs n;
+    gpe::MixtureNs kernel_n;
+    index_type n_channels_in = 0;
+    index_type n_channels_out = 0;
+    index_type n_target_components;
+    index_type n_leaf_nodes = 0;
+    index_type n_internal_nodes = 0;
+    index_type n_nodes = 0;
+
+    const Config m_config;
+
+    gpe::PackedTensorAccessor32<scalar_t, 3> data_weights_a;
+    gpe::PackedTensorAccessor32<Vec, 3> data_positions_a;
+    gpe::PackedTensorAccessor32<Mat, 3> data_covariances_a;
+    gpe::PackedTensorAccessor32<scalar_t, 3> kernel_weights_a;
+    gpe::PackedTensorAccessor32<Vec, 3> kernel_positions_a;
+    gpe::PackedTensorAccessor32<Mat, 3> kernel_covariances_a;
+    gpe::PackedTensorAccessor32<typename Tree::Node, 3> nodes_a;
+    gpe::PackedTensorAccessor32<typename Tree::NodeAttributes, 3> node_attributes_a;
+    Data *const m_data = nullptr; // can't store tensors directly, because tree is copied to gpu and Tensors are causing problems when using *this in lambdas
 
 
-    Tree(const torch::Tensor* data, const torch::Tensor* kernels, const Config& config);
-    at::Tensor tree_nodes() const;
-
+    Tree(const torch::Tensor& data, const torch::Tensor& kernels, Data* storage, const Config& config);
+    torch::Device device() const { return m_data->data_weights.device(); }
     inline torch::Tensor aabb_from_positions(const torch::Tensor& data_positions, const torch::Tensor& kernel_positions) const;
-    torch::Tensor compute_morton_codes(const torch::Tensor& data, const torch::Tensor& kernels) const;
-    at::Tensor create_tree_nodes(const at::Tensor& morton_codes) const;
+    torch::Tensor compute_morton_codes() const;
+    void create_tree_nodes();
+    void create_attributes();
 };
 
 

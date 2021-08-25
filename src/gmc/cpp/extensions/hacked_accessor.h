@@ -230,6 +230,7 @@ template<typename T, size_t N, template <typename U> class PtrTraits = RestrictP
 class GenericPackedTensorAccessorBase {
 public:
     typedef typename PtrTraits<T>::PtrType PtrType;
+    C10_HOST GenericPackedTensorAccessorBase() = default;
     C10_HOST GenericPackedTensorAccessorBase(
         PtrType data_,
         const index_t* sizes_,
@@ -274,6 +275,7 @@ template<typename T, size_t N, template <typename U> class PtrTraits = RestrictP
 class GenericPackedTensorAccessor : public GenericPackedTensorAccessorBase<T,N,PtrTraits,index_t> {
 public:
     typedef typename PtrTraits<T>::PtrType PtrType;
+    C10_HOST GenericPackedTensorAccessor() = default;
     C10_HOST GenericPackedTensorAccessor(
         PtrType data_,
         const index_t* sizes_,
@@ -307,6 +309,7 @@ template<typename T, template <typename U> class PtrTraits, typename index_t>
 class GenericPackedTensorAccessor<T,1,PtrTraits,index_t> : public GenericPackedTensorAccessorBase<T,1,PtrTraits,index_t> {
 public:
     typedef typename PtrTraits<T>::PtrType PtrType;
+    C10_HOST GenericPackedTensorAccessor() = default;
     C10_HOST GenericPackedTensorAccessor(
         PtrType data_,
         const index_t* sizes_,
@@ -332,10 +335,10 @@ public:
 };
 
 template <typename T, size_t N, template <typename U> class PtrTraits = RestrictPtrTraits>
-using PackedTensorAccessor32 = GenericPackedTensorAccessor<T, N, PtrTraits, int32_t>;
+using PackedTensorAccessor32 = GenericPackedTensorAccessor<T, N, PtrTraits, uint32_t>;
 
 template <typename T, size_t N, template <typename U> class PtrTraits = RestrictPtrTraits>
-using PackedTensorAccessor64 = GenericPackedTensorAccessor<T, N, PtrTraits, int64_t>;
+using PackedTensorAccessor64 = GenericPackedTensorAccessor<T, N, PtrTraits, uint64_t>;
 
 
 //template<typename scalar_t, size_t N>
@@ -375,7 +378,7 @@ C10_HOST auto struct_accessor(const torch::Tensor& tensor) {
     assert(tensor.dtype().itemsize() == sizeof(tensor_type));
     assert(tensor.dim() == N + 1);
     assert(tensor.size(-1) == sizeof(struct_t) / sizeof(tensor_type));
-    auto torch_accessor = tensor.packed_accessor32<tensor_type, N + 1, gpe::RestrictPtrTraits>();
+    auto torch_accessor = tensor.generic_packed_accessor<tensor_type, N + 1, gpe::RestrictPtrTraits, uint32_t>();
     assert(torch_accessor.stride(N) == 1);
     assert(torch_accessor.size(N) == sizeof(struct_t) / sizeof(tensor_type));
     using index_t = decltype(torch_accessor.size(0));
@@ -405,7 +408,7 @@ C10_HOST auto struct_accessor(const torch::Tensor& tensor) {
     }
 }
 
-template<typename data_t, size_t N, typename index_t = int32_t>
+template<typename data_t, size_t N, typename index_t = uint32_t>
 C10_HOST auto accessor(const std::vector<data_t>& vector, const std::array<index_t, N>& sizes) {
     std::array<index_t, N> strides;
     index_t numel = 1;
@@ -418,7 +421,7 @@ C10_HOST auto accessor(const std::vector<data_t>& vector, const std::array<index
     return GenericPackedTensorAccessor<data_t, N, gpe::RestrictPtrTraits, index_t>(vector.data(), sizes.data(), strides.data());
 }
 
-template<typename data_t, size_t N, typename index_t = int32_t>
+template<typename data_t, size_t N, typename index_t = uint32_t>
 C10_HOST auto accessor(std::vector<data_t>& vector, const std::array<index_t, N>& sizes) {
     std::array<index_t, N> strides;
     index_t numel = 1;
@@ -432,7 +435,7 @@ C10_HOST auto accessor(std::vector<data_t>& vector, const std::array<index_t, N>
 }
 
 template<typename T, size_t N>
-using Accessor32 = TensorAccessor<T, N, RestrictPtrTraits, int32_t>;
+using Accessor32 = TensorAccessor<T, N, RestrictPtrTraits, uint32_t>;
 
 //template<typename scalar_t, size_t N>
 //auto accessor(torch::Tensor& tensor) {

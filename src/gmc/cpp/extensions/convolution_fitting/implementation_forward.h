@@ -24,6 +24,7 @@
 #include "util/helper.h"
 #include "util/mixture.h"
 #include "util/welford.h"
+#include "pieces/integrate.h"
 #include "parallel_start.h"
 
 
@@ -33,13 +34,8 @@ constexpr unsigned N_MAX_TARGET_COMPS = 1024;
 template<int REDUCTION_N = 4, typename scalar_t, unsigned N_DIMS>
 ForwardOutput forward_impl_t(const torch::Tensor& data, const torch::Tensor& kernels, const Config& config) {
     // cont with fitting todos:
-    // - fetch positions + compute morton codes.
-    // - pack and store everything in the morton code array
-    // - sort that array and create tree structure
-    // - store integrals in leaves (consider array of structs for gaussian data)
-    // - bottom up pass for computing integral sums and n_leaves
-    // - top down pass to select start nodes
-    // - implement simple fitting (1G) -> test performance against TreeHem
+    // - split data into weight, pos and cov tensors.
+    // - use pdf formulation to avoid complicated integral and convolution
     // - if 1G bad, implement 2G and 4G fitting.
     //
     // cont with gradient computation
@@ -48,128 +44,18 @@ ForwardOutput forward_impl_t(const torch::Tensor& data, const torch::Tensor& ker
 
     using Tree = Tree<scalar_t, N_DIMS>;
 
-    const auto n = gpe::get_ns(data);
-    const auto kernel_n = gpe::get_ns(kernels);
-    const auto n_channels_in = n.layers;
-    const auto n_channels_out = kernel_n.batch;
-    const auto n_target_components = unsigned(n.components * n_channels_in * kernel_n.components);
-    const auto n_mixtures = n.batch * n_channels_out;
-    TORCH_CHECK(n.batch * n_channels_out < 65535, "n_batch x n_layers must be smaller than 65535 for CUDA")
-    TORCH_CHECK(n.components >= 1, "number of components must be greater 1 for this implementation")
-    TORCH_CHECK(kernel_n.components >= 1, "number of components must be greater 1 for this implementation")
-    TORCH_CHECK(n_channels_in == kernel_n.layers, "number of input feature maps must agree with the second kernel dimension")
-    TORCH_CHECK(n.dims == kernel_n.dims, "number of dimensions of data and kernel must agree")
-    TORCH_CHECK(n.dims == N_DIMS, "something wrong with dispatch")
-    TORCH_CHECK(data.dtype() == kernels.dtype(), "kernel and data dtypes must agree")
-    TORCH_CHECK(data.dtype() == caffe2::TypeMeta::Make<scalar_t>(), "something wrong with dispatch, or maybe this float type is not supported.")
-    TORCH_CHECK(data.device() == kernels.device(), "data and kernel devices must agree")
     TORCH_CHECK(config.n_components_fitting <= N_MAX_TARGET_COMPS, "can't fit more than " + std::to_string(N_MAX_TARGET_COMPS) + " components")
 
-    const auto data_a = gpe::struct_accessor<typename gpe::Gaussian<N_DIMS, scalar_t>, 3>(data);
-    const auto kernel_a = gpe::struct_accessor<typename gpe::Gaussian<N_DIMS, scalar_t>, 3>(kernels);
+    typename Tree::Data tree_data_storage;
+    Tree tree(data, kernels, &tree_data_storage, config);
+    tree.create_tree_nodes();
+    tree.create_attributes();
+    const auto n_mixtures = tree.n.batch * tree.n_channels_out;
 
-    Tree tree(&data, &kernels, config);
-    auto node_attributes = torch::zeros({n.batch, n_channels_out, tree.n_internal_nodes, sizeof (typename Tree::NodeAttributes)}, torch::TensorOptions(data.device()).dtype(torch::ScalarType::Byte));
-    auto node_attributes_a = gpe::struct_accessor<typename Tree::NodeAttributes, 3>(node_attributes);
-
-
-//    const auto n_mixtures = n.batch * n.layers;
-//    auto bvh_config = config.bvh_config;
-//    bvh_config.make_aabbs = false;
-//    const Tree bvh = Tree(gpe::mixture_with_inversed_covariances(mixture).contiguous(), bvh_config);
-//    const auto n_internal_nodes = bvh.m_n_internal_nodes;
-//    const auto n_nodes = bvh.m_n_nodes;
-//    mixture = mixture.view({n_mixtures, n.components, -1}).contiguous();
-//    auto flat_bvh_nodes = bvh.m_nodes.view({n_mixtures, n_nodes, -1});
-//    auto flag_container = torch::zeros({n_mixtures, n_internal_nodes}, torch::TensorOptions(mixture.device()).dtype(torch::ScalarType::Int));
-
-//    auto flags_a = gpe::accessor<int, 2>(flag_container);
-//    auto node_attributes = torch::zeros({n_mixtures, n_nodes, sizeof(typename AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>::NodeAttributes)}, torch::TensorOptions(mixture.device()).dtype(torch::ScalarType::Byte));
-
-
-
-    auto out_mixture = torch::empty({n.batch, n_channels_out, config.n_components_fitting, data.size(-1)}, torch::TensorOptions(data.device()).dtype(data.dtype()));
+    auto out_mixture = torch::empty({tree.n.batch, tree.n_channels_out, config.n_components_fitting, data.size(-1)}, torch::TensorOptions(data.device()).dtype(data.dtype()));
     auto out_mixture_a = gpe::struct_accessor<gpe::Gaussian<N_DIMS, scalar_t>, 3>(out_mixture);
 
-//    std::cout << "n_target_components: " << n_target_components << std::endl;
-//    std::cout << "n.batch: " << n.batch << std::endl;
-//    std::cout << "n_channels_out: " << n_channels_out << std::endl;
-//    std::cout << "n_channels_in: " << n_channels_in << std::endl;
-//    std::cout << "kernel_n.components: " << kernel_n.components << std::endl;
-//    std::cout << "n.components: " << n.components << std::endl;
-
-    auto nodes = tree.tree_nodes();
-    auto nodes_a = gpe::struct_accessor<typename Tree::Node, 3>(nodes);
-
-    { // bottom up fill node attribs (n_gaussians + mass)
-        dim3 dimBlock = dim3(256, 1, 1);
-        dim3 dimGrid = dim3((unsigned(n_target_components) + dimBlock.x - 1) / dimBlock.x,
-                            (unsigned(n_channels_out) + dimBlock.y - 1) / dimBlock.y,
-                            (unsigned(n.batch) + dimBlock.z - 1) / dimBlock.z);
-
-        gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(data), dimGrid, dimBlock, [data_a, kernel_a, out_mixture_a, nodes_a, node_attributes_a, tree, n_channels_in, n_channels_out, kernel_n, n, n_target_components] __host__ __device__
-                                                      (const dim3& gpe_gridDim, const dim3& gpe_blockDim, const dim3& gpe_blockIdx, const dim3& gpe_threadIdx) mutable {
-            // index might not fit into 32 bit, i.e. when n.components == 1 << 17, n_feature_maps_in == 1 << 12 and kernel_n.components == 1 << 4
-            // however, such large datasets would be infeasable anyways. i.e., if we have (1<<32) output components, then the morton code array alone takes 8 GB. For one output feature map. For one batch dimension.
-            // Sorting alone would probably take too long.
-            assert(uint64_t(gpe_blockIdx.x) * uint64_t(gpe_blockDim.x) + uint64_t(gpe_threadIdx.x) < (1ull << 32));
-            const unsigned component_out_id = gpe_blockIdx.x * gpe_blockDim.x + gpe_threadIdx.x;
-            if (component_out_id >= n_target_components)
-                return;
-
-    //        printf("component_out_id: %d\n", component_out_id);
-            const unsigned channel_out_id = gpe_blockIdx.y * gpe_blockDim.y + gpe_threadIdx.y;
-            const unsigned batch_id = gpe_blockIdx.z * gpe_blockDim.z + gpe_threadIdx.z;
-    //        const typename Tree::Node& leaf_node = nodes_a[batch_id][channel_out_id][tree.n_internal_nodes + component_out_id];
-
-            const auto get_node = [&](typename Tree::index_type node_id) -> const auto& {
-                assert(node_id < tree.n_nodes);
-                return nodes_a[batch_id][channel_out_id][node_id];
-            };
-            const auto get_attribs = [&](typename Tree::index_type node_id) -> auto& {
-                assert(node_id < tree.n_internal_nodes);
-                return node_attributes_a[batch_id][channel_out_id][node_id];
-            };
-
-            const typename Tree::Node& leaf_node = get_node(tree.n_internal_nodes + component_out_id);
-
-            const auto gaussian_indices = gpe::split_n_dim_index<uint32_t, 3, unsigned>({unsigned(n.components), unsigned(n_channels_in), unsigned(kernel_n.components)}, leaf_node.object_idx);
-            const unsigned& component_in_id = gaussian_indices[0];
-            const unsigned& channel_in_id = gaussian_indices[1];
-            const unsigned& component_kernel_id = gaussian_indices[2];
-
-            assert(batch_id < n.batch);
-            assert(channel_in_id < n_channels_in);
-            assert(channel_out_id < n_channels_out);
-            assert(component_in_id < n.components);
-            assert(component_out_id < n_target_components);
-            assert(component_kernel_id < kernel_n.components);
-
-            const auto& data_gaussian = data_a[batch_id][channel_in_id][component_in_id];
-            const auto& kernel_gaussian = kernel_a[channel_out_id][channel_in_id][component_kernel_id];
-
-            const auto g = convolve(data_gaussian, kernel_gaussian);
-            auto mass = gpe::integrate(g);
-            auto count = typename Tree::index_type(1);
-
-            auto node_id = leaf_node.parent_idx;
-            while (node_id < tree.n_internal_nodes) {
-                const auto& node = get_node(node_id);
-                auto& attribs = get_attribs(node_id);
-                mass += gpe::atomicAdd(&attribs.mass, mass);
-                auto count_tmp = gpe::atomicAdd(&attribs.n_gaussians, count);
-                if (count_tmp == 0)
-                    break;
-                count += count_tmp;
-                node_id = node.parent_idx;
-            }
-        });
-    }
-
-//    std::cout << tree.m_nodes << std::endl;
-//    std::cout << node_attributes << std::endl;
-
-    auto fitting_subtrees = torch::ones({n.batch, n_channels_out, config.n_components_fitting}, torch::TensorOptions(data.device()).dtype(gpe::TorchTypeMapper<typename Tree::index_type>::id())) * -1;
+    auto fitting_subtrees = torch::ones({tree.n.batch, tree.n_channels_out, config.n_components_fitting}, torch::TensorOptions(data.device()).dtype(gpe::TorchTypeMapper<typename Tree::index_type>::id())) * -1;
     auto fitting_subtrees_a = gpe::accessor<typename Tree::index_type, 3>(fitting_subtrees);
 
 
@@ -182,21 +68,21 @@ ForwardOutput forward_impl_t(const torch::Tensor& data, const torch::Tensor& ker
             using G = gpe::Gaussian<N_DIMS, scalar_t>;
             using index_type = typename Tree::index_type;
 
-            const auto mixture_id = int(gpe_blockIdx.x * gpe_blockDim.x + gpe_threadIdx.x);
+            const auto mixture_id = gpe_blockIdx.x * gpe_blockDim.x + gpe_threadIdx.x;
             if (mixture_id >= n_mixtures)
                 return;
 
-            const auto mixture_indices = gpe::split_n_dim_index<uint32_t, 3, unsigned>({unsigned(n.batch), unsigned(n_channels_out)}, mixture_id);
+            const auto mixture_indices = gpe::split_n_dim_index<uint32_t, 3, unsigned>({unsigned(tree.n.batch), unsigned(tree.n_channels_out)}, mixture_id);
             const auto& batch_id = mixture_indices[0];
             const auto& channel_out_id = mixture_indices[1];
 
             const auto get_node = [&](index_type node_id) -> const auto& {
                 assert(node_id < tree.n_nodes);
-                return nodes_a[batch_id][channel_out_id][node_id];
+                return tree.nodes_a[batch_id][channel_out_id][node_id];
             };
             const auto get_attribs = [&](index_type node_id) -> auto& {
                 assert(node_id < tree.n_internal_nodes);
-                return node_attributes_a[batch_id][channel_out_id][node_id];
+                return tree.node_attributes_a[batch_id][channel_out_id][node_id];
             };
 
             gpe::Vector<scalar_t, N_MAX_TARGET_COMPS> selectedNodesRating;
@@ -257,79 +143,86 @@ ForwardOutput forward_impl_t(const torch::Tensor& data, const torch::Tensor& ker
     { // fit subtrees
         dim3 dimBlock = dim3(32, 1, 1);
         dim3 dimGrid = dim3((unsigned(config.n_components_fitting) + dimBlock.x - 1) / dimBlock.x,
-                            (unsigned(n_channels_out) + dimBlock.y - 1) / dimBlock.y,
-                            (unsigned(n.batch) + dimBlock.z - 1) / dimBlock.z);
+                            (unsigned(tree.n_channels_out) + dimBlock.y - 1) / dimBlock.y,
+                            (unsigned(tree.n.batch) + dimBlock.z - 1) / dimBlock.z);
         gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(data), dimGrid, dimBlock, [=] __host__ __device__
                                                       (const dim3& gpe_gridDim, const dim3& gpe_blockDim, const dim3& gpe_blockIdx, const dim3& gpe_threadIdx) mutable {
-                                                          GPE_UNUSED(gpe_gridDim)
-                                                          using G = gpe::Gaussian<N_DIMS, scalar_t>;
-                                                          using index_type = typename Tree::index_type;
+            GPE_UNUSED(gpe_gridDim)
+            using G = gpe::Gaussian<N_DIMS, scalar_t>;
+            using index_type = typename Tree::index_type;
 
-                                                          const unsigned component_out_id = gpe_blockIdx.x * gpe_blockDim.x + gpe_threadIdx.x;
-                                                          if (component_out_id >= config.n_components_fitting)
-                                                              return;
+            const unsigned component_out_id = gpe_blockIdx.x * gpe_blockDim.x + gpe_threadIdx.x;
+            if (component_out_id >= config.n_components_fitting)
+                return;
 
-                                                          //        printf("component_out_id: %d\n", component_out_id);
-                                                          const unsigned channel_out_id = gpe_blockIdx.y * gpe_blockDim.y + gpe_threadIdx.y;
-                                                          const unsigned batch_id = gpe_blockIdx.z * gpe_blockDim.z + gpe_threadIdx.z;
-                                                          assert(batch_id < n.batch);
-                                                          assert(channel_out_id < n_channels_out);
+            //        printf("component_out_id: %d\n", component_out_id);
+            const unsigned channel_out_id = gpe_blockIdx.y * gpe_blockDim.y + gpe_threadIdx.y;
+            const unsigned batch_id = gpe_blockIdx.z * gpe_blockDim.z + gpe_threadIdx.z;
+            assert(batch_id < tree.n.batch);
+            assert(channel_out_id < tree.n_channels_out);
 
-                                                          const auto fitting_root_node_id = fitting_subtrees_a[batch_id][channel_out_id][component_out_id];
+            const auto fitting_root_node_id = fitting_subtrees_a[batch_id][channel_out_id][component_out_id];
 
-                                                          const auto get_node = [&](index_type node_id) -> const typename Tree::Node& {
-                                                              assert(node_id < tree.n_nodes);
-                                                              return nodes_a[batch_id][channel_out_id][node_id];
-                                                          };
-                                                          const auto get_attribs = [&](index_type node_id) -> typename Tree::NodeAttributes& {
-                                                              assert(node_id < tree.n_internal_nodes);
-                                                              return node_attributes_a[batch_id][channel_out_id][node_id];
-                                                          };
+            const auto get_node = [&](index_type node_id) -> const typename Tree::Node& {
+                assert(node_id < tree.n_nodes);
+                return tree.nodes_a[batch_id][channel_out_id][node_id];
+            };
+            const auto get_attribs = [&](index_type node_id) -> typename Tree::NodeAttributes& {
+                assert(node_id < tree.n_internal_nodes);
+                return tree.node_attributes_a[batch_id][channel_out_id][node_id];
+            };
 
 
-                                                          // fitting one Gaussian, all target Gaussians are equally important, but posses different weights on their own.
+            // fitting one Gaussian, all target Gaussians are equally important, but posses different weights on their own.
 
-                                                          // getting start and end leaf by descending to the leftest and rightest leaf, respectively
-                                                          auto start_id = fitting_root_node_id;
-                                                          auto current_id = start_id;
-                                                          do { // left descend
-                                                              start_id = current_id;
-                                                              current_id = get_node(current_id).left_idx;
-                                                          } while (current_id != index_type(-1));
+            // getting start and end leaf by descending to the leftest and rightest leaf, respectively
+            auto start_id = fitting_root_node_id;
+            auto current_id = start_id;
+            do { // left descend
+                start_id = current_id;
+                current_id = get_node(current_id).left_idx;
+            } while (current_id != index_type(-1));
 
-                                                          auto end_id = fitting_root_node_id;
-                                                          current_id = end_id;
-                                                          do { // right descend
-                                                              end_id = current_id;
-                                                              current_id = get_node(current_id).right_idx;
-                                                          } while (current_id != index_type(-1));
-                                                          ++end_id; // it should point past the back
+            auto end_id = fitting_root_node_id;
+            current_id = end_id;
+            do { // right descend
+                end_id = current_id;
+                current_id = get_node(current_id).right_idx;
+            } while (current_id != index_type(-1));
+            ++end_id; // it should point past the back
 
-                                                          gpe::WeightedMeanAndCov<N_DIMS, scalar_t> pos_aggregator;
-                                                          gpe::WeightedMean<scalar_t, typename G::cov_t> cov_aggregator;
-                                                          for (index_type i = start_id; i < end_id; ++i) {
-                                                              const auto target_component_id = get_node(i).object_idx;
+            gpe::WeightedMeanAndCov<N_DIMS, scalar_t> pos_aggregator;
+            gpe::WeightedMean<scalar_t, typename G::cov_t> cov_aggregator;
+            for (index_type i = start_id; i < end_id; ++i) {
+                const auto target_component_id = get_node(i).object_idx;
 
-                                                              const auto gaussian_indices = gpe::split_n_dim_index<uint32_t, 3, unsigned>({unsigned(n.components), unsigned(n_channels_in), unsigned(kernel_n.components)}, target_component_id);
-                                                              const unsigned& component_in_id = gaussian_indices[0];
-                                                              const unsigned& channel_in_id = gaussian_indices[1];
-                                                              const unsigned& component_kernel_id = gaussian_indices[2];
-                                                              assert(component_in_id < n.components);
-                                                              assert(channel_in_id < n_channels_in);
-                                                              assert(component_kernel_id < kernel_n.components);
+                const auto gaussian_indices = gpe::split_n_dim_index<uint32_t, 3, unsigned>({unsigned(tree.n.components), unsigned(tree.n_channels_in), unsigned(tree.kernel_n.components)}, target_component_id);
+                const unsigned& component_in_id = gaussian_indices[0];
+                const unsigned& channel_in_id = gaussian_indices[1];
+                const unsigned& component_kernel_id = gaussian_indices[2];
+                assert(component_in_id < tree.n.components);
+                assert(channel_in_id < tree.n_channels_in);
+                assert(component_kernel_id < tree.kernel_n.components);
 
-                                                              const G& data_gaussian = data_a[batch_id][channel_in_id][component_in_id];
-                                                              const G& kernel_gaussian = kernel_a[channel_out_id][channel_in_id][component_kernel_id];
-                                                              const G gaussian = convolve(data_gaussian, kernel_gaussian);
-                                                              const auto weight_woa = gaussian.weight / gpe::gaussian_amplitude(gaussian.covariance);
+                const auto data_weight = tree.data_weights_a[batch_id][channel_in_id][component_in_id];
+                const auto& data_position = tree.data_positions_a[batch_id][channel_in_id][component_in_id];
+                const auto& data_covariance = tree.data_covariances_a[batch_id][channel_in_id][component_in_id];
 
-                                                              pos_aggregator.addValue(weight_woa + gpe::Epsilon<scalar_t>::small, gaussian.position);
-                                                              cov_aggregator.addValue(weight_woa + gpe::Epsilon<scalar_t>::small, gaussian.covariance);
-                                                          }
-                                                          const auto cov_mat = cov_aggregator.mean() + pos_aggregator.cov_matrix();
-                                                          const auto g = G{pos_aggregator.w_sum * gpe::gaussian_amplitude(cov_mat), pos_aggregator.mean(), cov_mat};
-                                                          out_mixture_a[int(batch_id)][int(channel_out_id)][int(component_out_id)] = g;
-                                                      });
+                const auto kernel_weight = tree.kernel_weights_a[channel_out_id][channel_in_id][component_kernel_id];
+                const auto& kernel_position = tree.kernel_positions_a[channel_out_id][channel_in_id][component_kernel_id];
+                const auto& kernel_covariance = tree.kernel_covariances_a[channel_out_id][channel_in_id][component_kernel_id];
+
+                auto convolved_weight = data_weight * kernel_weight;
+                auto convolved_position = data_position + kernel_position;
+                auto convolved_covariance = data_covariance + kernel_covariance;
+
+                pos_aggregator.addValue(convolved_weight + gpe::Epsilon<scalar_t>::small, convolved_position);
+                cov_aggregator.addValue(convolved_weight + gpe::Epsilon<scalar_t>::small, convolved_covariance);
+            }
+            const auto cov_mat = cov_aggregator.mean() + pos_aggregator.cov_matrix();
+            const auto g = G{pos_aggregator.w_sum * gpe::gaussian_amplitude(cov_mat), pos_aggregator.mean(), cov_mat};
+            out_mixture_a[int(batch_id)][int(channel_out_id)][int(component_out_id)] = g;
+        });
     }
 
 
