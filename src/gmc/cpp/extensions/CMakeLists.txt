@@ -118,6 +118,7 @@ set(UTIL_HEADERS
     util/grad/gaussian.h
     util/grad/mixture.h
     util/grad/scalar.h
+    util/grad/welford.h
     util/helper.h
     util/mixture.h
     util/output.h
@@ -375,6 +376,7 @@ set(UNITTESTS_SOURCES
 #    unittests/evaluate_inversed.cpp
     unittests/grad_algorithms.cpp
     unittests/grad_mixture.cpp
+    unittests/grad_welford.cpp
     unittests/main.cpp
     unittests/util_helpers.cpp
     unittests/welford.cpp

@@ -41,6 +41,16 @@ scalar_t trace(const glm::mat<3, 3, scalar_t>& m) {
     return m[0][0] + m[1][1] + m[2][2];
 }
 
+// these two dummies are for the welford grad classes, which should also work with scalars.
+EXECUTION_DEVICES
+float sum(const float& v) {
+    return v;
+}
+EXECUTION_DEVICES
+double sum(const double& v) {
+    return v;
+}
+
 template <typename scalar_t> EXECUTION_DEVICES
 scalar_t sum(const glm::vec<2, scalar_t>& v) {
     return v[0] + v[1];
@@ -59,6 +69,11 @@ scalar_t sum(const glm::mat<2, 2, scalar_t>& m) {
 template <typename scalar_t> EXECUTION_DEVICES
 scalar_t sum(const glm::mat<3, 3, scalar_t>& m) {
     return sum(m[0]) + sum(m[1]) + sum(m[2]);
+}
+
+template <typename T> GLM_FUNC_QUALIFIER
+T cwise_mul(const T& v1, const T& v2) {
+    return v1 * v2;
 }
 
 template <typename scalar_t> GLM_FUNC_QUALIFIER

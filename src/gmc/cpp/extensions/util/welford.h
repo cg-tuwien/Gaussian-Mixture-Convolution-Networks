@@ -3,6 +3,7 @@
 
 
 #include "util/cuda.h"
+#include "util/epsilon.h"
 #include "util/glm.h"
 
 namespace gpe {
@@ -21,6 +22,8 @@ struct WeightedMeanAndCov {
     EXECUTION_DEVICES
     void addValue(scalar_t w, const vec_t& v) {
         w_sum += w;
+        if (w_sum == scalar_t(0.0))
+            return;
         const auto v_mean_old = v_mean;
         const auto delta1 = (v - v_mean);
         v_mean += (w / w_sum) * delta1;
@@ -36,6 +39,8 @@ struct WeightedMeanAndCov {
 
     EXECUTION_DEVICES
     mat_t cov_matrix() const {
+        if (w_sum == scalar_t(0.0))
+            return mat_t(1);
         return C / w_sum;
     }
 };
@@ -52,12 +57,14 @@ struct WeightedMean {
     EXECUTION_DEVICES
     void addValue(scalar_t w, const T& v) {
         w_sum += w;
-        const auto delta1 = (v - v_mean);
-        v_mean += (w / w_sum) * delta1;
+        if (w == scalar_t(0.0))
+            return;
+        const auto delta1 = v - v_mean;
+        v_mean += scalar_t(w / w_sum) * delta1;  // this scalar_t cast makes the compiler happy, when compiling unit tests with autodiff.
     }
 
     EXECUTION_DEVICES
-    T mean() const {
+    const T& mean() const {
         return v_mean;
     }
 };

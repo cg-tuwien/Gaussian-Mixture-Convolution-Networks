@@ -76,6 +76,26 @@ std::vector<float> _scalarCollection() {
     return retval;
 }
 
+inline
+std::vector<float> _smallPositiveScalarCollection() {
+    std::vector<float> retval;
+    retval.push_back(0);
+    retval.push_back(1);
+    retval.push_back(0.7f);
+    retval.push_back(1.55f);
+    return retval;
+}
+
+inline
+std::vector<float> _smallNegativeScalarCollection() {
+    std::vector<float> retval;
+    retval.push_back(0);
+    retval.push_back(-1);
+    retval.push_back(-0.7f);
+    retval.push_back(-1.55f);
+    return retval;
+}
+
 template<int DIMS>
 std::vector<glm::vec<DIMS, float>> _vecCollection() {
     std::vector<glm::vec<DIMS, float>> retval;
@@ -87,6 +107,16 @@ std::vector<glm::vec<DIMS, float>> _vecCollection() {
     retval.push_back(_vec<DIMS>(-2.3f, 1.2f, 0.8f));
     retval.push_back(_vec<DIMS>(-3.2f, 0.6f, -0.7f));
     retval.push_back(_vec<DIMS>(0.2f,  -1.4f, 2.5f));
+    return retval;
+}
+
+template<int DIMS>
+std::vector<glm::vec<DIMS, float>> _smallVecCollection() {
+    std::vector<glm::vec<DIMS, float>> retval;
+    retval.push_back(_vec<DIMS>(0, 0, 0));
+    retval.push_back(_vec<DIMS>(1, 1, 1));
+    retval.push_back(_vec<DIMS>(-1, -1, -1));
+    retval.push_back(_vec<DIMS>(-2.3f, 1.2f, 0.8f));
     return retval;
 }
 

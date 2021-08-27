@@ -216,8 +216,8 @@ ForwardOutput forward_impl_t(const torch::Tensor& data, const torch::Tensor& ker
                 auto convolved_position = data_position + kernel_position;
                 auto convolved_covariance = data_covariance + kernel_covariance;
 
-                pos_aggregator.addValue(convolved_weight + gpe::Epsilon<scalar_t>::small, convolved_position);
-                cov_aggregator.addValue(convolved_weight + gpe::Epsilon<scalar_t>::small, convolved_covariance);
+                pos_aggregator.addValue(convolved_weight, convolved_position);
+                cov_aggregator.addValue(convolved_weight, convolved_covariance);
             }
             const auto cov_mat = cov_aggregator.mean() + pos_aggregator.cov_matrix();
             const auto g = G{pos_aggregator.w_sum * gpe::gaussian_amplitude(cov_mat), pos_aggregator.mean(), cov_mat};
