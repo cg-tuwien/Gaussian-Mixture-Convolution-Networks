@@ -124,10 +124,10 @@ template<int DIMS, typename scalar_t = float>
 std::vector<glm::mat<DIMS, DIMS, scalar_t>> _covCollection() {
     std::vector<glm::mat<DIMS, DIMS, scalar_t>> retval;
     retval.push_back(glm::mat<DIMS, DIMS, scalar_t>(1));
-    retval.push_back(glm::mat<DIMS, DIMS, scalar_t>(1) * 0.5f);
-    retval.push_back(glm::mat<DIMS, DIMS, scalar_t>(1) * 2.0f);
-    retval.push_back(glm::mat<DIMS, DIMS, scalar_t>(1) * 2.0f + 0.5f);
-    retval.push_back(glm::mat<DIMS, DIMS, scalar_t>(1) * 2.0f - 0.5f);
+    retval.push_back(glm::mat<DIMS, DIMS, scalar_t>(1) * scalar_t(0.5));
+    retval.push_back(glm::mat<DIMS, DIMS, scalar_t>(1) * scalar_t(2.0));
+    retval.push_back(glm::mat<DIMS, DIMS, scalar_t>(1) * scalar_t(2.0) + scalar_t(0.5));
+    retval.push_back(glm::mat<DIMS, DIMS, scalar_t>(1) * scalar_t(2.0) - scalar_t(0.5));
 
     retval.push_back(_cov<DIMS, scalar_t>(1.5f, -0.1f,  0.2f, 2.5f, -0.3f, 2.2f));
     retval.push_back(_cov<DIMS, scalar_t>(2.5f,  0.5f, -0.2f, 1.5f,  0.3f, 3.2f));

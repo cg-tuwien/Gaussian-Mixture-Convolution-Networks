@@ -26,7 +26,7 @@ struct WeightedMeanAndCov {
             return;
         const auto v_mean_old = v_mean;
         const auto delta1 = (v - v_mean);
-        v_mean += (w / w_sum) * delta1;
+        v_mean += scalar_t(w / w_sum) * delta1;
         const auto delta2 = (v - v_mean);
 
         C += w * glm::outerProduct(delta1, delta2);
