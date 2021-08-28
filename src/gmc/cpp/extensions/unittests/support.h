@@ -41,18 +41,18 @@ bool are_similar(const gpe::Gaussian<N_DIMS, scalar_t>& ad, const gpe::Gaussian<
             && are_similar(ad.covariance, an.covariance, precision);
 }
 
-template<int N_DIMS>
-glm::vec<N_DIMS, float> _vec(float a, float b, float c) {
-    glm::vec<3, float> r;
+template<int N_DIMS, typename scalar_t = float>
+glm::vec<N_DIMS, scalar_t> _vec(scalar_t a, scalar_t b, scalar_t c) {
+    glm::vec<3, scalar_t> r;
     r.x = a;
     r.y = b;
     r.z = c;
     return r;
 }
 
-template<int DIMS>
-glm::mat<DIMS, DIMS, float> _cov(float xx, float xy, float xz, float yy, float yz, float zz) {
-    glm::mat<3, 3, float> r;
+template<int DIMS, typename scalar_t = float>
+glm::mat<DIMS, DIMS, scalar_t> _cov(scalar_t xx, scalar_t xy, scalar_t xz, scalar_t yy, scalar_t yz, scalar_t zz) {
+    glm::mat<3, 3, scalar_t> r;
     r[0][0] = xx;
     r[0][1] = xy;
     r[0][2] = xz;
@@ -65,20 +65,20 @@ glm::mat<DIMS, DIMS, float> _cov(float xx, float xy, float xz, float yy, float y
     return r;
 }
 
-inline
-std::vector<float> _scalarCollection() {
-    std::vector<float> retval;
+template <typename scalar_t = float>
+std::vector<scalar_t> _scalarCollection() {
+    std::vector<scalar_t> retval;
     retval.push_back(0);
     retval.push_back(1);
-    for (float s = -2.f; s < 2.5f; s += 0.3f) {
+    for (scalar_t s = scalar_t(-2.); s < scalar_t(2.5); s += scalar_t(0.3)) {
         retval.push_back(s);
     }
     return retval;
 }
 
-inline
-std::vector<float> _smallPositiveScalarCollection() {
-    std::vector<float> retval;
+template <typename scalar_t = float>
+std::vector<scalar_t> _smallPositiveScalarCollection() {
+    std::vector<scalar_t> retval;
     retval.push_back(0);
     retval.push_back(1);
     retval.push_back(0.7f);
@@ -86,9 +86,9 @@ std::vector<float> _smallPositiveScalarCollection() {
     return retval;
 }
 
-inline
-std::vector<float> _smallNegativeScalarCollection() {
-    std::vector<float> retval;
+template <typename scalar_t = float>
+std::vector<scalar_t> _smallNegativeScalarCollection() {
+    std::vector<scalar_t> retval;
     retval.push_back(0);
     retval.push_back(-1);
     retval.push_back(-0.7f);
@@ -96,41 +96,51 @@ std::vector<float> _smallNegativeScalarCollection() {
     return retval;
 }
 
-template<int DIMS>
-std::vector<glm::vec<DIMS, float>> _vecCollection() {
-    std::vector<glm::vec<DIMS, float>> retval;
-    retval.push_back(_vec<DIMS>(0, 0, 0));
-    retval.push_back(_vec<DIMS>(1, 1, 1));
-    retval.push_back(_vec<DIMS>(-1, -1, -1));
-    retval.push_back(_vec<DIMS>(1, 2, 3));
-    retval.push_back(_vec<DIMS>(-1, -2, -3));
-    retval.push_back(_vec<DIMS>(-2.3f, 1.2f, 0.8f));
-    retval.push_back(_vec<DIMS>(-3.2f, 0.6f, -0.7f));
-    retval.push_back(_vec<DIMS>(0.2f,  -1.4f, 2.5f));
+template<int DIMS, typename scalar_t = float>
+std::vector<glm::vec<DIMS, scalar_t>> _vecCollection() {
+    std::vector<glm::vec<DIMS, scalar_t>> retval;
+    retval.push_back(_vec<DIMS, scalar_t>(0, 0, 0));
+    retval.push_back(_vec<DIMS, scalar_t>(1, 1, 1));
+    retval.push_back(_vec<DIMS, scalar_t>(-1, -1, -1));
+    retval.push_back(_vec<DIMS, scalar_t>(1, 2, 3));
+    retval.push_back(_vec<DIMS, scalar_t>(-1, -2, -3));
+    retval.push_back(_vec<DIMS, scalar_t>(-2.3f, 1.2f, 0.8f));
+    retval.push_back(_vec<DIMS, scalar_t>(-3.2f, 0.6f, -0.7f));
+    retval.push_back(_vec<DIMS, scalar_t>(0.2f,  -1.4f, 2.5f));
     return retval;
 }
 
-template<int DIMS>
-std::vector<glm::vec<DIMS, float>> _smallVecCollection() {
-    std::vector<glm::vec<DIMS, float>> retval;
-    retval.push_back(_vec<DIMS>(0, 0, 0));
-    retval.push_back(_vec<DIMS>(1, 1, 1));
-    retval.push_back(_vec<DIMS>(-1, -1, -1));
-    retval.push_back(_vec<DIMS>(-2.3f, 1.2f, 0.8f));
+template<int DIMS, typename scalar_t = float>
+std::vector<glm::vec<DIMS, scalar_t>> _smallVecCollection() {
+    std::vector<glm::vec<DIMS, scalar_t>> retval;
+    retval.push_back(_vec<DIMS, scalar_t>(0, 0, 0));
+    retval.push_back(_vec<DIMS, scalar_t>(1, 1, 1));
+    retval.push_back(_vec<DIMS, scalar_t>(-1, -1, -1));
+    retval.push_back(_vec<DIMS, scalar_t>(-2.3f, 1.2f, 0.8f));
     return retval;
 }
 
-template<int DIMS>
-std::vector<glm::mat<DIMS, DIMS, float>> _covCollection() {
-    std::vector<glm::mat<DIMS, DIMS, float>> retval;
-    retval.push_back(glm::mat<DIMS, DIMS, float>(1));
-    retval.push_back(glm::mat<DIMS, DIMS, float>(1) * 0.5f);
-    retval.push_back(glm::mat<DIMS, DIMS, float>(1) * 2.0f);
-    retval.push_back(glm::mat<DIMS, DIMS, float>(1) * 2.0f + 0.5f);
-    retval.push_back(glm::mat<DIMS, DIMS, float>(1) * 2.0f - 0.5f);
+template<int DIMS, typename scalar_t = float>
+std::vector<glm::mat<DIMS, DIMS, scalar_t>> _covCollection() {
+    std::vector<glm::mat<DIMS, DIMS, scalar_t>> retval;
+    retval.push_back(glm::mat<DIMS, DIMS, scalar_t>(1));
+    retval.push_back(glm::mat<DIMS, DIMS, scalar_t>(1) * 0.5f);
+    retval.push_back(glm::mat<DIMS, DIMS, scalar_t>(1) * 2.0f);
+    retval.push_back(glm::mat<DIMS, DIMS, scalar_t>(1) * 2.0f + 0.5f);
+    retval.push_back(glm::mat<DIMS, DIMS, scalar_t>(1) * 2.0f - 0.5f);
 
-    retval.push_back(_cov<DIMS>(1.5f, -0.1f,  0.2f, 2.5f, -0.3f, 2.2f));
-    retval.push_back(_cov<DIMS>(2.5f,  0.5f, -0.2f, 1.5f,  0.3f, 3.2f));
+    retval.push_back(_cov<DIMS, scalar_t>(1.5f, -0.1f,  0.2f, 2.5f, -0.3f, 2.2f));
+    retval.push_back(_cov<DIMS, scalar_t>(2.5f,  0.5f, -0.2f, 1.5f,  0.3f, 3.2f));
+    return retval;
+}
+
+template<int DIMS, typename scalar_t = float>
+std::vector<glm::mat<DIMS, DIMS, scalar_t>> _smallCovCollection() {
+    std::vector<glm::mat<DIMS, DIMS, scalar_t>> retval;
+    retval.push_back(glm::mat<DIMS, DIMS, scalar_t>(1));
+    retval.push_back(glm::mat<DIMS, DIMS, scalar_t>(1) * scalar_t(2.0) + scalar_t(0.5));
+    retval.push_back(glm::mat<DIMS, DIMS, scalar_t>(1) * scalar_t(2.0) - scalar_t(0.5));
+    retval.push_back(_cov<DIMS, scalar_t>(2.5f,  0.5f, -0.2f, 1.5f,  0.3f, 3.2f));
     return retval;
 }
 
@@ -142,8 +152,8 @@ std::vector<gpe::Gaussian<DIMS, float>> _gaussianCollection() {
     std::vector<float> weights = {0.f, 0.4f, 1.f};
 
     std::vector<glm::vec<DIMS, float>> positions;
-    positions.push_back(_vec<DIMS>(0, 0, 0));
-    positions.push_back(_vec<DIMS>(-1.4f, 2.5, 0.9f));
+    positions.push_back(_vec<DIMS>(0.f, 0.f, 0.f));
+    positions.push_back(_vec<DIMS>(-1.4f, 2.5f, 0.9f));
 
     std::vector<glm::mat<DIMS, DIMS, float>> covs;
     covs.push_back(glm::mat<DIMS, DIMS, float>(1));
@@ -170,7 +180,7 @@ std::vector<gpe::Gaussian<DIMS, float>> _gaussianCollection2() {
 
     std::vector<glm::vec<DIMS, float>> positions;
     positions.push_back(_vec<DIMS>(0, 0, 0));
-    positions.push_back(_vec<DIMS>(-1.4f, 2.5, 0.9f));
+    positions.push_back(_vec<DIMS>(-1.4f, 2.5f, 0.9f));
 
     std::vector<glm::mat<DIMS, DIMS, float>> covs;
     covs.push_back(glm::mat<DIMS, DIMS, float>(1));

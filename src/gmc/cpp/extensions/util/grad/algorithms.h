@@ -71,8 +71,7 @@ void times(const glm::vec<N_DIMS, scalar_t>& a, const scalar_t& b, glm::vec<N_DI
     *b_grad = gpe::sum(a * incoming_grad);
 }
 
-template<typename T1>
-__host__ __device__ GPE_ALGORITHMS_INLINE
+template<typename T1> __host__ __device__ GPE_ALGORITHMS_INLINE
 void divided_AbyB(const T1& a, const T1& b, T1* a_grad, T1* b_grad, const decltype (a / b)& incoming_grad) {
     assert(a_grad != b_grad);
     *a_grad = incoming_grad / b;
@@ -80,12 +79,18 @@ void divided_AbyB(const T1& a, const T1& b, T1* a_grad, T1* b_grad, const declty
     *b_grad = -(*a_grad) * a / b;     // same, but numerically more stable
 }
 
-template<typename scalar_t, int N>
-__host__ __device__ GPE_ALGORITHMS_INLINE
+template<typename scalar_t, int N> __host__ __device__ GPE_ALGORITHMS_INLINE
 void divided_AbyB(const glm::vec<N, scalar_t>& a, const scalar_t& b, glm::vec<N, scalar_t>* a_grad, scalar_t* b_grad, const glm::vec<N, scalar_t>& incoming_grad) {
     *a_grad = incoming_grad / b;
     //    *b_grad = -incoming_grad * a / (b * b);
     *b_grad = gpe::sum(-(*a_grad) * a / b);     // same, but numerically more stable
+}
+
+template<typename scalar_t, int N> __host__ __device__ GPE_ALGORITHMS_INLINE
+void divided_AbyB(const glm::mat<N, N, scalar_t>& a, const scalar_t& b, glm::mat<N, N, scalar_t>* a_grad, scalar_t* b_grad, const glm::mat<N, N, scalar_t>& incoming_grad) {
+    *a_grad = incoming_grad / b;
+    //    *b_grad = -incoming_grad * a / (b * b);
+    *b_grad = gpe::sum(gpe::cwise_mul(-(*a_grad), a) / b);     // same, but numerically more stable
 }
 
 template<typename T1, typename T2 = T1>

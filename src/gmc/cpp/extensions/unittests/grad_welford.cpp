@@ -32,7 +32,7 @@ void test_weighted_mean(const std::vector<scalar_t>& scalars, const std::vector<
             }
 
             gpe::WeightedMean<autodiff_scalar, autodiff_V> autodiff_aggregator;
-            gpe::grad::WeightedMean<float, V> grad_aggregator(aggregator.w_sum, aggregator.mean(), wsum_grad, mean_grad);
+            gpe::grad::WeightedMean<scalar_t, V> grad_aggregator(aggregator.w_sum, aggregator.mean(), wsum_grad, mean_grad);
 
             for (const auto& p : autodiff_weight_value_pairs) {
                 autodiff_aggregator.addValue(p.first, p.second + autodiff_V{});
@@ -57,17 +57,19 @@ void test_weighted_mean(const std::vector<scalar_t>& scalars, const std::vector<
 
 TEST_CASE("grad welford weighted mean") {
     SECTION( "scalars", "[grad_welford]" ) {
-        test_weighted_mean(_smallPositiveScalarCollection(), _smallPositiveScalarCollection());
-        test_weighted_mean(_smallNegativeScalarCollection(), _smallPositiveScalarCollection());
+        test_weighted_mean(_smallPositiveScalarCollection<double>(), _smallPositiveScalarCollection<double>());
+        test_weighted_mean(_smallNegativeScalarCollection<double>(), _smallPositiveScalarCollection<double>());
     }
     SECTION( "vectors", "[grad_welford]" ) {
-        test_weighted_mean(_smallPositiveScalarCollection(), _smallVecCollection<2>());
-        test_weighted_mean(_smallNegativeScalarCollection(), _smallVecCollection<2>());
-//        test_weighted_mean(scalars, _vecCollection<3>());
+        test_weighted_mean(_smallPositiveScalarCollection<double>(), _smallVecCollection<2, double>());
+        test_weighted_mean(_smallNegativeScalarCollection<double>(), _smallVecCollection<2, double>());
+        test_weighted_mean(_smallPositiveScalarCollection<double>(), _smallVecCollection<3, double>());
+        test_weighted_mean(_smallNegativeScalarCollection<double>(), _smallVecCollection<3, double>());
     }
-//    SECTION( "matrices", "[grad_welford]" ) {
-//        const auto scalars = _scalarCollection();
-//        test_weighted_mean(scalars, _vecCollection<2>());
-//        test_weighted_mean(scalars, _covCollection<3>());
-//    }
+    SECTION( "matrices", "[grad_welford]" ) {
+        test_weighted_mean(_smallPositiveScalarCollection<double>(), _smallCovCollection<2, double>());
+        test_weighted_mean(_smallPositiveScalarCollection<double>(), _smallCovCollection<3, double>());
+        test_weighted_mean(_smallNegativeScalarCollection<double>(), _smallCovCollection<2, double>());
+        test_weighted_mean(_smallNegativeScalarCollection<double>(), _smallCovCollection<3, double>());
+    }
 }
