@@ -4,6 +4,7 @@ from typing import List
 import torch
 import gmc.mixture as gm
 import gmc.mat_tools as mat_tools
+import math
 
 class GMMStats(EvalFunction):
 
@@ -18,12 +19,16 @@ class GMMStats(EvalFunction):
                  stdev_amp: bool = True,
                  avg_det: bool = True,
                  stdev_det: bool = True,
+                 cv_det: bool = True,
                  avg_weight: bool = True,
                  stdev_weights: bool = True,
                  sum_of_weights: bool = True,
                  zero_gaussians: bool = True,
                  invalid_gaussians: bool = True,
-                 em_default_abs_eps: bool = False):
+                 em_default_abs_eps: bool = False,
+                 avg_sqrt_det: bool = True,
+                 std_sqrt_det: bool = True,
+                 cv_ellvol: bool = True):
         self._avg_trace = avg_trace
         self._stdev_traces = stdev_traces
         self._cv_traces = cv_traces
@@ -34,16 +39,20 @@ class GMMStats(EvalFunction):
         self._stdev_amp = stdev_amp
         self._avg_det = avg_det
         self._stdev_det = stdev_det
+        self._cv_det = cv_det
         self._avg_weight = avg_weight
         self._stdev_weights = stdev_weights
         self._sum_of_weights = sum_of_weights
         self._zero_gaussians = zero_gaussians
         self._invalid_gaussians = invalid_gaussians
         self._em_default_abs_eps = em_default_abs_eps
+        self._avg_sqrt_det = avg_sqrt_det
+        self._std_sqrt_det = std_sqrt_det
+        self._cv_ellvol = cv_ellvol
         self._n_activated = avg_trace + stdev_traces + cv_traces + avg_evs*3 + stdev_evs*3 + min_ev + avg_amp + \
-                            stdev_amp + avg_det + stdev_det + \
+                            stdev_amp + avg_det + stdev_det + cv_det + \
                             avg_weight + stdev_weights + sum_of_weights + zero_gaussians + invalid_gaussians + \
-                            em_default_abs_eps
+                            em_default_abs_eps + avg_sqrt_det + std_sqrt_det + cv_ellvol
 
     def calculate_score(self, pcbatch: torch.Tensor, gmpositions: torch.Tensor, gmcovariances: torch.Tensor,
                         gminvcovariances: torch.Tensor, gmamplitudes: torch.Tensor,
@@ -87,13 +96,16 @@ class GMMStats(EvalFunction):
             if self._stdev_amp:
                 result[i, :] = std
                 i += 1
-        if self._avg_det or self._stdev_det:
+        if self._avg_det or self._stdev_det or self._cv_det:
             (std, mean) = torch.std_mean(gmcov_filtered.det()[:, 0, :], dim=1, unbiased=False) # (bs)
             if self._avg_det:
                 result[i, :] = mean * (pcbatch.nnscalefactor ** 6)
                 i += 1
             if self._stdev_det:
                 result[i, :] = std * (pcbatch.nnscalefactor ** 6)
+                i += 1
+            if self._cv_det:
+                result[i, :] = std / mean
                 i += 1
         if self._avg_weight or self._stdev_weights or self._sum_of_weights:
             weights = gmamplitudes * (gmcovariances.det().sqrt() * 15.74960995)
@@ -120,6 +132,18 @@ class GMMStats(EvalFunction):
                 eps = 1e-9
             result[i, :] = eps
             i += 1
+        if self._avg_sqrt_det or self._std_sqrt_det or self._cv_ellvol:
+            (std, mean) = torch.std_mean(gmcov_filtered.det().sqrt()[:, 0, :], dim=1, unbiased=False) # (bs)  # (bs, 1, ng)
+            if self._avg_sqrt_det:
+                result[i, :] = mean.view(-1) * (pcbatch.nnscalefactor ** 3)
+                i += 1
+            if self._std_sqrt_det:
+                result[i, :] = std.view(-1) * (pcbatch.nnscalefactor ** 3)
+                i += 1
+            if self._cv_ellvol:
+                result[i, :] = std.view(-1) / mean.view(-1)
+                i += 1
+
         return result
 
     def get_names(self) -> List[str]:
@@ -148,6 +172,8 @@ class GMMStats(EvalFunction):
             nlst.append("Average Determinant")
         if self._stdev_det:
             nlst.append("Stdev of Determinants")
+        if self._cv_det:
+            nlst.append("CV fo Determinants")
         if self._avg_weight:
             nlst.append("Average Weight")
         if self._stdev_weights:
@@ -160,6 +186,12 @@ class GMMStats(EvalFunction):
             nlst.append("Number of invalid Gaussians")
         if self._em_default_abs_eps:
             nlst.append("EM default abs eps")
+        if self._avg_sqrt_det:
+            nlst.append("Average Sqrt Det")
+        if self._std_sqrt_det:
+            nlst.append("Stdev of Sqrt Det")
+        if self._cv_ellvol:
+            nlst.append("CV of Ellipsoid Volume")
         return nlst
 
     def needs_pc(self) -> bool:

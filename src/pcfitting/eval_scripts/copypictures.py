@@ -16,12 +16,12 @@ import matplotlib.image as mimg
 import shutil
 matplotlib.use('TkAgg')
 
-rendering_path = r"F:\DA-Eval\dataset_eval\renderings"
-goal_path = r"F:\DA-Eval\dataset_eval\renderings\orderings"
-db_path = r"F:\DA-Eval\EvalV2.db"
+rendering_path = r"K:\DA-Eval\dataset_eval\renderings"
+goal_path = r"K:\DA-Eval\dataset_eval\renderings\orderings"
+db_path = r"K:\DA-Eval\EvalV2.db"
 
 table_of_interest = "EvalStats"
-metric_of_interest = "std_traces/avg_trace"
+metric_of_interest = "std_sqrt_det"
 model_of_interest = "bed_0001.off"
 
 save_path = os.path.join(goal_path, model_of_interest, metric_of_interest)
