@@ -94,7 +94,7 @@ torch::Tensor forward_impl_t(const torch::Tensor& data, const torch::Tensor& ker
         const auto& data_gaussian = data_a[batch_id][channel_in_id][component_in_id];
         const auto& kernel_gaussian = kernel_a[channel_out_id][channel_in_id][component_kernel_id];
 
-        out_mixture_a[int(batch_id)][int(channel_out_id)][int(component_out_id)] = convolve(data_gaussian, kernel_gaussian);
+        out_mixture_a[int(batch_id)][int(channel_out_id)][int(component_out_id)] = gpe::convolve(data_gaussian, kernel_gaussian);
 //        printf("b: %d, ch o: %d, cmp o: %d, cmp i: %d, ch i: %d, k i: %d\n", batch_id, channel_out_id, component_out_id, component_in_id, channel_in_id, component_kernel_id);
 
     });

@@ -70,7 +70,7 @@ struct WeightedMean {
     scalar_t grad_w_sum = 0;
 
     EXECUTION_DEVICES
-    WeightedMean(scalar_t w_sum, T v_mean, scalar_t incoming_w_sum_grad, T incoming_v_mean_grad) {
+    WeightedMean(scalar_t w_sum, const T& v_mean, scalar_t incoming_w_sum_grad, const T& incoming_v_mean_grad) {
         // w_sum = sum_over(w_i)
         // mean = sum_over(w_i * v_i)/w_sum
 

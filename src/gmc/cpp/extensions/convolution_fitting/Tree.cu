@@ -51,10 +51,10 @@ convolution_fitting::Tree<scalar_t, N_DIMS>::Tree(const at::Tensor& data, const 
     n_nodes = n_leaf_nodes + n_internal_nodes;
 
 
-    m_data->data_weights = pieces::integrate(data.view({-1, 1, 1, data.size(-1)})).contiguous().view({n.batch, n.layers, n.components});     // the pdf form integrates to one, so integrating gives us the same as w / gaussian_amplitude
+    m_data->data_weights = gpe::weights(data).contiguous();
     m_data->data_positions = gpe::positions(data).contiguous();
     m_data->data_covariances = data.index({Ellipsis, Slice(N_DIMS + 1, None)}).contiguous();
-    m_data->kernel_weights = pieces::integrate(kernels.view({-1, 1, 1, data.size(-1)})).contiguous().view({kernel_n.batch, kernel_n.layers, kernel_n.components});
+    m_data->kernel_weights = gpe::weights(kernels).contiguous();
     m_data->kernel_positions = gpe::positions(kernels).contiguous();
     m_data->kernel_covariances = kernels.index({Ellipsis, Slice(N_DIMS + 1, None)}).contiguous();
 

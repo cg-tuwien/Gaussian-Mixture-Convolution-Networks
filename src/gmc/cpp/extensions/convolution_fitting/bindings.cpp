@@ -8,7 +8,7 @@
 #include "convolution_fitting/implementation.h"
 #include "convolution_fitting/Config.h"
 
-std::vector<torch::Tensor> convolution_fitting_forward(torch::Tensor data, torch::Tensor kernels, int n_components_fitting, int reduction_n) {
+std::vector<torch::Tensor> convolution_fitting_forward(torch::Tensor data, torch::Tensor kernels, int n_components_fitting) {
     at::cuda::OptionalCUDAGuard device_guard;
     if (data.is_cuda()) {
         assert (device_of(data).has_value());
@@ -16,29 +16,26 @@ std::vector<torch::Tensor> convolution_fitting_forward(torch::Tensor data, torch
     }
     convolution_fitting::Config config = {};
     config.n_components_fitting = unsigned(n_components_fitting);
-    config.reduction_n = reduction_n;
     auto result = convolution_fitting::forward_impl(data, kernels, config);
-    return {result.fitting};
+    return {result.fitting, result.cached_pos_covs};
 }
 
-//std::pair<torch::Tensor, torch::Tensor> convolution_fitting_backward(const torch::Tensor& grad,
-//                                    const torch::Tensor& fitting_mixture,
-//                                    const torch::Tensor& target_mixture,
-//                                    const torch::Tensor& bvh_nodes, const torch::Tensor& bvh_attribs,
-//                                    int n_components_fitting, int reduction_n) {
-//    at::cuda::OptionalCUDAGuard device_guard;
-//    if (grad.is_cuda()) {
-//        assert (device_of(grad).has_value());
-//        device_guard.set_device(device_of(grad).value());
-//    }
+std::pair<torch::Tensor, torch::Tensor> convolution_fitting_backward(const torch::Tensor& grad,
+                                                                     const torch::Tensor& result,
+                                                                     const torch::Tensor& data, const torch::Tensor& kernels,
+                                                                     const torch::Tensor& cached_pos_covs,
+//                                                                     const torch::Tensor& nodes, const torch::Tensor& attribs,
+                                                                     int n_components_fitting) {
+    at::cuda::OptionalCUDAGuard device_guard;
+    if (grad.is_cuda()) {
+        assert (device_of(grad).has_value());
+        device_guard.set_device(device_of(grad).value());
+    }
 
-//    convolution_fitting::Config config = {};
-//    config.n_components_fitting = unsigned(n_components_fitting);
-//    config.reduction_n = reduction_n;
-
-////    return convolution_fitting::backward_impl(grad, convolution_fitting::ForwardOutput{fitting_mixture, target_mixture, bvh_nodes, bvh_attribs}, config);
-//    return {};
-//}
+    convolution_fitting::Config config = {};
+    config.n_components_fitting = unsigned(n_components_fitting);
+    return convolution_fitting::backward_impl(grad, convolution_fitting::ForwardOutput{result, data, kernels, cached_pos_covs}, config);
+}
 
 #ifndef GMC_CMAKE_TEST_BUILD
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {

@@ -77,6 +77,17 @@ void show(torch::Tensor rendering, const int resolution, const int n_batch_limit
     scrollarea->show();
 }
 
+torch::Tensor toPdfMixture(const torch::Tensor& data) {
+    const auto weights = pieces::integrate(data.view({-1, 1, 1, data.size(-1)})).contiguous().view({data.size(0), data.size(1), data.size(2)});
+    return gpe::pack_mixture(weights, gpe::positions(data), gpe::covariances(data));
+}
+
+torch::Tensor toAmplitudeMixture(const torch::Tensor& data) {
+    const auto uniAmpM = gpe::pack_mixture(torch::ones_like(gpe::weights(data)), gpe::positions(data), gpe::covariances(data));
+    const auto normFactors = pieces::integrate(uniAmpM.view({-1, 1, 1, data.size(-1)})).contiguous().view({data.size(0), data.size(1), data.size(2)});
+    return gpe::pack_mixture(gpe::weights(data) / normFactors, gpe::positions(data), gpe::covariances(data));
+}
+
 int main(int argc, char *argv[]) {
     using namespace torch::indexing;
     QApplication a(argc, argv);
@@ -108,7 +119,8 @@ int main(int argc, char *argv[]) {
 
             const auto reference = render(convolution::forward_impl(data, kernels), 128, LIMIT_N_BATCH);
             show(reference, 128, LIMIT_N_BATCH, "reference");
-            const auto fitting = render(convolution_fitting::forward_impl(data, kernels, config).fitting, 128, LIMIT_N_BATCH);
+            const auto newTMixtureFitting = convolution_fitting::forward_impl(toPdfMixture(data), toPdfMixture(kernels), config).fitting;
+            const auto fitting = render(toAmplitudeMixture(newTMixtureFitting), 128, LIMIT_N_BATCH);
             show(fitting, 128, LIMIT_N_BATCH, "fitting");
 
             const auto diff = fitting - reference;

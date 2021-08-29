@@ -71,8 +71,8 @@ ForwardOutput forward_impl(const torch::Tensor& data, const torch::Tensor& kerne
     auto n_dims = gpe::n_dimensions(data);
     auto scalar_type = data.scalar_type();
 
-    switch (config.reduction_n) {
-    case 1:
+//    switch (config.reduction_n) {
+//    case 1:
         return dispatch_forward_dim_and_scalar_type<1>(data, kernels, config, n_dims, scalar_type);
 //    case 2:
 //        return dispatch_forward_dim_and_scalar_type<2>(mixture, config, n_dims, scalar_type);
@@ -82,18 +82,18 @@ ForwardOutput forward_impl(const torch::Tensor& data, const torch::Tensor& kerne
 //    case 8:
 //        return dispatch_forward_dim_and_scalar_type<8>(mixture, config, n_dims, scalar_type);
 //#endif
-    default:
-        std::cout << "invalid convolution_fitting::Config::reduction_n" << std::endl;
-        exit(1);
-    }
+//    default:
+//        std::cout << "invalid convolution_fitting::Config::reduction_n" << std::endl;
+//        exit(1);
+//    }
 }
 
 std::pair<torch::Tensor, torch::Tensor> backward_impl(torch::Tensor grad, const ForwardOutput& forward_out, const Config& config) {
     auto n_dims = gpe::n_dimensions(grad);
     auto scalar_type = grad.scalar_type();
 
-    switch (config.reduction_n) {
-    case 1:
+//    switch (config.reduction_n) {
+//    case 1:
         return dispatch_backward_dim_and_scalar_type<1>(grad, forward_out, config, n_dims, scalar_type);
 //    case 2:
 //        return dispatch_backward_dim_and_scalar_type<2>(grad, forward_out, config, n_dims, scalar_type);
@@ -103,10 +103,10 @@ std::pair<torch::Tensor, torch::Tensor> backward_impl(torch::Tensor grad, const 
 //    case 8:
 //        return dispatch_backward_dim_and_scalar_type<8>(grad, forward_out, config, n_dims, scalar_type);
 //#endif
-    default:
-        std::cout << "invalid convolution_fitting::Config::reduction_n" << std::endl;
-        exit(1);
-    }
+//    default:
+//        std::cout << "invalid convolution_fitting::Config::reduction_n" << std::endl;
+//        exit(1);
+//    }
 }
 
 } // namespace bvh_mhem_fit

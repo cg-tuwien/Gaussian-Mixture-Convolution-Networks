@@ -1,30 +1,16 @@
 #include "convolution_fitting/implementation.h"
-#include <stdio.h>
-#include <type_traits>
 
 #include <cuda.h>
-#include <cuda_runtime.h>
 #include <torch/types.h>
 
-#include "convolution_fitting/implementation_common.h"
 #include "convolution_fitting/Config.h"
 #include "convolution_fitting/Tree.h"
-#include "common.h"
 #include "cuda_qt_creator_definitinos.h"
 #include "cuda_operations.h"
 #include "hacked_accessor.h"
-#include "util/glm.h"
-#include "util/scalar.h"
-#include "util/algorithms.h"
-#include "util/autodiff.h"
-#include "util/containers.h"
-#include "util/cuda.h"
 #include "util/gaussian.h"
-#include "util/gaussian_mixture.h"
 #include "util/helper.h"
-#include "util/mixture.h"
 #include "util/welford.h"
-#include "pieces/integrate.h"
 #include "parallel_start.h"
 
 
@@ -32,15 +18,6 @@ namespace convolution_fitting {
 
 template<int REDUCTION_N = 4, typename scalar_t, unsigned N_DIMS>
 ForwardOutput forward_impl_t(const torch::Tensor& data, const torch::Tensor& kernels, const Config& config) {
-    // cont with fitting todos:
-    // - split data into weight, pos and cov tensors.
-    // - use pdf formulation to avoid complicated integral and convolution
-    // - if 1G bad, implement 2G and 4G fitting.
-    //
-    // cont with gradient computation
-    // - gradient for fitting alone (tests only)
-    // - merge and test. [we have no trickle down now, yey.]
-
     using Tree = Tree<scalar_t, N_DIMS>;
 
     TORCH_CHECK(config.n_components_fitting <= N_MAX_TARGET_COMPS, "can't fit more than " + std::to_string(N_MAX_TARGET_COMPS) + " components")
@@ -53,6 +30,8 @@ ForwardOutput forward_impl_t(const torch::Tensor& data, const torch::Tensor& ker
 
     auto out_mixture = torch::empty({tree.n.batch, tree.n_channels_out, config.n_components_fitting, data.size(-1)}, torch::TensorOptions(data.device()).dtype(data.dtype()));
     auto out_mixture_a = gpe::struct_accessor<gpe::Gaussian<N_DIMS, scalar_t>, 3>(out_mixture);
+    auto cached_pos_covs = torch::empty({tree.n.batch, tree.n_channels_out, config.n_components_fitting, N_DIMS * N_DIMS}, torch::TensorOptions(data.device()).dtype(data.dtype()));
+    auto cached_pos_covs_a = gpe::struct_accessor<typename Tree::Mat, 3>(cached_pos_covs);
 
 
     { // fit subtrees
@@ -76,7 +55,7 @@ ForwardOutput forward_impl_t(const torch::Tensor& data, const torch::Tensor& ker
             assert(batch_id < tree.n.batch);
             assert(channel_out_id < tree.n_channels_out);
 
-            const auto fitting_root_node_id = tree->fitting_subtrees_a[batch_id][channel_out_id][component_out_id];
+            const auto fitting_root_node_id = tree.fitting_subtrees_a[batch_id][channel_out_id][component_out_id];
 
             const auto get_node = [&](index_type node_id) -> const typename Tree::Node& {
                 assert(node_id < tree.n_nodes);
@@ -134,14 +113,16 @@ ForwardOutput forward_impl_t(const torch::Tensor& data, const torch::Tensor& ker
                 pos_aggregator.addValue(convolved_weight, convolved_position);
                 cov_aggregator.addValue(convolved_weight, convolved_covariance);
             }
-            const auto cov_mat = cov_aggregator.mean() + pos_aggregator.cov_matrix();
+            const auto pos_cov = pos_aggregator.cov_matrix();
+            cached_pos_covs_a[batch_id][channel_out_id][component_out_id] = pos_cov;
+            const auto cov_mat = cov_aggregator.mean() + pos_cov;
             const auto g = G{pos_aggregator.w_sum * gpe::gaussian_amplitude(cov_mat), pos_aggregator.mean(), cov_mat};
-            out_mixture_a[int(batch_id)][int(channel_out_id)][int(component_out_id)] = g;
+            out_mixture_a[batch_id][channel_out_id][component_out_id] = g;
         });
     }
 
 
-    return ForwardOutput{out_mixture};
+    return ForwardOutput{out_mixture, data, kernels, cached_pos_covs};
 }
 
 

@@ -9,14 +9,13 @@
 namespace convolution_fitting {
 struct ForwardOutput {
     torch::Tensor fitting;
-//    torch::Tensor target;
-//    torch::Tensor bvh_nodes;
-//    torch::Tensor bvh_attributes;
+    torch::Tensor data;
+    torch::Tensor kernels;
+    torch::Tensor cached_pos_covs;
 
-    ForwardOutput clone() {
-        return {fitting.clone()};
-//        return {fitting.clone(), target.clone(), bvh_nodes.clone(), bvh_attributes.clone()};
-    }
+//    ForwardOutput clone() {
+//        return {fitting.clone(), data.clone(), kernels.clone(), cached_pos_covs.clone()};
+//    }
 };
 
 ForwardOutput forward_impl(const at::Tensor& data, const at::Tensor& kernels, const Config& config);
