@@ -231,7 +231,7 @@ void convolution_fitting::Tree<scalar_t, N_DIMS>::create_attributes()
                         (unsigned(n_channels_out) + dimBlock.y - 1) / dimBlock.y,
                         (unsigned(n.batch) + dimBlock.z - 1) / dimBlock.z);
 
-    gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(m_data->node_attributes), dimGrid, dimBlock, [*this] __host__ __device__
+    gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(m_data->nodes), dimGrid, dimBlock, [*this] __host__ __device__
                                                   (const dim3& gpe_gridDim, const dim3& gpe_blockDim, const dim3& gpe_blockIdx, const dim3& gpe_threadIdx) mutable {
         // index might not fit into 32 bit, i.e. when n.components == 1 << 17, n_feature_maps_in == 1 << 12 and kernel_n.components == 1 << 4
         // however, such large datasets would be infeasable anyways. i.e., if we have (1<<32) output components, then the morton code array alone takes 8 GB. For one output feature map. For one batch dimension.
@@ -289,6 +289,88 @@ void convolution_fitting::Tree<scalar_t, N_DIMS>::create_attributes()
     });
 }
 
+template<typename scalar_t, unsigned N_DIMS>
+void convolution_fitting::Tree<scalar_t, N_DIMS>::select_fitting_subtrees()
+{
+    const auto n_mixtures = unsigned(n.batch) * n_channels_out;
+    m_data->fitting_subtrees = torch::ones({n.batch, n_channels_out, m_config.n_components_fitting}, torch::TensorOptions(device()).dtype(gpe::TorchTypeMapper<typename Tree::index_type>::id())) * -1;
+    fitting_subtrees_a = gpe::accessor<typename Tree::index_type, 3>(m_data->fitting_subtrees);
+
+    dim3 dimBlock = dim3(32, 1, 1);
+    dim3 dimGrid = dim3((uint(n_mixtures) + dimBlock.x - 1) / dimBlock.x, 1, 1);
+    gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(m_data->nodes), dimGrid, dimBlock, [=] __host__ __device__
+                                                  (const dim3& gpe_gridDim, const dim3& gpe_blockDim, const dim3& gpe_blockIdx, const dim3& gpe_threadIdx) mutable {
+        GPE_UNUSED(gpe_gridDim)
+        using G = gpe::Gaussian<N_DIMS, scalar_t>;
+
+        const auto mixture_id = gpe_blockIdx.x * gpe_blockDim.x + gpe_threadIdx.x;
+        if (mixture_id >= n_mixtures)
+            return;
+
+        const auto mixture_indices = gpe::split_n_dim_index<uint32_t, 3, unsigned>({unsigned(n.batch), unsigned(n_channels_out)}, mixture_id);
+        const auto& batch_id = mixture_indices[0];
+        const auto& channel_out_id = mixture_indices[1];
+
+        const auto get_node = [&](index_type node_id) -> const auto& {
+            assert(node_id < n_nodes);
+            return nodes_a[batch_id][channel_out_id][node_id];
+        };
+        const auto get_attribs = [&](index_type node_id) -> auto& {
+            assert(node_id < n_internal_nodes);
+            return node_attributes_a[batch_id][channel_out_id][node_id];
+        };
+
+        gpe::Vector<scalar_t, N_MAX_TARGET_COMPS> selectedNodesRating;
+        gpe::Vector<index_type, N_MAX_TARGET_COMPS> selectedNodes;
+
+        unsigned n_selected_components = 0;
+        auto compute_rating = [&](index_type node_id) -> scalar_t {
+            assert(node_id < n_nodes);
+            // todo: will break with negative weights, should compute sum of abs integrals / seperately positive and negative integrals
+            if (node_id >= n_internal_nodes)
+                return -2; // -2 so it's safely below -1 from cach_id_with_highest_rating
+            else
+                return gpe::abs(get_attribs(node_id).mass);
+        };
+        auto cach_id_with_highest_rating = [&]() {
+            scalar_t rating = -1;
+            unsigned best_node_id = unsigned(-1);
+            for (unsigned i = 0; i < selectedNodes.size(); ++i) {
+                if (selectedNodesRating[i] > rating) {
+                    rating = selectedNodesRating[i];
+                    best_node_id = i;
+                }
+            }
+            // can become unsigned(-1) when no selectable node remains
+            return best_node_id;
+        };
+        selectedNodes.push_back(0); // root node
+        selectedNodesRating.push_back(compute_rating(0));
+        n_selected_components = 1;
+
+        while (n_selected_components < m_config.n_components_fitting)  {
+            auto best_node_cache_id = cach_id_with_highest_rating();
+            if (best_node_cache_id >= selectedNodes.size())
+                break;  // ran out of nodes
+            auto best_node_id = selectedNodes[best_node_cache_id];
+            assert(best_node_id < n_nodes);
+            const auto& best_descend_node = get_node(best_node_id);
+            assert(best_node_id < n_internal_nodes); // we should have only internal nodes at this point as cach_id_with_highest_rating() returns 0xffff.. if the node is not full.
+
+            selectedNodes[best_node_cache_id] = best_descend_node.left_idx;
+            selectedNodesRating[best_node_cache_id] = compute_rating(best_descend_node.left_idx);
+
+            selectedNodes.push_back(best_descend_node.right_idx);
+            selectedNodesRating.push_back(compute_rating(best_descend_node.right_idx));
+            ++n_selected_components;
+            //                n_selected_components += get_attribs(best_descend_node.left_idx).n_gaussians + get_attribs(best_descend_node.right_idx).n_gaussians;
+        }
+
+        for (unsigned i = 0; i < selectedNodes.size(); ++i) {
+            fitting_subtrees_a[batch_id][channel_out_id][i] = selectedNodes[i];
+        }
+    });
+}
 
 
 template class convolution_fitting::Tree<float, 2>;

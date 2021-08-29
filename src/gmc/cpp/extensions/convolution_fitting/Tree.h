@@ -11,6 +11,7 @@
 
 namespace convolution_fitting {
 
+constexpr unsigned N_MAX_TARGET_COMPS = 1024;
 
 template<typename scalar_t, unsigned N_DIMS>
 class Tree {
@@ -28,6 +29,7 @@ public:
         torch::Tensor kernel_covariances;
         torch::Tensor nodes;
         torch::Tensor node_attributes;
+        torch::Tensor fitting_subtrees;
     };
 
     struct Node
@@ -61,6 +63,7 @@ public:
     gpe::PackedTensorAccessor32<Mat, 3> kernel_covariances_a;
     gpe::PackedTensorAccessor32<typename Tree::Node, 3> nodes_a;
     gpe::PackedTensorAccessor32<typename Tree::NodeAttributes, 3> node_attributes_a;
+    gpe::PackedTensorAccessor32<typename Tree::index_type, 3> fitting_subtrees_a;
     Data *const m_data = nullptr; // can't store tensors directly, because tree is copied to gpu and Tensors are causing problems when using *this in lambdas
 
 
@@ -70,6 +73,7 @@ public:
     torch::Tensor compute_morton_codes() const;
     void create_tree_nodes();
     void create_attributes();
+    void select_fitting_subtrees();
 };
 
 

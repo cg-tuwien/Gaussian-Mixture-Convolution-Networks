@@ -6,6 +6,7 @@
     <mapping directory="$PROJECT_DIR$/gmc/cpp/cub" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/gmc/cpp/gcem" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/gmc/cpp/glm" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/gmc/cpp/lbvh" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/gmc/cpp/yamc" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/pcfitting/cpp/external/eigen" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/pcfitting/cpp/gmslib" vcs="Git" />
