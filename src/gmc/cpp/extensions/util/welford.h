@@ -22,7 +22,7 @@ struct WeightedMeanAndCov {
     EXECUTION_DEVICES
     void addValue(scalar_t w, const vec_t& v) {
         w_sum += w;
-        if (w_sum == scalar_t(0.0))
+        if (w == scalar_t(0.0))
             return;
         const auto v_mean_old = v_mean;
         const auto delta1 = (v - v_mean);

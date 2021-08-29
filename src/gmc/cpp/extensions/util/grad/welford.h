@@ -36,7 +36,8 @@ struct WeightedMeanAndCov {
         gpe::grad::outerProduct(v_mean, v_mean, &v_mean_grad, &v_mean_grad, -incoming_cov_grad);
 
         // grad for cov sum is divided onto grad of sum_over(w_i * vp_i * vp_i^T) and grad of w_sum
-        gpe::grad::functors::divided_AbyB(w_sum * cov, w_sum, &grad_sum_over_wi_vpi_vpiT, &grad_w_sum, incoming_cov_grad); // sum_over(w_i * vp_i * vp_i^T) = w_sum * cov
+        // sum_over(w_i * vp_i * vp_i^T) = w_sum * (cov + mean * mean^T)
+        gpe::grad::functors::divided_AbyB(w_sum * (cov + glm::outerProduct(v_mean, v_mean)), w_sum, &grad_sum_over_wi_vpi_vpiT, &grad_w_sum, incoming_cov_grad);
 
         v_mean_grad += incoming_v_mean_grad;
 
