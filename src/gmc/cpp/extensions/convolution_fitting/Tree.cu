@@ -298,7 +298,7 @@ void convolution_fitting::Tree<scalar_t, N_DIMS>::select_fitting_subtrees()
 
     dim3 dimBlock = dim3(32, 1, 1);
     dim3 dimGrid = dim3((uint(n_mixtures) + dimBlock.x - 1) / dimBlock.x, 1, 1);
-    gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(m_data->nodes), dimGrid, dimBlock, [=] __host__ __device__
+    gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(m_data->nodes), dimGrid, dimBlock, [=, *this] __host__ __device__
                                                   (const dim3& gpe_gridDim, const dim3& gpe_blockDim, const dim3& gpe_blockIdx, const dim3& gpe_threadIdx) mutable {
         GPE_UNUSED(gpe_gridDim)
         using G = gpe::Gaussian<N_DIMS, scalar_t>;
