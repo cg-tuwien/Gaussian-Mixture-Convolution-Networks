@@ -17,11 +17,11 @@ std::vector<torch::Tensor> convolution_fitting_forward(torch::Tensor data, torch
     convolution_fitting::Config config = {};
     config.n_components_fitting = unsigned(n_components_fitting);
     auto result = convolution_fitting::forward_impl(data, kernels, config);
-    return {result.fitting, result.cached_pos_covs};
+    return {result.fitting, data, kernels, result.cached_pos_covs};
 }
 
 std::pair<torch::Tensor, torch::Tensor> convolution_fitting_backward(const torch::Tensor& grad,
-                                                                     const torch::Tensor& result,
+                                                                     const torch::Tensor& fitting,
                                                                      const torch::Tensor& data, const torch::Tensor& kernels,
                                                                      const torch::Tensor& cached_pos_covs,
 //                                                                     const torch::Tensor& nodes, const torch::Tensor& attribs,
@@ -34,12 +34,12 @@ std::pair<torch::Tensor, torch::Tensor> convolution_fitting_backward(const torch
 
     convolution_fitting::Config config = {};
     config.n_components_fitting = unsigned(n_components_fitting);
-    return convolution_fitting::backward_impl(grad, convolution_fitting::ForwardOutput{result, data, kernels, cached_pos_covs}, config);
+    return convolution_fitting::backward_impl(grad, convolution_fitting::ForwardOutput{fitting, data, kernels, cached_pos_covs}, config);
 }
 
 #ifndef GMC_CMAKE_TEST_BUILD
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("forward", &convolution_fitting_forward, "convolution_fitting_forward");
-//  m.def("backward", &convolution_fitting_backward, "convolution_fitting_backward");
+  m.def("backward", &convolution_fitting_backward, "convolution_fitting_backward");
 }
 #endif

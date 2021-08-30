@@ -29,6 +29,9 @@ struct WeightedMeanAndCov {
         // the cov formula is 'susceptible to catastrophic cancellation' (wikipedia on variance and covariance), but we use it only for calculating the gradient, which should be fine.
         // it's actually even very good, as the gradient for sums is numerically stable. + we can do it in one iteration over the weights.
 
+        if (w_sum == scalar_t(0))
+            return;
+
         // we have incoming grads for mean, cov, and w_sum.
         // back to front:
         // incoming cov grad onto sum and - mean * mean^T; this is the mean part
@@ -73,6 +76,9 @@ struct WeightedMean {
     WeightedMean(scalar_t w_sum, const T& v_mean, scalar_t incoming_w_sum_grad, const T& incoming_v_mean_grad) {
         // w_sum = sum_over(w_i)
         // mean = sum_over(w_i * v_i)/w_sum
+
+        if (w_sum == scalar_t(0))
+            return;
 
         // we have incoming grads for mean and w_sum.
         // back to front:

@@ -6,21 +6,15 @@
 #include <cuda_runtime.h>
 #include <torch/types.h>
 
-#include "convolution_fitting/implementation_common.h"
 #include "convolution_fitting/Config.h"
 #include "common.h"
-#include "cuda_qt_creator_definitinos.h"
 #include "cuda_operations.h"
 #include "hacked_accessor.h"
 #include "lbvh/building.h"
 #include "lbvh/morton_code.h"
 #include "util/glm.h"
-#include "util/scalar.h"
-#include "util/algorithms.h"
 #include "util/containers.h"
 #include "util/cuda.h"
-#include "util/gaussian.h"
-#include "util/gaussian_mixture.h"
 #include "util/helper.h"
 #include "parallel_start.h"
 
@@ -301,7 +295,6 @@ void convolution_fitting::Tree<scalar_t, N_DIMS>::select_fitting_subtrees()
     gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(m_data->nodes), dimGrid, dimBlock, [=, *this] __host__ __device__
                                                   (const dim3& gpe_gridDim, const dim3& gpe_blockDim, const dim3& gpe_blockIdx, const dim3& gpe_threadIdx) mutable {
         GPE_UNUSED(gpe_gridDim)
-        using G = gpe::Gaussian<N_DIMS, scalar_t>;
 
         const auto mixture_id = gpe_blockIdx.x * gpe_blockDim.x + gpe_threadIdx.x;
         if (mixture_id >= n_mixtures)

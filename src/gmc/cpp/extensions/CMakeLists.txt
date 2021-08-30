@@ -289,7 +289,6 @@ set(CONVOLUTION_FITTING_HEADERS
     convolution_fitting/Config.h
     convolution_fitting/bindings.h
     convolution_fitting/implementation.h
-    convolution_fitting/implementation_common.h
     convolution_fitting/implementation_template_externs.h
     convolution_fitting/implementation_backward.h
     convolution_fitting/implementation_forward.h
@@ -333,7 +332,7 @@ set(CONVOLUTION_FITTING_SOURCES
 #    convolution_fitting/implementation_backward_instances/template_instance_implementation_backward_8_double_3.cu
 )
 add_library(convolution_fitting ${CONVOLUTION_FITTING_HEADERS} ${CONVOLUTION_FITTING_SOURCES})
-target_link_libraries(convolution_fitting PUBLIC OpenMP::OpenMP_CXX torch math lbvh common pieces)
+target_link_libraries(convolution_fitting PUBLIC OpenMP::OpenMP_CXX torch)
 
 
 # https://gitlab.kitware.com/cmake/cmake/-/issues/16915

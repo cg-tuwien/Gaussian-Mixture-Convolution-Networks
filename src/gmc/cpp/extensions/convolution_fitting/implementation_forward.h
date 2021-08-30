@@ -56,6 +56,10 @@ ForwardOutput forward_impl_t(const torch::Tensor& data, const torch::Tensor& ker
             assert(channel_out_id < tree.n_channels_out);
 
             const auto fitting_root_node_id = tree.fitting_subtrees_a[batch_id][channel_out_id][component_out_id];
+            if (fitting_root_node_id >= config.n_components_fitting) {
+                out_mixture_a[batch_id][channel_out_id][component_out_id] = {0, typename G::pos_t(0), typename G::cov_t(1)};
+                return;
+            }
 
             const auto get_node = [&](index_type node_id) -> const typename Tree::Node& {
                 assert(node_id < tree.n_nodes);

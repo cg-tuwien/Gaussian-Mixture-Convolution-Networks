@@ -12,6 +12,7 @@ import gmc.inout as gmio
 import gmc.mat_tools as mat_tools
 import gmc.cpp.gm_vis.gm_vis as gm_vis
 import gmc.cpp.extensions.convolution.binding as cpp_convolution
+import gmc.cpp.extensions.convolution_fitting.binding as cpp_convolution_fitting
 
 
 class ConvolutionConfig:
@@ -23,7 +24,7 @@ class Convolution(torch.nn.modules.Module):
     def __init__(self, config: ConvolutionConfig, n_layers_in: int, n_layers_out: int, n_kernel_components: int = 4, n_dims: int = 2,
                  position_range: float = 1, covariance_range: float = 0.25, weight_sd=0.1, weight_mean=0.0,
                  learn_positions: bool = True, learn_covariances: bool = True,
-                 covariance_epsilon: float = 0.05):
+                 covariance_epsilon: float = 0.05, n_fitting_components: int = -1):
         super(Convolution, self).__init__()
         self.config = config
         self.n_channels_in = n_layers_in
@@ -38,6 +39,7 @@ class Convolution(torch.nn.modules.Module):
         self.learn_positions = learn_positions
         self.learn_covariances = learn_covariances
         self.last_in = None
+        self.n_fitting_components = n_fitting_components
 
         # positive mean produces a rather positive gm. i believe this is a better init
         self.weights = torch.nn.Parameter(torch.randn(self.n_channels_out, n_layers_in, n_kernel_components, 1, dtype=torch.float32))
@@ -152,7 +154,13 @@ class Convolution(torch.nn.modules.Module):
         assert gm.is_valid_mixture_and_constant(x, x_constant)
         self.last_in = (x.detach(), x_constant.detach())
 
-        out_mixtures = cpp_convolution.apply(x, self.kernels())
+        if self.n_fitting_components == -1:
+            out_mixtures = cpp_convolution.apply(x, self.kernels())
+        else:
+            kernels = gm.convert_amplitudes_to_priors(self.kernels())
+            x = gm.convert_amplitudes_to_priors(x)
+            out_mixtures = cpp_convolution_fitting.apply(x, kernels, self.n_fitting_components)
+            out_mixtures = gm.convert_priors_to_amplitudes(out_mixtures)
 
         n_batch = x_constant.shape[0]
         n_channels_input = gm.n_layers(x)

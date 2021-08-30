@@ -21,9 +21,9 @@ constexpr uint N_BATCHES = 1;
 constexpr uint CONVOLUTION_LAYER_START = 1;
 constexpr uint CONVOLUTION_LAYER_END = 2;
 constexpr uint LIMIT_N_BATCH = 5;
-constexpr bool USE_CUDA = true;
-constexpr bool BACKWARD = false;
-constexpr bool RENDER = true;
+constexpr bool USE_CUDA = false;
+constexpr bool BACKWARD = true;
+constexpr bool RENDER = false;
 constexpr uint RESOLUTION = 128;
 constexpr bool DO_STATS = true;
 constexpr uint N_FITTING_COMPONENTS = 8;
@@ -118,10 +118,17 @@ int main(int argc, char *argv[]) {
 //            show(render(kernels, 128, LIMIT_N_BATCH), 128, LIMIT_N_BATCH);
 
             const auto reference = render(convolution::forward_impl(data, kernels), 128, LIMIT_N_BATCH);
-            show(reference, 128, LIMIT_N_BATCH, "reference");
-            const auto newTMixtureFitting = convolution_fitting::forward_impl(toPdfMixture(data), toPdfMixture(kernels), config).fitting;
-            const auto fitting = render(toAmplitudeMixture(newTMixtureFitting), 128, LIMIT_N_BATCH);
-            show(fitting, 128, LIMIT_N_BATCH, "fitting");
+            if (RENDER) {
+                show(reference, 128, LIMIT_N_BATCH, "reference");
+            }
+            const auto forward_output = convolution_fitting::forward_impl(toPdfMixture(data), toPdfMixture(kernels), config);
+            if (BACKWARD) {
+                convolution_fitting::backward_impl(torch::rand_like(forward_output.fitting), forward_output, config);
+            }
+            const auto fitting = render(toAmplitudeMixture(forward_output.fitting), 128, LIMIT_N_BATCH);
+                if (RENDER) {
+                show(fitting, 128, LIMIT_N_BATCH, "fitting");
+            }
 
             const auto diff = fitting - reference;
             const auto mse = (diff * diff).mean().item();
