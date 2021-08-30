@@ -12,6 +12,9 @@ struct ForwardOutput {
     torch::Tensor data;
     torch::Tensor kernels;
     torch::Tensor cached_pos_covs;
+    torch::Tensor nodes;
+    torch::Tensor node_attributes;
+    torch::Tensor fitting_subtrees;
 
 //    ForwardOutput clone() {
 //        return {fitting.clone(), data.clone(), kernels.clone(), cached_pos_covs.clone()};

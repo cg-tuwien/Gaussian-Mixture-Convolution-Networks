@@ -17,14 +17,14 @@ std::vector<torch::Tensor> convolution_fitting_forward(torch::Tensor data, torch
     convolution_fitting::Config config = {};
     config.n_components_fitting = unsigned(n_components_fitting);
     auto result = convolution_fitting::forward_impl(data, kernels, config);
-    return {result.fitting, data, kernels, result.cached_pos_covs};
+    return {result.fitting, data, kernels, result.cached_pos_covs, result.nodes, result.node_attributes, result.fitting_subtrees};
 }
 
 std::pair<torch::Tensor, torch::Tensor> convolution_fitting_backward(const torch::Tensor& grad,
                                                                      const torch::Tensor& fitting,
                                                                      const torch::Tensor& data, const torch::Tensor& kernels,
                                                                      const torch::Tensor& cached_pos_covs,
-//                                                                     const torch::Tensor& nodes, const torch::Tensor& attribs,
+                                                                     const torch::Tensor& nodes, const torch::Tensor& node_attributes, const torch::Tensor& fitting_subtrees,
                                                                      int n_components_fitting) {
     at::cuda::OptionalCUDAGuard device_guard;
     if (grad.is_cuda()) {
@@ -34,7 +34,7 @@ std::pair<torch::Tensor, torch::Tensor> convolution_fitting_backward(const torch
 
     convolution_fitting::Config config = {};
     config.n_components_fitting = unsigned(n_components_fitting);
-    return convolution_fitting::backward_impl(grad, convolution_fitting::ForwardOutput{fitting, data, kernels, cached_pos_covs}, config);
+    return convolution_fitting::backward_impl(grad, convolution_fitting::ForwardOutput{fitting, data, kernels, cached_pos_covs, nodes, node_attributes, fitting_subtrees}, config);
 }
 
 #ifndef GMC_CMAKE_TEST_BUILD

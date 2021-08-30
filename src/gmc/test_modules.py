@@ -99,23 +99,13 @@ class TestGM(unittest.TestCase):
         n_kernel_gaussians = 3
         n_layers_out = 3
         for n_dims in (2, 3):
-            for n_fitting_components in (32, ): # 1, 4, 8, 16, 32, n_layers_out * n_components_in * n_kernel_gaussians, n_layers_out * n_components_in * n_kernel_gaussians * 2
+            for n_fitting_components in (n_layers_out * n_components_in * n_kernel_gaussians, ): # 1, 4, 8, 16, 32, n_layers_out * n_components_in * n_kernel_gaussians, n_layers_out * n_components_in * n_kernel_gaussians * 2
                 print(f"n_dims={n_dims}")
                 gm_data = gm.generate_random_mixtures(n_batches, n_layers_in, n_components_in, n_dims=n_dims, pos_radius=1, cov_radius=0.25)
                 gm_kernels = gm.generate_random_mixtures(n_layers_out, n_layers_in, n_kernel_gaussians, n_dims=n_dims, pos_radius=1, cov_radius=0.25)
                 gm_data.requires_grad = True
                 gm_kernels.requires_grad = True
 
-                gm_out = cpp_convolution_fitting.apply(gm_data, gm_kernels, n_fitting_components)
-                gm_out.sum().backward(retain_graph=True)
-                data_grad1 = gm_data.grad.clone()
-                kernel_grad1 = gm_kernels.grad.clone()
-                gm_data.grad = None
-                gm_kernels.grad = None
-                gm_out.sum().backward(retain_graph=True)
-                data_grad2 = gm_data.grad.clone()
-                kernel_grad2 = gm_kernels.grad.clone()
-                # [275, 1651]
                 test = torch.autograd.gradcheck(cpp_convolution_fitting.apply, (gm_data, gm_kernels, n_fitting_components), eps=eps, atol=1e-3, nondet_tol=1e-1)
                 self.assertTrue(test)
 

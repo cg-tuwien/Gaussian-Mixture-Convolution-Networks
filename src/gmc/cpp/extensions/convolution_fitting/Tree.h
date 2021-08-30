@@ -69,11 +69,13 @@ public:
 
     Tree(const torch::Tensor& data, const torch::Tensor& kernels, Data* storage, const Config& config);
     torch::Device device() const { return m_data->data_weights.device(); }
+    caffe2::TypeMeta dtype() const { return m_data->data_weights.dtype(); }
     inline torch::Tensor aabb_from_positions(const torch::Tensor& data_positions, const torch::Tensor& kernel_positions) const;
     torch::Tensor compute_morton_codes() const;
     void create_tree_nodes();
     void create_attributes();
     void select_fitting_subtrees();
+    void set_nodes_and_friends(const torch::Tensor& nodes, const torch::Tensor& node_attributes, const torch::Tensor& fitting_subtrees);
 };
 
 

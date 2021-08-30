@@ -365,6 +365,18 @@ void convolution_fitting::Tree<scalar_t, N_DIMS>::select_fitting_subtrees()
     });
 }
 
+template<typename scalar_t, unsigned N_DIMS>
+void convolution_fitting::Tree<scalar_t, N_DIMS>::set_nodes_and_friends(const at::Tensor& nodes, const at::Tensor& node_attributes, const at::Tensor& fitting_subtrees)
+{
+    m_data->nodes = nodes;
+    m_data->node_attributes = node_attributes;
+    m_data->fitting_subtrees = fitting_subtrees;
+
+    nodes_a = gpe::struct_accessor<typename Tree::Node, 3>(m_data->nodes);
+    node_attributes_a = gpe::struct_accessor<typename Tree::NodeAttributes, 3>(m_data->node_attributes);
+    fitting_subtrees_a = gpe::accessor<typename Tree::index_type, 3>(m_data->fitting_subtrees);
+}
+
 
 template class convolution_fitting::Tree<float, 2>;
 template class convolution_fitting::Tree<double, 2>;

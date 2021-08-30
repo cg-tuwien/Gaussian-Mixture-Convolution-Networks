@@ -13,7 +13,7 @@ std::pair<at::Tensor, at::Tensor> convolution_fitting_backward(const torch::Tens
                                                                const torch::Tensor& fitting,
                                                                const torch::Tensor& data, const torch::Tensor& kernels,
                                                                const torch::Tensor& cached_pos_covs,
-//                                                               const torch::Tensor& nodes, const torch::Tensor& attribs,
+                                                               const torch::Tensor& nodes, const torch::Tensor& node_attributes, const torch::Tensor& fitting_subtrees,
                                                                int n_components_fitting);
 
 #endif

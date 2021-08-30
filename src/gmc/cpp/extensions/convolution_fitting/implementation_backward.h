@@ -28,9 +28,7 @@ std::pair<torch::Tensor, torch::Tensor> backward_impl_t(const torch::Tensor& gra
 
     typename Tree::Data tree_data_storage;
     Tree tree(forward_out.data, forward_out.kernels, &tree_data_storage, config);
-    tree.create_tree_nodes();
-    tree.create_attributes();
-    tree.select_fitting_subtrees();
+    tree.set_nodes_and_friends(forward_out.nodes, forward_out.node_attributes, forward_out.fitting_subtrees);
 
     torch::Tensor out_mixture = forward_out.fitting;
     auto out_mixture_a = gpe::struct_accessor<G, 3>(out_mixture);
@@ -117,6 +115,7 @@ std::pair<torch::Tensor, torch::Tensor> backward_impl_t(const torch::Tensor& gra
                 assert(channel_in_id < tree.n_channels_in);
                 assert(component_kernel_id < tree.kernel_n.components);
 
+                // todo: don't read data and kernel gaussian, read result gaussian!
                 const auto data_weight = tree.data_weights_a[batch_id][channel_in_id][component_in_id];
                 const auto& data_position = tree.data_positions_a[batch_id][channel_in_id][component_in_id];
                 const auto& data_covariance = tree.data_covariances_a[batch_id][channel_in_id][component_in_id];

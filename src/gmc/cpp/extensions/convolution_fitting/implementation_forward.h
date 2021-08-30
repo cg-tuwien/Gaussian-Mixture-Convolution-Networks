@@ -17,30 +17,20 @@
 namespace convolution_fitting {
 
 template<int REDUCTION_N = 4, typename scalar_t, unsigned N_DIMS>
-ForwardOutput forward_impl_t(const torch::Tensor& data, const torch::Tensor& kernels, const Config& config) {
+ForwardOutput forward_with_given_tree(const Config& config, const Tree<scalar_t, N_DIMS>& tree) {
     using Tree = Tree<scalar_t, N_DIMS>;
-
-    TORCH_CHECK(config.n_components_fitting <= N_MAX_TARGET_COMPS, "can't fit more than " + std::to_string(N_MAX_TARGET_COMPS) + " components")
-
-    typename Tree::Data tree_data_storage;
-    Tree tree(data, kernels, &tree_data_storage, config);
-    tree.create_tree_nodes();
-    tree.create_attributes();
-    tree.select_fitting_subtrees();
-
-    auto out_mixture = torch::empty({tree.n.batch, tree.n_channels_out, config.n_components_fitting, data.size(-1)}, torch::TensorOptions(data.device()).dtype(data.dtype()));
+    auto out_mixture = torch::empty({tree.n.batch, tree.n_channels_out, config.n_components_fitting, 1 + N_DIMS + N_DIMS * N_DIMS}, torch::TensorOptions(tree.device()).dtype(tree.dtype()));
     auto out_mixture_a = gpe::struct_accessor<gpe::Gaussian<N_DIMS, scalar_t>, 3>(out_mixture);
-    auto cached_pos_covs = torch::empty({tree.n.batch, tree.n_channels_out, config.n_components_fitting, N_DIMS * N_DIMS}, torch::TensorOptions(data.device()).dtype(data.dtype()));
+    auto cached_pos_covs = torch::empty({tree.n.batch, tree.n_channels_out, config.n_components_fitting, N_DIMS * N_DIMS}, torch::TensorOptions(tree.device()).dtype(tree.dtype()));
     auto cached_pos_covs_a = gpe::struct_accessor<typename Tree::Mat, 3>(cached_pos_covs);
-
 
     { // fit subtrees
         dim3 dimBlock = dim3(32, 1, 1);
         dim3 dimGrid = dim3((unsigned(config.n_components_fitting) + dimBlock.x - 1) / dimBlock.x,
                             (unsigned(tree.n_channels_out) + dimBlock.y - 1) / dimBlock.y,
                             (unsigned(tree.n.batch) + dimBlock.z - 1) / dimBlock.z);
-        gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(data), dimGrid, dimBlock, [=] __host__ __device__
-                                                      (const dim3& gpe_gridDim, const dim3& gpe_blockDim, const dim3& gpe_blockIdx, const dim3& gpe_threadIdx) mutable {
+        gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(out_mixture), dimGrid, dimBlock, [=] __host__ __device__
+                                                      (const dim3& gpe_gridDim, const dim3& gpe_blockDim, const dim3& gpe_blockIdx, const dim3& gpe_threadIdx) mutable{
             GPE_UNUSED(gpe_gridDim)
             using G = gpe::Gaussian<N_DIMS, scalar_t>;
             using index_type = typename Tree::index_type;
@@ -65,13 +55,8 @@ ForwardOutput forward_impl_t(const torch::Tensor& data, const torch::Tensor& ker
                 assert(node_id < tree.n_nodes);
                 return tree.nodes_a[batch_id][channel_out_id][node_id];
             };
-            const auto get_attribs = [&](index_type node_id) -> typename Tree::NodeAttributes& {
-                assert(node_id < tree.n_internal_nodes);
-                return tree.node_attributes_a[batch_id][channel_out_id][node_id];
-            };
 
-
-            // fitting one Gaussian, all target Gaussians are equally important, but posses different weights on their own.
+            // fitting one Gaussian, all target Gaussians are equally important, but possess different weights on their own.
 
             // getting start and end leaf by descending to the leftest and rightest leaf, respectively
             auto start_id = fitting_root_node_id;
@@ -125,8 +110,23 @@ ForwardOutput forward_impl_t(const torch::Tensor& data, const torch::Tensor& ker
         });
     }
 
+    return ForwardOutput{out_mixture, {}, {}, cached_pos_covs, tree.m_data->nodes, tree.m_data->node_attributes, tree.m_data->fitting_subtrees};
+}
 
-    return ForwardOutput{out_mixture, data, kernels, cached_pos_covs};
+template<int REDUCTION_N = 4, typename scalar_t, unsigned N_DIMS>
+ForwardOutput forward_impl_t(const torch::Tensor& data, const torch::Tensor& kernels, const Config& config) {
+    using Tree = Tree<scalar_t, N_DIMS>;
+
+    TORCH_CHECK(config.n_components_fitting <= N_MAX_TARGET_COMPS, "can't fit more than " + std::to_string(N_MAX_TARGET_COMPS) + " components")
+
+    typename Tree::Data tree_data_storage;
+    Tree tree(data, kernels, &tree_data_storage, config);
+    tree.create_tree_nodes();
+    tree.create_attributes();
+    tree.select_fitting_subtrees();
+
+    const ForwardOutput ret = forward_with_given_tree(config, tree);
+    return {ret.fitting, data, kernels, ret.cached_pos_covs, ret.nodes, ret.node_attributes, ret.fitting_subtrees};
 }
 
 
