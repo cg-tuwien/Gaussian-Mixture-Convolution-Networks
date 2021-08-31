@@ -105,7 +105,7 @@ ForwardOutput forward_with_given_tree(const Config& config, const Tree<scalar_t,
             const auto pos_cov = pos_aggregator.cov_matrix();
             cached_pos_covs_a[batch_id][channel_out_id][component_out_id] = pos_cov;
             const auto cov_mat = cov_aggregator.mean() + pos_cov;
-            const auto g = G{pos_aggregator.w_sum * gpe::gaussian_amplitude(cov_mat), pos_aggregator.mean(), cov_mat};
+            const auto g = G{pos_aggregator.w_sum, pos_aggregator.mean(), cov_mat};
             out_mixture_a[batch_id][channel_out_id][component_out_id] = g;
         });
     }

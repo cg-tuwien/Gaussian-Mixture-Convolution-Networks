@@ -375,10 +375,10 @@ set(UNITTESTS_SOURCES
 #    unittests/evaluate_inversed.cpp
 #    unittests/grad_algorithms.cpp
 #    unittests/grad_mixture.cpp
-#    unittests/grad_welford.cpp
+    unittests/grad_welford.cpp
     unittests/main.cpp
 #    unittests/util_helpers.cpp
-#    unittests/welford.cpp
+    unittests/welford.cpp
     unittests/convolution_fitting.cpp
 )
 add_executable(0_unittests ${UNITTESTS_SOURCES} ${UNITTESTS_HEADERS})

@@ -64,9 +64,8 @@ std::pair<torch::Tensor, torch::Tensor> backward_impl_t(const torch::Tensor& gra
             assert(channel_out_id < tree.n_channels_out);
 
             const auto fitting_root_node_id = tree.fitting_subtrees_a[batch_id][channel_out_id][component_out_id];
-            if (fitting_root_node_id >= config.n_components_fitting) {
+            if (fitting_root_node_id > tree.n_nodes)
                 return;
-            }
 
             const auto get_node = [&](index_type node_id) -> const typename Tree::Node& {
                 assert(node_id < tree.n_nodes);
@@ -103,7 +102,7 @@ std::pair<torch::Tensor, torch::Tensor> backward_impl_t(const torch::Tensor& gra
             gpe::grad::WeightedMeanAndCov<N_DIMS, scalar_t> pos_aggregator(g.weight, g.position, cached_pos_cov,
                                                                            incoming_grad.weight, incoming_grad.position, incoming_grad.covariance);
             gpe::grad::WeightedMean<scalar_t, typename G::cov_t> cov_aggregator(g.weight, g.covariance - cached_pos_cov,
-                                                                                incoming_grad.weight, incoming_grad.covariance);
+                                                                                0, incoming_grad.covariance);   // in the forward pass, w_sum is retrieved from pos_aggregator, therefore the weight grad here is 0
             for (index_type k = start_id; k < end_id; ++k) {
                 const auto target_component_id = get_node(k).object_idx;
 
