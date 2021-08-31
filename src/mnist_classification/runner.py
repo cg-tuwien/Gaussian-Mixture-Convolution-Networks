@@ -28,7 +28,7 @@ c.model.layers = [Layer(8, 1.5, 16),
                   Layer(16, 2.0, 8),
                   Layer(32, 2.5, 4),
                   Layer(64, 2.5, 2),
-                  Layer(10, 2.5, -1)]
+                  Layer(10, 2.5, 2)]
 # c.model.mlp = (-1, 10)
 
 c.fitting_test_data_store_at_epoch = 0

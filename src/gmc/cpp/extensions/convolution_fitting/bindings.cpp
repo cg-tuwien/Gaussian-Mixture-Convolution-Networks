@@ -17,7 +17,7 @@ std::vector<torch::Tensor> convolution_fitting_forward(torch::Tensor data, torch
     convolution_fitting::Config config = {};
     config.n_components_fitting = unsigned(n_components_fitting);
     auto result = convolution_fitting::forward_impl(data, kernels, config);
-    return {result.fitting, data, kernels, result.cached_pos_covs, result.nodes, result.node_attributes, result.fitting_subtrees};
+    return {result.fitting, result.cached_pos_covs, result.nodes, result.node_attributes, result.fitting_subtrees};
 }
 
 std::pair<torch::Tensor, torch::Tensor> convolution_fitting_backward(const torch::Tensor& grad,

@@ -103,7 +103,7 @@ class Net(nn.Module):
             self.gmcs.append(gmc.modules.Convolution(config.convolution_config, n_layers_in=n_feature_channels_in, n_layers_out=l.n_feature_layers, n_kernel_components=config.n_kernel_components,
                                                      position_range=l.kernel_radius, covariance_range=pos2cov(l.kernel_radius),
                                                      learn_positions=learn_positions, learn_covariances=learn_covariances,
-                                                     weight_sd=1, weight_mean=0.1, n_dims=config.n_dims))
+                                                     weight_sd=1, weight_mean=0.1, n_dims=config.n_dims, n_fitting_components=l.n_fitting_components*2))
             self.biases.append(torch.nn.Parameter(torch.zeros(1, l.n_feature_layers) + bias_0))
             self.relus.append(gmc.modules.ReLUFitting(config.relu_config, n_layers=l.n_feature_layers, n_output_gaussians=l.n_fitting_components, convolution_layer=f"{i}"))
             if config.bn_type == Config.BN_TYPE_COVARIANCE_STD:

@@ -154,7 +154,7 @@ class Convolution(torch.nn.modules.Module):
         assert gm.is_valid_mixture_and_constant(x, x_constant)
         self.last_in = (x.detach(), x_constant.detach())
 
-        if self.n_fitting_components == -1:
+        if self.n_fitting_components < 0:
             out_mixtures = cpp_convolution.apply(x, self.kernels())
         else:
             kernels = gm.convert_amplitudes_to_priors(self.kernels())

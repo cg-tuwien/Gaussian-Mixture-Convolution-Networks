@@ -42,7 +42,7 @@ std::pair<torch::Tensor, torch::Tensor> dispatch_backward_dim(torch::Tensor grad
         return backward_impl_t<REDUCTION_N, scalar_t, 2>(grad, data, kernels, forward_out, config);
 #ifndef GPE_ONLY_2D
     case 3:
-        return backward_impl_t<REDUCTION_N, scalar_t, 3>(grad, forward_out, config);
+        return backward_impl_t<REDUCTION_N, scalar_t, 3>(grad, data, kernels, forward_out, config);
 #endif // GPE_ONLY_2D
     default:
         std::cout << "unsupported mixture.scalar_type()" << std::endl;
@@ -57,7 +57,7 @@ std::pair<torch::Tensor, torch::Tensor> dispatch_backward_dim_and_scalar_type(to
         return dispatch_backward_dim<REDUCTION_N, float>(grad, data, kernels, forward_out, config, n_dims);
 #ifndef GPE_ONLY_FLOAT
     case torch::ScalarType::Double:
-        return dispatch_backward_dim<REDUCTION_N, double>(grad, forward_out, config, n_dims);
+        return dispatch_backward_dim<REDUCTION_N, double>(grad, data, kernels, forward_out, config, n_dims);
 #endif // GPE_ONLY_FLOAT
     default:
         std::cout << "unsupported mixture.scalar_type()" << std::endl;
@@ -96,12 +96,12 @@ std::pair<torch::Tensor, torch::Tensor> backward_impl(torch::Tensor grad, const 
 //    case 1:
         return dispatch_backward_dim_and_scalar_type<1>(grad, data, kernels, forward_out, config, n_dims, scalar_type);
 //    case 2:
-//        return dispatch_backward_dim_and_scalar_type<2>(grad, forward_out, config, n_dims, scalar_type);
+//        return dispatch_backward_dim_and_scalar_type<2>(grad, data, kernels, forward_out, config, n_dims, scalar_type);
 //    case 4:
-//        return dispatch_backward_dim_and_scalar_type<4>(grad, forward_out, config, n_dims, scalar_type);
+//        return dispatch_backward_dim_and_scalar_type<4>(grad, data, kernels, forward_out, config, n_dims, scalar_type);
 //#ifndef GPE_LIMIT_N_REDUCTION
 //    case 8:
-//        return dispatch_backward_dim_and_scalar_type<8>(grad, forward_out, config, n_dims, scalar_type);
+//        return dispatch_backward_dim_and_scalar_type<8>(grad, data, kernels, forward_out, config, n_dims, scalar_type);
 //#endif
 //    default:
 //        std::cout << "invalid convolution_fitting::Config::reduction_n" << std::endl;

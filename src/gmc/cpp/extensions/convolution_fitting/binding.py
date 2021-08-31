@@ -28,49 +28,17 @@ class ConvolutionFitting(torch.autograd.Function):
         if not kernels.is_contiguous():
             kernels = kernels.contiguous()
 
-        result = cpp_binding.forward(data, kernels, n_components_fitting)
-        ctx.save_for_backward(data, kernels, torch.tensor(n_components_fitting), *result)
-        return result[0]
+        fitting, cached_pos_cov, nodes, node_attributes, fitting_subtrees = cpp_binding.forward(data, kernels, n_components_fitting)
+        ctx.save_for_backward(data, kernels, torch.tensor(n_components_fitting), fitting, cached_pos_cov, nodes, node_attributes, fitting_subtrees )
+        return fitting
 
     @staticmethod
     def backward(ctx, grad_output):
         if not grad_output.is_contiguous():
             grad_output = grad_output.contiguous()
 
-        result = ctx.saved_tensors
-        grad_data, grad_kernel = cpp_binding.backward(grad_output, *result)
-
-        if torch.any(torch.isnan(grad_data)):
-            print(f"grad_target_mixture: {grad_data}")
-            print(f"target_mixture has nans: {torch.any(torch.isnan(grad_data)).item()}")
-            print(f"grad_output has nans: {torch.any(torch.isnan(grad_output)).item()}")
-            print(f"number of nans in torch.isnan(grad_target_mixture): {torch.isnan(grad_data).sum(dim=-1).sum(dim=-1)}")
-            print(f"grad_target_mixture.shape = {grad_data.shape}")
-            print(f"target_mixture.shape = {grad_data.shape}")
-            print(f"grad_output.shape = {grad_output.shape}")
-            print(f"reduction_n = {reduction_n}")
-            print(f"n_components_fitting = {n_components_fitting}")
-            gmc.inout.save(grad_output, "./bad_mixture_gradient.torch")
-            gmc.inout.save(grad_data, "./bad_mixture.torch")
-            print(f"ahhh")
-            exit(1)
-
-        if torch.any(torch.isnan(grad_kernel)):
-            print(f"grad_target_mixture: {grad_kernel}")
-            print(f"target_mixture has nans: {torch.any(torch.isnan(grad_kernel)).item()}")
-            print(f"grad_output has nans: {torch.any(torch.isnan(grad_output)).item()}")
-            print(f"number of nans in torch.isnan(grad_target_mixture): {torch.isnan(grad_kernel).sum(dim=-1).sum(dim=-1)}")
-            print(f"grad_target_mixture.shape = {grad_kernel.shape}")
-            print(f"target_mixture.shape = {grad_kernel.shape}")
-            print(f"grad_output.shape = {grad_output.shape}")
-            print(f"reduction_n = {reduction_n}")
-            print(f"n_components_fitting = {n_components_fitting}")
-            gmc.inout.save(grad_output, "./bad_mixture_gradient.torch")
-            gmc.inout.save(grad_kernel, "./bad_mixture.torch")
-            print(f"ahhh")
-            exit(1)
-
-        # assert not torch.any(torch.isinf(mixture))
+        data, kernels, n_components_fitting, fitting, cached_pos_cov, nodes, node_attributes, fitting_subtrees = ctx.saved_tensors
+        grad_data, grad_kernel = cpp_binding.backward(grad_output, data, kernels, n_components_fitting.item(), fitting, cached_pos_cov, nodes, node_attributes, fitting_subtrees)
 
         return grad_data, grad_kernel, None
 
