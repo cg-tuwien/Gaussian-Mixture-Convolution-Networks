@@ -83,7 +83,7 @@ double grad_check(double dx, const unsigned n_in_channels, const unsigned n_data
 //        std::cout << "numerical: " << numerical_jacobi << std::endl;
 //        std::cout << "analytical: " <<  analytical_jacobi << std::endl;
     const auto max_error = (numerical_jacobi - analytical_jacobi).abs().max().template item<scalar_t>();
-    std::cout << "n_in_channels: " << n_in_channels << ", n_data_components: " << n_data_components << ", n_kernel_components: " << n_kernel_components << ", n_fitting_components: " << n_fitting_components << ", dx: " << dx << ", max_error: " <<  max_error << std::endl;
+//    std::cout << "n_in_channels: " << n_in_channels << ", n_data_components: " << n_data_components << ", n_kernel_components: " << n_kernel_components << ", n_fitting_components: " << n_fitting_components << ", dx: " << dx << ", max_error: " <<  max_error << std::endl;
     return max_error;
 }
 

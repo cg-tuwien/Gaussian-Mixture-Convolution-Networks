@@ -75,6 +75,6 @@ TEST_CASE("welford") {
 
         REQUIRE(std::abs(glm::dot(welford_mean - actual_mean, welford_mean - actual_mean)) < 0.0000000000001);
         const auto tmp = frobenius_norm(welford_cov - actual_cov);
-        REQUIRE(std::abs(tmp) < 0.00000000001);
+        REQUIRE(std::abs(tmp) < 0.000000001);
     }
 }
