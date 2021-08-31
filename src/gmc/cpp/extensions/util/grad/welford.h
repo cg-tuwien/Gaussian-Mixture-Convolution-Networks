@@ -15,7 +15,6 @@ template<int N_DIMS, typename scalar_t>
 struct WeightedMeanAndCov {
     using vec_t = glm::vec<N_DIMS, scalar_t>;
     using mat_t = glm::mat<N_DIMS, N_DIMS, scalar_t>;
-    mat_t C = mat_t{};
 
     vec_t grad_sum_over_wi_vi = vec_t{};
     mat_t grad_sum_over_wi_vpi_vpiT = mat_t{};

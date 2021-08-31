@@ -195,9 +195,9 @@ void start_parallel(ComputeDevice device, const dim3& gridDim, const dim3& block
     }
 }
 
-template <typename Fun>
+template <ComputeDevice allowed_devices, typename Fun>
 void start_serial(ComputeDevice device, const dim3& gridDim, const dim3& blockDim, const Fun& function) {
-    if (device == ComputeDevice::CPU) {
+    if (device == ComputeDevice::CPU && (allowed_devices == ComputeDevice::CPU || allowed_devices == ComputeDevice::Both)) {
         detail::gpe_start_cpu_serial(gridDim, blockDim, function);
     }
     else {

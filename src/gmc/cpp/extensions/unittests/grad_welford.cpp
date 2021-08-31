@@ -110,16 +110,19 @@ void test_weighted_mean_and_cov(const std::vector<scalar_t>& scalars, const std:
 
 TEST_CASE("grad welford weighted mean") {
     SECTION( "scalars", "[grad_welford]" ) {
+        test_weighted_mean<double, double>({0.4}, {0.77});
         test_weighted_mean(_smallPositiveScalarCollection<double>(), _smallPositiveScalarCollection<double>());
         test_weighted_mean(_smallNegativeScalarCollection<double>(), _smallPositiveScalarCollection<double>());
     }
     SECTION( "vectors", "[grad_welford]" ) {
+        test_weighted_mean<double, glm::dvec2>({0.4}, {{0.77, -3.3}});
         test_weighted_mean(_smallPositiveScalarCollection<double>(), _smallVecCollection<2, double>());
         test_weighted_mean(_smallNegativeScalarCollection<double>(), _smallVecCollection<2, double>());
         test_weighted_mean(_smallPositiveScalarCollection<double>(), _smallVecCollection<3, double>());
         test_weighted_mean(_smallNegativeScalarCollection<double>(), _smallVecCollection<3, double>());
     }
     SECTION( "matrices", "[grad_welford]" ) {
+        test_weighted_mean<double, glm::dmat2x2>({0.4}, {{{3.77, -1.3}, {-1.3, 2.3}}});
         test_weighted_mean(_smallPositiveScalarCollection<double>(), _smallCovCollection<2, double>());
         test_weighted_mean(_smallPositiveScalarCollection<double>(), _smallCovCollection<3, double>());
         test_weighted_mean(_smallNegativeScalarCollection<double>(), _smallCovCollection<2, double>());
@@ -129,6 +132,7 @@ TEST_CASE("grad welford weighted mean") {
 
 TEST_CASE("grad welford weighted mean and cov") {
     SECTION( "vectors", "[grad_welford]" ) {
+        test_weighted_mean_and_cov<double, 2>({0.4}, {{0.77, -3.3}});
         test_weighted_mean_and_cov(_smallPositiveScalarCollection<double>(), _smallVecCollection<2, double>());
         test_weighted_mean_and_cov(_smallNegativeScalarCollection<double>(), _smallVecCollection<2, double>());
         test_weighted_mean_and_cov(_smallPositiveScalarCollection<double>(), _smallVecCollection<3, double>());

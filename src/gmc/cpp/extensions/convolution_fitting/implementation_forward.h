@@ -110,7 +110,7 @@ ForwardOutput forward_with_given_tree(const Config& config, const Tree<scalar_t,
         });
     }
 
-    return ForwardOutput{out_mixture, {}, {}, cached_pos_covs, tree.m_data->nodes, tree.m_data->node_attributes, tree.m_data->fitting_subtrees};
+    return ForwardOutput{out_mixture, cached_pos_covs, tree.m_data->nodes, tree.m_data->node_attributes, tree.m_data->fitting_subtrees};
 }
 
 template<int REDUCTION_N = 4, typename scalar_t, unsigned N_DIMS>
@@ -125,8 +125,7 @@ ForwardOutput forward_impl_t(const torch::Tensor& data, const torch::Tensor& ker
     tree.create_attributes();
     tree.select_fitting_subtrees();
 
-    const ForwardOutput ret = forward_with_given_tree(config, tree);
-    return {ret.fitting, data, kernels, ret.cached_pos_covs, ret.nodes, ret.node_attributes, ret.fitting_subtrees};
+    return forward_with_given_tree(config, tree);
 }
 
 

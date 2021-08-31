@@ -4,7 +4,7 @@
 #include <utility>
 
 namespace convolution_fitting {
-template std::pair<torch::Tensor, torch::Tensor> backward_impl_t<1, double, 3>(const torch::Tensor& grad, const ForwardOutput& forward_out, const Config& config);
+template std::pair<torch::Tensor, torch::Tensor> backward_impl_t<1, double, 3>(const torch::Tensor& grad, const torch::Tensor& data, const torch::Tensor& kernels, const ForwardOutput& forward_out, const Config& config);
 } // namespace convolution_fitting
 #endif // GPE_ONLY_2D
 #endif // GPE_ONLY_FLOAT

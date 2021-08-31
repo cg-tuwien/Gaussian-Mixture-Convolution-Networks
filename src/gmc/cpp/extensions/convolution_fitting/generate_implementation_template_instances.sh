@@ -39,7 +39,7 @@ for direction in $direction_list; do
                     if [ "${direction}" == "forward" ]; then
                         echo "template ForwardOutput forward_impl_t<$n_reduction, $floating_type, $dimension>(const torch::Tensor& data, const torch::Tensor& kernels, const Config& config);" >> $filename
                     else
-                        echo "template std::pair<torch::Tensor, torch::Tensor> backward_impl_t<$n_reduction, $floating_type, $dimension>(const torch::Tensor& grad, const ForwardOutput& forward_out, const Config& config);" >> $filename
+                        echo "template std::pair<torch::Tensor, torch::Tensor> backward_impl_t<$n_reduction, $floating_type, $dimension>(const torch::Tensor& grad, const torch::Tensor& data, const torch::Tensor& kernels, const ForwardOutput& forward_out, const Config& config);" >> $filename
                     fi
                     
                     echo '} // namespace convolution_fitting' >> $filename

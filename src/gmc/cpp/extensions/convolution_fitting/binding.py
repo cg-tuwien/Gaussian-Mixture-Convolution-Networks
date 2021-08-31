@@ -29,7 +29,7 @@ class ConvolutionFitting(torch.autograd.Function):
             kernels = kernels.contiguous()
 
         result = cpp_binding.forward(data, kernels, n_components_fitting)
-        ctx.save_for_backward(*result, torch.tensor(n_components_fitting))
+        ctx.save_for_backward(data, kernels, torch.tensor(n_components_fitting), *result)
         return result[0]
 
     @staticmethod

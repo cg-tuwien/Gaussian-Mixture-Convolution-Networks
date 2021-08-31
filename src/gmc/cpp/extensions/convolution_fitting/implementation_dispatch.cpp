@@ -36,10 +36,10 @@ ForwardOutput dispatch_forward_dim_and_scalar_type(const torch::Tensor& data, co
 }
 
 template<int REDUCTION_N, typename scalar_t>
-std::pair<torch::Tensor, torch::Tensor> dispatch_backward_dim(torch::Tensor grad, const ForwardOutput& forward_out, const Config& config, int n_dims) {
+std::pair<torch::Tensor, torch::Tensor> dispatch_backward_dim(torch::Tensor grad, const torch::Tensor& data, const torch::Tensor& kernels, const ForwardOutput& forward_out, const Config& config, int n_dims) {
     switch (n_dims) {
     case 2:
-        return backward_impl_t<REDUCTION_N, scalar_t, 2>(grad, forward_out, config);
+        return backward_impl_t<REDUCTION_N, scalar_t, 2>(grad, data, kernels, forward_out, config);
 #ifndef GPE_ONLY_2D
     case 3:
         return backward_impl_t<REDUCTION_N, scalar_t, 3>(grad, forward_out, config);
@@ -51,10 +51,10 @@ std::pair<torch::Tensor, torch::Tensor> dispatch_backward_dim(torch::Tensor grad
 }
 
 template<int REDUCTION_N>
-std::pair<torch::Tensor, torch::Tensor> dispatch_backward_dim_and_scalar_type(torch::Tensor grad, const ForwardOutput& forward_out, const Config& config, int n_dims, torch::ScalarType scalar_type) {
+std::pair<torch::Tensor, torch::Tensor> dispatch_backward_dim_and_scalar_type(torch::Tensor grad, const torch::Tensor& data, const torch::Tensor& kernels, const ForwardOutput& forward_out, const Config& config, int n_dims, torch::ScalarType scalar_type) {
     switch (scalar_type) {
     case torch::ScalarType::Float:
-        return dispatch_backward_dim<REDUCTION_N, float>(grad, forward_out, config, n_dims);
+        return dispatch_backward_dim<REDUCTION_N, float>(grad, data, kernels, forward_out, config, n_dims);
 #ifndef GPE_ONLY_FLOAT
     case torch::ScalarType::Double:
         return dispatch_backward_dim<REDUCTION_N, double>(grad, forward_out, config, n_dims);
@@ -88,13 +88,13 @@ ForwardOutput forward_impl(const torch::Tensor& data, const torch::Tensor& kerne
 //    }
 }
 
-std::pair<torch::Tensor, torch::Tensor> backward_impl(torch::Tensor grad, const ForwardOutput& forward_out, const Config& config) {
+std::pair<torch::Tensor, torch::Tensor> backward_impl(torch::Tensor grad, const torch::Tensor& data, const torch::Tensor& kernels, const ForwardOutput& forward_out, const Config& config) {
     auto n_dims = gpe::n_dimensions(grad);
     auto scalar_type = grad.scalar_type();
 
 //    switch (config.reduction_n) {
 //    case 1:
-        return dispatch_backward_dim_and_scalar_type<1>(grad, forward_out, config, n_dims, scalar_type);
+        return dispatch_backward_dim_and_scalar_type<1>(grad, data, kernels, forward_out, config, n_dims, scalar_type);
 //    case 2:
 //        return dispatch_backward_dim_and_scalar_type<2>(grad, forward_out, config, n_dims, scalar_type);
 //    case 4:

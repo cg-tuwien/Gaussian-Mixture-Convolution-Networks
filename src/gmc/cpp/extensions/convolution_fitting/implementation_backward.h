@@ -20,14 +20,14 @@ namespace convolution_fitting {
 // this method is already written with the (new) Gaussian PDF formulation!!
 
 template<int REDUCTION_N = 4, typename scalar_t, unsigned N_DIMS>
-std::pair<torch::Tensor, torch::Tensor> backward_impl_t(const torch::Tensor& grad, const ForwardOutput& forward_out, const Config& config) {
+std::pair<torch::Tensor, torch::Tensor> backward_impl_t(const torch::Tensor& grad, const at::Tensor& data, const at::Tensor& kernels, const ForwardOutput& forward_out, const Config& config) {
     using Tree = Tree<scalar_t, N_DIMS>;
     using G = gpe::Gaussian<N_DIMS, scalar_t>;
 
     TORCH_CHECK(config.n_components_fitting <= N_MAX_TARGET_COMPS, "can't fit more than " + std::to_string(N_MAX_TARGET_COMPS) + " components")
 
     typename Tree::Data tree_data_storage;
-    Tree tree(forward_out.data, forward_out.kernels, &tree_data_storage, config);
+    Tree tree(data, kernels, &tree_data_storage, config);
     tree.set_nodes_and_friends(forward_out.nodes, forward_out.node_attributes, forward_out.fitting_subtrees);
 
     torch::Tensor out_mixture = forward_out.fitting;
@@ -36,8 +36,8 @@ std::pair<torch::Tensor, torch::Tensor> backward_impl_t(const torch::Tensor& gra
     auto cached_pos_covs_a = gpe::struct_accessor<typename Tree::Mat, 3>(cached_pos_covs);
     auto incoming_grad_a = gpe::struct_accessor<G, 3>(grad);
 
-    auto grad_data = torch::zeros_like(forward_out.data);
-    auto grad_kernels = torch::zeros_like(forward_out.kernels);
+    auto grad_data = torch::zeros_like(data);
+    auto grad_kernels = torch::zeros_like(kernels);
 
     auto grad_data_a = gpe::struct_accessor<G, 3>(grad_data);
     auto grad_kernels_a = gpe::struct_accessor<G, 3>(grad_kernels);
@@ -115,7 +115,7 @@ std::pair<torch::Tensor, torch::Tensor> backward_impl_t(const torch::Tensor& gra
                 assert(channel_in_id < tree.n_channels_in);
                 assert(component_kernel_id < tree.kernel_n.components);
 
-                // todo: don't read data and kernel gaussian, read result gaussian!
+
                 const auto data_weight = tree.data_weights_a[batch_id][channel_in_id][component_in_id];
                 const auto& data_position = tree.data_positions_a[batch_id][channel_in_id][component_in_id];
                 const auto& data_covariance = tree.data_covariances_a[batch_id][channel_in_id][component_in_id];

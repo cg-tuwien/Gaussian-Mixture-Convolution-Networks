@@ -10,10 +10,7 @@
 std::vector<torch::Tensor> convolution_fitting_forward(torch::Tensor data, torch::Tensor kernels, int n_components_fitting);
 
 std::pair<at::Tensor, at::Tensor> convolution_fitting_backward(const torch::Tensor& grad,
-                                                               const torch::Tensor& fitting,
-                                                               const torch::Tensor& data, const torch::Tensor& kernels,
-                                                               const torch::Tensor& cached_pos_covs,
-                                                               const torch::Tensor& nodes, const torch::Tensor& node_attributes, const torch::Tensor& fitting_subtrees,
-                                                               int n_components_fitting);
+                                                               const torch::Tensor& data, const torch::Tensor& kernels, int n_components_fitting,
+                                                               const torch::Tensor& fitting, const torch::Tensor& cached_pos_covs, const torch::Tensor& nodes, const torch::Tensor& node_attributes, const torch::Tensor& fitting_subtrees);
 
 #endif

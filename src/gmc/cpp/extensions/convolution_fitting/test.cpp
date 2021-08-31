@@ -121,9 +121,11 @@ int main(int argc, char *argv[]) {
             if (RENDER) {
                 show(reference, 128, LIMIT_N_BATCH, "reference");
             }
-            const auto forward_output = convolution_fitting::forward_impl(toPdfMixture(data), toPdfMixture(kernels), config);
+            data = toPdfMixture(data);
+            kernels = toPdfMixture(kernels);
+            const auto forward_output = convolution_fitting::forward_impl(data, kernels, config);
             if (BACKWARD) {
-                convolution_fitting::backward_impl(torch::rand_like(forward_output.fitting), forward_output, config);
+                convolution_fitting::backward_impl(torch::rand_like(forward_output.fitting), data, kernels, forward_output, config);
             }
             const auto fitting = render(toAmplitudeMixture(forward_output.fitting), 128, LIMIT_N_BATCH);
                 if (RENDER) {

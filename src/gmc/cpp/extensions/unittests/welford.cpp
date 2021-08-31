@@ -57,7 +57,7 @@ TEST_CASE("welford") {
 
     gpe::WeightedMeanAndCov<3, double> welford;
 
-    SECTION("bit set") {
+    SECTION("mean_and_cov") {
         std::vector<std::pair<double, glm::dvec3>> data;
         for (unsigned i = 0; i < N; ++i) {
             double x = d_x(gen);
