@@ -99,7 +99,7 @@ TEST_CASE("convolution_fitting") {
 //    const auto n_fitting_components_set = {2, 4, 32, 64};
     // quick test:
     const auto n_in_channels_set = {1, 4};
-    const auto n_data_components_set = {1, 8, 32};
+    const auto n_data_components_set = {1, 8};
     const auto n_kernel_components_set = {5};
     const auto n_fitting_components_set = {2, 32};
 
@@ -109,8 +109,8 @@ TEST_CASE("convolution_fitting") {
             for (const auto n_data_components : n_data_components_set) {
                 for (const auto n_kernel_components : n_kernel_components_set) {
                     for (const auto n_fitting_components : n_fitting_components_set) {
-                        const auto max_error = grad_check<2>(dx, unsigned(n_in_channels), unsigned(n_data_components), unsigned(n_kernel_components), unsigned(n_fitting_components));
-                        REQUIRE(max_error < 2e-07);
+                        REQUIRE(grad_check<2>(dx, unsigned(n_in_channels), unsigned(n_data_components), unsigned(n_kernel_components), unsigned(n_fitting_components)) < 2e-07);
+                        REQUIRE(grad_check<3>(dx, unsigned(n_in_channels), unsigned(n_data_components), unsigned(n_kernel_components), unsigned(n_fitting_components)) < 2e-07);
                     }
                 }
             }
