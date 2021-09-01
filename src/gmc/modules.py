@@ -388,7 +388,7 @@ class ReLUFitting(torch.nn.modules.Module):
 
         last_in = gmc.render.render(self.last_in[0], self.last_in[1], batches=(0, 5), layers=(0, 5),
                                     x_low=position_range[0], y_low=position_range[1], x_high=position_range[2], y_high=position_range[3],
-                                    width=image_size, height=image_size).transpose(0, 1).reshape(-1, image_size)
+                                    width=image_size, height=image_size).reshape(-1, image_size)
         target = gmc.render.render_with_relu(self.last_in[0], self.last_in[1], batches=(0, 5), layers=(0, 5),
                                              x_low=position_range[0], y_low=position_range[1], x_high=position_range[2], y_high=position_range[3],
                                              width=image_size, height=image_size).reshape(-1, image_size)
