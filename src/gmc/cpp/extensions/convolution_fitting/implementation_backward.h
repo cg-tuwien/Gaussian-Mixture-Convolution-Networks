@@ -71,11 +71,6 @@ std::pair<torch::Tensor, torch::Tensor> backward_impl_t(const torch::Tensor& gra
                 assert(node_id < tree.n_nodes);
                 return tree.nodes_a[batch_id][channel_out_id][node_id];
             };
-            const auto get_attribs = [&](index_type node_id) -> typename Tree::NodeAttributes& {
-                assert(node_id < tree.n_internal_nodes);
-                return tree.node_attributes_a[batch_id][channel_out_id][node_id];
-            };
-
 
             // fitting one Gaussian, all target Gaussians are equally important, but posses different weights on their own.
 

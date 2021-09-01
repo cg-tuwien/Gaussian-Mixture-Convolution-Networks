@@ -227,6 +227,19 @@ class TestGM(unittest.TestCase):
             gm1_cov_inversed = gm.covariances(gm1).inverse().transpose(-2, -1)
             self.assertTrue((gm.normal_amplitudes(gm.covariances(gm1)) - gm.normal_amplitudes_inversed(gm1_cov_inversed) < 0.000001).all())
 
+    def test_convert_amplitudes_to_priors_and_vice_versa(self):
+        for n_dims in range(2, 4):
+            print(n_dims)
+            n_batch = 100
+            n_channels = 8
+            m1 = gm.generate_random_mixtures(n_batch=n_batch, n_layers=n_channels, n_components=3, n_dims=n_dims, pos_radius=0.5, cov_radius=0.2)
+            m2 = gm.convert_priors_to_amplitudes(gm.convert_amplitudes_to_priors(m1))
+            self.assertTrue((m1 - m2).abs().max().item() < 0.00001)  # round trip
+            self.assertTrue((gm.integrate_components(m1) - gm.weights(gm.convert_amplitudes_to_priors(m1))).abs().max().item() < 0.00001)
+
+            m3 = gm.convert_priors_to_amplitudes(gm.pack_mixture(torch.ones_like(gm.weights(m1)), gm.positions(m1), gm.covariances(m1)))
+            self.assertTrue((gm.integrate_components(m3) - torch.ones_like(gm.weights(m3))).abs().max().item() < 0.00001)
+
 
 if __name__ == '__main__':
     unittest.main()

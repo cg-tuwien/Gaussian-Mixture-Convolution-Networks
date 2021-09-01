@@ -1,4 +1,5 @@
 import typing
+import matplotlib as mpl
 import matplotlib.cm
 import matplotlib.pyplot as plt
 
@@ -10,6 +11,8 @@ import gmc.mixture as gm
 import gmc.cpp.gm_vis.gm_vis as gm_vis
 
 from gmc import colourmap
+
+mpl.use('Qt5Agg')
 
 gamma_correction = 1/2.2
 
@@ -102,3 +105,26 @@ def render_with_relu(mixture: Tensor, constant: Tensor,
     assert gm.is_valid_mixture_and_constant(mixture, constant)
     rendering = render(mixture, constant, batches, layers, x_low, y_low, x_high, y_high, width, height)
     return torch.max(rendering, torch.tensor([0.00001], dtype=torch.float32, device=mixture.device))
+
+
+def imshow(mixture: Tensor, constant: typing.Optional[Tensor] = None,
+           batches: index_range = (0, None), channels: index_range = (0, None),
+           width: int = 100, height: int = 100):
+    if constant is None:
+        constant = torch.zeros(1, 1, device=mixture.device)
+    assert gm.is_valid_mixture_and_constant(mixture, constant)
+    n_dims = gm.n_dimensions(mixture)
+
+    if n_dims == 2:
+        positions = gm.positions(mixture).view(-1, 2)
+
+        # y_low: float = -22, x_high: float = 22, y_high: float = 22,
+        rendering = render(mixture, constant, batches, channels,
+                           x_low=positions.min(dim=0)[0][0].item(), y_low=positions.min(dim=0)[0][1].item(), x_high=positions.max(dim=0)[0][0].item(), y_high=positions.max(dim=0)[0][1].item(),
+                           width=width, height=height)
+        r = max(rendering.min().abs().item(), rendering.max().item())
+        rendering = rendering.transpose(0, 1).transpose(1, 2).reshape(rendering.shape[1] * width, rendering.shape[0] * height)
+        colour = colour_mapped(rendering.numpy(), -r, r)
+        plt.figure()
+        plt.imshow(rendering)
+        plt.show(block=False)

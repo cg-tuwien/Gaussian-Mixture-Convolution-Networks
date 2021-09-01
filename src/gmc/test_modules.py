@@ -3,9 +3,11 @@ import torch
 import numpy as np
 import scipy.signal
 
+import gmc.render as render
 import gmc.mixture as gm
 import gmc.modules as gmc
 import gmc.mat_tools as mat_tools
+import gmc.cpp.extensions.convolution.binding as cpp_convolution
 import gmc.cpp.extensions.convolution_fitting.binding as cpp_convolution_fitting
 
 
@@ -84,39 +86,29 @@ class TestGM(unittest.TestCase):
                 # plt.imshow((reference_solution - our_solution)); plt.colorbar(); plt.show();
                 assert max_l2_err < 0.0000001
 
-    def test_convolution_fitting_gradcheck(self):
+    def test_convolution_fitting_without_fitting(self):
         print("test_convolution_fitting_gradcheck")
-        eps = 1e-6
-        # gradcheck takes a tuple of tensors as input, check if your gradient
-        # evaluated with these tensors are close enough to numerical
-        # approximations and returns True if they all verify this condition.
-        # this test is quite unstable; it fails for the python ref implementation.
-        # it does not work for the auto expansion when xes.n_batch < mixture.n_batch or the same with n_layers
-        # (see doc: different indices to the same memory location)
-        n_batches = 5
-        n_layers_in = 2
+        n_batches = 1
+        n_channels_in = 1
         n_components_in = 8
-        n_kernel_gaussians = 3
-        n_layers_out = 3
+        n_kernel_gaussians = 1
+        n_channels_out = 3
         for n_dims in (2, 3):
-            for n_fitting_components in (n_layers_out * n_components_in * n_kernel_gaussians, ): # 1, 4, 8, 16, 32, n_layers_out * n_components_in * n_kernel_gaussians, n_layers_out * n_components_in * n_kernel_gaussians * 2
-                print(f"n_dims={n_dims}")
-                gm_data = gm.generate_random_mixtures(n_batches, n_layers_in, n_components_in, n_dims=n_dims, pos_radius=1, cov_radius=0.25)
-                gm_kernels = gm.generate_random_mixtures(n_layers_out, n_layers_in, n_kernel_gaussians, n_dims=n_dims, pos_radius=1, cov_radius=0.25)
-                gm_data.requires_grad = True
-                gm_kernels.requires_grad = True
+            print(f"n_dims={n_dims}")
+            data = gm.generate_random_mixtures(n_batches, n_channels_in, n_components_in, n_dims=n_dims, pos_radius=1, cov_radius=0.25)
+            kernels = gm.generate_random_mixtures(n_channels_out, n_channels_in, n_kernel_gaussians, n_dims=n_dims, pos_radius=1, cov_radius=0.25)
 
-                test = torch.autograd.gradcheck(cpp_convolution_fitting.apply, (gm_data, gm_kernels, n_fitting_components), eps=eps, atol=1e-3, nondet_tol=1e-1)
-                self.assertTrue(test)
+            reference = cpp_convolution.apply(data, kernels)
+            # render.imshow(reference)
 
-                gm_data = gm_data.detach().cuda()
-                gm_data.requires_grad = True
-                gm_data.grad = None
-                gm_kernels = gm_kernels.detach().cuda()
-                gm_kernels.requires_grad = True
-                gm_kernels.grad = None
-                test = torch.autograd.gradcheck(cpp_convolution_fitting.apply, (gm_data, gm_kernels, n_fitting_components), eps=eps, atol=1e-3, nondet_tol=1e-1)
-                self.assertTrue(test)
+            kernels_prime = gm.convert_amplitudes_to_priors(kernels)
+            data_prime = gm.convert_amplitudes_to_priors(data)
+            n_fitting_components = n_channels_in * n_components_in * n_kernel_gaussians
+            conv_fit_result = cpp_convolution_fitting.apply(data_prime, kernels_prime, n_fitting_components)
+            conv_fit_result = gm.convert_priors_to_amplitudes(conv_fit_result)
+
+            # render.imshow(conv_fit_result)
+            self.assertTrue((torch.sort(reference, dim=2)[0] - torch.sort(conv_fit_result, dim=2)[0]).abs().max().item() < 0.0001)
 
     def test_convolution_with_const(self):
         n_batches = 3

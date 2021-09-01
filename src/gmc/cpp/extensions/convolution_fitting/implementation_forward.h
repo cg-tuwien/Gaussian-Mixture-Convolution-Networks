@@ -46,7 +46,7 @@ ForwardOutput forward_with_given_tree(const Config& config, const Tree<scalar_t,
             assert(channel_out_id < tree.n_channels_out);
 
             const auto fitting_root_node_id = tree.fitting_subtrees_a[batch_id][channel_out_id][component_out_id];
-            if (fitting_root_node_id >= config.n_components_fitting) {
+            if (fitting_root_node_id >= tree.n_nodes) {
                 out_mixture_a[batch_id][channel_out_id][component_out_id] = {0, typename G::pos_t(0), typename G::cov_t(1)};
                 return;
             }

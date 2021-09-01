@@ -23,7 +23,7 @@ constexpr uint CONVOLUTION_LAYER_END = 2;
 constexpr uint LIMIT_N_BATCH = 5;
 constexpr bool USE_CUDA = false;
 constexpr bool BACKWARD = true;
-constexpr bool RENDER = false;
+constexpr bool RENDER = true;
 constexpr uint RESOLUTION = 128;
 constexpr bool DO_STATS = true;
 constexpr uint N_FITTING_COMPONENTS = 8;
@@ -116,6 +116,11 @@ int main(int argc, char *argv[]) {
             std::cout << "target number of gaussians: " << data.size(1) * data.size(2) * kernels.size(2) << ", fitting number of gaussians: " << config.n_components_fitting << std::endl;
 //            show(render(data, 128, LIMIT_N_BATCH), 128, LIMIT_N_BATCH);
 //            show(render(kernels, 128, LIMIT_N_BATCH), 128, LIMIT_N_BATCH);
+
+            const auto a = data;
+            const auto b = toAmplitudeMixture(toPdfMixture(data));
+            const auto d = (a-b).abs().max().item<float>();
+
 
             const auto reference = render(convolution::forward_impl(data, kernels), 128, LIMIT_N_BATCH);
             if (RENDER) {
