@@ -21,6 +21,32 @@ def fixed_point_and_tree_hem2(mixture: Tensor, constant: Tensor, n_components: i
     return fixed_point_and_tree_hem(mixture, constant, n_components, config, tensorboard_epoch, convolution_layer)
 
 
+def fixed_point_only(mixture: Tensor, constant: Tensor, n_components: int, config: Config = Config(), tensorboard_epoch: TensorboardWriter = None, convolution_layer: str = None) -> typing.Tuple[Tensor, Tensor, typing.List[Tensor]]:
+    if tensorboard_epoch is not None:
+        # torch.cuda.synchronize()
+        # t0 = time.perf_counter()
+        test_points = generate_random_sampling(mixture, 1000)
+        tensorboard = tensorboard_epoch[0]
+        epoch = tensorboard_epoch[1]
+
+    initial_fitting = initial_approx_to_relu(mixture, constant)
+
+    # if tensorboard_epoch is not None:
+    #     torch.cuda.synchronize()
+    #     t1 = time.perf_counter()
+        # tensorboard.add_scalar(f"50.1 fitting {convolution_layer} initial_approx_to_relu time =", t1 - t0, epoch)
+
+    fp_fitting, ret_const = fixed_point_iteration_to_relu(mixture, constant, initial_fitting)
+
+    if tensorboard_epoch is not None:
+        # torch.cuda.synchronize()
+        # t2 = time.perf_counter()
+        # tensorboard.add_scalar(f"50.2 fitting {convolution_layer} fixed_point_iteration_to_relu time =", t2 - t1, epoch)
+        tensorboard.add_scalar(f"51.1 fitting {convolution_layer} fixed point iteration mse =", mse(mixture, constant, fp_fitting, ret_const, test_points), epoch)
+
+    return fp_fitting, ret_const, [initial_fitting]
+
+
 def fixed_point_and_tree_hem(mixture: Tensor, constant: Tensor, n_components: int, config: Config = Config(), tensorboard_epoch: TensorboardWriter = None, convolution_layer: str = None) -> typing.Tuple[Tensor, Tensor, typing.List[Tensor]]:
     if tensorboard_epoch is not None:
         # torch.cuda.synchronize()

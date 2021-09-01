@@ -18,7 +18,7 @@ c.model.bn_type = ModelConfig.BN_TYPE_COVARIANCE_STD
 c.model.bn_place = ModelConfig.BN_PLACE_AFTER_RELU
 c.model.convolution_config.dropout = 0.0
 c.model.dataDropout = 0.0
-c.model.relu_config.fitting_method = gmc.fitting.fixed_point_and_tree_hem2
+# c.model.relu_config.fitting_method = gmc.fitting.fixed_point_and_tree_hem2
 
 # c.log_tensorboard_renderings = False
 c.n_epochs = 10
