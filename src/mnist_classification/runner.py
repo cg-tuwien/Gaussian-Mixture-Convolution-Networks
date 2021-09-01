@@ -1,5 +1,7 @@
 import sys
 
+import torchvision.datasets
+
 import gmc.fitting
 from gmc.model import Layer, Config as ModelConfig
 
@@ -31,7 +33,15 @@ c.model.layers = [Layer(8, 1.5, 16),
                   Layer(10, 2.5, 2)]
 # c.model.mlp = (-1, 10)
 
-c.fitting_test_data_store_at_epoch = 0
-c.fitting_test_data_store_n_batches = 5
+# c.fitting_test_data_store_at_epoch = 0
+# c.fitting_test_data_store_n_batches = 5
+#
+# c.dataset_class = torchvision.datasets.FashionMNIST
+# c.dataset_name = "fashion_mnist"
+
+# c.training_set_start = 10000
+# c.training_set_end = 29000
+# c.test_set_start = 5000
+# c.test_set_end = 5000
 
 main.experiment(device=device, desc_string=f"{c.produce_description()}", config=c)

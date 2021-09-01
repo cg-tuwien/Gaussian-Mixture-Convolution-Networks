@@ -83,10 +83,10 @@ def fit(config: Config):
     (config.data_base_path / config.produce_input_description() / 'png').mkdir(parents=True, exist_ok=True)
 
     train_loader = torch.utils.data.DataLoader(
-        datasets.MNIST(config.data_base_path / "mnist_raw", train=True, download=True, transform=transforms.ToTensor()),
+        config.dataset_class(config.data_base_path / f"{config.dataset_name}_raw", train=True, download=True, transform=transforms.ToTensor()),
         batch_size=1)
     test_loader = torch.utils.data.DataLoader(
-        datasets.MNIST(config.data_base_path / "mnist_raw", train=False, download=True, transform=transforms.ToTensor()),
+        config.dataset_class(config.data_base_path / f"{config.dataset_name}_raw", train=False, download=True, transform=transforms.ToTensor()),
         batch_size=1)
 
     run_and_store(config, train_loader, "train", start=config.training_set_start, end=config.training_set_end)

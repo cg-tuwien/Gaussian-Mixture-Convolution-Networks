@@ -3,13 +3,15 @@ import os
 import sys
 
 from gmc.model import Config as ModelConfig
-
+import torchvision.datasets
 
 class Config:
     def __init__(self):
         # data sources
         self.source_dir = os.path.dirname(__file__)
         self.data_base_path = pathlib.Path(f"{self.source_dir}/../../data")
+        self.dataset_class = torchvision.datasets.MNIST
+        self.dataset_name = "mnist"
 
         # run settings
         self.num_dataloader_workers = 24   # 0 -> main thread, otherwise number of threads. no auto available.
@@ -40,14 +42,14 @@ class Config:
         self.log_tensorboard_renderings = True
         self.fitting_test_data_store_at_epoch = 10000
         self.fitting_test_data_store_n_batches = 10
-        self.fitting_test_data_store_path = f"{self.data_base_path}/mnist_intermediate_data"
+        self.fitting_test_data_store_path = f"{self.data_base_path}/mnist/fitting_input"
 
     def produce_description(self):
         return f"{self.produce_input_description()}_lr{int(self.kernel_learning_rate * 1000)}_wDec{int(self.weight_decay_rate * 100)}_{self.model.produce_description()}"
 
     def produce_input_description(self):
         if self.input_fitting_iterations == 1:
-            return f"mnist_init{self.input_fitting_components}"
+            return f"{self.dataset_name}_init{self.input_fitting_components}"
         if self.input_fitting_iterations == -1:
-            return "mnist"
-        return f"mnist_em{self.input_fitting_components}"
+            return f"{self.dataset_name}"
+        return f"{self.dataset_name}_em{self.input_fitting_components}"
