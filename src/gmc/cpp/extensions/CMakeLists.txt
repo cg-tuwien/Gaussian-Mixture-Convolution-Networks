@@ -394,8 +394,9 @@ set(BENCHMARK_HEADERS
 set(BENCHMARK_SOURCES
     benchmarks/main.cpp
 #    benchmarks/bvh_mhem_fit.cpp
-    benchmarks/evaluate_inversed.cpp
+    benchmarks/convolution_fitting.cpp
+#    benchmarks/evaluate_inversed.cpp
 )
 add_executable(0_benchmarks ${BENCHMARK_SOURCES} ${BENCHMARK_HEADERS})
-target_link_libraries(0_benchmarks PUBLIC Catch2::Catch2 OpenMP::OpenMP_CXX torch Qt5::Widgets #[[bvh_mhem_fit]] integrate evaluate_inversed math lbvh common)
+target_link_libraries(0_benchmarks PUBLIC Catch2::Catch2 OpenMP::OpenMP_CXX torch Qt5::Widgets #[[bvh_mhem_fit]] convolution_fitting pieces integrate evaluate_inversed math lbvh common)
 

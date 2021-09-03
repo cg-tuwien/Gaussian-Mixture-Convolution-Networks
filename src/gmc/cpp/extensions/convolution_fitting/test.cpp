@@ -92,9 +92,6 @@ int main(int argc, char *argv[]) {
     using namespace torch::indexing;
     QApplication a(argc, argv);
 
-    std::array<std::vector<torch::Tensor>, CONVOLUTION_LAYER_END - CONVOLUTION_LAYER_START> error_data;
-    std::array<std::vector<std::chrono::milliseconds>, CONVOLUTION_LAYER_END - CONVOLUTION_LAYER_START> time_data;
-
     convolution_fitting::Config config;
     config.n_components_fitting = N_FITTING_COMPONENTS;
 
