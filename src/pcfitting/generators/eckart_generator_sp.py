@@ -123,7 +123,7 @@ class EckartGeneratorSP(GMMGenerator):
         # weights of the parents of each point. initialized with one (fictional 0th layer has only one Gaussian)
         parentweights = torch.ones(1, 1, self._n_gaussians_per_node, dtype=self._dtype, device=general_config.device)
 
-        llh_loss_calc = LikelihoodLoss(False)
+        llh_loss_calc = LikelihoodLoss(True)
         gm_data = None
 
         absiteration = 0  # Iteration index overall

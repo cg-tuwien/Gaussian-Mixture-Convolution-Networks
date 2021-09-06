@@ -124,7 +124,7 @@ class EckartGeneratorHP(GMMGenerator):
         # the 0th layer, only has one (fictional) Gaussian, whose index is assumed to be 0
         parent_per_point[:, :] = 0
 
-        llh_loss_calc = LikelihoodLoss(False)
+        llh_loss_calc = LikelihoodLoss(True)
         mixture = None
 
         finished_gaussians = torch.tensor([], dtype=torch.long, device='cuda')
