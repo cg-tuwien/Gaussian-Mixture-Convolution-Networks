@@ -123,14 +123,18 @@ class EvalDbAccessV2:
                          sum_of_weights: float,
                          n_zero_gaussians: int,
                          n_invalid_gaussians: int,
-                         run: int) -> int:
+                         run: int,
+                         avg_sqrt_det: float,
+                         std_sqrt_det: float,
+                         cv_ellvol: float) -> int:
         sql = "INSERT INTO EvalStats(avg_trace,std_traces,cv_traces,avg_l_ev,avg_m_ev,avg_s_ev,std_l_ev,std_m_ev," \
               "std_s_ev,min_ev,avg_amp,std_amp,avg_det,std_det,avg_weight,std_weight,sum_of_weights,n_zero_gaussians," \
-              "n_invalid_gaussians,run,normalized) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)"
+              "n_invalid_gaussians,run,normalized,avg_sqrt_det,std_sqrt_det, cv_ellvol) VALUES " \
+              "(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,?)"
         cur = self._con.cursor()
         cur.execute(sql, (avg_trace,std_traces,cv_traces,avg_l_ev,avg_m_ev,avg_s_ev,std_l_ev,std_m_ev,std_s_ev,min_ev,
                           avg_amp,std_amp,avg_det,std_det,avg_weight,std_weight,sum_of_weights,n_zero_gaussians,
-                          n_invalid_gaussians,run))
+                          n_invalid_gaussians,run,avg_sqrt_det,std_sqrt_det,cv_ellvol))
         self._con.commit()
         return cur.lastrowid
 
@@ -251,6 +255,13 @@ class EvalDbAccessV2:
         cur = self._con.cursor()
         cur.execute(sql, (modelfile,))
         return cur.fetchone()[0]
+
+    def save_nn_scale_factor(self, modelfile: str, nnfactor: float):
+        sql = "INSERT INTO NNScaling (modelfile, factor) VALUES (?, ?)"
+        cur = self._con.cursor()
+        cur.execute(sql, (modelfile, nnfactor))
+        self._con.commit()
+        return cur.lastrowid
 
     def __del__(self):
         self._con.close()

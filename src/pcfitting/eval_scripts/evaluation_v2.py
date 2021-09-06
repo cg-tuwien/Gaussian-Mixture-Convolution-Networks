@@ -28,9 +28,11 @@ vals_n_gaussians = [64, 256, 512]
 # vals_eps = [1e-4, 1e-5, 1e-6, 1e-7]
 # vals_inits = ["randnormpos", "fpsmax", "bb", "eigen"]
 # vals_thresh = [0.1, 0.3]
-vals_alpha = [4, 5, 6]
-vals_fixeddist = [0.6, 0.7, 0.8, 0.9]
-vals_avoidorphans = [0, 1, 2]
+# vals_alpha = [4, 5, 6]
+# vals_fixeddist = [0.6, 0.7, 0.8, 0.9]
+# vals_avoidorphans = [0, 1, 2]
+vals_alpha = [2, 3, 4]
+vals_fixeddist = [0.8, 0.9, 1.0]
 
 generators = []
 
@@ -51,11 +53,12 @@ generators = []
 #for (ng, eps, init, th) in eck_sp_combinations:
 #    generators.append(EckartGeneratorSP(n_gaussians_per_node=ng[0], n_levels=ng[1], partition_threshold=th, termination_criterion=terminator2, initialization_method=init, eps=eps, m_step_points_subbatchsize=10000, e_step_pair_subbatchsize=5120000))
 
-pre_combinations = [(ng, alpha, fdist, orph) for orph in vals_avoidorphans for fdist in vals_fixeddist for alpha in vals_alpha for ng in vals_n_gaussians]
+#pre_combinations = [(ng, alpha, fdist, orph) for orph in vals_avoidorphans for fdist in vals_fixeddist for alpha in vals_alpha for ng in vals_n_gaussians]
+pre_combinations = [(ng, alpha, fdist, 1) for fdist in vals_fixeddist for alpha in vals_alpha for ng in vals_n_gaussians]
 for (ng, alpha, fdist, orph) in pre_combinations:
     generators.append(PreinerGenerator(alpha=alpha, fixeddist=fdist, ngaussians=ng, avoidorphansmode=orph))
 
-n_fit_points = 10000
+n_fit_points = 100000
 n_eval_points_density = 1000000
 n_eval_points_distance = 100000
 
@@ -184,7 +187,8 @@ while dataset_fit.has_next():
                                   statvalues[9].item(), statvalues[10].item(), statvalues[11].item(),
                                   statvalues[12].item(), statvalues[13].item(), statvalues[14].item(),
                                   statvalues[15].item(), statvalues[16].item(), statvalues[17].item(),
-                                  statvalues[18].item(), runid)
+                                  statvalues[18].item(), runid, statvalues[19].item(), statvalues[20].item(),
+                                  statvalues[21].item())
 
         mimg.imsave(os.path.join(rendering_path, "recpc-" + str(runid).zfill(9) + ".png"), res[0, 0])
         mimg.imsave(os.path.join(rendering_path, "density-" + str(runid).zfill(9) + ".png"), res[0, 1])

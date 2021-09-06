@@ -10,6 +10,7 @@ import gmc.mixture
 from gmc.cpp.gm_vis.gm_vis import GMVisualizer
 import matplotlib
 import matplotlib.image as mimg
+import gc
 matplotlib.use('TkAgg')
 
 model_path = r"K:\DA-Eval\dataset_eval_big\models"
@@ -23,40 +24,16 @@ db_path = r"K:\DA-Eval\EvalV3.db"
 initterm = MaxIterationTerminationCriterion(0)
 terminator2 = RelChangeTerminationCriterion(0.1, 20)
 
-vals_n_gaussians = [64, 256, 512]
-# vals_n_gaussians = [[4,3], [4,4], [8,3]]
-# vals_eps = [1e-4, 1e-5, 1e-6, 1e-7]
-# vals_inits = ["randnormpos", "fpsmax", "bb", "eigen"]
-# vals_thresh = [0.1, 0.3]
-# vals_alpha = [4, 5, 6]
-# vals_fixeddist = [0.6, 0.7, 0.8, 0.9]
-# vals_avoidorphans = [0, 1, 2]
-vals_alpha = [2, 3, 4]
-vals_fixeddist = [0.8, 0.9, 1.0]
+#em_params = [(1e-5, 64, 'fpsmax'), (1e-5, 256, 'fpsmax'), (1e-5, 1024, 'fpsmax')]
+eck_params = [(1e-4, 8, 3, 'fpsmax', 0.1), (1e-5, 8, 3, 'fpsmax', 0.1), (1e-6, 8, 3, 'fpsmax', 0.1), (1e-7, 8, 3, 'fpsmax', 0.1)]
 
 generators = []
 
-# init_combinations = [(ng, eps) for eps in vals_eps for ng in vals_n_gaussians]
-# for (ng, eps) in init_combinations:
-#     generators.append(EMGenerator(n_gaussians=ng, initialization_method="fpsmax", termination_criterion=initterm, em_step_points_subbatchsize=10000, verbosity=0, eps=eps))
-
-#em_combinations = [(ng, eps, init) for init in vals_inits for eps in vals_eps for ng in vals_n_gaussians]
-#for (ng, eps, init) in em_combinations:
+#for (eps, ng, init) in em_params:
 #    generators.append(EMGenerator(n_gaussians=ng, initialization_method=init, termination_criterion=terminator2, em_step_points_subbatchsize=10000, verbosity=0, eps=eps))
-# generators.append(EckartGeneratorSP(n_gaussians_per_node=8, n_levels=3, partition_threshold=0.1, termination_criterion=terminator2, initialization_method="fpsmax", m_step_points_subbatchsize=10000,
-#                            e_step_pair_subbatchsize=5120000, eps=1e-5))
-
-#eck_hp_combinations = [(ng, eps, init) for init in vals_inits for eps in vals_eps for ng in vals_n_gaussians]
-#for (ng, eps, init) in eck_hp_combinations:
-#   generators.append(EckartGeneratorHP(n_gaussians_per_node=ng[0], n_levels=ng[1], termination_criterion=terminator2, initialization_method=init, eps=eps, m_step_points_subbatchsize=10000))
-#eck_sp_combinations = [(ng, eps, init, th) for th in vals_thresh for init in vals_inits for eps in vals_eps for ng in vals_n_gaussians]
-#for (ng, eps, init, th) in eck_sp_combinations:
-#    generators.append(EckartGeneratorSP(n_gaussians_per_node=ng[0], n_levels=ng[1], partition_threshold=th, termination_criterion=terminator2, initialization_method=init, eps=eps, m_step_points_subbatchsize=10000, e_step_pair_subbatchsize=5120000))
-
-#pre_combinations = [(ng, alpha, fdist, orph) for orph in vals_avoidorphans for fdist in vals_fixeddist for alpha in vals_alpha for ng in vals_n_gaussians]
-pre_combinations = [(ng, alpha, fdist, 1) for fdist in vals_fixeddist for alpha in vals_alpha for ng in vals_n_gaussians]
-for (ng, alpha, fdist, orph) in pre_combinations:
-    generators.append(PreinerGenerator(alpha=alpha, fixeddist=fdist, ngaussians=ng, avoidorphansmode=orph))
+for (eps, j, l, init, thresh) in eck_params:
+    generators.append(EckartGeneratorSP(n_gaussians_per_node=j, n_levels=l, partition_threshold=thresh, termination_criterion=terminator2, initialization_method=init, m_step_points_subbatchsize=10000,
+                            e_step_pair_subbatchsize=5120000, eps=eps))
 
 n_fit_points = 100000
 n_eval_points_density = 1000000
@@ -72,7 +49,8 @@ evalstats = GMMStats()
 vis = GMVisualizer(False, 800, 800)
 vis.set_camera_auto(True)
 vis.set_density_rendering(True)
-vis.set_ellipsoids_pc_rendering(False, True, False)
+vis.set_ellipsoids_pc_rendering(False, False, False)
+vis.set_whitemode(True)
 
 batchcount = dataset_fit.remaining_batches_count()
 
@@ -190,8 +168,8 @@ while dataset_fit.has_next():
                                   statvalues[18].item(), runid, statvalues[19].item(), statvalues[20].item(),
                                   statvalues[21].item())
 
-        mimg.imsave(os.path.join(rendering_path, "recpc-" + str(runid).zfill(9) + ".png"), res[0, 0])
-        mimg.imsave(os.path.join(rendering_path, "density-" + str(runid).zfill(9) + ".png"), res[0, 1])
+        #mimg.imsave(os.path.join(rendering_path, "recpc-" + str(runid).zfill(9) + ".png"), res[0, 0])
+        mimg.imsave(os.path.join(rendering_path, "density-" + str(runid).zfill(9) + ".png"), res[0, 0])
 
         # Save GMM and resampled pc
         gma = gmc.mixture.weights(gmbatch)
@@ -199,5 +177,7 @@ while dataset_fit.has_next():
         gmcov = gmc.mixture.covariances(gmbatch)
         data_loading.write_gm_to_ply(gma, gmp, gmcov, 0, os.path.join(gengmm_path, str(runid).zfill(9) + ".gma.ply"))
         # data_loading.write_pc_to_off(os.path.join(recpc_path, str(runid).zfill(9) + ".off"), reconstructed)
+
+    gc.collect()
 
 vis.finish()

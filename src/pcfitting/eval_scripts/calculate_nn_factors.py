@@ -1,11 +1,14 @@
 from pcfitting.cpp.gmeval import pyeval
 from pcfitting import PCDatasetIterator
+from pcfitting.eval_scripts.eval_db_access_v2 import EvalDbAccessV2
 import math
 
-model_path = r"F:\DA-Eval\dataset_eval\models"
-evalpc_path = r"F:\DA-Eval\dataset_eval\evalpcs"
+model_path = r"K:\DA-Eval\dataset_eval_big\models"
+evalpc_path = r"K:\DA-Eval\dataset_eval_big\evalpcs"
+db_path = r"K:\DA-Eval\EvalV3.db"
 
 dataset_eval_dist = PCDatasetIterator(1, 100000, evalpc_path, model_path)
+dbaccess = EvalDbAccessV2(db_path)
 
 print("Start")
 while dataset_eval_dist.has_next():
@@ -14,6 +17,7 @@ while dataset_eval_dist.has_next():
     refdist = 128 / (2*math.sqrt(pcbatch.shape[1]) - 1)
     scalefactor = refdist / md
     print(names, ": ", scalefactor)
+    dbaccess.save_nn_scale_factor(names[0], scalefactor)
     # assert pcbatch.shape[1] == 100000
     # print(names)
 

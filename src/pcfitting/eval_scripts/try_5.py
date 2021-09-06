@@ -11,15 +11,15 @@ import sqlite3
 import os
 from pcfitting.cpp.gmeval import pyeval
 
-evalpc_path = r"F:\DA-Eval\dataset_eval\evalpcs\n100000\bed_0001.off"
+evalpc_path = r"K:\DA-Eval\dataset_eval\evalpcs\n100000\bed_0001.off"
 # evalpc_path = r"F:\DA-Eval\dataset_eval\evalpcs\n1000000\bed_0001.off"
 gmm_path = r"D:\Simon\Studium\S-11 (WS19-20)\Diplomarbeit\thesis\EvalDraft\images\gmms"
-model_path = r"F:\DA-Eval\dataset_eval\models\bed_0001.off"
+model_path = r"K:\DA-Eval\dataset_eval\models\bed_0001.off"
 
 evalpc = data_loading.load_pc_from_off(evalpc_path).view(-1, 3)
 
 uni = IntUniformity(True, False, True)
-avgd = AvgDensities(calculate_logavg=True)
+avgd = AvgDensities()
 rec = ReconstructionStats(chamfer=True, stdev=True, cov_measure=True)
 recp = ReconstructionStatsProjected(rec)
 smoothness = Smoothness()
