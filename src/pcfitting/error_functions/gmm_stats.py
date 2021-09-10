@@ -19,7 +19,7 @@ class GMMStats(EvalFunction):
                  stdev_amp: bool = True,
                  avg_det: bool = True,
                  stdev_det: bool = True,
-                 cv_det: bool = True,
+                 cv_det: bool = False,
                  avg_weight: bool = True,
                  stdev_weights: bool = True,
                  sum_of_weights: bool = True,
@@ -173,7 +173,7 @@ class GMMStats(EvalFunction):
         if self._stdev_det:
             nlst.append("Stdev of Determinants")
         if self._cv_det:
-            nlst.append("CV fo Determinants")
+            nlst.append("CV of Determinants")
         if self._avg_weight:
             nlst.append("Average Weight")
         if self._stdev_weights:

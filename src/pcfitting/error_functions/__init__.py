@@ -7,3 +7,4 @@ from .reconstructionstats import ReconstructionStats
 from .reconstructionstats_projected import ReconstructionStatsProjected
 from .int_uniformity import IntUniformity
 from .smoothness import Smoothness
+from .irregularity import Irregularity

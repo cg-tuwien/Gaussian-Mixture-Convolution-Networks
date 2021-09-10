@@ -79,10 +79,11 @@ class EvalDbAccessV2:
                             mu_d: float,
                             sigma_d: float,
                             v_d: float,
+                            smooth: float,
                             run_id: int) -> int:
-        sql = "INSERT INTO EvalDensity(mu_L, sigma_L, mu_D, sigma_D, v_D, run) VALUES (?,?,?,?,?,?) "
+        sql = "INSERT INTO EvalDensity(mu_L, sigma_L, mu_D, sigma_D, v_D, smooth, run) VALUES (?,?,?,?,?,?,?) "
         cur = self._con.cursor()
-        cur.execute(sql, (mu_l, sigma_l, mu_d, sigma_d, v_d, run_id))
+        cur.execute(sql, (mu_l, sigma_l, mu_d, sigma_d, v_d, smooth, run_id))
         self._con.commit()
         return cur.lastrowid
 

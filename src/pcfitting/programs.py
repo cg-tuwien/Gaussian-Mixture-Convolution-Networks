@@ -256,11 +256,11 @@ def execute_evaluation_singlepc_severalgm(pc1_path: str, pc2_path: Optional[str]
                 print(gm_path)
                 for j in range(len(error_functions)):
                     names = error_functions[j].get_names()
-                    loss = error_functions[j].calculate_score_packed(pc1_scaled, gm, modelpath)
+                    loss = error_functions[j].calculate_score_packed(pc1_scaled, gm, modelpath=modelpath)
                     for k in range(len(names)):
                         print("  ", names[k], " on PC1: " if error_functions[j].needs_pc() else "", loss[k].item())
                     if error_functions[j].needs_pc() and pc2_scaled is not None:
-                        loss = error_functions[j].calculate_score_packed(pc2_scaled, gm, modelpath)
+                        loss = error_functions[j].calculate_score_packed(pc2_scaled, gm, modelpath=modelpath)
                         for k in range(len(names)):
                             print("  ", names[k], " on PC2: ", loss[k].item())
                 # covariances = mixture.covariances(gm)

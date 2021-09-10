@@ -57,5 +57,14 @@ def avg_kl_div(gmm: torch.Tensor) -> float:
 def nn_graph(pointcloud: torch.Tensor, ncount: int) -> torch.Tensor:
     return bindings.nn_graph(pointcloud, ncount)
 
+def nn_graph_sub(pointcloud: torch.Tensor, samplecount: int, ncount: int) -> torch.Tensor:
+    return bindings.nn_graph_sub(pointcloud, samplecount, ncount)
+
 def smoothness(responsibilities: torch.Tensor, nngraph: torch.Tensor) -> float:
     return bindings.smoothness(responsibilities, nngraph)
+
+def irregularity(densities: torch.Tensor, nngraph: torch.Tensor) -> float:
+    return bindings.irregularity(densities, nngraph)
+
+def irregularity_sub(densities: torch.Tensor, nngraph: torch.Tensor) -> float:
+    return bindings.irregularity_sub(densities, nngraph)

@@ -4,7 +4,7 @@ from pcfitting.eval_scripts.eval_db_access_v2 import EvalDbAccessV2
 from pcfitting import programs, MaxIterationTerminationCriterion, RelChangeTerminationCriterion, PCDatasetIterator, \
     data_loading, GMSampler
 from pcfitting.generators import GradientDescentGenerator, EMGenerator, EckartGeneratorSP, EckartGeneratorHP, PreinerGenerator
-from pcfitting.error_functions import AvgDensities, ReconstructionStats, GMMStats
+from pcfitting.error_functions import AvgDensities, ReconstructionStats, GMMStats, Irregularity
 import time
 import gmc.mixture
 from gmc.cpp.gm_vis.gm_vis import GMVisualizer
@@ -25,7 +25,8 @@ initterm = MaxIterationTerminationCriterion(0)
 terminator2 = RelChangeTerminationCriterion(0.1, 20)
 
 #em_params = [(1e-5, 64, 'fpsmax'), (1e-5, 256, 'fpsmax'), (1e-5, 1024, 'fpsmax')]
-eck_params = [(1e-4, 8, 3, 'fpsmax', 0.1), (1e-5, 8, 3, 'fpsmax', 0.1), (1e-6, 8, 3, 'fpsmax', 0.1), (1e-7, 8, 3, 'fpsmax', 0.1)]
+eck_params = [(1e-5, 8, 3, 'fpsmax', 0.1)]
+#init_params = [(1e-4, 512), (1e-5, 512), (1e-6, 512), (1e-7, 512)]
 
 generators = []
 
@@ -34,8 +35,18 @@ generators = []
 for (eps, j, l, init, thresh) in eck_params:
     generators.append(EckartGeneratorSP(n_gaussians_per_node=j, n_levels=l, partition_threshold=thresh, termination_criterion=terminator2, initialization_method=init, m_step_points_subbatchsize=10000,
                             e_step_pair_subbatchsize=5120000, eps=eps))
+    # generators.append(EckartGeneratorHP(n_gaussians_per_node=j, n_levels=l, m_step_points_subbatchsize=10000,
+    #                                     initialization_method=init, termination_criterion=terminator2, eps=eps))
 
-n_fit_points = 100000
+#generators.append(EckartGeneratorSP(n_gaussians_per_node=8, n_levels=3, partition_threshold=0.3, termination_criterion=terminator2, initialization_method="fpsmax", m_step_points_subbatchsize=10000,
+#    e_step_pair_subbatchsize=5120000, eps=1e-5))
+#generators.append(EckartGeneratorHP(n_gaussians_per_node=8, n_levels=3, m_step_points_subbatchsize=10000, initialization_method="fpsmax", termination_criterion=terminator2, eps=1e-5))
+
+#for (eps, ng) in init_params:
+#    generators.append(EMGenerator(n_gaussians=ng, initialization_method='fpsmax', termination_criterion=initterm,
+#                                  em_step_points_subbatchsize=10000, verbosity=0, eps=eps))
+
+n_fit_points = 50000
 n_eval_points_density = 1000000
 n_eval_points_distance = 100000
 
@@ -44,6 +55,7 @@ dataset_eval_dens = PCDatasetIterator(1, n_eval_points_density, evalpc_path, mod
 dataset_eval_dist = PCDatasetIterator(1, n_eval_points_distance, evalpc_path, model_path)
 dbaccess = EvalDbAccessV2(db_path)
 evaldensity = AvgDensities()
+evalsmooth = Irregularity(subsamples=10000)
 evaldistane = ReconstructionStats()
 evalstats = GMMStats()
 vis = GMVisualizer(False, 800, 800)
@@ -108,6 +120,7 @@ while dataset_fit.has_next():
         # Evaluate
         print ("Evaluating")
         densvalues_eval = evaldensity.calculate_score_packed(batch_eval_dens, gmbatch, modelpath=modelpath)
+        smoothvalues = evalsmooth.calculate_score_packed(batch_eval_dens, gmbatch, modelpath=modelpath)
         statvalues = evalstats.calculate_score_packed(batch, gmbatch, modelpath=modelpath)
         reconstructed = GMSampler.sampleGMM_ext(gmmbatch, n_eval_points_distance)
         distvalues = evaldistane.calculate_score_on_reconstructed(batch_eval_dist, reconstructed, modelpath=modelpath)
@@ -155,7 +168,7 @@ while dataset_fit.has_next():
 
         dbaccess.insert_eval_density(densvalues_eval.logavg_scaled_nn, densvalues_eval.logstdv,
                                      densvalues_eval.avg_scaled_nn, densvalues_eval.stdev_scaled_nn, densvalues_eval.cv,
-                                     runid)
+                                     smoothvalues[0].item(), runid)
         dbaccess.insert_eval_distance(distvalues.rmsd_scaled_by_nn, distvalues.md_scaled_by_nn, distvalues.stdev_scaled_by_nn, distvalues.cv,
                                       distvalues.rmsd_scaled_by_nn_I, distvalues.md_scaled_by_nn_I, distvalues.stdev_scaled_by_nn_I, distvalues.cv_I,
                                       distvalues.rcd_norm_nn, runid)
