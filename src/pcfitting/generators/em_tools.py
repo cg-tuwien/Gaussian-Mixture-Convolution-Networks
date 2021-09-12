@@ -95,7 +95,7 @@ class EMTools:
                 likelihood_log[:, :, i_start:i_end, -1] = gm_data.get_noise_loglikelihood()\
                     .unsqueeze(1).unsqueeze(2).expand(running_batch_size, 1, actual_point_subbatch_size)
 
-        # Logarithmized Likelihood for each point given the GM. shape: (bs, 1, np, ng)
+        # Logarithmized Likelihood for each point given the GM. shape: (bs, 1, np, 1)
         llh_sum = torch.logsumexp(likelihood_log, dim=3, keepdim=True)
         # Logarithmized Mean Likelihood for all points. shape: (bs)
         if losses is None:

@@ -15,7 +15,7 @@ import matplotlib.image as mimg
 matplotlib.use('TkAgg')
 
 model_path = r"K:\DA-Eval\dataset_eval_big\models"
-fitpc_path = r"K:\DA-Eval\dataset_eval_big\fitpcs"
+fitpc_path = r"K:\DA-Eval\dataset_eval_big\fitpcs\n100000"
 evalpc_path = r"K:\DA-Eval\dataset_eval_big\evalpcs\n1000000"
 recpc_path = r"K:\DA-Eval\dataset_eval_big\recpcs"
 gengmm_path = r"K:\DA-Eval\dataset_eval_big\gmms"
@@ -23,29 +23,31 @@ rendering_path = r"K:\DA-Eval\dataset_eval_big\renderings"
 db_path = r"K:\DA-Eval\EvalV3.db"
 
 #evalstats = GMMStats(False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, True, True, True)
-evalsmooth = Irregularity(subsamples=10000)
 dbaccess = EvalDbAccessV2(db_path)
 
 cur = dbaccess.connection().cursor()
-sql = "SELECT EvalDensity.ID, EvalDensity.run, Run.modelfile FROM EvalDensity JOIN Run ON EvalDensity.run = Run.id"
+sql = "SELECT Run.ID, OptionsEM.init_method, EvalStats.ID, Run.modelfile FROM Run JOIN OptionsEM ON Run.method_options = OptionsEM.ID AND Run.method = 'EM' Join EvalStats ON EvalStats.run = Run.ID WHERE OptionsEM.eps = 1e-5 AND Run.nr_fit_points = 100000 AND Run.n_gaussians_should = 512 AND OptionsEM.termination_criterion <> 'MaxIter(0)'"
 cur.execute(sql)
 stats = cur.fetchall()
 
+terminator2 = RelChangeTerminationCriterion(0.1, 20)
 i = -1
 for stat in stats:
-    eid = stat[0]
-    runid = stat[1]
-    modelfile = stat[2]
-    print(runid, " / ", (100 * eid / len(stats)), "%")
-    gma = data_loading.read_gm_from_ply(os.path.join(gengmm_path, str(runid).zfill(9) + ".gma.ply"), ismodel=False)
-    pcpath = os.path.join(evalpc_path, modelfile)
+    i = i + 1
+    runid = stat[0]
+    init = stat[1]
+    eid = stat[2]
+    modelfile = stat[3]
+    print(runid, " / ", (100 * i / len(stats)), "%")
+    pcpath = os.path.join(fitpc_path, modelfile)
     pcbatch = data_loading.load_pc_from_off(pcpath)
-    print(" Evaluating")
-    modelpath = os.path.join(model_path, modelfile)
-    statvalues = evalsmooth.calculate_score_packed(pcbatch, gma, modelpath=modelpath)
-    print(" Saving")
+    generator = EMGenerator(n_gaussians=512, initialization_method=init, termination_criterion=terminator2, em_step_points_subbatchsize=10000, verbosity=0, eps=1e-5)
+    print("Generating")
+    generator.generate(pcbatch)
+    it = generator.final_nr_iterations
+    print("Saving")
 
-    sql = "UPDATE EvalDensity SET smooth = ? WHERE ID = ?"
-    dbaccess.connection().cursor().execute(sql, (statvalues[0].item(), eid))
+    sql = "UPDATE EvalStats SET nr_iterations = ? WHERE ID = ?"
+    dbaccess.connection().cursor().execute(sql, (it, eid))
     dbaccess.connection().commit()
 

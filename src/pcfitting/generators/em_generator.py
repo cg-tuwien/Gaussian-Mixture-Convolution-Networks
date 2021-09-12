@@ -158,7 +158,7 @@ class EMGenerator(GMMGenerator):
             else:
                 sample_points = pcbatch
             points_rep = sample_points.unsqueeze(1).unsqueeze(3) \
-                .expand(batch_size, 1, n_sample_points, self._n_gaussians, 3)
+                .expand(batch_size, 1, n_sample_points, 1, 3)
 
             # Expectation: Calculates responsibilities and current losses
             responsibilities, losses = EMTools.expectation(points_rep, gm_data, self._n_gaussians, running,
@@ -181,12 +181,15 @@ class EMGenerator(GMMGenerator):
                 break
 
             # Maximization -> update GM-data
+            points_rep = points_rep.expand(batch_size, 1, n_sample_points, self._n_gaussians, 3)
             EMTools.maximization(points_rep, responsibilities, gm_data, running, eps,
                                  self._em_step_gaussians_subbatchsize, self._em_step_points_subbatchsize)
 
         # Create final mixtures
         final_gm = gm_data.pack_mixture()
         final_gmm = gm_data.pack_mixture_model()
+
+        self.final_nr_iterations = iteration - 1
 
         # Gaussian-Weights might be set to zero. This prints for how many Gs this is the case
         n_invalid_gaussians = torch.sum(gm_data.get_priors() == 0).item()

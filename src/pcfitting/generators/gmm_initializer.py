@@ -244,7 +244,7 @@ class GMMInitializer:
         gm_data.set_priors(gm.weights(mix), running)
         gm_data.set_noise_val(noise_cluster)
 
-        sp_rep = sample_points.unsqueeze(1).unsqueeze(3).expand(batch_size, 1, n_sample_points, n_gaussians, 3)
+        sp_rep = sample_points.unsqueeze(1).unsqueeze(3).expand(batch_size, 1, n_sample_points, 1, 3)
 
         responsibilities, llh = EMTools.expectation(sp_rep, gm_data, n_gaussians, running,
                                                     self._em_step_gaussians_subbatchsize,
@@ -258,6 +258,7 @@ class GMMInitializer:
         assignedresps = torch.zeros(batch_size, n_sample_points, n_gaussians, dtype=self._dtype, device=general_config.device)
         assignedresps[batch_indizes, point_indizes, assignments] = 1
         assignedresps = assignedresps.unsqueeze(1)
+        sp_rep = sp_rep.expand(batch_size, 1, n_sample_points, n_gaussians, 3)
 
         EMTools.maximization(sp_rep, assignedresps, gm_data, running, eps, self._em_step_gaussians_subbatchsize,
                              self._em_step_points_subbatchsize)

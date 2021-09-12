@@ -25,7 +25,11 @@ initterm = MaxIterationTerminationCriterion(0)
 terminator2 = RelChangeTerminationCriterion(0.1, 20)
 
 #em_params = [(1e-5, 64, 'fpsmax'), (1e-5, 256, 'fpsmax'), (1e-5, 1024, 'fpsmax')]
-eck_params = [(1e-5, 8, 3, 'fpsmax', 0.1)]
+#eck_params = [(1e-5, 8, 3, 'fpsmax', 0.1)]
+# 64, 64, 256, 1024
+# eck_params = [(1e-5, 4, 3, 'fpsmax', 0.1), (1e-5, 8, 2, 'fpsmax', 0.1), (1e-5, 4, 4, 'fpsmax', 0.1), (1e-5, 4, 5, 'fpsmax', 0.1)]
+# 4096
+eck_params = [(1e-5, 4, 6, 'fpsmax', 0.1), (1e-5, 8, 4, 'fpsmax', 0.1)]
 #init_params = [(1e-4, 512), (1e-5, 512), (1e-6, 512), (1e-7, 512)]
 
 generators = []
@@ -33,7 +37,7 @@ generators = []
 #for (eps, ng, init) in em_params:
 #    generators.append(EMGenerator(n_gaussians=ng, initialization_method=init, termination_criterion=terminator2, em_step_points_subbatchsize=10000, verbosity=0, eps=eps))
 for (eps, j, l, init, thresh) in eck_params:
-    generators.append(EckartGeneratorSP(n_gaussians_per_node=j, n_levels=l, partition_threshold=thresh, termination_criterion=terminator2, initialization_method=init, m_step_points_subbatchsize=10000,
+    generators.append(EckartGeneratorSP(n_gaussians_per_node=j, n_levels=l, partition_threshold=thresh, termination_criterion=terminator2, initialization_method=init, m_step_points_subbatchsize=10000, m_step_gaussians_subbatchsize=512,
                             e_step_pair_subbatchsize=5120000, eps=eps))
     # generators.append(EckartGeneratorHP(n_gaussians_per_node=j, n_levels=l, m_step_points_subbatchsize=10000,
     #                                     initialization_method=init, termination_criterion=terminator2, eps=eps))
@@ -46,7 +50,7 @@ for (eps, j, l, init, thresh) in eck_params:
 #    generators.append(EMGenerator(n_gaussians=ng, initialization_method='fpsmax', termination_criterion=initterm,
 #                                  em_step_points_subbatchsize=10000, verbosity=0, eps=eps))
 
-n_fit_points = 50000
+n_fit_points = 100000
 n_eval_points_density = 1000000
 n_eval_points_distance = 100000
 
