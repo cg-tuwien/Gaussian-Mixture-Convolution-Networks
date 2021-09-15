@@ -11,8 +11,6 @@
 
 namespace convolution_fitting {
 
-constexpr unsigned N_MAX_TARGET_COMPS = 1024;
-
 template<typename scalar_t, unsigned N_DIMS>
 class Tree {
 public:

@@ -290,6 +290,9 @@ void convolution_fitting::Tree<scalar_t, N_DIMS>::select_fitting_subtrees()
     m_data->fitting_subtrees = torch::ones({n.batch, n_channels_out, m_config.n_components_fitting}, torch::TensorOptions(device()).dtype(gpe::TorchTypeMapper<typename Tree::index_type>::id())) * -1;
     fitting_subtrees_a = gpe::accessor<typename Tree::index_type, 3>(m_data->fitting_subtrees);
 
+    auto selected_nodes_rating = torch::empty({n.batch, n_channels_out, m_config.n_components_fitting}, torch::TensorOptions(device()).dtype(gpe::TorchTypeMapper<scalar_t>::id()));
+    auto selected_nodes_rating_a = gpe::accessor<scalar_t, 3>(selected_nodes_rating);
+
     dim3 dimBlock = dim3(32, 1, 1);
     dim3 dimGrid = dim3((uint(n_mixtures) + dimBlock.x - 1) / dimBlock.x, 1, 1);
     gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(m_data->nodes), dimGrid, dimBlock, [=, *this] __host__ __device__
@@ -313,9 +316,6 @@ void convolution_fitting::Tree<scalar_t, N_DIMS>::select_fitting_subtrees()
             return node_attributes_a[batch_id][channel_out_id][node_id];
         };
 
-        gpe::Vector<scalar_t, N_MAX_TARGET_COMPS> selectedNodesRating;
-        gpe::Vector<index_type, N_MAX_TARGET_COMPS> selectedNodes;
-
         unsigned n_selected_components = 0;
         auto compute_rating = [&](index_type node_id) -> scalar_t {
             assert(node_id < n_nodes);
@@ -328,39 +328,33 @@ void convolution_fitting::Tree<scalar_t, N_DIMS>::select_fitting_subtrees()
         auto cach_id_with_highest_rating = [&]() {
             scalar_t rating = -1;
             unsigned best_node_id = unsigned(-1);
-            for (unsigned i = 0; i < selectedNodes.size(); ++i) {
-                if (selectedNodesRating[i] > rating) {
-                    rating = selectedNodesRating[i];
+            for (unsigned i = 0; i < n_selected_components; ++i) {
+                if (selected_nodes_rating_a[batch_id][channel_out_id][i] > rating) {
+                    rating = selected_nodes_rating_a[batch_id][channel_out_id][i];
                     best_node_id = i;
                 }
             }
             // can become unsigned(-1) when no selectable node remains
             return best_node_id;
         };
-        selectedNodes.push_back(0); // root node
-        selectedNodesRating.push_back(compute_rating(0));
+        auto write_selected_node = [&](index_type position, index_type node_id) {
+            fitting_subtrees_a[batch_id][channel_out_id][position] = node_id;
+            selected_nodes_rating_a[batch_id][channel_out_id][position] = compute_rating(node_id);
+        };
+        write_selected_node(0, 0);
         n_selected_components = 1;
 
         while (n_selected_components < m_config.n_components_fitting)  {
             auto best_node_cache_id = cach_id_with_highest_rating();
-            if (best_node_cache_id >= selectedNodes.size())
+            if (best_node_cache_id >= n_selected_components)
                 break;  // ran out of nodes
-            auto best_node_id = selectedNodes[best_node_cache_id];
+            auto best_node_id = fitting_subtrees_a[batch_id][channel_out_id][best_node_cache_id];
             assert(best_node_id < n_nodes);
             const auto& best_descend_node = get_node(best_node_id);
             assert(best_node_id < n_internal_nodes); // we should have only internal nodes at this point as cach_id_with_highest_rating() returns 0xffff.. if the node is not full.
 
-            selectedNodes[best_node_cache_id] = best_descend_node.left_idx;
-            selectedNodesRating[best_node_cache_id] = compute_rating(best_descend_node.left_idx);
-
-            selectedNodes.push_back(best_descend_node.right_idx);
-            selectedNodesRating.push_back(compute_rating(best_descend_node.right_idx));
-            ++n_selected_components;
-            //                n_selected_components += get_attribs(best_descend_node.left_idx).n_gaussians + get_attribs(best_descend_node.right_idx).n_gaussians;
-        }
-
-        for (unsigned i = 0; i < selectedNodes.size(); ++i) {
-            fitting_subtrees_a[batch_id][channel_out_id][i] = selectedNodes[i];
+            write_selected_node(best_node_cache_id, best_descend_node.left_idx);
+            write_selected_node(n_selected_components++, best_descend_node.right_idx);
         }
     });
 }

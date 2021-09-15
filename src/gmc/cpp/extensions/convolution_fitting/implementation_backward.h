@@ -24,8 +24,6 @@ std::pair<torch::Tensor, torch::Tensor> backward_impl_t(const torch::Tensor& gra
     using Tree = Tree<scalar_t, N_DIMS>;
     using G = gpe::Gaussian<N_DIMS, scalar_t>;
 
-    TORCH_CHECK(config.n_components_fitting <= N_MAX_TARGET_COMPS, "can't fit more than " + std::to_string(N_MAX_TARGET_COMPS) + " components")
-
     typename Tree::Data tree_data_storage;
     Tree tree(data, kernels, &tree_data_storage, config);
     tree.set_nodes_and_friends(forward_out.nodes, forward_out.node_attributes, forward_out.fitting_subtrees);

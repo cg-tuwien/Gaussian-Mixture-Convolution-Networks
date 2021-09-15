@@ -117,8 +117,6 @@ template<int REDUCTION_N = 4, typename scalar_t, unsigned N_DIMS>
 ForwardOutput forward_impl_t(const torch::Tensor& data, const torch::Tensor& kernels, const Config& config) {
     using Tree = Tree<scalar_t, N_DIMS>;
 
-    TORCH_CHECK(config.n_components_fitting <= N_MAX_TARGET_COMPS, "can't fit more than " + std::to_string(N_MAX_TARGET_COMPS) + " components")
-
     typename Tree::Data tree_data_storage;
     Tree tree(data, kernels, &tree_data_storage, config);
     tree.create_tree_nodes();

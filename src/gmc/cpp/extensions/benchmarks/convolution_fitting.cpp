@@ -55,6 +55,7 @@ TEST_CASE("convolution_fitting forward and backward benchmark") {
 
             convolution_fitting::Config config;
             config.n_components_fitting = unsigned(data.size(2));
+            std::cout << std::endl;
             std::cout << "layer " << l << " data: " << data.sizes() << " device: " << data.device() << std::endl;
             std::cout << "layer " << l << " kernels: " << kernels.sizes() << " device: " << kernels.device() << std::endl;
             std::cout << "target number of gaussians: " << data.size(1) * data.size(2) * kernels.size(2) << ", fitting number of gaussians: " << config.n_components_fitting << std::endl;
