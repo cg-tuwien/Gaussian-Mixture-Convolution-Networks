@@ -15,48 +15,6 @@ namespace gpe {
 namespace grad {
 
 template <typename scalar_t, int DIMS>
-EXECUTION_DEVICES glm::mat<DIMS, DIMS, scalar_t> gaussian_amplitude(const glm::mat<DIMS, DIMS, scalar_t>& cov, scalar_t grad) {
-    constexpr auto a = gcem::pow(scalar_t(2) * glm::pi<scalar_t>(), - DIMS * scalar_t(0.5)) * scalar_t(-0.5);
-    const auto d = glm::determinant(cov);
-    assert(d > 0);
-//    const auto k = a / gpe::sqrt(d * d * d);
-    const auto k = a / (d * gpe::sqrt(d));   // same, but numerically more stable
-    return k * gpe::grad::determinant(cov, grad);
-}
-
-template <typename scalar_t, int N_DIMS>
-EXECUTION_DEVICES void convolve(const gpe::Gaussian<N_DIMS, scalar_t>& g1, const gpe::Gaussian<N_DIMS, scalar_t>& g2,
-                                gpe::Gaussian<N_DIMS, scalar_t>* g1_grad, gpe::Gaussian<N_DIMS, scalar_t>* g2_grad,
-                                const gpe::Gaussian<N_DIMS, scalar_t>& incoming_grad) {
-    using gradless_scalar_t = gpe::remove_grad_t<scalar_t>;
-    constexpr auto a = gcem::pow(gradless_scalar_t(2) * glm::pi<gradless_scalar_t>(), N_DIMS * gradless_scalar_t(0.5));
-    const auto g1_cov_det = glm::determinant(g1.covariance);
-    const auto g2_cov_det = glm::determinant(g2.covariance);
-    const auto b = gpe::sqrt(g1_cov_det * g2_cov_det);
-    const auto ret_cov = g1.covariance + g2.covariance;
-    const auto tmp_weight = g1.weight * g2.weight * a * b;
-    const auto ret_cov_det = glm::determinant(ret_cov);
-    const auto sqrt_ret_cov_det = gpe::sqrt(ret_cov_det);
-    const auto ret_weight = tmp_weight / sqrt_ret_cov_det;
-
-
-    // walking grad back
-    const auto tmp_weight_grad = incoming_grad.weight / sqrt_ret_cov_det;
-    const auto ret_cov_det_grad = incoming_grad.weight * tmp_weight * gradless_scalar_t(-0.5) / (sqrt_ret_cov_det * ret_cov_det);
-    const auto ret_cov_grad = incoming_grad.covariance + gpe::grad::determinant(ret_cov, ret_cov_det_grad);
-    const auto b_grad = tmp_weight_grad * g1.weight * g2.weight * a;
-    const auto g_cov_det_prod_grad = b_grad / (2 * b);
-
-
-    g1_grad->weight = tmp_weight_grad * g2.weight * a * b;
-    g2_grad->weight = tmp_weight_grad * g1.weight * a * b;
-    g1_grad->position = incoming_grad.position;
-    g2_grad->position = incoming_grad.position;
-    g1_grad->covariance = ret_cov_grad + gpe::grad::determinant(g1.covariance, g_cov_det_prod_grad * g2_cov_det);
-    g2_grad->covariance = ret_cov_grad + gpe::grad::determinant(g2.covariance, g_cov_det_prod_grad * g1_cov_det);
-}
-
-template <typename scalar_t, int DIMS>
 EXECUTION_DEVICES void evaluate(const Gaussian<DIMS, scalar_t>& gaussian, const glm::vec<DIMS, scalar_t>& evalpos,
                                 Gaussian<DIMS, scalar_t>* grad_gaussian, glm::vec<DIMS, scalar_t>* grad_evalpos,
                                 scalar_t incoming_grad) {
@@ -87,80 +45,6 @@ EXECUTION_DEVICES void evaluate(const Gaussian<DIMS, scalar_t>& gaussian, const 
 //    const auto t = evalpos - gaussian.position;
     *grad_evalpos = grad_t;
     grad_gaussian->position = -grad_t;
-}
-
-template <typename scalar_t, int DIMS>
-EXECUTION_DEVICES Gaussian<DIMS, scalar_t> integrate(const Gaussian<DIMS, scalar_t>& gaussian, scalar_t incoming_grad) {
-    constexpr scalar_t factor = gcem::pow(2 * glm::pi<scalar_t>(), scalar_t(DIMS));
-//    return gaussian.weight * gpe::sqrt(factor * glm::determinant(gaussian.covariance));
-    const auto root = gpe::sqrt(factor * glm::determinant(gaussian.covariance));
-
-    Gaussian<DIMS, scalar_t> outgoing_grad;
-    // const auto result = gaussian.weight * root;
-    outgoing_grad.weight = root * incoming_grad;
-    outgoing_grad.position = {};
-    outgoing_grad.covariance = gpe::grad::determinant(gaussian.covariance, factor * gaussian.weight * incoming_grad / (2 * root));
-
-    return outgoing_grad;
-}
-
-template <typename scalar_t, int N_DIMS, int N_VIRTUAL_POINTS = 4>
-EXECUTION_DEVICES void likelihood(const gpe::Gaussian<N_DIMS, scalar_t>& target, const gpe::Gaussian<N_DIMS, scalar_t>& fitting,
-                                      gpe::Gaussian<N_DIMS, scalar_t>* grad_target, gpe::Gaussian<N_DIMS, scalar_t>* grad_fitting,
-                                      scalar_t incoming_grad) {
-    using Mat = glm::mat<N_DIMS, N_DIMS, scalar_t>;
-    const scalar_t normal_amplitude = gpe::gaussian_amplitude(fitting.covariance);
-    const scalar_t a = gpe::evaluate(gpe::Gaussian<N_DIMS, scalar_t>{normal_amplitude, fitting.position, fitting.covariance}, target.position);
-    const auto target_cov_inv = glm::inverse(fitting.covariance);
-    const auto c = target_cov_inv * target.covariance;
-    const scalar_t minus_half_trace = scalar_t(-0.5) * gpe::trace(c);
-    const scalar_t b = gpe::exp(minus_half_trace);
-    const scalar_t target_normal_amplitudes = gpe::gaussian_amplitude(target.covariance);
-    const scalar_t wi_bar = N_VIRTUAL_POINTS * target.weight / target_normal_amplitudes;
-    // pow(0, 0) gives nan in cuda with fast math
-    const scalar_t ab = a * b;
-    const scalar_t ab_clipped = gpe::Epsilon<scalar_t>::clip(ab);
-
-    //    return gpe::pow(ab_clipped, wi_bar);
-    scalar_t grad_ab_clipped, grad_wi_bar;
-    gpe::grad::pow(ab_clipped, wi_bar, &grad_ab_clipped, &grad_wi_bar, incoming_grad);
-
-//    scalar_t ab_clipped = gpe::Epsilon<scalar_t>::clip(ab);
-    const scalar_t grad_ab = (ab > gpe::Epsilon<scalar_t>::small) ? grad_ab_clipped : scalar_t(0);
-    const auto grad_a = grad_ab * b;
-    const auto grad_b = grad_ab * a;
-
-    // scalar_t wi_bar = N_VIRTUAL_POINTS * target.weight / target_normal_amplitudes;
-    scalar_t grad_target_normal_amplitude;
-    gpe::grad::functors::divided_AbyB(target.weight, target_normal_amplitudes, &(grad_target->weight), &grad_target_normal_amplitude, grad_wi_bar * N_VIRTUAL_POINTS);
-
-    // scalar_t target_normal_amplitudes = gpe::gaussian_amplitude(target.covariance);
-    grad_target->covariance = gpe::grad::gaussian_amplitude(target.covariance, grad_target_normal_amplitude);
-
-    // scalar_t b = gpe::exp(minus_half_trace);
-    const scalar_t grad_minus_half_trace = gpe::grad::exp(minus_half_trace, grad_b);
-
-    // const scalar_t minus_half_trace = scalar_t(-0.5) * gpe::trace(c);
-    const Mat grad_c = Mat(1) * (scalar_t(-0.5) * grad_minus_half_trace);
-
-    // const auto c = target_cov_inv * target.covariance;
-    const auto grad_target_cov_inv = grad_c * target.covariance;
-    grad_target->covariance += target_cov_inv * grad_c;
-
-    // const auto target_cov_inv = glm::inverse(fitting.covariance);
-    grad_fitting->covariance = gpe::grad::inverse(fitting.covariance, grad_target_cov_inv);
-
-    // const scalar_t a = gpe::evaluate(gpe::Gaussian<N_DIMS, scalar_t>{normal_amplitude, fitting.position, fitting.covariance}, target.position);
-    gpe::Gaussian<N_DIMS, scalar_t> grad_fitting_gnormal_gaussian;
-    gpe::grad::evaluate(gpe::Gaussian<N_DIMS, scalar_t>{normal_amplitude, fitting.position, fitting.covariance}, target.position,
-                        &grad_fitting_gnormal_gaussian, &(grad_target->position), grad_a);
-    grad_fitting->position = grad_fitting_gnormal_gaussian.position;
-    grad_fitting->covariance += grad_fitting_gnormal_gaussian.covariance;
-
-    // const scalar_t normal_amplitude = gpe::gaussian_amplitude(fitting.covariance);
-    grad_fitting->covariance += gpe::grad::gaussian_amplitude(fitting.covariance, grad_fitting_gnormal_gaussian.weight);
-
-    grad_fitting->weight = 0;
 }
 
 } // namespace grad
