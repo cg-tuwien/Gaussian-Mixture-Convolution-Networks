@@ -140,128 +140,16 @@ set(EVALUATE_INVERSED_SOURCES
 add_library(evaluate_inversed ${EVALUATE_INVERSED_HEADERS} ${EVALUATE_INVERSED_SOURCES})
 target_link_libraries(evaluate_inversed PUBLIC OpenMP::OpenMP_CXX torch math lbvh common)
 
-set(INTEGRATE_HEADERS
-    integrate/implementation.h
-    integrate/binding.h
-)
-set(INTEGRATE_SOURCES
-    integrate/implementation.cu
-    integrate/binding.cpp
-)
-add_library(integrate ${INTEGRATE_HEADERS} ${INTEGRATE_SOURCES})
-target_link_libraries(integrate PUBLIC OpenMP::OpenMP_CXX torch math lbvh common)
-
-
 set(PIECES_HEADERS
     pieces/pieces.h
-    pieces/integrate.h
     pieces/matrix_inverse.h
 )
 set(PIECES_SOURCES
     pieces/pieces.cpp
-    pieces/integrate.cu
     pieces/matrix_inverse.cu
 )
 add_library(pieces ${PIECES_HEADERS} ${PIECES_SOURCES})
 target_link_libraries(pieces PUBLIC OpenMP::OpenMP_CXX torch math lbvh common)
-
-#set(BVH_MHEM_FIT_HEADERS
-#    bvh_mhem_fit/Config.h
-#    bvh_mhem_fit/bindings.h
-#    bvh_mhem_fit/implementation.h
-#    bvh_mhem_fit/implementation_common.h
-#    bvh_mhem_fit/implementation_template_externs.h
-#    bvh_mhem_fit/implementation_backward.h
-#    bvh_mhem_fit/implementation_forward.h
-#)
-#set(BVH_MHEM_FIT_SOURCES
-#    bvh_mhem_fit/bindings.cpp
-#    bvh_mhem_fit/implementation_dispatch.cpp
-#    bvh_mhem_fit/implementation_forward_instances/template_instance_implementation_forward_2_float_2.cu
-#    bvh_mhem_fit/implementation_forward_instances/template_instance_implementation_forward_2_float_3.cu
-#    bvh_mhem_fit/implementation_forward_instances/template_instance_implementation_forward_2_double_2.cu
-#    bvh_mhem_fit/implementation_forward_instances/template_instance_implementation_forward_2_double_3.cu
-#    bvh_mhem_fit/implementation_forward_instances/template_instance_implementation_forward_4_float_2.cu
-#    bvh_mhem_fit/implementation_forward_instances/template_instance_implementation_forward_4_float_3.cu
-#    bvh_mhem_fit/implementation_forward_instances/template_instance_implementation_forward_4_double_2.cu
-#    bvh_mhem_fit/implementation_forward_instances/template_instance_implementation_forward_4_double_3.cu
-#    bvh_mhem_fit/implementation_forward_instances/template_instance_implementation_forward_8_float_2.cu
-#    bvh_mhem_fit/implementation_forward_instances/template_instance_implementation_forward_8_float_3.cu
-#    bvh_mhem_fit/implementation_forward_instances/template_instance_implementation_forward_8_double_2.cu
-#    bvh_mhem_fit/implementation_forward_instances/template_instance_implementation_forward_8_double_3.cu
-#    bvh_mhem_fit/implementation_forward_instances/template_instance_implementation_forward_16_float_2.cu
-#    bvh_mhem_fit/implementation_forward_instances/template_instance_implementation_forward_16_float_3.cu
-#    bvh_mhem_fit/implementation_forward_instances/template_instance_implementation_forward_16_double_2.cu
-#    bvh_mhem_fit/implementation_forward_instances/template_instance_implementation_forward_16_double_3.cu
-#    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_2_float_2.cu
-#    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_2_float_3.cu
-#    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_2_double_2.cu
-#    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_2_double_3.cu
-#    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_4_float_2.cu
-#    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_4_float_3.cu
-#    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_4_double_2.cu
-#    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_4_double_3.cu
-#    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_8_float_2.cu
-#    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_8_float_3.cu
-#    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_8_double_2.cu
-#    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_8_double_3.cu
-#    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_16_float_2.cu
-#    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_16_float_3.cu
-#    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_16_double_2.cu
-#    bvh_mhem_fit/implementation_backward_instances/template_instance_implementation_backward_16_double_3.cu
-#)
-#add_library(bvh_mhem_fit ${BVH_MHEM_FIT_HEADERS} ${BVH_MHEM_FIT_SOURCES})
-#target_link_libraries(bvh_mhem_fit PUBLIC OpenMP::OpenMP_CXX torch math lbvh common pieces)
-
-#set(BVH_MHEM_FIT_ALPHA_HEADERS
-#    bvh_mhem_fit_alpha/Config.h
-#    bvh_mhem_fit_alpha/implementation.h
-#    bvh_mhem_fit_alpha/implementation_common.h
-#    bvh_mhem_fit_alpha/implementation_template_externs.h
-#    bvh_mhem_fit_alpha/implementation_autodiff_backward.h
-#    bvh_mhem_fit_alpha/implementation_backward.h
-#    bvh_mhem_fit_alpha/implementation_forward.h
-#)
-#set(BVH_MHEM_FIT_ALPHA_SOURCES
-#    bvh_mhem_fit_alpha/implementation_dispatch.cpp
-#    bvh_mhem_fit_alpha/implementation_autodiff_backward.cpp
-#    bvh_mhem_fit_alpha/implementation_forward_instances/template_instance_implementation_forward_2_float_2.cpp
-#    bvh_mhem_fit_alpha/implementation_forward_instances/template_instance_implementation_forward_2_float_3.cpp
-#    bvh_mhem_fit_alpha/implementation_forward_instances/template_instance_implementation_forward_2_double_2.cpp
-#    bvh_mhem_fit_alpha/implementation_forward_instances/template_instance_implementation_forward_2_double_3.cpp
-#    bvh_mhem_fit_alpha/implementation_forward_instances/template_instance_implementation_forward_4_float_2.cpp
-#    bvh_mhem_fit_alpha/implementation_forward_instances/template_instance_implementation_forward_4_float_3.cpp
-#    bvh_mhem_fit_alpha/implementation_forward_instances/template_instance_implementation_forward_4_double_2.cpp
-#    bvh_mhem_fit_alpha/implementation_forward_instances/template_instance_implementation_forward_4_double_3.cpp
-#    bvh_mhem_fit_alpha/implementation_forward_instances/template_instance_implementation_forward_8_float_2.cpp
-#    bvh_mhem_fit_alpha/implementation_forward_instances/template_instance_implementation_forward_8_float_3.cpp
-#    bvh_mhem_fit_alpha/implementation_forward_instances/template_instance_implementation_forward_8_double_2.cpp
-#    bvh_mhem_fit_alpha/implementation_forward_instances/template_instance_implementation_forward_8_double_3.cpp
-#    bvh_mhem_fit_alpha/implementation_forward_instances/template_instance_implementation_forward_16_float_2.cpp
-#    bvh_mhem_fit_alpha/implementation_forward_instances/template_instance_implementation_forward_16_float_3.cpp
-#    bvh_mhem_fit_alpha/implementation_forward_instances/template_instance_implementation_forward_16_double_2.cpp
-#    bvh_mhem_fit_alpha/implementation_forward_instances/template_instance_implementation_forward_16_double_3.cpp
-#    bvh_mhem_fit_alpha/implementation_backward_instances/template_instance_implementation_backward_2_float_2.cpp
-#    bvh_mhem_fit_alpha/implementation_backward_instances/template_instance_implementation_backward_2_float_3.cpp
-#    bvh_mhem_fit_alpha/implementation_backward_instances/template_instance_implementation_backward_2_double_2.cpp
-#    bvh_mhem_fit_alpha/implementation_backward_instances/template_instance_implementation_backward_2_double_3.cpp
-#    bvh_mhem_fit_alpha/implementation_backward_instances/template_instance_implementation_backward_4_float_2.cpp
-#    bvh_mhem_fit_alpha/implementation_backward_instances/template_instance_implementation_backward_4_float_3.cpp
-#    bvh_mhem_fit_alpha/implementation_backward_instances/template_instance_implementation_backward_4_double_2.cpp
-#    bvh_mhem_fit_alpha/implementation_backward_instances/template_instance_implementation_backward_4_double_3.cpp
-#    bvh_mhem_fit_alpha/implementation_backward_instances/template_instance_implementation_backward_8_float_2.cpp
-#    bvh_mhem_fit_alpha/implementation_backward_instances/template_instance_implementation_backward_8_float_3.cpp
-#    bvh_mhem_fit_alpha/implementation_backward_instances/template_instance_implementation_backward_8_double_2.cpp
-#    bvh_mhem_fit_alpha/implementation_backward_instances/template_instance_implementation_backward_8_double_3.cpp
-#    bvh_mhem_fit_alpha/implementation_backward_instances/template_instance_implementation_backward_16_float_2.cpp
-#    bvh_mhem_fit_alpha/implementation_backward_instances/template_instance_implementation_backward_16_float_3.cpp
-#    bvh_mhem_fit_alpha/implementation_backward_instances/template_instance_implementation_backward_16_double_2.cpp
-#    bvh_mhem_fit_alpha/implementation_backward_instances/template_instance_implementation_backward_16_double_3.cpp
-#)
-#add_library(bvh_mhem_fit_alpha ${BVH_MHEM_FIT_ALPHA_HEADERS} ${BVH_MHEM_FIT_ALPHA_SOURCES})
-#target_link_libraries(bvh_mhem_fit_alpha PUBLIC OpenMP::OpenMP_CXX torch math lbvh common)
-#target_compile_definitions(bvh_mhem_fit_alpha PUBLIC GPE_AUTODIFF)
-
 
 set(CONVOLUTION_HEADERS
     convolution/bindings.h
@@ -346,11 +234,8 @@ if ( TARGET Qt5::Core )
     set( CMAKE_CXX_COMPILE_OPTIONS_PIE "-fPIC" )
 endif()
 
-#add_executable(0_test_evaluate_inversed evaluate_inversed/test_evaluate_inversed.cpp)
-#target_link_libraries(0_test_evaluate_inversed PUBLIC OpenMP::OpenMP_CXX torch Qt5::Widgets evaluate_inversed math lbvh common)
-
-#add_executable(0_test_bvh_fit bvh_mhem_fit/test_bvh_fit.cpp)
-#target_link_libraries(0_test_bvh_fit PUBLIC OpenMP::OpenMP_CXX torch Qt5::Widgets bvh_mhem_fit integrate evaluate_inversed math lbvh common)
+add_executable(0_test_evaluate_inversed evaluate_inversed/test_evaluate_inversed.cpp)
+target_link_libraries(0_test_evaluate_inversed PUBLIC OpenMP::OpenMP_CXX torch Qt5::Widgets evaluate_inversed math lbvh common)
 
 add_executable(1_test_convolution_fitting convolution_fitting/test.cpp)
 target_link_libraries(1_test_convolution_fitting PUBLIC OpenMP::OpenMP_CXX torch Qt5::Widgets convolution_fitting convolution evaluate_inversed math common)
@@ -371,20 +256,17 @@ set(UNITTESTS_HEADERS
 )
 set(UNITTESTS_SOURCES
     unittests/algorithms.cpp
-#    unittests/bvh_mhem_fit_alpha_vs_ad.cpp
-#    unittests/bvh_mhem_fit_working_vs_alpha.cpp
-#    unittests/bvh_mhem_fit_working_vs_binding.cpp
-#    unittests/evaluate_inversed.cpp
-#    unittests/grad_algorithms.cpp
-#    unittests/grad_mixture.cpp
+    unittests/evaluate_inversed.cpp
+    unittests/grad_algorithms.cpp
+    unittests/grad_mixture.cpp
     unittests/grad_welford.cpp
     unittests/main.cpp
-#    unittests/util_helpers.cpp
+    unittests/util_helpers.cpp
     unittests/welford.cpp
     unittests/convolution_fitting.cpp
 )
 add_executable(0_unittests ${UNITTESTS_SOURCES} ${UNITTESTS_HEADERS})
-target_link_libraries(0_unittests PUBLIC Catch2::Catch2 OpenMP::OpenMP_CXX torch Qt5::Widgets #[[bvh_mhem_fit_alpha bvh_mhem_fit]] convolution_fitting integrate evaluate_inversed math lbvh common)
+target_link_libraries(0_unittests PUBLIC Catch2::Catch2 OpenMP::OpenMP_CXX torch Qt5::Widgets convolution_fitting evaluate_inversed math lbvh common)
 target_compile_definitions(0_unittests PUBLIC GPE_AUTODIFF)
 
 include(CTest)
@@ -395,10 +277,9 @@ set(BENCHMARK_HEADERS
 )
 set(BENCHMARK_SOURCES
     benchmarks/main.cpp
-#    benchmarks/bvh_mhem_fit.cpp
     benchmarks/convolution_fitting.cpp
-#    benchmarks/evaluate_inversed.cpp
+    benchmarks/evaluate_inversed.cpp
 )
 add_executable(0_benchmarks ${BENCHMARK_SOURCES} ${BENCHMARK_HEADERS})
-target_link_libraries(0_benchmarks PUBLIC Catch2::Catch2 OpenMP::OpenMP_CXX torch Qt5::Widgets #[[bvh_mhem_fit]] convolution_fitting pieces integrate evaluate_inversed math lbvh common)
+target_link_libraries(0_benchmarks PUBLIC Catch2::Catch2 OpenMP::OpenMP_CXX torch Qt5::Widgets convolution_fitting pieces evaluate_inversed math lbvh common)
 
