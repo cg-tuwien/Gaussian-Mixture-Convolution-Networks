@@ -96,16 +96,4 @@ TEMPLATE_TEST_CASE( "testing all against cpu parallel", "[evaluate_inversed]", f
             return std::make_tuple(forward.cpu(), std::get<0>(grads).cpu(), std::get<1>(grads).cpu());
         }, precision, precision);
     }
-
-    SECTION("test bvh") {
-        if (sizeof(scalar_t) == 4) {    // bvh works only for float.
-            runTest<scalar_t>([](const torch::Tensor& mixture, const torch::Tensor& positions, const torch::Tensor& grad_out) {
-                lbvh::Config conf = {};
-                conf.aabb_threshold = 0.000001f;
-                const auto forward = cuda_bvh_forward_impl(mixture.cuda(), positions.cuda(), conf);
-                const auto grads = cuda_bvh_backward_impl(grad_out.cuda(), mixture.cuda(), std::get<1>(forward), std::get<2>(forward), positions.cuda(), true, true);
-                return std::make_tuple(std::get<0>(forward).cpu(), std::get<0>(grads).cpu(), std::get<1>(grads).cpu());
-            }, 1e-2, 2e-1);   // we know that bvh is not exact. it is particularly imprecise with the gradient of the amplitude, see also bvh.cu generation of aabbs.
-        }
-    }
 }

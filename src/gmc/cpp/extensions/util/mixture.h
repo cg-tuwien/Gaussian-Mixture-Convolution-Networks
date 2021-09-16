@@ -3,7 +3,6 @@
 #include <torch/types.h>
 
 #include "util/cuda.h"
-#include "pieces/pieces.h"
 
 namespace gpe {
 
@@ -81,14 +80,6 @@ inline torch::Tensor pack_mixture(const torch::Tensor weights, const torch::Tens
     TORCH_CHECK(covariances.size(4) == n_dims)
 
     return torch::cat({weights.view({n_batch, n_layers, n_components, 1}), positions, covariances.view({n_batch, n_layers, n_components, n_dims * n_dims})}, 3);
-}
-
-inline torch::Tensor mixture_with_inversed_covariances(torch::Tensor mixture) {
-    const auto weights = torch::abs(gpe::weights(mixture));
-    const auto positions = gpe::positions(mixture);
-//    const auto invCovs = gpe::covariances(mixture).inverse().transpose(-1, -2);
-    const auto invCovs = pieces::matrix_inverse(gpe::covariances(mixture));
-    return gpe::pack_mixture(weights, positions, invCovs.contiguous());
 }
 
 inline void check_mixture(torch::Tensor mixture) {

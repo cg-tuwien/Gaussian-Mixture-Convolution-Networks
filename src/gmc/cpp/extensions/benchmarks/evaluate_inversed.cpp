@@ -66,11 +66,3 @@ TEMPLATE_TEST_CASE("evaluate inversed forward and backward benchmark parallel", 
     }
 };
 
-TEST_CASE("evaluate inversed forward and backward benchmark bvh", "[evaluate_inversed]") {
-    torch::jit::script::Module container = torch::jit::load("/home/madam/Documents/work/tuw/gmc_net/data/fitting_input/after_fixed_point_batch0.pt");
-    auto list = container.attributes();
-
-    for (uint i = 0; i < N_CONVOLUTION_LAYERS; i++) {
-        run<use_cuda_type::value>(container.attr(std::to_string(i)).toTensor(), "layer_" + std::to_string(i), evaluate_inversed::cuda_bvh_forward, evaluate_inversed::cuda_bvh_backward);
-    }
-};

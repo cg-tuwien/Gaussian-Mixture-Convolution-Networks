@@ -135,10 +135,9 @@ set(EVALUATE_INVERSED_SOURCES
     evaluate_inversed/parallel_implementation_optimised_forward.cu
     evaluate_inversed/parallel_implementation_optimised_backward.cu
     evaluate_inversed/evaluate_inversed.cpp
-    evaluate_inversed/cuda_bvh_implementation.cu
 )
 add_library(evaluate_inversed ${EVALUATE_INVERSED_HEADERS} ${EVALUATE_INVERSED_SOURCES})
-target_link_libraries(evaluate_inversed PUBLIC OpenMP::OpenMP_CXX torch math lbvh common)
+target_link_libraries(evaluate_inversed PUBLIC OpenMP::OpenMP_CXX torch math common)
 
 set(PIECES_HEADERS
     pieces/pieces.h
@@ -149,7 +148,7 @@ set(PIECES_SOURCES
     pieces/matrix_inverse.cu
 )
 add_library(pieces ${PIECES_HEADERS} ${PIECES_SOURCES})
-target_link_libraries(pieces PUBLIC OpenMP::OpenMP_CXX torch math lbvh common)
+target_link_libraries(pieces PUBLIC OpenMP::OpenMP_CXX torch math common)
 
 set(CONVOLUTION_HEADERS
     convolution/bindings.h
@@ -235,7 +234,7 @@ if ( TARGET Qt5::Core )
 endif()
 
 add_executable(0_test_evaluate_inversed evaluate_inversed/test_evaluate_inversed.cpp)
-target_link_libraries(0_test_evaluate_inversed PUBLIC OpenMP::OpenMP_CXX torch Qt5::Widgets evaluate_inversed math lbvh common)
+target_link_libraries(0_test_evaluate_inversed PUBLIC OpenMP::OpenMP_CXX torch Qt5::Widgets evaluate_inversed math common)
 
 add_executable(1_test_convolution_fitting convolution_fitting/test.cpp)
 target_link_libraries(1_test_convolution_fitting PUBLIC OpenMP::OpenMP_CXX torch Qt5::Widgets convolution_fitting convolution evaluate_inversed math common)
@@ -266,7 +265,7 @@ set(UNITTESTS_SOURCES
     unittests/convolution_fitting.cpp
 )
 add_executable(0_unittests ${UNITTESTS_SOURCES} ${UNITTESTS_HEADERS})
-target_link_libraries(0_unittests PUBLIC Catch2::Catch2 OpenMP::OpenMP_CXX torch Qt5::Widgets convolution_fitting evaluate_inversed math lbvh common)
+target_link_libraries(0_unittests PUBLIC Catch2::Catch2 OpenMP::OpenMP_CXX torch Qt5::Widgets convolution_fitting evaluate_inversed math common)
 target_compile_definitions(0_unittests PUBLIC GPE_AUTODIFF)
 
 include(CTest)
@@ -281,5 +280,5 @@ set(BENCHMARK_SOURCES
     benchmarks/evaluate_inversed.cpp
 )
 add_executable(0_benchmarks ${BENCHMARK_SOURCES} ${BENCHMARK_HEADERS})
-target_link_libraries(0_benchmarks PUBLIC Catch2::Catch2 OpenMP::OpenMP_CXX torch Qt5::Widgets convolution_fitting pieces evaluate_inversed math lbvh common)
+target_link_libraries(0_benchmarks PUBLIC Catch2::Catch2 OpenMP::OpenMP_CXX torch Qt5::Widgets convolution_fitting pieces evaluate_inversed math common)
 
