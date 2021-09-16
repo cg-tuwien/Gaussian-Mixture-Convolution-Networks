@@ -7,11 +7,11 @@
 #include <torch/types.h>
 
 #include "convolution_fitting/Config.h"
+#include "convolution_fitting/morton_code.h"
+#include "convolution_fitting/building.h"
 #include "common.h"
 #include "cuda_operations.h"
 #include "hacked_accessor.h"
-#include "lbvh/building.h"
-#include "lbvh/morton_code.h"
 #include "util/glm.h"
 #include "util/containers.h"
 #include "util/cuda.h"

@@ -293,6 +293,8 @@ set(CONVOLUTION_FITTING_HEADERS
     convolution_fitting/implementation_backward.h
     convolution_fitting/implementation_forward.h
     convolution_fitting/Tree.h
+    convolution_fitting/morton_code.h
+    convolution_fitting/building.h
 )
 set(CONVOLUTION_FITTING_SOURCES
     convolution_fitting/bindings.cpp
