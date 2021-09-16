@@ -103,7 +103,7 @@ inline void check_mixture(torch::Tensor mixture) {
 
 
 inline MixtureNs get_ns(torch::Tensor mixture) {
-    check_mixture(mixture);
+    //check_mixture(mixture);
 
     auto n_batch = gpe::n_batch(mixture);
     auto n_layers = gpe::n_layers(mixture);
@@ -114,7 +114,7 @@ inline MixtureNs get_ns(torch::Tensor mixture) {
 }
 
 inline MixtureAndXesNs check_input_and_get_ns(torch::Tensor mixture, torch::Tensor xes) {
-    check_mixture(mixture);
+    //check_mixture(mixture);
 
     auto n_batch = gpe::n_batch(mixture);
     auto n_layers = gpe::n_layers(mixture);
