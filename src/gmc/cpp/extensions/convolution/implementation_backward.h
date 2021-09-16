@@ -98,10 +98,9 @@ std::pair<torch::Tensor, torch::Tensor> backward_impl_t(const torch::Tensor& gra
         const auto& data_gaussian = data_a[batch_id][channel_in_id][component_in_id];
         const auto& kernel_gaussian = kernel_a[channel_out_id][channel_in_id][component_kernel_id];
 
-        gpe::Gaussian<N_DIMS, scalar_t> data_gaussian_grad = {};
-        gpe::Gaussian<N_DIMS, scalar_t> kernel_gaussian_grad = {};
-        gpe::grad::convolve(data_gaussian, kernel_gaussian, &data_gaussian_grad, &kernel_gaussian_grad, incoming_grad_a[int(batch_id)][int(channel_out_id)][int(component_out_id)]);
-
+        const auto& incoming_grad = incoming_grad_a[int(batch_id)][int(channel_out_id)][int(component_out_id)];
+        const auto data_gaussian_grad = gpe::Gaussian<N_DIMS, scalar_t>(incoming_grad.weight * kernel_gaussian.weight, incoming_grad.position, incoming_grad.covariance);
+        const auto kernel_gaussian_grad = gpe::Gaussian<N_DIMS, scalar_t>(incoming_grad.weight * data_gaussian.weight, incoming_grad.position, incoming_grad.covariance);
 
         gpe::atomicAdd(&(data_grad_a[batch_id][channel_in_id][component_in_id].weight), data_gaussian_grad.weight);
         gpe::atomicAdd(&(kernels_grad_a[channel_out_id][channel_in_id][component_kernel_id].weight), kernel_gaussian_grad.weight);

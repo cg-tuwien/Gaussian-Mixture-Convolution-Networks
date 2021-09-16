@@ -26,16 +26,12 @@ constexpr uint RESOLUTION = 128;
 constexpr bool DO_STATS = true;
 constexpr uint N_FITTING_COMPONENTS = 8;
 
+torch::Tensor toPriorMixture(const torch::Tensor& data) {
+    const double c = std::pow(2 * 3.141592653589793238462643383279502884197169399375105820974944592, double(gpe::n_dimensions(data)));
+    const auto factor = torch::sqrt(c * torch::det(gpe::covariances(data)));
 
-torch::Tensor toPdfMixture(const torch::Tensor& data) {
-    const auto weights = pieces::integrate(data.view({-1, 1, 1, data.size(-1)})).contiguous().view({data.size(0), data.size(1), data.size(2)});
+    const auto weights = factor * gpe::weights(data);
     return gpe::pack_mixture(weights, gpe::positions(data), gpe::covariances(data));
-}
-
-torch::Tensor toAmplitudeMixture(const torch::Tensor& data) {
-    const auto uniAmpM = gpe::pack_mixture(torch::ones_like(gpe::weights(data)), gpe::positions(data), gpe::covariances(data));
-    const auto normFactors = pieces::integrate(uniAmpM.view({-1, 1, 1, data.size(-1)})).contiguous().view({data.size(0), data.size(1), data.size(2)});
-    return gpe::pack_mixture(gpe::weights(data) / normFactors, gpe::positions(data), gpe::covariances(data));
 }
 
 TEST_CASE("convolution_fitting forward and backward benchmark") {
@@ -52,6 +48,8 @@ TEST_CASE("convolution_fitting forward and backward benchmark") {
                 data = data.cuda();
                 kernels = kernels.cuda();
             }
+            data = toPriorMixture(data);
+            kernels = toPriorMixture(kernels);
 
             convolution_fitting::Config config;
             config.n_components_fitting = unsigned(data.size(2));
@@ -60,8 +58,6 @@ TEST_CASE("convolution_fitting forward and backward benchmark") {
             std::cout << "layer " << l << " kernels: " << kernels.sizes() << " device: " << kernels.device() << std::endl;
             std::cout << "target number of gaussians: " << data.size(1) * data.size(2) * kernels.size(2) << ", fitting number of gaussians: " << config.n_components_fitting << std::endl;
 
-            data = toPdfMixture(data);
-            kernels = toPdfMixture(kernels);
 
             BENCHMARK("forward layer " + std::to_string(l)) {
                 const auto forward_output = convolution_fitting::forward_impl(data, kernels, config);

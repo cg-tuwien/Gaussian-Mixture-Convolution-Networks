@@ -58,11 +58,12 @@ void run(torch::Tensor mixture, const std::string& name, ForwardFun forward_fun,
 
 TEMPLATE_TEST_CASE("evaluate inversed forward and backward benchmark parallel", "[evaluate_inversed]", use_cuda_type) {
     using namespace torch::indexing;
-    torch::jit::script::Module container = torch::jit::load("/home/madam/Documents/work/tuw/gmc_net/data/fitting_input/after_fixed_point_batch0.pt");
+    torch::jit::script::Module container = torch::jit::load("/home/madam/Documents/work/tuw/gmc_net/data/mnist_intermediate_data/conv_inputs_0.pt");
     auto list = container.attributes();
 
     for (uint i = 0; i < N_CONVOLUTION_LAYERS; i++) {
-        run<TestType::value>(container.attr(std::to_string(i)).toTensor(), "layer_" + std::to_string(i), evaluate_inversed::parallel_forward, evaluate_inversed::parallel_backward);
+        torch::Tensor data = container.attr("conv_layer_" + std::to_string(i) + "_data").toTensor().contiguous();
+        run<TestType::value>(data, "layer_" + std::to_string(i), evaluate_inversed::parallel_forward, evaluate_inversed::parallel_backward);
     }
 };
 

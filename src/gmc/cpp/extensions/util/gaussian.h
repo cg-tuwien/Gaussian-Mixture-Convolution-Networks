@@ -85,24 +85,36 @@ EXECUTION_DEVICES scalar_t evaluate_inversed(const glm::vec<DIMS, scalar_t>& eva
                                                                const scalar_t& weight,
                                                                const glm::vec<DIMS, scalar_t>& pos,
                                                                const glm::mat<DIMS, DIMS, scalar_t>& inversed_cov) {
+    using gradless_scalar_t = gpe::remove_grad_t<scalar_t>;
+    constexpr gradless_scalar_t factor = gcem::pow(2 * glm::pi<gradless_scalar_t>(), -gradless_scalar_t(DIMS) / gradless_scalar_t(2.));
+
     const auto t = evalpos - pos;
     const auto v = scalar_t(-0.5) * glm::dot(t, (inversed_cov * t));
-    return weight * gpe::exp(v);
+    const auto amp = weight * gpe::sqrt(glm::determinant(inversed_cov)) * factor;
+    return amp * gpe::exp(v);
 }
 
 template <typename scalar_t, int DIMS>
 EXECUTION_DEVICES scalar_t evaluate_inversed(const Gaussian<DIMS, scalar_t>& gaussian,
                                                                const glm::vec<DIMS, scalar_t>& evalpos) {
+    using gradless_scalar_t = gpe::remove_grad_t<scalar_t>;
+    constexpr gradless_scalar_t factor = gcem::pow(2 * glm::pi<gradless_scalar_t>(), -gradless_scalar_t(DIMS) / gradless_scalar_t(2.));
+
     const auto t = evalpos - gaussian.position;
     const auto v = scalar_t(-0.5) * glm::dot(t, (gaussian.covariance * t));
-    return gaussian.weight * gpe::exp(v);
+    const auto amp = gaussian.weight * gpe::sqrt(glm::determinant(gaussian.covariance)) * factor;
+    return amp * gpe::exp(v);
 }
 
 template <typename scalar_t, int DIMS>
 EXECUTION_DEVICES scalar_t evaluate(const Gaussian<DIMS, scalar_t>& gaussian, const glm::vec<DIMS, scalar_t>& evalpos) {
+    using gradless_scalar_t = gpe::remove_grad_t<scalar_t>;
+    constexpr gradless_scalar_t factor = gcem::pow(2 * glm::pi<gradless_scalar_t>(), gradless_scalar_t(DIMS));
+
     const auto t = evalpos - gaussian.position;
     const auto v = scalar_t(-0.5) * glm::dot(t, (glm::inverse(gaussian.covariance) * t));
-    return gaussian.weight * gpe::exp(v);
+    const auto amp = gaussian.weight / gpe::sqrt(factor * glm::determinant(gaussian.covariance));
+    return amp * gpe::exp(v);
 }
 
 } // namespace gpe

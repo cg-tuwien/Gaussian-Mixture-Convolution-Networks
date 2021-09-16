@@ -18,8 +18,8 @@
 #include "util/mixture.h"
 
 constexpr uint N_BATCHES = 1;
-constexpr uint CONVOLUTION_LAYER_START = 1;
-constexpr uint CONVOLUTION_LAYER_END = 2;
+constexpr uint CONVOLUTION_LAYER_START = 0;
+constexpr uint CONVOLUTION_LAYER_END = 4;
 constexpr uint LIMIT_N_BATCH = 5;
 constexpr bool USE_CUDA = false;
 constexpr bool BACKWARD = true;
@@ -77,16 +77,6 @@ void show(torch::Tensor rendering, const int resolution, const int n_batch_limit
     scrollarea->show();
 }
 
-torch::Tensor toPdfMixture(const torch::Tensor& data) {
-    const auto weights = pieces::integrate(data.view({-1, 1, 1, data.size(-1)})).contiguous().view({data.size(0), data.size(1), data.size(2)});
-    return gpe::pack_mixture(weights, gpe::positions(data), gpe::covariances(data));
-}
-
-torch::Tensor toAmplitudeMixture(const torch::Tensor& data) {
-    const auto uniAmpM = gpe::pack_mixture(torch::ones_like(gpe::weights(data)), gpe::positions(data), gpe::covariances(data));
-    const auto normFactors = pieces::integrate(uniAmpM.view({-1, 1, 1, data.size(-1)})).contiguous().view({data.size(0), data.size(1), data.size(2)});
-    return gpe::pack_mixture(gpe::weights(data) / normFactors, gpe::positions(data), gpe::covariances(data));
-}
 
 int main(int argc, char *argv[]) {
     using namespace torch::indexing;
@@ -114,22 +104,20 @@ int main(int argc, char *argv[]) {
 //            show(render(data, 128, LIMIT_N_BATCH), 128, LIMIT_N_BATCH);
 //            show(render(kernels, 128, LIMIT_N_BATCH), 128, LIMIT_N_BATCH);
 
-            const auto a = data;
-            const auto b = toAmplitudeMixture(toPdfMixture(data));
-            const auto d = (a-b).abs().max().item<float>();
-
+            {
+//                show(render(kernels, 128, LIMIT_N_BATCH), 128, LIMIT_N_BATCH, "kernels");
+//                show(render(data, 128, LIMIT_N_BATCH), 128, LIMIT_N_BATCH, "data");
+            }
 
             const auto reference = render(convolution::forward_impl(data, kernels), 128, LIMIT_N_BATCH);
             if (RENDER) {
                 show(reference, 128, LIMIT_N_BATCH, "reference");
             }
-            data = toPdfMixture(data);
-            kernels = toPdfMixture(kernels);
             const auto forward_output = convolution_fitting::forward_impl(data, kernels, config);
             if (BACKWARD) {
                 convolution_fitting::backward_impl(torch::rand_like(forward_output.fitting), data, kernels, forward_output, config);
             }
-            const auto fitting = render(toAmplitudeMixture(forward_output.fitting), 128, LIMIT_N_BATCH);
+            const auto fitting = render(forward_output.fitting, 128, LIMIT_N_BATCH);
                 if (RENDER) {
                 show(fitting, 128, LIMIT_N_BATCH, "fitting");
             }
