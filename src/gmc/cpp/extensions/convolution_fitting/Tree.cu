@@ -128,10 +128,10 @@ torch::Tensor convolution_fitting::Tree<scalar_t, N_DIMS>::compute_morton_codes(
         uint64_t sign = (data_weight * kernel_weight) > 0;
         uint64_t morton_code = uint64_t(lbvh::morton_code(position));
         // safety check for overlaps
-        assert(((sign << 63) & (morton_code << 32)) == 0);
+        assert(((sign << 62) & (morton_code << 32)) == 0);
         assert(((morton_code << 32) & uint64_t(component_out_id)) == 0);
-        assert(((sign << 63) & uint64_t(component_out_id)) == 0);
-        morton_codes_a[batch_id][channel_out_id][component_out_id] = (sign << 63) | (morton_code << 32) | uint64_t(component_out_id);
+        assert(((sign << 62) & uint64_t(component_out_id)) == 0);
+        morton_codes_a[batch_id][channel_out_id][component_out_id] = (sign << 62) | (morton_code << 32) | uint64_t(component_out_id);
     });
     return lbvh::sort_morton_codes<uint64_t, int64_t>(morton_codes);
 }
@@ -143,18 +143,24 @@ void convolution_fitting::Tree<scalar_t, N_DIMS>::create_tree_nodes() {
     const at::Tensor morton_codes = compute_morton_codes();
 
     auto nodes = torch::ones({n.batch, n_channels_out, n_nodes, 4}, torch::TensorOptions(morton_codes.device()).dtype(gpe::TorchTypeMapper<index_type>::id())) * -1;
+    auto nodesobjs = torch::ones({n.batch, n_channels_out, n_nodes}, torch::TensorOptions(morton_codes.device()).dtype(gpe::TorchTypeMapper<index_type>::id()));
+
     const auto morton_codes_view = morton_codes.view({n_mixtures, n_leaf_nodes});
     const auto morton_codes_a = gpe::accessor<uint64_t, 2>(morton_codes_view);
 
 
     { // leaf nodes
         auto nodes_view = nodes.index({Ellipsis, Slice(n_internal_nodes, None), Slice()}).view({n_mixtures, n_leaf_nodes, -1});
+        auto nodesobjs_view = nodesobjs.index({Ellipsis, Slice(n_internal_nodes, None)}).view({n_mixtures, n_leaf_nodes});
+
         auto nodes_a = gpe::struct_accessor<Node, 2>(nodes_view);
+        auto nodesobjs_a = gpe::accessor<index_type, 2>(nodesobjs_view);
+
         dim3 dimBlock = dim3(1, 128, 1);
         dim3 dimGrid = dim3((unsigned(n_mixtures) + dimBlock.x - 1) / dimBlock.x,
                             (unsigned(n_leaf_nodes) + dimBlock.y - 1) / dimBlock.y);
 
-        auto fun = [morton_codes_a, nodes_a, n_mixtures, *this] __host__ __device__
+        auto fun = [morton_codes_a, nodes_a, nodesobjs_a, n_mixtures, *this] __host__ __device__
                 (const dim3& gpe_gridDim, const dim3& gpe_blockDim, const dim3& gpe_blockIdx, const dim3& gpe_threadIdx) mutable {
             GPE_UNUSED(gpe_gridDim)
 
@@ -166,16 +172,22 @@ void convolution_fitting::Tree<scalar_t, N_DIMS>::create_tree_nodes() {
             const auto& morton_code = morton_codes_a[mixture_id][component_id];
             auto& node = nodes_a[mixture_id][component_id];
             node.object_idx = uint32_t(morton_code); // imo the cast will cut away the morton code. no need for "& 0xfffffff" // uint32_t(morton_code & 0xffffffff);
+
+            nodesobjs_a[mixture_id][component_id] = uint32_t(morton_code);
         };
         gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(morton_codes), dimGrid, dimBlock, fun);
     }
     { // internal nodes
         auto nodes_view = nodes.view({n_mixtures, n_nodes, -1});
+        auto nodesobjs_view = nodesobjs.view({n_mixtures, n_nodes});
+
         auto nodes_a = gpe::struct_accessor<Node, 2>(nodes_view);
+        auto nodesobjs_a = gpe::accessor<index_type, 2>(nodesobjs_view);
+
         dim3 dimBlock = dim3(1, 128, 1);
         dim3 dimGrid = dim3((unsigned(n_mixtures) + dimBlock.x - 1) / dimBlock.x,
                             (unsigned(n_internal_nodes) + dimBlock.y - 1) / dimBlock.y);
-        auto fun = [morton_codes_a, nodes_a, n_mixtures, *this] __host__ __device__
+        auto fun = [morton_codes_a, nodes_a, nodesobjs_a, n_mixtures, *this] __host__ __device__
                 (const dim3& gpe_gridDim, const dim3& gpe_blockDim, const dim3& gpe_blockIdx, const dim3& gpe_threadIdx) mutable {
             GPE_UNUSED(gpe_gridDim)
 
@@ -188,6 +200,7 @@ void convolution_fitting::Tree<scalar_t, N_DIMS>::create_tree_nodes() {
             auto& node = nodes_a[mixture_id][node_id];
             //                node.object_idx = lbvh::detail::Node::index_type(0xFFFFFFFF); //  internal nodes // original
             node.object_idx = index_type(node_id);
+            nodesobjs_a[mixture_id][node_id] = index_type(node_id);
 
             const uint2 ij  = lbvh::kernels::determine_range(&morton_code, n_leaf_nodes, node_id);
             const auto gamma = lbvh::kernels::find_split(&morton_code, n_leaf_nodes, ij.x, ij.y);
@@ -212,6 +225,9 @@ void convolution_fitting::Tree<scalar_t, N_DIMS>::create_tree_nodes() {
 
     m_data->nodes = nodes;
     nodes_a = gpe::struct_accessor<typename Tree::Node, 3>(m_data->nodes);
+
+    m_data->nodesobjs = nodesobjs;
+    nodesobjs_a = gpe::accessor<index_type, 3>(m_data->nodesobjs);
 }
 
 template<typename scalar_t, unsigned N_DIMS>
@@ -290,6 +306,11 @@ void convolution_fitting::Tree<scalar_t, N_DIMS>::select_fitting_subtrees()
     m_data->fitting_subtrees = torch::ones({n.batch, n_channels_out, m_config.n_components_fitting}, torch::TensorOptions(device()).dtype(gpe::TorchTypeMapper<typename Tree::index_type>::id())) * -1;
     fitting_subtrees_a = gpe::accessor<typename Tree::index_type, 3>(m_data->fitting_subtrees);
 
+#ifdef GPE_SORT_FITTED
+    auto fitlengths = torch::zeros({n.batch, n_channels_out, m_config.n_components_fitting},  torch::TensorOptions(device()).dtype(gpe::TorchTypeMapper<typename Tree::index_type>::id()));
+    auto fitlengths_a = gpe::accessor<typename Tree::index_type, 3>(fitlengths);
+#endif
+
     auto selected_nodes_rating = torch::empty({n.batch, n_channels_out, m_config.n_components_fitting}, torch::TensorOptions(device()).dtype(gpe::TorchTypeMapper<scalar_t>::id()));
     auto selected_nodes_rating_a = gpe::accessor<scalar_t, 3>(selected_nodes_rating);
 
@@ -340,6 +361,9 @@ void convolution_fitting::Tree<scalar_t, N_DIMS>::select_fitting_subtrees()
         auto write_selected_node = [&](index_type position, index_type node_id) {
             fitting_subtrees_a[batch_id][channel_out_id][position] = node_id;
             selected_nodes_rating_a[batch_id][channel_out_id][position] = compute_rating(node_id);
+#ifdef GPE_SORT_FITTED
+            fitlengths_a[batch_id][channel_out_id][position] = node_id < n_internal_nodes ? get_attribs(node_id).n_gaussians : 1;
+#endif
         };
         write_selected_node(0, 0);
         n_selected_components = 1;
@@ -357,15 +381,73 @@ void convolution_fitting::Tree<scalar_t, N_DIMS>::select_fitting_subtrees()
             write_selected_node(n_selected_components++, best_descend_node.right_idx);
         }
     });
+
+#ifdef GPE_SORT_FITTED
+    const int num_segments = n.batch * n_channels_out;
+    const int num_components = m_config.n_components_fitting;
+    auto fitlengths_orig = fitlengths.clone();
+    const index_type* d_keys_in = reinterpret_cast<const index_type*>(fitlengths_orig.data_ptr());
+    index_type* d_keys_out = reinterpret_cast<index_type*>(fitlengths.data_ptr());
+    auto fitting_subtrees_orig = m_data->fitting_subtrees.clone();
+    const index_type* d_vals_in = reinterpret_cast<const index_type*>(fitting_subtrees_orig.data_ptr());
+    index_type* d_vals_out = reinterpret_cast<index_type*>(m_data->fitting_subtrees.data_ptr());
+
+    if (fitlengths.is_cuda())
+    {
+        int num_items = int(fitlengths.numel());
+        const torch::Tensor offsets = torch::arange(0, num_segments + 1, torch::TensorOptions(fitlengths.device()).dtype(torch::ScalarType::Int)) * num_components;
+        int* d_offsets = offsets.data_ptr<int>();
+
+        // Determine temporary device storage requirements
+        void     *d_temp_storage = nullptr;
+        size_t   temp_storage_bytes = 0;
+
+        cub::DeviceSegmentedRadixSort::SortPairs(
+        d_temp_storage, temp_storage_bytes,
+        d_keys_in, d_keys_out, d_vals_in, d_vals_out,
+        num_items, num_segments,
+        d_offsets, d_offsets + 1, 0, 32);
+
+        GPE_CUDA_ASSERT(cudaPeekAtLastError());
+        GPE_CUDA_ASSERT(cudaDeviceSynchronize());
+
+        // Allocate temporary storage
+        cudaMalloc(&d_temp_storage, temp_storage_bytes);
+
+        GPE_CUDA_ASSERT(cudaPeekAtLastError());
+        GPE_CUDA_ASSERT(cudaDeviceSynchronize());
+        // Run sorting operation
+
+        cub::DeviceSegmentedRadixSort::SortPairs(
+        d_temp_storage, temp_storage_bytes,
+        d_keys_in, d_keys_out, d_vals_in, d_vals_out,
+        num_items, num_segments,
+        d_offsets, d_offsets + 1, 0, 32);
+
+        // d_keys_out            <-- [6, 8, 5, 7, 0, 3, 8, 9]
+        // d_values_out          <-- [1, 0, 3, 2, 5, 4, 7, 6]
+
+        GPE_CUDA_ASSERT(cudaPeekAtLastError());
+        GPE_CUDA_ASSERT(cudaDeviceSynchronize());
+
+        cudaFree(d_temp_storage);
+    }
+    else {
+        throw std::runtime_error("No solution yet!");
+    }
+#endif
+
 }
 
 template<typename scalar_t, unsigned N_DIMS>
-void convolution_fitting::Tree<scalar_t, N_DIMS>::set_nodes_and_friends(const at::Tensor& nodes, const at::Tensor& node_attributes, const at::Tensor& fitting_subtrees)
+void convolution_fitting::Tree<scalar_t, N_DIMS>::set_nodes_and_friends(const at::Tensor& nodes, const at::Tensor& nodesobjs, const at::Tensor& node_attributes, const at::Tensor& fitting_subtrees)
 {
     m_data->nodes = nodes;
+    m_data->nodesobjs = nodesobjs;
     m_data->node_attributes = node_attributes;
     m_data->fitting_subtrees = fitting_subtrees;
 
+    nodesobjs_a = gpe::accessor<typename Tree::index_type, 3>(m_data->nodesobjs);
     nodes_a = gpe::struct_accessor<typename Tree::Node, 3>(m_data->nodes);
     node_attributes_a = gpe::struct_accessor<typename Tree::NodeAttributes, 3>(m_data->node_attributes);
     fitting_subtrees_a = gpe::accessor<typename Tree::index_type, 3>(m_data->fitting_subtrees);
@@ -376,3 +458,4 @@ template class convolution_fitting::Tree<float, 2>;
 template class convolution_fitting::Tree<double, 2>;
 template class convolution_fitting::Tree<float, 3>;
 template class convolution_fitting::Tree<double, 3>;
+

@@ -26,6 +26,7 @@ public:
         torch::Tensor kernel_positions;
         torch::Tensor kernel_covariances;
         torch::Tensor nodes;
+        torch::Tensor nodesobjs;
         torch::Tensor node_attributes;
         torch::Tensor fitting_subtrees;
     };
@@ -59,6 +60,7 @@ public:
     gpe::PackedTensorAccessor32<scalar_t, 3> kernel_weights_a;
     gpe::PackedTensorAccessor32<Vec, 3> kernel_positions_a;
     gpe::PackedTensorAccessor32<Mat, 3> kernel_covariances_a;
+    gpe::PackedTensorAccessor32<typename Tree::index_type, 3> nodesobjs_a;
     gpe::PackedTensorAccessor32<typename Tree::Node, 3> nodes_a;
     gpe::PackedTensorAccessor32<typename Tree::NodeAttributes, 3> node_attributes_a;
     gpe::PackedTensorAccessor32<typename Tree::index_type, 3> fitting_subtrees_a;
@@ -73,7 +75,7 @@ public:
     void create_tree_nodes();
     void create_attributes();
     void select_fitting_subtrees();
-    void set_nodes_and_friends(const torch::Tensor& nodes, const torch::Tensor& node_attributes, const torch::Tensor& fitting_subtrees);
+    void set_nodes_and_friends(const torch::Tensor& nodes, const torch::Tensor& nodesobjs, const torch::Tensor& node_attributes, const torch::Tensor& fitting_subtrees);
 };
 
 

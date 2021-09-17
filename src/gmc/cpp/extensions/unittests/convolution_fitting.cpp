@@ -68,10 +68,10 @@ double grad_check(double dx, const unsigned n_in_channels, const unsigned n_data
 
         typename Tree::Data plus_storage;
         Tree plus_tree(data + dx_i_data, kernels + dx_i_kernels, &plus_storage, config);
-        plus_tree.set_nodes_and_friends(tree_data_storage.nodes, tree_data_storage.node_attributes, tree_data_storage.fitting_subtrees);
+        plus_tree.set_nodes_and_friends(tree_data_storage.nodes, tree_data_storage.nodesobjs, tree_data_storage.node_attributes, tree_data_storage.fitting_subtrees);
         typename Tree::Data minus_storage;
         Tree minus_tree(data - dx_i_data, kernels - dx_i_kernels, &minus_storage, config);
-        minus_tree.set_nodes_and_friends(tree_data_storage.nodes, tree_data_storage.node_attributes, tree_data_storage.fitting_subtrees);
+        minus_tree.set_nodes_and_friends(tree_data_storage.nodes, tree_data_storage.nodesobjs, tree_data_storage.node_attributes, tree_data_storage.fitting_subtrees);
 
 
         const auto out_plus_dx = convolution_fitting::forward_with_given_tree<1, scalar_t, N_DIMS>(config, plus_tree).fitting;

@@ -136,6 +136,12 @@ __global__ void gpe_generic_cuda_kernel(Fun function) {
     function(gridDim, blockDim, blockIdx, threadIdx);
 }
 
+template <typename Fun>
+//Bernhard needs the named kernel so that he can identify kernels by name in profiling
+__global__ void gpe_named_cuda_kernel(Fun function) {
+    function(gridDim, blockDim, blockIdx, threadIdx);
+}
+
 inline void gpu_assert(cudaError_t code)
 {
     if (code != cudaSuccess)
@@ -148,12 +154,16 @@ inline void gpu_assert(cudaError_t code)
 
 template <ComputeDevice device, typename Fun>
 struct CudaStarter {
-    void operator()(const dim3& gridDim, const dim3& blockDim, const Fun& function) {
+//Bernhard needs the bool named so that he can identify kernels by name in profiling
+    void operator()(const dim3& gridDim, const dim3& blockDim, const Fun& function, bool named=false) {
         GPE_UNUSED(gridDim)
         GPE_UNUSED(blockDim)
         GPE_UNUSED(function)
 #ifdef __CUDACC__
-        detail::gpe_generic_cuda_kernel<<<gridDim, blockDim>>>(function);
+        if(named)
+            detail::gpe_named_cuda_kernel<<<gridDim, blockDim>>>(function);
+        else
+            detail::gpe_generic_cuda_kernel<<<gridDim, blockDim>>>(function);
         detail::gpu_assert(cudaPeekAtLastError());
         detail::gpu_assert(cudaDeviceSynchronize());
 #else
@@ -182,9 +192,10 @@ inline ComputeDevice device(const torch::Tensor& t) {
 }
 
 template <ComputeDevice allowed_devices, typename Fun>
-void start_parallel(ComputeDevice device, const dim3& gridDim, const dim3& blockDim, const Fun& function) {
+//Bernhard needs the bool named so that he can identify kernels by name in profiling
+void start_parallel(ComputeDevice device, const dim3& gridDim, const dim3& blockDim, const Fun& function, bool named=false) {
     if (device == ComputeDevice::CUDA) {
-        detail::CudaStarter<allowed_devices, Fun> ()(gridDim, blockDim, function);
+        detail::CudaStarter<allowed_devices, Fun> ()(gridDim, blockDim, function, named);
     }
     else if (device == ComputeDevice::CPU && (allowed_devices == ComputeDevice::CPU || allowed_devices == ComputeDevice::Both)) {
         detail::gpe_start_cpu_parallel(gridDim, blockDim, function);

@@ -26,7 +26,7 @@ std::pair<torch::Tensor, torch::Tensor> backward_impl_t(const torch::Tensor& gra
 
     typename Tree::Data tree_data_storage;
     Tree tree(data, kernels, &tree_data_storage, config);
-    tree.set_nodes_and_friends(forward_out.nodes, forward_out.node_attributes, forward_out.fitting_subtrees);
+    tree.set_nodes_and_friends(forward_out.nodes, forward_out.nodesobjs, forward_out.node_attributes, forward_out.fitting_subtrees);
 
     torch::Tensor out_mixture = forward_out.fitting;
     auto out_mixture_a = gpe::struct_accessor<G, 3>(out_mixture);
@@ -42,7 +42,7 @@ std::pair<torch::Tensor, torch::Tensor> backward_impl_t(const torch::Tensor& gra
 
 
     { // fit subtrees
-        dim3 dimBlock = dim3(32, 1, 1);
+        dim3 dimBlock = dim3(64, 1, 1);
         dim3 dimGrid = dim3((unsigned(config.n_components_fitting) + dimBlock.x - 1) / dimBlock.x,
                             (unsigned(tree.n_channels_out) + dimBlock.y - 1) / dimBlock.y,
                             (unsigned(tree.n.batch) + dimBlock.z - 1) / dimBlock.z);
@@ -97,7 +97,8 @@ std::pair<torch::Tensor, torch::Tensor> backward_impl_t(const torch::Tensor& gra
             gpe::grad::WeightedMean<scalar_t, typename G::cov_t> cov_aggregator(g.weight, g.covariance - cached_pos_cov,
                                                                                 0, incoming_grad.covariance);   // in the forward pass, w_sum is retrieved from pos_aggregator, therefore the weight grad here is 0
             for (index_type k = start_id; k < end_id; ++k) {
-                const auto target_component_id = get_node(k).object_idx;
+                //const auto target_component_id = get_node(k).object_idx;
+                const auto target_component_id = tree.nodesobjs_a[batch_id][channel_out_id][k];
 
                 const auto gaussian_indices = gpe::split_n_dim_index<uint32_t, 3, unsigned>({unsigned(tree.n.components), unsigned(tree.n_channels_in), unsigned(tree.kernel_n.components)}, target_component_id);
                 const unsigned& component_in_id = gaussian_indices[0];
@@ -141,7 +142,7 @@ std::pair<torch::Tensor, torch::Tensor> backward_impl_t(const torch::Tensor& gra
                     }
                 }
             }
-        });
+        }, true);
     }
 
     return {grad_data, grad_kernels};
