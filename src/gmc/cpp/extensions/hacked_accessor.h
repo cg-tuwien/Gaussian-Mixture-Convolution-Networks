@@ -377,10 +377,10 @@ C10_HOST auto struct_accessor(const torch::Tensor& tensor) {
     assert(sizeof(struct_t) % sizeof(tensor_type) == 0);
     assert(tensor.dtype().itemsize() == sizeof(tensor_type));
     assert(tensor.dim() == N + 1);
-    assert(tensor.size(-1) == sizeof(struct_t) / sizeof(tensor_type));
+    assert(tensor.size(-1) * sizeof(tensor_type) == sizeof(struct_t));          // tensor.size(-1) == sizeof(struct_t) / sizeof(tensor_type), but without rounding
     auto torch_accessor = tensor.generic_packed_accessor<tensor_type, N + 1, gpe::RestrictPtrTraits, uint32_t>();
     assert(torch_accessor.stride(N) == 1);
-    assert(torch_accessor.size(N) == sizeof(struct_t) / sizeof(tensor_type));
+    assert(torch_accessor.size(N) * sizeof(tensor_type) == sizeof(struct_t));   // torch_accessor.size(N) == sizeof(struct_t) / sizeof(tensor_type), but without rounding
     using index_t = decltype(torch_accessor.size(0));
 
     std::array<index_t, N> strides;

@@ -17,12 +17,12 @@ std::vector<torch::Tensor> convolution_fitting_forward(torch::Tensor data, torch
     convolution_fitting::Config config = {};
     config.n_components_fitting = unsigned(n_components_fitting);
     auto result = convolution_fitting::forward_impl(data, kernels, config);
-    return {result.fitting, result.cached_pos_covs, result.nodes, result.node_attributes, result.fitting_subtrees};
+    return {result.fitting, result.cached_pos_covs, result.nodes, result.nodesobjs, result.node_attributes, result.fitting_subtrees};
 }
 
 std::pair<torch::Tensor, torch::Tensor> convolution_fitting_backward(const torch::Tensor& grad,
                                                                      const torch::Tensor& data, const torch::Tensor& kernels, int n_components_fitting,
-                                                                     const torch::Tensor& fitting, const torch::Tensor& cached_pos_covs, const torch::Tensor& nodes, const torch::Tensor& node_attributes, const torch::Tensor& fitting_subtrees) {
+                                                                     const torch::Tensor& fitting, const torch::Tensor& cached_pos_covs, const torch::Tensor& nodes, const torch::Tensor& nodeobjs, const torch::Tensor& node_attributes, const torch::Tensor& fitting_subtrees) {
     at::cuda::OptionalCUDAGuard device_guard;
     if (grad.is_cuda()) {
         assert (device_of(grad).has_value());
@@ -31,7 +31,7 @@ std::pair<torch::Tensor, torch::Tensor> convolution_fitting_backward(const torch
 
     convolution_fitting::Config config = {};
     config.n_components_fitting = unsigned(n_components_fitting);
-    return convolution_fitting::backward_impl(grad, data, kernels, convolution_fitting::ForwardOutput{fitting, cached_pos_covs, nodes, node_attributes, fitting_subtrees}, config);
+    return convolution_fitting::backward_impl(grad, data, kernels, convolution_fitting::ForwardOutput{fitting, cached_pos_covs, nodes, nodeobjs, node_attributes, fitting_subtrees}, config);
 }
 
 #ifndef GMC_CMAKE_TEST_BUILD
