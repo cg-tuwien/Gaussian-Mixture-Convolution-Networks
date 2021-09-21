@@ -16,6 +16,7 @@
 #include "util/scalar.h"
 #include "util/gaussian.h"
 #include "util/gaussian_mixture.h"
+#include "util/grad/gaussian.h"
 #include "util/mixture.h"
 
 namespace {
@@ -45,6 +46,8 @@ void backward(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
               gpe::PackedTensorAccessor32<scalar_t, 4> grad_xes_a,
               const gpe::PackedTensorAccessor32<scalar_t, 3> grad_output_a,
               const gpe::MixtureAndXesNs n, bool requires_grad_mixture, bool requires_grad_xes) {
+    using Gaussian = gpe::Gaussian<DIMS, scalar_t>;
+    using Vec = typename Gaussian::pos_t;
     GPE_UNUSED(gpe_gridDim)
     const auto batch_index = int(gpe_blockIdx.z);
     const auto layer_index = int(gpe_blockIdx.y);
@@ -74,33 +77,27 @@ void backward(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
         const auto& c_pos = gpe::position<DIMS>(mixture_a[batch_index][layer_index][component_index]);
         const auto& c_cov = gpe::covariance<DIMS>(mixture_a[batch_index][layer_index][component_index]);
 
-        const auto t = x_pos - c_pos;
-        const auto v = scalar_t(-0.5) * glm::dot(t, (c_cov * t));
-        const auto exp = gpe::exp(v);
-        const auto weighted_exp = c_weight * exp;
-        const auto local_grad_c_pos = weighted_exp * t * c_cov;
+        Gaussian grad_component = {};
+        Vec grad_x_pos = {};
+        gpe::grad::evaluate_inversed(Gaussian(c_weight, c_pos, c_cov), x_pos, &grad_component, &grad_x_pos, grad_output_a[batch_index][layer_index][xes_index]);
 
         if (requires_grad_xes) {
-            const auto grad_xes_addition = - grad_output_a[batch_index][layer_index][xes_index] * local_grad_c_pos;
             for (int i = 0; i < DIMS; ++i) {
-                gpe::atomicAdd(&grad_xes_a[batch_xes_index][layer_xes_index][xes_index][i], grad_xes_addition[i]);
+                gpe::atomicAdd(&grad_xes_a[batch_xes_index][layer_xes_index][xes_index][i], grad_x_pos[i]);
             }
         }
 
 
         if (requires_grad_mixture) {
-            const auto grad_c_weight_addition = exp * grad_output_a[batch_index][layer_index][xes_index];
-            const auto grad_c_pos_addition = local_grad_c_pos * grad_output_a[batch_index][layer_index][xes_index];
-            const auto grad_c_cov_addition = - c_weight * scalar_t(0.5) * exp * grad_output_a[batch_index][layer_index][xes_index] * glm::outerProduct(t, t);
             //gpe::atomicAdd(&grad_mixture_a[batch_index][layer_index][component_index][0], grad_c_weight_addition);
-            reduce_warp(grad_c_weight_addition, &grad_mixture_a[batch_index][layer_index][component_index][0]);
+            reduce_warp(grad_component.weight, &grad_mixture_a[batch_index][layer_index][component_index][0]);
             for (int i = 0; i < DIMS; ++i) {
                 //gpe::atomicAdd(&grad_mixture_a[batch_index][layer_index][component_index][1 + i], grad_c_pos_addition[i]);
-                reduce_warp(grad_c_pos_addition[i], &grad_mixture_a[batch_index][layer_index][component_index][1 + i]);
+                reduce_warp(grad_component.position[i], &grad_mixture_a[batch_index][layer_index][component_index][1 + i]);
                 //atomicAdd(&temp[1 + i], grad_c_pos_addition[i]);
                 for (int j = 0; j < DIMS; ++j)
                 {
-                    reduce_warp(grad_c_cov_addition[i][j], &grad_mixture_a[batch_index][layer_index][component_index][1 + DIMS + i*DIMS + j]);
+                    reduce_warp(grad_component.covariance[i][j], &grad_mixture_a[batch_index][layer_index][component_index][1 + DIMS + i*DIMS + j]);
                     //gpe::atomicAdd(&grad_mixture_a[batch_index][layer_index][component_index][1 + DIMS + i*DIMS + j], grad_c_cov_addition[i][j]);
                     //atomicAdd(&temp[1 + DIMS + i*DIMS + j], grad_c_cov_addition[i][j]);
                 }

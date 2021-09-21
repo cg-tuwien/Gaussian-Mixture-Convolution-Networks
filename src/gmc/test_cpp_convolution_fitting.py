@@ -18,15 +18,8 @@ covariance_radius = 10
 def debug_render(mixture: Tensor, radius: int = 3, image_size: typing.Tuple[int, int] = (200, 200), clamp: typing.Tuple[float, float] = (-1.5, 1.5)):
     mixture = mixture.view(1, gm.n_batch(mixture), gm.n_components(mixture), -1)
     images = render.render(mixture, torch.zeros(1, 1), x_low=-radius, x_high=radius, y_low=-radius, y_high=radius, width=image_size[0], height=image_size[1])
-    images = render.colour_mapped(images.cpu().numpy(), clamp[0], clamp[1])
+    images = render.colour_mapped(images.cpu().view(gm.n_batch(mixture) * image_size[0], image_size[1]).numpy(), clamp[0], clamp[1])
     return images[:, :, :3]
-
-
-def cpp_convolution_fitting_wrapper(m1: Tensor, m2: Tensor, n_fitting_components: int):
-    m1p = gm.convert_amplitudes_to_priors(m1)
-    m2p = gm.convert_amplitudes_to_priors(m2)
-    mop = cpp_convolution_fitting.apply(m1p, m2p, n_fitting_components)
-    return gm.convert_priors_to_amplitudes(mop)
 
 
 class CppConvolutionTest(unittest.TestCase):
@@ -36,7 +29,7 @@ class CppConvolutionTest(unittest.TestCase):
         gm2 = gm.generate_random_mixtures(1, 1, 4, n_dims=n_dims, pos_radius=1, cov_radius=0.5)
         python_result = gm.convolve(gm1, gm2)
         cpp_result = cpp_convolution.apply(gm1, gm2)
-        cpp_result2 = cpp_convolution_fitting_wrapper(gm1, gm2, 4*5)
+        cpp_result2 = cpp_convolution_fitting.apply(gm1, gm2, 4*5)
 
         # plt.imshow(debug_render(gm1))
         # plt.show()
@@ -65,8 +58,8 @@ class CppConvolutionTest(unittest.TestCase):
         gm2 = gm.generate_random_mixtures(n_out_channels, n_in_channels, n_kernel_comps, n_dims=n_dims, pos_radius=1, cov_radius=0.5)
 
         conv_result = cpp_convolution.apply(gm1, gm2)
-        conv_nofit_result = cpp_convolution_fitting_wrapper(gm1, gm2, n_out_comps)
-        conv_fit_result = cpp_convolution_fitting_wrapper(gm1, gm2, n_out_comps // 2)
+        conv_nofit_result = cpp_convolution_fitting.apply(gm1, gm2, n_out_comps)
+        conv_fit_result = cpp_convolution_fitting.apply(gm1, gm2, n_out_comps // 2)
 
         sampling_positions = torch.rand(1, 1, 10000, n_dims) * 4 - 2
         ref_samples = gm.evaluate(conv_result, sampling_positions)
@@ -78,14 +71,16 @@ class CppConvolutionTest(unittest.TestCase):
         self.assertLess(((ref_samples - fit_samples)**2).mean().sqrt(), 0.2)    # the fitting is not very precise..
 
     def test_forward_2d(self):
+        torch.manual_seed(0)
         self._test_against_python(2)
         self._test_against_full_convolution(2)
 
     def test_forward_3d(self):
+        torch.manual_seed(0)
         self._test_against_python(3)
         self._test_against_full_convolution(3)
 
 
-sh = CppConvolutionTest()
-sh.test_forward_2d()
-sh.test_forward_3d()
+if __name__ == '__main__':
+    unittest.main()
+

@@ -84,39 +84,19 @@ def is_valid_mixture(mixture: Tensor) -> bool:
     return True
 
 
-def integrate_components(mixture: Tensor) -> Tensor:
-    assert is_valid_mixture(mixture)
-    dets = torch.det(covariances(mixture))
-    return weights(mixture) * torch.sqrt(((2 * math.pi) ** n_dimensions(mixture)) * dets)
-
-
 def integrate(mixture: Tensor) -> Tensor:
     ## test the cpp version, but disable for now because there is no backward.
     ## we want to use gaussian integrals internally in the cpp fitting code, and had to verify. python integration is not too slow for the time being.
     #return cppExtensionsIntegrateInversed.apply(pack_mixture(weights(mixture), positions(mixture), mat_tools.inverse(covariances(mixture))))
-    return integrate_components(mixture).sum(dim=2)
+    return weights(mixture).sum(dim=-1)
 
 
-# returns the amplitude of a multivariate normal distribution with the given covariance
-# version for when the covariance is already inversed (det(C)^-1 == det(C^-1))
-def normal_amplitudes_inversed(_covariances: Tensor) -> Tensor:
-    n_dims = _covariances.shape[-1]
-    return (2 * math.pi) ** (- n_dims * 0.5) * torch.sqrt(torch.det(_covariances))
-
-
-# returns the amplitude of a multivariate normal distribution with the given covariance
-# version for when the covariance is in the normal form (det(C)^-1 == det(C^-1))
-def normal_amplitudes(_covariances: Tensor) -> Tensor:
-    n_dims = _covariances.shape[-1]
-    return (2 * math.pi) ** (- n_dims * 0.5) / torch.sqrt(torch.det(_covariances))
+def evaluate_inversed_with_amplitude_mixture(mixture: Tensor, xes: Tensor) -> Tensor:
+    return cppExtensionsEvaluateInversed.apply(convert_amplitudes_to_priors(mixture), xes)
 
 
 def evaluate_inversed(mixture: Tensor, xes: Tensor) -> Tensor:
     return cppExtensionsEvaluateInversed.apply(mixture, xes)
-
-
-def evaluate_inversed_bvh(mixture: Tensor, xes: Tensor) -> Tensor:
-    return cppExtensionsEvaluateInversed.apply_bvh(mixture, xes)
 
 
 def old_evaluate_inversed(mixture: Tensor, xes: Tensor) -> Tensor:
@@ -152,10 +132,11 @@ def old_evaluate_inversed(mixture: Tensor, xes: Tensor) -> Tensor:
         x_t = values.view(_n_batch, _n_layers, n_comps_slice, -1, 1, _n_dims)
         x = values.view(_n_batch, _n_layers, n_comps_slice, -1, _n_dims, 1)
         A = covariances(mixture_slice).view(_n_batch, _n_layers, n_comps_slice, 1, _n_dims, _n_dims)
-        values = -0.5 * x_t @ A @ x # 0.8 -> 3.0gb
+        values = -0.5 * x_t @ A @ x  # 0.8 -> 3.0gb
         values = values.view(_n_batch, _n_layers, n_comps_slice, -1)
+        norm_factor = torch.sqrt(torch.det(A) / ((2.0 * math.pi) ** _n_dims))
 
-        values = weights(mixture_slice).view(_n_batch, _n_layers, n_comps_slice, 1) * torch.exp(values) # 3.0 -> 3.3Gb
+        values = weights(mixture_slice).view(_n_batch, _n_layers, n_comps_slice, 1) * norm_factor * torch.exp(values)  # 3.0 -> 3.3Gb
         values_sum += values.sum(dim=2)
     return values_sum
 
@@ -166,11 +147,6 @@ def evaluate(mixture: Tensor, xes: Tensor) -> Tensor:
     """
     # torch inverse returns a transposed matrix (v 1.3.1). our matrix is symmetric however, and we want to take a view, so the transpose avoids a copy.
     return evaluate_inversed(pack_mixture(weights(mixture), positions(mixture), mat_tools.inverse(covariances(mixture)).transpose(-1, -2)), xes)
-
-
-def evaluate_bvh(mixture: Tensor, xes: Tensor) -> Tensor:
-    # torch inverse returns a transposed matrix (v 1.3.1). our matrix is symmetric however, and we want to take a view, so the transpose avoids a copy.
-    return evaluate_inversed_bvh(pack_mixture(weights(mixture), positions(mixture), mat_tools.inverse(covariances(mixture)).transpose(-1, -2)), xes)
 
 
 def evaluate_componentwise_inversed(gaussians: Tensor, xes: Tensor):
@@ -198,8 +174,9 @@ def evaluate_componentwise_inversed(gaussians: Tensor, xes: Tensor):
     A = covariances(gaussians).view(_n_batch, _n_layers, 1, _n_comps, _n_dims, _n_dims)
     values = -0.5 * x_t @ A @ x  # 0.8 -> 3.0gb
     values = values.view(_n_batch, _n_layers, n_xes, _n_comps)
+    norm_factor = torch.sqrt(torch.det(A) / ((2.0 * math.pi) ** _n_dims))
 
-    values = weights(gaussians).view(_n_batch, _n_layers, 1, _n_comps) * torch.exp(values)
+    values = weights(gaussians).view(_n_batch, _n_layers, 1, _n_comps) * norm_factor * torch.exp(values)
     return values
 
 
@@ -286,7 +263,7 @@ def convolve(m1: Tensor, m2: Tensor) -> Tensor:
     assert not torch.isnan(detc1pc2).any()
     assert not torch.isnan(torch.sqrt(detc1tc2)).any()
     assert not torch.isnan(torch.sqrt(detc1pc2)).any()
-    m_new_w = math.pow(math.sqrt(2 * math.pi), n_dimensions(m1)) * m1_w * m2_w * torch.sqrt(detc1tc2) / torch.sqrt(detc1pc2)
+    m_new_w = m1_w * m2_w
     assert not torch.isnan(m_new_w).any()
     m_new_w = m_new_w.view(n_batch(m_new), n_layers(m_new), n_components(m_new), 1)
     assert not torch.isnan(m_new_w).any()
@@ -298,7 +275,7 @@ def convolve(m1: Tensor, m2: Tensor) -> Tensor:
 
 
 def spatial_scale(m: Tensor, scaling_factors: Tensor) -> Tensor:
-    """Does not scale weights, i.e., the integral will change."""
+    """Does not scale weights, i.e., the amplitudes will change, but not the integral."""
     assert len(scaling_factors.shape) == 3
     scaling_factors = scaling_factors.unsqueeze(-2)
 
@@ -314,15 +291,19 @@ def spatial_scale(m: Tensor, scaling_factors: Tensor) -> Tensor:
     return pack_mixture(w, p, c)
 
 
+def convert_priors_to_amplitudes2(weights: torch.Tensor, covariances: torch.Tensor) -> torch.Tensor:
+    # Given mixture has priors as weights
+    # This returns a new mixture with corresponding amplitudes as weights
+    ndims = covariances.shape[-1]
+    fct = math.sqrt((2 * math.pi) ** ndims)
+    return weights / (covariances.det().sqrt() * fct)
+
+
 def convert_priors_to_amplitudes(gm: torch.Tensor) -> torch.Tensor:
     # Given mixture has priors as weights
     # This returns a new mixture with corresponding amplitudes as weights
-    ndims = n_dimensions(gm)
-    fct = math.sqrt((2 * math.pi) ** ndims)
-    gmwei = weights(gm)
-    gmcov = covariances(gm)
-    amplitudes = gmwei / (gmcov.det().sqrt() * fct)
-    return pack_mixture(amplitudes, positions(gm), gmcov)
+    _covariances = covariances(gm)
+    return pack_mixture(convert_priors_to_amplitudes2(weights(gm), _covariances), positions(gm), _covariances)
 
 
 def convert_amplitudes_to_priors(gm: torch.Tensor) -> torch.Tensor:

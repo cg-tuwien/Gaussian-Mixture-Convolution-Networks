@@ -58,6 +58,7 @@ class ModelNetDataSet(torch.utils.data.Dataset):
     def __getitem__(self, index):
         file_path = f"{self.data_base_path}/{self.sample_names[index]}.torch"
         mixture = torch.load(file_path)
+        gm.convert_amplitudes_to_priors(mixture)
 
         assert len(mixture.shape) == 4
 

@@ -66,7 +66,7 @@ class AvgDensities(EvalFunction):
             startidx = p * subbatch_pointcount
             endidx = min((p + 1) * subbatch_pointcount, point_count)
             output[:, startidx:endidx] = \
-                gm.evaluate_inversed(mixture_with_inversed_cov, points[:, :, startidx:endidx, :]).view(batch_size, -1) \
+                gm.evaluate_inversed_with_amplitude_mixture(mixture_with_inversed_cov, points[:, :, startidx:endidx, :]).view(batch_size, -1) \
                 + (noisecontribution.view(batch_size, 1) if noisecontribution is not None else 0)
         #np.savetxt("D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/EvalLogs/densities-" + str(round(time.time() * 1000)) + ".txt", output.cpu().numpy(),
         #           delimiter="\n")

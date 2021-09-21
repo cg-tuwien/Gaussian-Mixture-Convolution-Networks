@@ -14,31 +14,34 @@
 namespace gpe {
 namespace grad {
 
+
+
 template <typename scalar_t, int DIMS>
-EXECUTION_DEVICES void evaluate(const Gaussian<DIMS, scalar_t>& gaussian, const glm::vec<DIMS, scalar_t>& evalpos,
+EXECUTION_DEVICES void evaluate_inversed(const Gaussian<DIMS, scalar_t>& gaussian, const glm::vec<DIMS, scalar_t>& evalpos,
                                 Gaussian<DIMS, scalar_t>* grad_gaussian, glm::vec<DIMS, scalar_t>* grad_evalpos,
                                 scalar_t incoming_grad) {
     using gradless_scalar_t = gpe::remove_grad_t<scalar_t>;
-    constexpr gradless_scalar_t factor = gcem::pow(2 * glm::pi<gradless_scalar_t>(), gradless_scalar_t(DIMS));
+    constexpr gradless_scalar_t factor = gcem::pow(2 * glm::pi<gradless_scalar_t>(), -gradless_scalar_t(DIMS) / gradless_scalar_t(2.));
 
     using Vec = glm::vec<DIMS, scalar_t>;
     const auto t = evalpos - gaussian.position;
-    const auto covInv = glm::inverse(gaussian.covariance);
-    const auto covInv_times_t = (covInv * t);
+    const auto covInv_times_t = (gaussian.covariance * t);
     const auto v = scalar_t(-0.5) * glm::dot(t, covInv_times_t);
-    const auto root = factor * glm::determinant(gaussian.covariance);
-    const auto norm_fct = gpe::sqrt(root);
-    const auto amp = gaussian.weight / norm_fct;
-    // return amp * gpe::exp(v);
+    const auto det = glm::determinant(gaussian.covariance);
+    const auto root = gpe::sqrt(det);
+    const auto norm = root * factor;
+    const auto exp = gpe::exp(v);
+    // return gaussian.weight * norm * exp;
 
-//    return gaussian.weight * gpe::exp(v);
-    const scalar_t grad_amp = incoming_grad * gpe::exp(v);
-    scalar_t grad_norm_fct;
-    gpe::grad::functors::divided_AbyB(gaussian.weight, norm_fct, &grad_gaussian->weight, &grad_norm_fct, grad_amp);
-    const scalar_t grad_root = grad_norm_fct / (2 * norm_fct);
-    const scalar_t grad_det = grad_root * factor;
 
-    const scalar_t grad_v = gpe::grad::exp(v, incoming_grad * amp);
+    grad_gaussian->weight = norm * exp * incoming_grad;
+    const scalar_t grad_norm = gaussian.weight * exp * incoming_grad;
+    const scalar_t grad_exp = gaussian.weight * norm * incoming_grad;
+
+    const scalar_t grad_root = grad_norm * factor;
+    const scalar_t grad_det = grad_root / (2 * root);
+
+    const scalar_t grad_v = gpe::grad::exp(v, grad_exp);
 
 //    const auto v = scalar_t(-0.5) * glm::dot(t, covInv_times_t);
     Vec grad_t;
@@ -49,16 +52,25 @@ EXECUTION_DEVICES void evaluate(const Gaussian<DIMS, scalar_t>& gaussian, const 
 //    const auto covInv_times_t = (covInv * t);
     auto grad_covInv = gpe::outerProduct(grad_covInv_times_t, t);
     // ignoring the transpose due to symmetry
-    grad_t += covInv * grad_covInv_times_t;
+    grad_t += gaussian.covariance * grad_covInv_times_t;
 
-//    const auto covInv = glm::inverse(gaussian.covariance);
-    grad_gaussian->covariance = gpe::grad::inverse_with_cached_covInv(covInv, grad_covInv) + gpe::grad::determinant(gaussian.covariance, grad_det);
+    grad_gaussian->covariance = grad_covInv + gpe::grad::determinant(gaussian.covariance, grad_det);
 
 //    const auto t = evalpos - gaussian.position;
     *grad_evalpos = grad_t;
     grad_gaussian->position = -grad_t;
 }
 
+template <typename scalar_t, int DIMS>
+EXECUTION_DEVICES void evaluate(const Gaussian<DIMS, scalar_t>& gaussian, const glm::vec<DIMS, scalar_t>& evalpos,
+                                Gaussian<DIMS, scalar_t>* grad_gaussian, glm::vec<DIMS, scalar_t>* grad_evalpos,
+                                scalar_t incoming_grad) {
+    const auto covInv = glm::inverse(gaussian.covariance);
+    // return evaluate_inversed(Gaussian(weight, pos, covInv), evalpos)
+
+    gpe::grad::evaluate_inversed(Gaussian<DIMS, scalar_t>(gaussian.weight, gaussian.position, covInv), evalpos, grad_gaussian, grad_evalpos, incoming_grad);
+    grad_gaussian->covariance = gpe::grad::inverse_with_cached_covInv(covInv, grad_gaussian->covariance);
+}
 } // namespace grad
 
 } // namespace gpe

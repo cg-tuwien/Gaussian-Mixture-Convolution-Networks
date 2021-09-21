@@ -54,7 +54,7 @@ class Irregularity(EvalFunction):
             startidx = p * subbatch_pointcount
             endidx = min((p + 1) * subbatch_pointcount, point_count)
             output[startidx:endidx] = \
-                gm.evaluate_inversed(mixture_with_inversed_cov, points[:, :, startidx:endidx, :]).view(-1)
+                gm.evaluate_inversed_with_amplitude_mixture(mixture_with_inversed_cov, points[:, :, startidx:endidx, :]).view(-1)
 
         if self._subsamples > 0:
             smooth = pyeval.irregularity_sub(output.cpu(), nngraph.cpu())

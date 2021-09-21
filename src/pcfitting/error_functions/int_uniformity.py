@@ -44,7 +44,7 @@ class IntUniformity(EvalFunction):
             x3d = lambda u, v: p0 + u*(p1-p0) + v*(p2-p0)
             x3dt = lambda u, v: torch.tensor(x3d(u, v)).to(dtype=dt).cuda().view(1, 1, 1, 3)
             sub = np.linalg.norm(p1-p0)*np.linalg.norm(p2-p0)
-            integrant = lambda u, v: gm.evaluate_inversed(mixture_with_inversed_cov, x3dt(u, v)).item()
+            integrant = lambda u, v: gm.evaluate_inversed_with_amplitude_mixture(mixture_with_inversed_cov, x3dt(u, v)).item()
             mean = sub * dblquad(integrant, 0, 1, lambda x: 0, lambda x: 1-x)[0] / mesh.area_faces[i]
             totalmean += mean
         # Calculate Std
@@ -57,7 +57,7 @@ class IntUniformity(EvalFunction):
             x3d = lambda u, v: p0 + u*(p1-p0) + v*(p2-p0)
             x3dt = lambda u, v: torch.tensor(x3d(u, v)).to(dtype=dt).cuda().view(1, 1, 1, 3)
             sub = np.linalg.norm(p1-p0)*np.linalg.norm(p2-p0)
-            integrant = lambda u, v: (gm.evaluate_inversed(mixture_with_inversed_cov, x3dt(u, v)).item()-mean)**2
+            integrant = lambda u, v: (gm.evaluate_inversed_with_amplitude_mixture(mixture_with_inversed_cov, x3dt(u, v)).item() - mean) ** 2
             stabw = sub * dblquad(integrant, 0, 1, lambda x: 0, lambda x: 1-x)[0] / mesh.area_faces[i]
             totalstd += stabw
         res = torch.zeros((self._unscaled + self._scaled)*(1+self._mean), batch_size, device=pcbatch.device, dtype=pcbatch.dtype)

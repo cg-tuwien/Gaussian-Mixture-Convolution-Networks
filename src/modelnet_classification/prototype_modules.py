@@ -113,7 +113,7 @@ class MaxPooling(torch.nn.modules.Module):
         self.n_output_gaussians = n_output_gaussians
 
     def forward(self, x: Tensor) -> Tensor:
-        sorted_indices = torch.argsort(gm.integrate_components(x.detach()), dim=2, descending=True)
+        sorted_indices = torch.argsort(gm.weights(x.detach()), dim=2, descending=True)
         sorted_mixture = mat_tools.my_index_select(x, sorted_indices)
 
         n_output_gaussians = min(self.n_output_gaussians, gm.n_components(x))

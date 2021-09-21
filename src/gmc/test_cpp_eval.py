@@ -22,6 +22,10 @@ class CppEvalTest(unittest.TestCase):
         self.assertAlmostEqual(rmse, 0, places=test_precision_places, msg=f"RMSE {test_name}_cuda")
 
     def test_forward(self):
+        mixture = torch.tensor([1.0, 0.0, 0.0, 2.0, 0.0, 0.0, 2.0]).view(1, 1, 1, -1)
+        xes = torch.zeros(1, 1, 1, 2)
+        reference = gm.old_evaluate_inversed(mixture, xes)
+        self._test_forward(mixture, xes, reference, cpp_inversed_eval.apply, "cpp")
         for n_batch in (1, 5, 10):
             for n_layers in (1, 4, 7):
                 for n_components in (1, 6, 17, 50):
@@ -33,13 +37,11 @@ class CppEvalTest(unittest.TestCase):
 
                             xes = torch.rand([n_batch, n_layers, n_xes, n_dims]) * position_radius * 2 - position_radius
                             reference = gm.old_evaluate_inversed(mixture, xes)
-                            self._test_forward(mixture, xes, reference, gm.old_evaluate_inversed, "python");
-                            self._test_forward(mixture, xes, reference, cpp_inversed_eval.apply, "cpp");
+                            self._test_forward(mixture, xes, reference, cpp_inversed_eval.apply, "cpp")
 
                             xes = torch.rand([1, 1, n_xes, n_dims]) * position_radius * 2 - position_radius
                             reference = gm.old_evaluate_inversed(mixture, xes)
-                            self._test_forward(mixture, xes, reference, gm.old_evaluate_inversed, "python");
-                            self._test_forward(mixture, xes, reference, cpp_inversed_eval.apply, "cpp");
+                            self._test_forward(mixture, xes, reference, cpp_inversed_eval.apply, "cpp")
 
     def _test_backward(self, mixture, xes, reference_mixture_grad, reference_xes_grad, test_fun, test_name):
         mixture.requires_grad = True
@@ -79,8 +81,7 @@ class CppEvalTest(unittest.TestCase):
                             forward.sum().backward()
                             mixture_reference_grad = mixture.grad.clone()
                             xes_reference_grad = xes.grad.clone()
-                            self._test_backward(mixture, xes, mixture_reference_grad, xes_reference_grad, gm.old_evaluate_inversed, "python");
-                            self._test_backward(mixture, xes, mixture_reference_grad, xes_reference_grad, cpp_inversed_eval.apply, "cpp");
+                            self._test_backward(mixture, xes, mixture_reference_grad, xes_reference_grad, cpp_inversed_eval.apply, "cpp")
 
                             xes = torch.rand([1, 1, n_xes, n_dims]) * position_radius * 2 - position_radius
                             mixture.grad = None
@@ -91,8 +92,7 @@ class CppEvalTest(unittest.TestCase):
                             forward.sum().backward()
                             mixture_reference_grad = mixture.grad.clone()
                             xes_reference_grad = xes.grad.clone()
-                            self._test_backward(mixture, xes, mixture_reference_grad, xes_reference_grad, gm.old_evaluate_inversed, "python");
-                            self._test_backward(mixture, xes, mixture_reference_grad, xes_reference_grad, cpp_inversed_eval.apply, "cpp");
+                            self._test_backward(mixture, xes, mixture_reference_grad, xes_reference_grad, cpp_inversed_eval.apply, "cpp")
 
     def test_gradcheck(self):
         print("test_gradcheck")
@@ -130,3 +130,7 @@ class CppEvalTest(unittest.TestCase):
                             xes.grad = None
                             test = torch.autograd.gradcheck(cpp_inversed_eval.apply, (mixture, xes), eps=eps, atol=1e-3, nondet_tol=1e-6)
                             self.assertTrue(test)
+
+
+if __name__ == '__main__':
+    unittest.main()

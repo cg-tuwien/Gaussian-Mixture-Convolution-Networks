@@ -14,6 +14,13 @@
 using AutodiffScalar = autodiff::Variable<float>;
 
 namespace {
+template<typename... Args> struct SELECT {
+    template<typename C, typename R>
+    static constexpr auto OVERLOAD_OF( R (C::*pmf)(Args...) ) -> decltype(pmf) {
+        return pmf;
+    }
+};
+
 
 struct UnitTests {
     template<int DIMS> static
@@ -34,6 +41,7 @@ struct UnitTests {
             for (auto g : _gaussianCollection<DIMS>()) {
                 for (auto p : _vecCollection<DIMS>()) {
                     test_binarycase(g, p, grad, gpe::evaluate<AutodiffScalar, DIMS>, gpe::grad::evaluate<float, DIMS>);
+                    test_binarycase(g, p, grad, gpe::evaluate_inversed<AutodiffScalar, DIMS>, gpe::grad::evaluate_inversed<float, DIMS>);
                 }
             }
         }

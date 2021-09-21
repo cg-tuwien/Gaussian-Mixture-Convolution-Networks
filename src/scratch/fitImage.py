@@ -54,7 +54,7 @@ def em_algorithm(image: Tensor, n_components: int, n_iterations: int, device: to
     model.fit(point_cloud.numpy())
     positions = torch.tensor(model.means_, dtype=torch.float32).view(1, 1, n_components, 2)
     covariances = torch.tensor(model.covariances_, dtype=torch.float32).view(1, 1, n_components, 2, 2)
-    weights = torch.tensor(model.weights_, dtype=torch.float32).view(1, 1, n_components) * gm.normal_amplitudes(covariances)
+    weights = torch.tensor(model.weights_, dtype=torch.float32).view(1, 1, n_components)
     return gm.pack_mixture(weights, positions, covariances)
 
     # model = pomegranate.gmm.GeneralMixtureModel.from_samples(

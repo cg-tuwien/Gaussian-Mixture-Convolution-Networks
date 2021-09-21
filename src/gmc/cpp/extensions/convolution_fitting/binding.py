@@ -3,7 +3,6 @@ import os
 import torch.autograd
 
 from gmc.cpp.extensions.compile_flags import *
-import gmc.inout
 
 source_dir = os.path.dirname(__file__)
 

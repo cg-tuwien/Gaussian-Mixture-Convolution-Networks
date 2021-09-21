@@ -263,6 +263,7 @@ set(UNITTESTS_SOURCES
     unittests/util_helpers.cpp
     unittests/welford.cpp
     unittests/convolution_fitting.cpp
+    unittests/grad_evaluate_inversed.cpp
 )
 add_executable(0_unittests ${UNITTESTS_SOURCES} ${UNITTESTS_HEADERS})
 target_link_libraries(0_unittests PUBLIC Catch2::Catch2 OpenMP::OpenMP_CXX torch Qt5::Widgets convolution_fitting evaluate_inversed math common)

@@ -48,7 +48,7 @@ void forward(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
         const auto& c_weight = gpe::weight(mixture_a[batch_index][layer_index][component_index]);
         const auto& c_pos = gpe::position<DIMS>(mixture_a[batch_index][layer_index][component_index]);
         const auto& c_cov = gpe::covariance<DIMS>(mixture_a[batch_index][layer_index][component_index]);
-        const auto w = gpe::evaluate_inversed(x_pos, c_weight, c_pos, c_cov);
+        const auto w = gpe::evaluate_inversed(gpe::Gaussian<DIMS, scalar_t>{c_weight, c_pos, c_cov}, x_pos);
 
         sum_a[batch_index][layer_index][xes_index] += w;
     }

@@ -13,7 +13,7 @@ def save(mixture: Tensor, file_name: str, meta_info=None) -> None:
     assert gm.is_valid_mixture(mixture)
     dictionary = {
         "type": "gm.Mixture",
-        "version": 5,
+        "version": 6,
         "data": mixture.detach().cpu(),
         "meta_info": meta_info
     }
@@ -30,14 +30,19 @@ def load(file_name: str) -> typing.Tuple[Tensor, typing.Any]:
         n_dims = positions.shape[2]
         covariances = dictionary["covariances"]
         mixture = gm.pack_mixture(weights.view(-1, 1, n_components), positions.view(-1, 1, n_components, n_dims), covariances.view(-1, 1, n_components, n_dims, n_dims))
+        mixture = gm.convert_amplitudes_to_priors(mixture)
 
     elif dictionary["version"] == 4:
         weights = dictionary["weights"]
         positions = dictionary["positions"]
         covariances = dictionary["covariances"]
         mixture = gm.pack_mixture(weights, positions, covariances)
+        mixture = gm.convert_amplitudes_to_priors(mixture)
+    elif dictionary["version"] == 5:
+        mixture = dictionary["data"]
+        mixture = gm.convert_amplitudes_to_priors(mixture)
     else:
-        assert dictionary["version"] == 5
+        assert dictionary["version"] == 6
         mixture = dictionary["data"]
 
     assert gm.is_valid_mixture(mixture)

@@ -51,7 +51,8 @@ class TestGM(unittest.TestCase):
                     xmp = x - pos
                     cov_i = npla.inv(covs[j])
                     exponent = -0.5 * (xmp @ cov_i @ xmp)
-                    np_result += weights[j] * np.exp(exponent)
+                    norm = (1 / np.sqrt((2*np.pi)**dims * npla.det(covs[j])))
+                    np_result += weights[j] * norm * np.exp(exponent)
                 self.assertAlmostEqual(np_result, values_gm[i].item(), 5)
 
     def test_polynomMulRepeat(self):
@@ -189,44 +190,6 @@ class TestGM(unittest.TestCase):
 
             self.assertLess((eval_reference - eval_scaled).abs().mean().item(), 0.000001)
 
-    def test_mixture_integration(self):
-        for n_dims in range(2, 4):
-            print(n_dims)
-            n_batch = 2
-            n_layers = 4
-            gm1 = gm.generate_random_mixtures(n_batch=n_batch, n_layers=n_layers, n_components=3, n_dims=n_dims, pos_radius=0.5, cov_radius=0.2)
-            gm1_covs = gm.covariances(gm1)
-            gm1_covs += (torch.eye(n_dims) * 0.05).view(1, 1, 1, n_dims, n_dims)  # tested: changes gm1
-            n_samples = 40000000
-            integration_area_side_length = 10
-
-            xes = (torch.rand(1, 1, n_samples, n_dims) - 0.5) * integration_area_side_length
-
-            gm1_samples = gm.evaluate(gm1, xes)
-
-            reference_solution = gm1_samples.sum(2).cpu() / (n_samples / (integration_area_side_length**n_dims))
-            my_solution = gm.integrate(gm1)
-
-            for b in range(n_batch):
-                for l in range(n_layers):
-                    self.assertLess(abs(my_solution[b, l].item() - reference_solution[b, l].item()), 0.016)
-
-    def test_normal_amplitude(self):
-        for n_dims in range(2, 4):
-            print(n_dims)
-            n_batch = 2
-            n_layers = 4
-            gm1 = gm.generate_random_mixtures(n_batch=n_batch, n_layers=n_layers, n_components=3, n_dims=n_dims, pos_radius=0.5, cov_radius=0.2)
-            gm1_covs = gm.covariances(gm1)
-            gm1_covs += (torch.eye(n_dims) * 0.05).view(1, 1, 1, n_dims, n_dims)
-            gm1 = gm.pack_mixture(gm.normal_amplitudes(gm1_covs), gm.positions(gm1), gm1_covs)
-
-            self.assertAlmostEqual(gm.integrate_components(gm1).mean().item(), 1.0, places=6)
-            self.assertAlmostEqual(gm.integrate_components(gm1).var().item(), 0.0, places=6)
-
-            gm1_cov_inversed = gm.covariances(gm1).inverse().transpose(-2, -1)
-            self.assertTrue((gm.normal_amplitudes(gm.covariances(gm1)) - gm.normal_amplitudes_inversed(gm1_cov_inversed) < 0.000001).all())
-
     def test_convert_amplitudes_to_priors_and_vice_versa(self):
         for n_dims in range(2, 4):
             print(n_dims)
@@ -235,10 +198,6 @@ class TestGM(unittest.TestCase):
             m1 = gm.generate_random_mixtures(n_batch=n_batch, n_layers=n_channels, n_components=3, n_dims=n_dims, pos_radius=0.5, cov_radius=0.2)
             m2 = gm.convert_priors_to_amplitudes(gm.convert_amplitudes_to_priors(m1))
             self.assertTrue((m1 - m2).abs().max().item() < 0.00001)  # round trip
-            self.assertTrue((gm.integrate_components(m1) - gm.weights(gm.convert_amplitudes_to_priors(m1))).abs().max().item() < 0.00001)
-
-            m3 = gm.convert_priors_to_amplitudes(gm.pack_mixture(torch.ones_like(gm.weights(m1)), gm.positions(m1), gm.covariances(m1)))
-            self.assertTrue((gm.integrate_components(m3) - torch.ones_like(gm.weights(m3))).abs().max().item() < 0.00001)
 
 
 if __name__ == '__main__':

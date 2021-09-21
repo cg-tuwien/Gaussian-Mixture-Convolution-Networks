@@ -101,11 +101,8 @@ class TestGM(unittest.TestCase):
             reference = cpp_convolution.apply(data, kernels)
             # render.imshow(reference)
 
-            kernels_prime = gm.convert_amplitudes_to_priors(kernels)
-            data_prime = gm.convert_amplitudes_to_priors(data)
             n_fitting_components = n_channels_in * n_components_in * n_kernel_gaussians
-            conv_fit_result = cpp_convolution_fitting.apply(data_prime, kernels_prime, n_fitting_components)
-            conv_fit_result = gm.convert_priors_to_amplitudes(conv_fit_result)
+            conv_fit_result = cpp_convolution_fitting.apply(data, kernels, n_fitting_components)
 
             # render.imshow(conv_fit_result)
             self.assertTrue((torch.sort(reference, dim=2)[0] - torch.sort(conv_fit_result, dim=2)[0]).abs().max().item() < 0.0001)
@@ -173,6 +170,7 @@ class TestGM(unittest.TestCase):
         m = gm.generate_random_mixtures(20, 10, 30, 3, pos_radius=15, cov_radius=30)
         mp, _ = norm((m, None))
         self.assertAlmostEqual(mat_tools.trace(gm.covariances(mp)).mean().item(), 3, places=5)
+
 
 if __name__ == '__main__':
     unittest.main()
