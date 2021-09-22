@@ -15,6 +15,36 @@ class Config:
         self.KL_divergence_threshold = 2.0
 
 
+def solver(mixture: Tensor, constant: Tensor, n_components: int, config: Config = Config(), tensorboard_epoch: TensorboardWriter = None, convolution_layer: str = None) -> typing.Tuple[Tensor, Tensor, typing.List[Tensor]]:
+    if tensorboard_epoch is not None:
+        # torch.cuda.synchronize()
+        # t0 = time.perf_counter()
+        test_points = generate_random_sampling(mixture, 1000)
+        tensorboard = tensorboard_epoch[0]
+        epoch = tensorboard_epoch[1]
+
+    device = mixture.device
+    weights = gm.weights(mixture)
+    positions = gm.positions(mixture)
+    sample_points = generate_random_sampling(mixture, gm.n_components(mixture)*3)
+    eval_points = torch.cat((positions, sample_points), dim=2)
+    covariances = gm.covariances(mixture)
+
+    ret_const = constant.where(constant > 0, torch.zeros(1, device=device))
+    target = torch.maximum(gm.evaluate(mixture, eval_points) + constant, torch.zeros(1, 1, 1, device=device)) - ret_const
+    A = gm.evaluate_componentwise(gm.pack_mixture(torch.ones_like(weights), positions, covariances), eval_points)
+    new_weights = (torch.linalg.pinv(A) @ target.unsqueeze(-1)).squeeze()
+    fitting = gm.pack_mixture(new_weights, positions, covariances)
+
+    if tensorboard_epoch is not None:
+        # torch.cuda.synchronize()
+        # t2 = time.perf_counter()
+        # tensorboard.add_scalar(f"50.2 fitting {convolution_layer} fixed_point_iteration_to_relu time =", t2 - t1, epoch)
+        tensorboard.add_scalar(f"51.1 fitting {convolution_layer} solver mse (centroids) =", mse(mixture, constant, fitting, ret_const, positions), epoch)
+        tensorboard.add_scalar(f"51.2 fitting {convolution_layer} solver mse (rand pos) =", mse(mixture, constant, fitting, ret_const, test_points), epoch)
+
+    return fitting, ret_const, []
+
 
 def fixed_point_only(mixture: Tensor, constant: Tensor, n_components: int, config: Config = Config(), tensorboard_epoch: TensorboardWriter = None, convolution_layer: str = None) -> typing.Tuple[Tensor, Tensor, typing.List[Tensor]]:
     if tensorboard_epoch is not None:

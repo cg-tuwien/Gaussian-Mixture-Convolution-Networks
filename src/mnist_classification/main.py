@@ -68,7 +68,7 @@ def train(model: gmc.model.Net, device: str, train_loader: torch.utils.data.Data
 
         temp_tb = None
         # if step % config.log_interval == 0:
-        #     temp_tb = (tensor_board_writer, step)
+        temp_tb = (tensor_board_writer, step)
         output = model(data, temp_tb)
         loss = F.nll_loss(output, target)
         ty = time.perf_counter()

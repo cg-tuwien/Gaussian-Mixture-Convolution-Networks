@@ -12,6 +12,7 @@ from mnist_classification.config import Config
 device = "cuda"
 
 c: Config = Config()
+c.model.relu_config.fitting_method = gmc.fitting.solver
 c.input_fitting_iterations = 100
 c.input_fitting_components = 32
 c.model.bn_type = ModelConfig.BN_TYPE_COVARIANCE_STD
