@@ -386,6 +386,7 @@ C10_HOST auto struct_accessor(const torch::Tensor& tensor) {
     std::array<index_t, N> strides;
     std::array<index_t, N> sizes;
     for (unsigned i = 0; i < N; ++i) {
+        assert(torch_accessor.stride(i) % (sizeof(struct_t) / sizeof(tensor_type)) == 0);
         strides[i] = torch_accessor.stride(i) / (sizeof(struct_t) / sizeof(tensor_type));
         sizes[i] = torch_accessor.size(i);
     }
