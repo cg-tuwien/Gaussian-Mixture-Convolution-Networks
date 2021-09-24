@@ -20,7 +20,7 @@ from mnist_classification.config import Config
 
 def debug_render(mixture: Tensor, orig_size: typing.Tuple[int, int] = (28, 28), image_size: typing.Tuple[int, int] = (200, 200), clamp: typing.Tuple[float, float] = (0, 1.5)):
     mixture = mixture.view(1, gm.n_batch(mixture), gm.n_components(mixture), -1)
-    images = render.render(mixture, torch.zeros(1, 1), x_low=0, x_high=orig_size[0], y_low=0, y_high=orig_size[1], width=image_size[0], height=image_size[1])
+    images = render.render(mixture, torch.zeros(1, 1), x_low=0, x_high=orig_size[0], y_low=0, y_high=orig_size[1], width=image_size[0], height=image_size[1]).view(image_size[0], image_size[1])
     images = render.colour_mapped(images.cpu().numpy(), clamp[0], clamp[1])
     return images[:, :, :3]
 
