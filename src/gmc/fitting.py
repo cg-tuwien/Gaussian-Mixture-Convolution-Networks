@@ -72,6 +72,34 @@ def fixed_point_only(mixture: Tensor, constant: Tensor, n_components: int, confi
     return fp_fitting, ret_const, [initial_fitting]
 
 
+def splitter_and_fixed_point(mixture: Tensor, constant: Tensor, n_components: int, config: Config = Config(), tensorboard_epoch: TensorboardWriter = None, convolution_layer: str = None) -> typing.Tuple[Tensor, Tensor, typing.List[Tensor]]:
+    if tensorboard_epoch is not None:
+        # torch.cuda.synchronize()
+        # t0 = time.perf_counter()
+        test_points = generate_random_sampling(mixture, 1000)
+        tensorboard = tensorboard_epoch[0]
+        epoch = tensorboard_epoch[1]
+
+    split_mixture = splitter(mixture, [n_components])
+
+    initial_fitting = initial_approx_to_relu(split_mixture, constant)
+
+    # if tensorboard_epoch is not None:
+    #     torch.cuda.synchronize()
+    #     t1 = time.perf_counter()
+        # tensorboard.add_scalar(f"50.1 fitting {convolution_layer} initial_approx_to_relu time =", t1 - t0, epoch)
+
+    fp_fitting, ret_const = fixed_point_iteration_to_relu(mixture, constant, initial_fitting)
+
+    if tensorboard_epoch is not None:
+        # torch.cuda.synchronize()
+        # t2 = time.perf_counter()
+        # tensorboard.add_scalar(f"50.2 fitting {convolution_layer} fixed_point_iteration_to_relu time =", t2 - t1, epoch)
+        tensorboard.add_scalar(f"51.1 fitting {convolution_layer} fixed point iteration mse =", mse(mixture, constant, fp_fitting, ret_const, test_points), epoch)
+
+    return fp_fitting, ret_const, [split_mixture, initial_fitting]
+
+
 def fixed_point_and_mhem(mixture: Tensor, constant: Tensor, n_components: int, config: Config = Config(), tensorboard_epoch: typing.Optional[typing.Tuple[TensorboardWriter, int]] = None, convolution_layer: str = None) -> typing.Tuple[Tensor, Tensor, typing.List[Tensor]]:
     if tensorboard_epoch is not None:
         # torch.cuda.synchronize()
@@ -109,6 +137,34 @@ def fixed_point_and_mhem(mixture: Tensor, constant: Tensor, n_components: int, c
         tensorboard.add_scalar(f"51.2 fitting {convolution_layer} reduction mse =", mse(fp_fitting, ret_const, fitting, ret_const, test_points, with_activation=False), epoch)
 
     return fitting, ret_const, [initial_fitting, fp_fitting, reduced_fitting]
+
+
+def splitter(mixture: Tensor, iteration_targets: typing.List[int], displacement: float = 0.5, resize: float = 0.25) -> Tensor:
+    n_dims = gm.n_dimensions(mixture)
+    resize_vec = torch.ones(n_dims, device=mixture.device)
+    resize_vec[-1] = resize
+    resize_vec = resize_vec.view(1, 1, 1, n_dims)
+
+    for iteration_target in iteration_targets:
+        k_subdivisions = iteration_target - gm.n_components(mixture)
+        assert (k_subdivisions > 0)
+
+        eigenvalues, eigenvectors = torch.linalg.eigh(gm.covariances(mixture))
+        _, selection = torch.topk(eigenvalues[..., -1], k_subdivisions, dim=2)
+
+        n = mixture.gather(2, selection.unsqueeze(-1).expand(-1, -1, -1, mixture.shape[-1]))
+        eig_vals = eigenvalues.gather(2, selection.unsqueeze(-1).expand(-1, -1, -1, n_dims))
+        eig_vecs = eigenvectors.gather(2, selection.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, -1, n_dims, n_dims))
+
+        w = gm.weights(n) / 2
+        p1 = gm.positions(n) + (torch.sqrt(eig_vals[..., -1].unsqueeze(-1)) * displacement * eig_vecs[..., -1, :])
+        p2 = gm.positions(n) - (torch.sqrt(eig_vals[..., -1].unsqueeze(-1)) * displacement * eig_vecs[..., -1, :])
+
+        c = (eig_vecs @ torch.diag_embed(eig_vals * resize_vec) @ eig_vecs.transpose(-1, -2))
+
+        assert (selection.unsqueeze(-1).expand(-1, -1, -1, mixture.shape[-1]).shape == gm.pack_mixture(w, p1, c).shape)  # otherwise no backward pass
+        mixture = torch.cat((mixture.scatter(2, selection.unsqueeze(-1).expand(-1, -1, -1, mixture.shape[-1]), gm.pack_mixture(w, p1, c)), gm.pack_mixture(w, p2, c)), dim=2)
+    return mixture
 
 
 def initial_approx_to_relu(mixture: Tensor, constant: Tensor) -> Tensor:
