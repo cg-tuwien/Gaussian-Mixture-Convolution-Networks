@@ -4,9 +4,10 @@
 #include <torch/types.h>
 
 namespace pieces {
-at::Tensor matrix_inverse(const torch::Tensor& matrices);
-// std::tuple<torch::Tensor, torch::Tensor> parallel_backward(const torch::Tensor& grad_output, const torch::Tensor& mixture, const torch::Tensor& xes,
-//                                                            bool requires_grad_mixture, bool requires_grad_xes);
+torch::Tensor matrix_inverse(const torch::Tensor& matrices);
+
+std::tuple<torch::Tensor, torch::Tensor> symeig(const torch::Tensor& matrices);
+torch::Tensor symeig_backward(const torch::Tensor& matrices, const torch::Tensor& cached_values, const torch::Tensor& cached_vectors, const torch::Tensor& grad_values, const torch::Tensor& grad_vectors);
 }
 
 #endif // GPE_PIECES_BINDING_H

@@ -140,6 +140,7 @@ def fixed_point_and_mhem(mixture: Tensor, constant: Tensor, n_components: int, c
 
 
 def splitter(mixture: Tensor, iteration_targets: typing.List[int], displacement: float = 0.5, resize: float = 0.25) -> Tensor:
+    # todo: gradient instable, when two eigenvalues are the same (i.e., symmetric gaussian disc or sphere). possible fix: subdivide only long gaussians.
     n_dims = gm.n_dimensions(mixture)
     resize_vec = torch.ones(n_dims, device=mixture.device)
     resize_vec[-1] = resize
@@ -149,12 +150,14 @@ def splitter(mixture: Tensor, iteration_targets: typing.List[int], displacement:
         k_subdivisions = iteration_target - gm.n_components(mixture)
         assert (k_subdivisions > 0)
 
-        eigenvalues, eigenvectors = torch.linalg.eigh(gm.covariances(mixture))
+        # eigenvalues, eigenvectors = torch.linalg.eigh(gm.covariances(mixture))
+        eigenvalues, eigenvectors = mat_tools.symeig(gm.covariances(mixture))
         _, selection = torch.topk(eigenvalues[..., -1], k_subdivisions, dim=2)
 
         n = mixture.gather(2, selection.unsqueeze(-1).expand(-1, -1, -1, mixture.shape[-1]))
-        eig_vals = eigenvalues.gather(2, selection.unsqueeze(-1).expand(-1, -1, -1, n_dims))
-        eig_vecs = eigenvectors.gather(2, selection.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, -1, n_dims, n_dims))
+        eig_vals, eig_vecs = torch.linalg.eigh(gm.covariances(n))
+        # eig_vals = eigenvalues.gather(2, selection.unsqueeze(-1).expand(-1, -1, -1, n_dims))
+        # eig_vecs = eigenvectors.gather(2, selection.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, -1, n_dims, n_dims))
 
         w = gm.weights(n) / 2
         p1 = gm.positions(n) + (torch.sqrt(eig_vals[..., -1].unsqueeze(-1)) * displacement * eig_vecs[..., -1, :])

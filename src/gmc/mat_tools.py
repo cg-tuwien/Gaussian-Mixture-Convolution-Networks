@@ -4,6 +4,7 @@ import typing
 from torch import Tensor
 
 from .cpp.extensions.math import matrix_inverse as cppExtensionsMathMatrixInverse
+from .cpp.extensions.math import symeig as cppExtensionMathSymEig
 
 
 # from https://discuss.pytorch.org/t/batched-index-select/9115/10
@@ -33,6 +34,11 @@ def my_index_select(tensor: Tensor, index: Tensor) -> Tensor:
 def inverse(tensor: Tensor) -> Tensor:
     """faster version of inverse (compared to pytorch) for 2x2 and 3x3 matrices"""
     return cppExtensionsMathMatrixInverse.apply(tensor)
+
+
+def symeig(tensor: Tensor) -> Tensor:
+    """faster version of inverse (compared to pytorch) for 2x2 and 3x3 matrices"""
+    return cppExtensionMathSymEig.apply(tensor)
 
 
 def flatten_index(tensor: Tensor, shape: torch.Size) -> Tensor:

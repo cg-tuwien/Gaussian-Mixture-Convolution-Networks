@@ -142,10 +142,12 @@ target_link_libraries(evaluate_inversed PUBLIC OpenMP::OpenMP_CXX torch math com
 set(PIECES_HEADERS
     pieces/pieces.h
     pieces/matrix_inverse.h
+    pieces/symeig.h
 )
 set(PIECES_SOURCES
     pieces/pieces.cpp
     pieces/matrix_inverse.cu
+    pieces/symeig.cu
 )
 add_library(pieces ${PIECES_HEADERS} ${PIECES_SOURCES})
 target_link_libraries(pieces PUBLIC OpenMP::OpenMP_CXX torch math common)
