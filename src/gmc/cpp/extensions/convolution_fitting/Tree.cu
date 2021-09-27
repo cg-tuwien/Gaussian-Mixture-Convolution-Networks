@@ -199,8 +199,8 @@ void convolution_fitting::Tree<scalar_t, N_DIMS>::create_tree_nodes() {
             const auto& morton_code = morton_codes_a[mixture_id][0];
             auto& node = nodes_a[mixture_id][node_id];
             //                node.object_idx = lbvh::detail::Node::index_type(0xFFFFFFFF); //  internal nodes // original
-            node.object_idx = index_type(node_id);
-            nodesobjs_a[mixture_id][node_id] = index_type(node_id);
+//            node.object_idx = index_type(node_id);
+//            nodesobjs_a[mixture_id][node_id] = index_type(node_id);
 
             const uint2 ij  = lbvh::kernels::determine_range(&morton_code, n_leaf_nodes, node_id);
             const auto gamma = lbvh::kernels::find_split(&morton_code, n_leaf_nodes, ij.x, ij.y);
