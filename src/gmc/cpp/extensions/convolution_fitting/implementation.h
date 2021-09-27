@@ -12,7 +12,6 @@ struct ForwardOutput {
     torch::Tensor cached_pos_covs;
     torch::Tensor nodes;
     torch::Tensor nodesobjs;
-    torch::Tensor node_attributes;
     torch::Tensor fitting_subtrees;
 };
 

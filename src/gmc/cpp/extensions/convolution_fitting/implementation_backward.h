@@ -26,7 +26,7 @@ std::pair<torch::Tensor, torch::Tensor> backward_impl_t(const torch::Tensor& gra
 
     typename Tree::Data tree_data_storage;
     Tree tree(data, kernels, &tree_data_storage, config);
-    tree.set_nodes_and_friends(forward_out.nodes, forward_out.nodesobjs, forward_out.node_attributes, forward_out.fitting_subtrees);
+    tree.set_friends(forward_out.nodes, forward_out.nodesobjs, forward_out.fitting_subtrees);
 
     torch::Tensor out_mixture = forward_out.fitting;
     auto out_mixture_a = gpe::struct_accessor<G, 3>(out_mixture);

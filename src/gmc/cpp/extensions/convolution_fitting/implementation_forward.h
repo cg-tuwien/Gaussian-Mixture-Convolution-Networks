@@ -111,7 +111,7 @@ ForwardOutput forward_with_given_tree(const Config& config, const Tree<scalar_t,
         });
     }
 
-    return ForwardOutput{out_mixture, cached_pos_covs, tree.m_data->nodes, tree.m_data->nodesobjs, tree.m_data->node_attributes, tree.m_data->fitting_subtrees};
+    return ForwardOutput{out_mixture, cached_pos_covs, tree.m_data->nodes, tree.m_data->nodesobjs, tree.m_data->fitting_subtrees};
 }
 
 template<int REDUCTION_N = 4, typename scalar_t, unsigned N_DIMS>
