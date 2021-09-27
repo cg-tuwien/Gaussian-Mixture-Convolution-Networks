@@ -87,7 +87,7 @@ ForwardOutput forward_with_given_tree(const Config& config, const Tree<scalar_t,
             gpe::WeightedMean<scalar_t, typename G::cov_t> cov_aggregator;
             for (index_type i = start_id; i < end_id; ++i) {
                 //const auto target_component_id = get_node(i).object_idx;
-                const auto target_component_id = tree.nodesobjs_a[batch_id][channel_out_id][i];
+                const auto target_component_id = tree.nodesobjs_a[batch_id][channel_out_id][i - tree.n_internal_nodes];
 
                 const auto gaussian_indices = gpe::split_n_dim_index<uint32_t, 3, unsigned>({unsigned(tree.n.components), unsigned(tree.n_channels_in), unsigned(tree.kernel_n.components)}, target_component_id);
                 const unsigned& component_in_id = gaussian_indices[0];

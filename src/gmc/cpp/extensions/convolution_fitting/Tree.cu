@@ -143,7 +143,7 @@ void convolution_fitting::Tree<scalar_t, N_DIMS>::create_tree_nodes() {
     const at::Tensor morton_codes = compute_morton_codes();
 
     auto nodes = torch::ones({n.batch, n_channels_out, n_nodes, 4}, torch::TensorOptions(morton_codes.device()).dtype(gpe::TorchTypeMapper<index_type>::id())) * -1;
-    auto nodesobjs = torch::ones({n.batch, n_channels_out, n_nodes}, torch::TensorOptions(morton_codes.device()).dtype(gpe::TorchTypeMapper<index_type>::id()));
+    auto nodesobjs = torch::ones({n.batch, n_channels_out, n_leaf_nodes}, torch::TensorOptions(morton_codes.device()).dtype(gpe::TorchTypeMapper<index_type>::id()));
 
     const auto morton_codes_view = morton_codes.view({n_mixtures, n_leaf_nodes});
     const auto morton_codes_a = gpe::accessor<uint64_t, 2>(morton_codes_view);
@@ -151,7 +151,7 @@ void convolution_fitting::Tree<scalar_t, N_DIMS>::create_tree_nodes() {
 
     { // leaf nodes
         auto nodes_view = nodes.index({Ellipsis, Slice(n_internal_nodes, None), Slice()}).view({n_mixtures, n_leaf_nodes, -1});
-        auto nodesobjs_view = nodesobjs.index({Ellipsis, Slice(n_internal_nodes, None)}).view({n_mixtures, n_leaf_nodes});
+        auto nodesobjs_view = nodesobjs.index({Ellipsis, Slice()}).view({n_mixtures, n_leaf_nodes});
 
         auto nodes_a = gpe::struct_accessor<Node, 2>(nodes_view);
         auto nodesobjs_a = gpe::accessor<index_type, 2>(nodesobjs_view);
@@ -179,15 +179,12 @@ void convolution_fitting::Tree<scalar_t, N_DIMS>::create_tree_nodes() {
     }
     { // internal nodes
         auto nodes_view = nodes.view({n_mixtures, n_nodes, -1});
-        auto nodesobjs_view = nodesobjs.view({n_mixtures, n_nodes});
-
         auto nodes_a = gpe::struct_accessor<Node, 2>(nodes_view);
-        auto nodesobjs_a = gpe::accessor<index_type, 2>(nodesobjs_view);
 
         dim3 dimBlock = dim3(1, 128, 1);
         dim3 dimGrid = dim3((unsigned(n_mixtures) + dimBlock.x - 1) / dimBlock.x,
                             (unsigned(n_internal_nodes) + dimBlock.y - 1) / dimBlock.y);
-        auto fun = [morton_codes_a, nodes_a, nodesobjs_a, n_mixtures, *this] __host__ __device__
+        auto fun = [morton_codes_a, nodes_a, n_mixtures, *this] __host__ __device__
                 (const dim3& gpe_gridDim, const dim3& gpe_blockDim, const dim3& gpe_blockIdx, const dim3& gpe_threadIdx) mutable {
             GPE_UNUSED(gpe_gridDim)
 
@@ -198,9 +195,9 @@ void convolution_fitting::Tree<scalar_t, N_DIMS>::create_tree_nodes() {
 
             const auto& morton_code = morton_codes_a[mixture_id][0];
             auto& node = nodes_a[mixture_id][node_id];
-            //                node.object_idx = lbvh::detail::Node::index_type(0xFFFFFFFF); //  internal nodes // original
-//            node.object_idx = index_type(node_id);
-//            nodesobjs_a[mixture_id][node_id] = index_type(node_id);
+//          node.object_idx = lbvh::detail::Node::index_type(0xFFFFFFFF); //  internal nodes // original
+//          node.object_idx = index_type(node_id);
+//          nodesobjs_a[mixture_id][node_id] = index_type(node_id);
 
             const uint2 ij  = lbvh::kernels::determine_range(&morton_code, n_leaf_nodes, node_id);
             const auto gamma = lbvh::kernels::find_split(&morton_code, n_leaf_nodes, ij.x, ij.y);

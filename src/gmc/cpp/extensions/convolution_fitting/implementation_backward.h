@@ -108,7 +108,7 @@ std::pair<torch::Tensor, torch::Tensor> backward_impl_t(const torch::Tensor& gra
                                                                                 0, incoming_grad.covariance);   // in the forward pass, w_sum is retrieved from pos_aggregator, therefore the weight grad here is 0
             for (index_type k = start_id; k < end_id; ++k) {
                 //const auto target_component_id = get_node(k).object_idx;
-                const auto target_component_id = tree.nodesobjs_a[batch_id][channel_out_id][k];
+                const auto target_component_id = tree.nodesobjs_a[batch_id][channel_out_id][k - tree.n_internal_nodes];
 
                 const auto gaussian_indices = gpe::split_n_dim_index<uint32_t, 3, unsigned>({unsigned(tree.n.components), unsigned(tree.n_channels_in), unsigned(tree.kernel_n.components)}, target_component_id);
                 const unsigned& component_in_id = gaussian_indices[0];
