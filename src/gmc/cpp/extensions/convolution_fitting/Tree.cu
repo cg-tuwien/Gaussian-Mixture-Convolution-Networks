@@ -303,7 +303,7 @@ template<typename scalar_t, unsigned N_DIMS>
 void convolution_fitting::Tree<scalar_t, N_DIMS>::select_fitting_subtrees()
 {
     const auto n_mixtures = unsigned(n.batch) * n_channels_out;
-    m_data->fitting_subtrees = torch::ones({n.batch, n_channels_out, m_config.n_components_fitting}, torch::TensorOptions(device()).dtype(gpe::TorchTypeMapper<typename Tree::index_type>::id())) * -1;
+    m_data->fitting_subtrees = torch::ones({n.batch, n_channels_out, 2 * m_config.n_components_fitting}, torch::TensorOptions(device()).dtype(gpe::TorchTypeMapper<typename Tree::index_type>::id())) * -1;
     fitting_subtrees_a = gpe::accessor<typename Tree::index_type, 3>(m_data->fitting_subtrees);
 
 #ifdef GPE_SORT_FITTED
@@ -359,7 +359,7 @@ void convolution_fitting::Tree<scalar_t, N_DIMS>::select_fitting_subtrees()
             return best_node_id;
         };
         auto write_selected_node = [&](index_type position, index_type node_id) {
-            fitting_subtrees_a[batch_id][channel_out_id][position] = node_id;
+            fitting_subtrees_a[batch_id][channel_out_id][2 * position] = node_id;
             selected_nodes_rating_a[batch_id][channel_out_id][position] = compute_rating(node_id);
 #ifdef GPE_SORT_FITTED
             fitlengths_a[batch_id][channel_out_id][position] = node_id < n_internal_nodes ? get_attribs(node_id).n_gaussians : 1;
@@ -372,13 +372,41 @@ void convolution_fitting::Tree<scalar_t, N_DIMS>::select_fitting_subtrees()
             auto best_node_cache_id = cach_id_with_highest_rating();
             if (best_node_cache_id >= n_selected_components)
                 break;  // ran out of nodes
-            auto best_node_id = fitting_subtrees_a[batch_id][channel_out_id][best_node_cache_id];
+            auto best_node_id = fitting_subtrees_a[batch_id][channel_out_id][2 * best_node_cache_id];
             assert(best_node_id < n_nodes);
             const auto& best_descend_node = get_node(best_node_id);
             assert(best_node_id < n_internal_nodes); // we should have only internal nodes at this point as cach_id_with_highest_rating() returns 0xffff.. if the node is not full.
 
             write_selected_node(best_node_cache_id, best_descend_node.left_idx);
             write_selected_node(n_selected_components++, best_descend_node.right_idx);
+        }
+
+        auto write_start_end = [&](index_type position) {
+            const auto fitting_root_node_id = fitting_subtrees_a[batch_id][channel_out_id][2*position];
+
+            // getting start and end leaf by descending to the leftest and rightest leaf, respectively
+            auto start_id = fitting_root_node_id;
+            auto current_id = start_id;
+            do { // left descend
+                start_id = current_id;
+                current_id = get_node(current_id).left_idx;
+            } while (current_id != index_type(-1));
+
+            auto end_id = fitting_root_node_id;
+            current_id = end_id;
+            do { // right descend
+                end_id = current_id;
+                current_id = get_node(current_id).right_idx;
+            } while (current_id != index_type(-1));
+            ++end_id; // it should point past the back
+
+            fitting_subtrees_a[batch_id][channel_out_id][2 * position] = start_id;
+            fitting_subtrees_a[batch_id][channel_out_id][2 * position + 1] = end_id;
+        };
+
+        for(int i = 0; i < n_selected_components; i++)
+        {
+            write_start_end(i);
         }
     });
 
@@ -454,14 +482,12 @@ void convolution_fitting::Tree<scalar_t, N_DIMS>::set_nodes_and_friends(const at
 }
 
 template<typename scalar_t, unsigned N_DIMS>
-void convolution_fitting::Tree<scalar_t, N_DIMS>::set_friends(const at::Tensor& nodes, const at::Tensor& nodesobjs, const at::Tensor& fitting_subtrees)
+void convolution_fitting::Tree<scalar_t, N_DIMS>::set_friends(const at::Tensor& nodesobjs, const at::Tensor& fitting_subtrees)
 {
-    m_data->nodes = nodes;
     m_data->nodesobjs = nodesobjs;
     m_data->fitting_subtrees = fitting_subtrees;
 
     nodesobjs_a = gpe::accessor<typename Tree::index_type, 3>(m_data->nodesobjs);
-    nodes_a = gpe::struct_accessor<typename Tree::Node, 3>(m_data->nodes);
     fitting_subtrees_a = gpe::accessor<typename Tree::index_type, 3>(m_data->fitting_subtrees);
 }
 

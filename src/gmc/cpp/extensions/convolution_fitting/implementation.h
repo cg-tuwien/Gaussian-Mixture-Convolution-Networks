@@ -10,7 +10,6 @@ namespace convolution_fitting {
 struct ForwardOutput {
     torch::Tensor fitting;
     torch::Tensor cached_pos_covs;
-    torch::Tensor nodes;
     torch::Tensor nodesobjs;
     torch::Tensor fitting_subtrees;
 };

@@ -45,34 +45,43 @@ ForwardOutput forward_with_given_tree(const Config& config, const Tree<scalar_t,
             assert(batch_id < tree.n.batch);
             assert(channel_out_id < tree.n_channels_out);
 
-            const auto fitting_root_node_id = tree.fitting_subtrees_a[batch_id][channel_out_id][component_out_id];
-            if (fitting_root_node_id >= tree.n_nodes) {
+            const auto start_id = tree.fitting_subtrees_a[batch_id][channel_out_id][2*component_out_id];
+
+            if (start_id >= tree.n_nodes) {
                 out_mixture_a[batch_id][channel_out_id][component_out_id] = {0, typename G::pos_t(0), typename G::cov_t(1)};
                 return;
             }
 
-            const auto get_node = [&](index_type node_id) -> const typename Tree::Node& {
-                assert(node_id < tree.n_nodes);
-                return tree.nodes_a[batch_id][channel_out_id][node_id];
-            };
+            const auto end_id = tree.fitting_subtrees_a[batch_id][channel_out_id][2*component_out_id+1];
 
-            // fitting one Gaussian, all target Gaussians are equally important, but possess different weights on their own.
+//            const auto fitting_root_node_id = tree.fitting_subtrees_a[batch_id][channel_out_id][component_out_id];
+//            if (fitting_root_node_id >= tree.n_nodes) {
+//                out_mixture_a[batch_id][channel_out_id][component_out_id] = {0, typename G::pos_t(0), typename G::cov_t(1)};
+//                return;
+//            }
 
-            // getting start and end leaf by descending to the leftest and rightest leaf, respectively
-            auto start_id = fitting_root_node_id;
-            auto current_id = start_id;
-            do { // left descend
-                start_id = current_id;
-                current_id = get_node(current_id).left_idx;
-            } while (current_id != index_type(-1));
+//            const auto get_node = [&](index_type node_id) -> const typename Tree::Node& {
+//                assert(node_id < tree.n_nodes);
+//                return tree.nodes_a[batch_id][channel_out_id][node_id];
+//            };
 
-            auto end_id = fitting_root_node_id;
-            current_id = end_id;
-            do { // right descend
-                end_id = current_id;
-                current_id = get_node(current_id).right_idx;
-            } while (current_id != index_type(-1));
-            ++end_id; // it should point past the back
+//            // fitting one Gaussian, all target Gaussians are equally important, but possess different weights on their own.
+
+//            // getting start and end leaf by descending to the leftest and rightest leaf, respectively
+//            auto start_id = fitting_root_node_id;
+//            auto current_id = start_id;
+//            do { // left descend
+//                start_id = current_id;
+//                current_id = get_node(current_id).left_idx;
+//            } while (current_id != index_type(-1));
+
+//            auto end_id = fitting_root_node_id;
+//            current_id = end_id;
+//            do { // right descend
+//                end_id = current_id;
+//                current_id = get_node(current_id).right_idx;
+//            } while (current_id != index_type(-1));
+//            ++end_id; // it should point past the back
 
             gpe::WeightedMeanAndCov<N_DIMS, scalar_t> pos_aggregator;
             gpe::WeightedMean<scalar_t, typename G::cov_t> cov_aggregator;
@@ -111,7 +120,7 @@ ForwardOutput forward_with_given_tree(const Config& config, const Tree<scalar_t,
         });
     }
 
-    return ForwardOutput{out_mixture, cached_pos_covs, tree.m_data->nodes, tree.m_data->nodesobjs, tree.m_data->fitting_subtrees};
+    return ForwardOutput{out_mixture, cached_pos_covs, tree.m_data->nodesobjs, tree.m_data->fitting_subtrees};
 }
 
 template<int REDUCTION_N = 4, typename scalar_t, unsigned N_DIMS>

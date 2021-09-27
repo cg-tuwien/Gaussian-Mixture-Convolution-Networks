@@ -26,7 +26,7 @@ std::pair<torch::Tensor, torch::Tensor> backward_impl_t(const torch::Tensor& gra
 
     typename Tree::Data tree_data_storage;
     Tree tree(data, kernels, &tree_data_storage, config);
-    tree.set_friends(forward_out.nodes, forward_out.nodesobjs, forward_out.fitting_subtrees);
+    tree.set_friends(forward_out.nodesobjs, forward_out.fitting_subtrees);
 
     torch::Tensor out_mixture = forward_out.fitting;
     auto out_mixture_a = gpe::struct_accessor<G, 3>(out_mixture);
@@ -61,32 +61,42 @@ std::pair<torch::Tensor, torch::Tensor> backward_impl_t(const torch::Tensor& gra
             assert(batch_id < tree.n.batch);
             assert(channel_out_id < tree.n_channels_out);
 
-            const auto fitting_root_node_id = tree.fitting_subtrees_a[batch_id][channel_out_id][component_out_id];
-            if (fitting_root_node_id > tree.n_nodes)
-                return;
+            const auto start_id = tree.fitting_subtrees_a[batch_id][channel_out_id][2*component_out_id];
 
-            const auto get_node = [&](index_type node_id) -> const typename Tree::Node& {
-                assert(node_id < tree.n_nodes);
-                return tree.nodes_a[batch_id][channel_out_id][node_id];
-            };
+            if (start_id >= tree.n_nodes) {
+                out_mixture_a[batch_id][channel_out_id][component_out_id] = {0, typename G::pos_t(0), typename G::cov_t(1)};
+                return;
+            }
+
+            const auto end_id = tree.fitting_subtrees_a[batch_id][channel_out_id][2*component_out_id+1];
+
+//            const auto fitting_root_node_id = tree.fitting_subtrees_a[batch_id][channel_out_id][component_out_id];
+//            if (fitting_root_node_id > tree.n_nodes)
+//                return;
+
+//            const auto get_node = [&](index_type node_id) -> const typename Tree::Node& {
+//                assert(node_id < tree.n_nodes);
+//                return tree.nodes_a[batch_id][channel_out_id][node_id];
+//            };
 
             // fitting one Gaussian, all target Gaussians are equally important, but posses different weights on their own.
 
             // getting start and end leaf by descending to the leftest and rightest leaf, respectively
-            auto start_id = fitting_root_node_id;
-            auto current_id = start_id;
-            do { // left descend
-                start_id = current_id;
-                current_id = get_node(current_id).left_idx;
-            } while (current_id != index_type(-1));
+            //auto start_id = fitting_root_node_id;
+            //auto current_id = start_id;
 
-            auto end_id = fitting_root_node_id;
-            current_id = end_id;
-            do { // right descend
-                end_id = current_id;
-                current_id = get_node(current_id).right_idx;
-            } while (current_id != index_type(-1));
-            ++end_id; // it should point past the back
+//            do { // left descend
+//                start_id = current_id;
+//                current_id = get_node(current_id).left_idx;
+//            } while (current_id != index_type(-1));
+
+//            auto end_id = fitting_root_node_id;
+//            current_id = end_id;
+//            do { // right descend
+//                end_id = current_id;
+//                current_id = get_node(current_id).right_idx;
+//            } while (current_id != index_type(-1));
+//            ++end_id; // it should point past the back
 
             const G& g = out_mixture_a[batch_id][channel_out_id][component_out_id];
             const G& incoming_grad = incoming_grad_a[batch_id][channel_out_id][component_out_id];

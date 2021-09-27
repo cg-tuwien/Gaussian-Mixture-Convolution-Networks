@@ -75,7 +75,7 @@ public:
     void create_tree_nodes();
     void create_attributes();
     void select_fitting_subtrees();
-    void set_friends(const torch::Tensor& nodes, const torch::Tensor& nodesobjs, const torch::Tensor& fitting_subtrees);
+    void set_friends(const torch::Tensor& nodesobjs, const torch::Tensor& fitting_subtrees);
     void set_nodes_and_friends(const torch::Tensor& nodes, const torch::Tensor& nodesobjs, const torch::Tensor& node_attributes, const torch::Tensor& fitting_subtrees);
 };
 

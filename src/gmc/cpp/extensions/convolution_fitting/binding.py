@@ -27,8 +27,8 @@ class ConvolutionFitting(torch.autograd.Function):
         if not kernels.is_contiguous():
             kernels = kernels.contiguous()
 
-        fitting, cached_pos_cov, nodes, nodesobjs, node_attributes, fitting_subtrees = cpp_binding.forward(data, kernels, n_components_fitting)
-        ctx.save_for_backward(data, kernels, torch.tensor(n_components_fitting), fitting, cached_pos_cov, nodes, nodesobjs, node_attributes, fitting_subtrees )
+        fitting, cached_pos_cov, nodesobjs, fitting_subtrees = cpp_binding.forward(data, kernels, n_components_fitting)
+        ctx.save_for_backward(data, kernels, torch.tensor(n_components_fitting), fitting, cached_pos_cov, nodesobjs, fitting_subtrees )
         return fitting
 
     @staticmethod
@@ -36,8 +36,8 @@ class ConvolutionFitting(torch.autograd.Function):
         if not grad_output.is_contiguous():
             grad_output = grad_output.contiguous()
 
-        data, kernels, n_components_fitting, fitting, cached_pos_cov, nodes, nodesobjs, node_attributes, fitting_subtrees = ctx.saved_tensors
-        grad_data, grad_kernel = cpp_binding.backward(grad_output, data, kernels, n_components_fitting.item(), fitting, cached_pos_cov, nodes, nodesobjs, node_attributes, fitting_subtrees)
+        data, kernels, n_components_fitting, fitting, cached_pos_cov, nodesobjs, fitting_subtrees = ctx.saved_tensors
+        grad_data, grad_kernel = cpp_binding.backward(grad_output, data, kernels, n_components_fitting.item(), fitting, cached_pos_cov, nodesobjs, fitting_subtrees)
 
         return grad_data, grad_kernel, None
 
