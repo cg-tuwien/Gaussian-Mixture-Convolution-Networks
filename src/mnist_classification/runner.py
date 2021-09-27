@@ -12,8 +12,8 @@ from mnist_classification.config import Config
 device = "cuda"
 
 c: Config = Config()
-c.model.relu_config.fitting_method = gmc.fitting.splitter_and_fixed_point
-c.input_fitting_iterations = 100
+c.model.relu_config.fitting_method = gmc.fitting.fixed_point_only
+c.input_fitting_iterations = 1
 c.input_fitting_components = 64
 c.model.bn_type = ModelConfig.BN_TYPE_COVARIANCE_STD
 c.model.bn_place = ModelConfig.BN_PLACE_AFTER_RELU
@@ -32,7 +32,7 @@ c.model.layers = [Layer(8, 1.5, 64),
                   Layer(32, 2.5, 16),
                   Layer(64, 2.5, 8),
                   Layer(128, 2.5, 4),
-                  # Layer(256, 2.5, 4),
+                  Layer(256, 2.5, 4),
                   # Layer(512, 2.5, 4),
                   Layer(10, 2.5, 4)]
 # c.model.mlp = (-1, 10)

@@ -31,7 +31,7 @@ std::pair<torch::Tensor, torch::Tensor> convolution_fitting_backward(const torch
 
     convolution_fitting::Config config = {};
     config.n_components_fitting = unsigned(n_components_fitting);
-    return convolution_fitting::backward_impl(grad, data, kernels, convolution_fitting::ForwardOutput{fitting, cached_pos_covs, fitting_subtrees}, config);
+    return convolution_fitting::backward_impl(grad, data, kernels, convolution_fitting::ForwardOutput{fitting, cached_pos_covs, nodeobjs, fitting_subtrees}, config);
 }
 
 #ifndef GMC_CMAKE_TEST_BUILD
