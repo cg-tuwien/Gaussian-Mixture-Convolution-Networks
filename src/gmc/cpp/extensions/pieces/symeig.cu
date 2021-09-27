@@ -13,33 +13,12 @@
 #include "hacked_accessor.h"
 #include "util/cuda.h"
 #include "util/glm.h"
-#include "util/mixture.h"
 #include "parallel_start.h"
+#include "math/symeig_detail.h"
 
 
 namespace pieces {
 namespace symeig_impl {
-namespace {
-template <typename scalar_t, int DIMS> EXECUTION_DEVICES
-void forward_kernel(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
-             const dim3& gpe_blockIdx, const dim3& gpe_threadIdx,
-             const gpe::PackedTensorAccessor32<scalar_t, 3, gpe::RestrictPtrTraits> matrices,
-             gpe::PackedTensorAccessor32<scalar_t, 3, gpe::RestrictPtrTraits> inversed_matrices,
-             const uint n_batch) {
-    GPE_UNUSED(gpe_gridDim)
-
-    using Mat = glm::mat<DIMS, DIMS, scalar_t>;
-
-    const auto i = int(gpe_blockIdx.x * gpe_blockDim.x + gpe_threadIdx.x);
-    if (i >= int(n_batch))
-        return;
-
-    const auto& mat = gpe::mat<DIMS>(matrices[i][0][0]);
-    Mat& inv_mat = gpe::mat<DIMS>(inversed_matrices[i][0][0]);
-    inv_mat = glm::inverse(mat);
-}
-
-} // anonymous namespace
 
 std::tuple<torch::Tensor, torch::Tensor> forward(const torch::Tensor& matrices) {
     using namespace torch::indexing;
@@ -60,17 +39,27 @@ std::tuple<torch::Tensor, torch::Tensor> forward(const torch::Tensor& matrices) 
 
     GPE_DISPATCH_FLOATING_TYPES_AND_DIM(matrices.scalar_type(), n_dims, ([&] {
         const auto matrices_a = gpe::struct_accessor<glm::mat<N_DIMS, N_DIMS, scalar_t>, 1>(flattened_matrices);
-        const auto eigenvectors_a = gpe::struct_accessor<glm::mat<N_DIMS, N_DIMS, scalar_t>, 1>(eigenvectors);
-        const auto eigenvalues_a = gpe::struct_accessor<glm::vec<N_DIMS, scalar_t>, 1>(eigenvalues);
+        auto eigenvectors_a = gpe::struct_accessor<glm::mat<N_DIMS, N_DIMS, scalar_t>, 1>(eigenvectors);
+        auto eigenvalues_a = gpe::struct_accessor<glm::vec<N_DIMS, scalar_t>, 1>(eigenvalues);
 
-           auto fun = [matrices_a, eigenvectors_a, eigenvalues_a] __host__ __device__
-                (const dim3& gpe_gridDim, const dim3& gpe_blockDim, const dim3& gpe_blockIdx, const dim3& gpe_threadIdx) {
-                    implement forward computaion, see symeig_detail.h
-                };
-           gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(matrices), dimGrid, dimBlock, fun);
+        auto fun = [matrices_a, eigenvectors_a, eigenvalues_a] __host__ __device__ (const dim3& gpe_gridDim, const dim3& gpe_blockDim, const dim3& gpe_blockIdx, const dim3& gpe_threadIdx) mutable {
+            using Vec = glm::vec<N_DIMS, scalar_t>;
+            using Mat = glm::mat<N_DIMS, N_DIMS, scalar_t>;
+            GPE_UNUSED(gpe_gridDim);
+            const auto index = gpe_blockDim.x * gpe_blockIdx.x + gpe_threadIdx.x;
+            const auto& matrix = matrices_a[index];
+            Mat& eigenvectors = eigenvectors_a[index];
+            Vec& eigenvalues = eigenvalues_a[index];
+            thrust::tie(eigenvalues, eigenvectors) = gpe::detail::compute_symeig(matrix);
+
+        };
+       gpe::start_parallel<gpe::ComputeDevice::Both>(gpe::device(matrices), dimGrid, dimBlock, fun);
        }));
 
-    return views on eigenvectors and eigenvalues
+    auto eigenvalue_sizes = original_shape;
+    eigenvalue_sizes.pop_back();
+
+    return {eigenvalues.view(eigenvalue_sizes), eigenvectors.view(original_shape)};
 }
 
 

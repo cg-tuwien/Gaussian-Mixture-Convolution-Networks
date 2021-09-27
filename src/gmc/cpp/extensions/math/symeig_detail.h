@@ -14,8 +14,8 @@ namespace detail {
 // These algorithms might have some numerical stability issues lurking, but it currently it doesn't matter for gmcn since they are used
 // only to compute the BVH in case of evaluation.
 
-template <typename scalar_t>
-__forceinline__ __host__ __device__ thrust::tuple<glm::vec<2, scalar_t>, glm::mat<2, 2, scalar_t>> compute_symeig(const glm::mat<2, 2, scalar_t>& matrix) {
+template <typename scalar_t> __forceinline__ __host__ __device__
+thrust::tuple<glm::vec<2, scalar_t>, glm::mat<2, 2, scalar_t>> compute_symeig(const glm::mat<2, 2, scalar_t>& matrix) {
     using vec = glm::vec<2, scalar_t>;
     using mat = glm::mat<2, 2, scalar_t>;
     // we follow pytorch notation, eigenvectors are column vectors
