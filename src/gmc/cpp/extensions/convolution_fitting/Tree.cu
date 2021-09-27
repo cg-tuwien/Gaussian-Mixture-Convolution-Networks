@@ -142,7 +142,7 @@ void convolution_fitting::Tree<scalar_t, N_DIMS>::create_tree_nodes() {
     auto n_mixtures = unsigned(n.batch) * n_channels_out;
     const at::Tensor morton_codes = compute_morton_codes();
 
-    auto nodes = torch::ones({n.batch, n_channels_out, n_nodes, 4}, torch::TensorOptions(morton_codes.device()).dtype(gpe::TorchTypeMapper<index_type>::id())) * -1;
+    auto nodes = torch::ones({n.batch, n_channels_out, n_nodes, 3}, torch::TensorOptions(morton_codes.device()).dtype(gpe::TorchTypeMapper<index_type>::id())) * -1;
     auto nodesobjs = torch::ones({n.batch, n_channels_out, n_leaf_nodes}, torch::TensorOptions(morton_codes.device()).dtype(gpe::TorchTypeMapper<index_type>::id()));
 
     const auto morton_codes_view = morton_codes.view({n_mixtures, n_leaf_nodes});
@@ -171,7 +171,6 @@ void convolution_fitting::Tree<scalar_t, N_DIMS>::create_tree_nodes() {
 
             const auto& morton_code = morton_codes_a[mixture_id][component_id];
             auto& node = nodes_a[mixture_id][component_id];
-            node.object_idx = uint32_t(morton_code); // imo the cast will cut away the morton code. no need for "& 0xfffffff" // uint32_t(morton_code & 0xffffffff);
 
             nodesobjs_a[mixture_id][component_id] = uint32_t(morton_code);
         };
@@ -262,9 +261,10 @@ void convolution_fitting::Tree<scalar_t, N_DIMS>::create_attributes()
             return node_attributes_a[batch_id][channel_out_id][node_id];
         };
 
-        const Node& leaf_node = get_node(n_internal_nodes + component_out_id);
+        const auto leaf_node = get_node(n_internal_nodes + component_out_id);
+        const auto object_idx = nodesobjs_a[batch_id][channel_out_id][component_out_id];
 
-        const auto gaussian_indices = gpe::split_n_dim_index<uint32_t, 3, unsigned>({unsigned(n.components), unsigned(n_channels_in), unsigned(kernel_n.components)}, leaf_node.object_idx);
+        const auto gaussian_indices = gpe::split_n_dim_index<uint32_t, 3, unsigned>({unsigned(n.components), unsigned(n_channels_in), unsigned(kernel_n.components)}, object_idx);
         const unsigned& component_in_id = gaussian_indices[0];
         const unsigned& channel_in_id = gaussian_indices[1];
         const unsigned& component_kernel_id = gaussian_indices[2];

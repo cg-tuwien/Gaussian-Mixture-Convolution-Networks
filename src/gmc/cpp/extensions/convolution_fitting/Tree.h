@@ -36,7 +36,7 @@ public:
         index_type parent_idx; // parent node
         index_type left_idx;   // index of left  child node
         index_type right_idx;  // index of right child node
-        index_type object_idx; // == 0xFFFFFFFF if internal node.
+        //index_type object_idx; // == 0xFFFFFFFF if internal node.
     };
 
     struct NodeAttributes {
