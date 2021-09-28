@@ -17,7 +17,7 @@
 
 constexpr uint N_BATCHES = 1;
 constexpr uint CONVOLUTION_LAYER_START = 0;
-constexpr uint CONVOLUTION_LAYER_END = 4;
+constexpr uint CONVOLUTION_LAYER_END = 7;
 constexpr uint LIMIT_N_BATCH = 5;
 constexpr bool USE_CUDA = true;
 constexpr bool BACKWARD = true;
@@ -52,7 +52,7 @@ TEST_CASE("convolution_fitting forward and backward benchmark") {
             kernels = toPriorMixture(kernels);
 
             convolution_fitting::Config config;
-            config.n_components_fitting = unsigned(data.size(2));
+            config.n_components_fitting = unsigned(data.size(2)) * 3 / 8;
             std::cout << std::endl;
             std::cout << "layer " << l << " data: " << data.sizes() << " device: " << data.device() << std::endl;
             std::cout << "layer " << l << " kernels: " << kernels.sizes() << " device: " << kernels.device() << std::endl;
