@@ -80,7 +80,10 @@ def splitter_and_fixed_point(mixture: Tensor, constant: Tensor, n_components: in
         tensorboard = tensorboard_epoch[0]
         epoch = tensorboard_epoch[1]
 
-    split_mixture = splitter(mixture, [n_components])
+    if n_components != -1:
+        split_mixture = splitter(mixture, [n_components])
+    else:
+        split_mixture = mixture
 
     initial_fitting = initial_approx_to_relu(split_mixture, constant)
 
@@ -157,7 +160,8 @@ def splitter(mixture: Tensor, iteration_targets: typing.List[int], displacement:
             assert n_dims == 3
             rating = rating.where(eigenvalues[..., 1] / eigenvalues[..., 0] > 1.04, torch.zeros_like(rating))
 
-        _, selection = torch.topk(rating, k_subdivisions, dim=2)
+        selected_ratings, selection = torch.topk(rating, k_subdivisions, dim=2)
+        assert (selected_ratings > 0.00000000001).all().item()
 
         n = mixture.gather(2, selection.unsqueeze(-1).expand(-1, -1, -1, mixture.shape[-1]))
         eig_vals = eigenvalues.gather(2, selection.unsqueeze(-1).expand(-1, -1, -1, n_dims))

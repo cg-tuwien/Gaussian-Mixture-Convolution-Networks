@@ -21,14 +21,24 @@ class SymEig(torch.autograd.Function):
         if not matrices.is_contiguous():
             matrices = matrices.contiguous()
 
+        # assert not torch.any(torch.isnan(matrices))
         eigvals, eigvecs = pieces_binding.symeig(matrices)
         ctx.save_for_backward(matrices, eigvals, eigvecs)
+        # assert not torch.any(torch.isnan(eigvals))
+        # assert not torch.any(torch.isnan(eigvecs))
         return eigvals, eigvecs
 
     @staticmethod
     def backward(ctx, grad_eigvals, grad_eigvecs):
+        # assert not torch.any(torch.isnan(grad_eigvals))
+        # assert not torch.any(torch.isnan(grad_eigvecs))
         matrices, eigvals, eigvecs = ctx.saved_tensors
-        return pieces_binding.symeig_backward(matrices, eigvals, eigvecs, grad_eigvals, grad_eigvecs)
+        grad_mat = pieces_binding.symeig_backward(matrices, eigvals, eigvecs, grad_eigvals, grad_eigvecs)
+        nans = torch.isnan(grad_mat)                                                # 0 gaussians often have identity covariance, these will produce NaN grads, but the incoming grad is 0
+        assert grad_eigvals[nans.any(dim=4).any(dim=3)].abs().sum().item() == 0
+        assert grad_eigvecs[nans.any(dim=4).any(dim=3)].abs().sum().item() == 0
+        grad_mat[nans] = 0                                                          # setting the grad to 0 in that case to prevent propagation of the NaN
+        return grad_mat
 
 
 symeig_apply = SymEig.apply

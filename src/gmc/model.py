@@ -15,9 +15,10 @@ import gmc.mat_tools as mat_tools
 
 
 class Layer:
-    def __init__(self, n_feature_maps, kernel_radius, n_fitting_components):
+    def __init__(self, n_feature_maps, kernel_radius, n_convolution_fittiong_components, n_fitting_components):
         self.n_feature_layers = n_feature_maps
         self.kernel_radius = kernel_radius
+        self.n_convolution_fittiong_components = n_convolution_fittiong_components
         self.n_fitting_components = n_fitting_components
 
 
@@ -45,9 +46,9 @@ class Config:
 
         # complexity / power / number of parameters
         self.n_kernel_components = 5
-        self.layers: typing.List[Layer] = [Layer(8, 1, 32),
-                                           Layer(16, 1, 16),
-                                           Layer(10, 1, -1)]
+        self.layers: typing.List[Layer] = [Layer(8, 1, 32, 32),
+                                           Layer(16, 1, 16, 16),
+                                           Layer(10, 1, 8, 8)]
         self.bias_type = Config.BIAS_TYPE_NONE
         self.mlp: typing.Optional[typing.List[int]] = None
 
@@ -103,7 +104,7 @@ class Net(nn.Module):
             self.gmcs.append(gmc.modules.Convolution(config.convolution_config, n_layers_in=n_feature_channels_in, n_layers_out=l.n_feature_layers, n_kernel_components=config.n_kernel_components,
                                                      position_range=l.kernel_radius, covariance_range=pos2cov(l.kernel_radius),
                                                      learn_positions=learn_positions, learn_covariances=learn_covariances,
-                                                     weight_sd=1, weight_mean=0.1, n_dims=config.n_dims, n_fitting_components=(l.n_fitting_components * 3)//4))
+                                                     weight_sd=1, weight_mean=0.1, n_dims=config.n_dims, n_fitting_components=l.n_convolution_fittiong_components))
             self.biases.append(torch.nn.Parameter(torch.zeros(1, l.n_feature_layers) + bias_0))
             self.relus.append(gmc.modules.ReLUFitting(config.relu_config, n_layers=l.n_feature_layers, n_output_gaussians=l.n_fitting_components, convolution_layer=f"{i}"))
             if config.bn_type == Config.BN_TYPE_COVARIANCE_STD:
