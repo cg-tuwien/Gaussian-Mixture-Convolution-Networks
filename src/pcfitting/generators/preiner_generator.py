@@ -99,7 +99,7 @@ class PreinerGenerator(GMMGenerator):
         assert (gmbatch is None), "PreinerGenerator cannot improve existing GMMs"
 
         batch_size = pcbatch.shape[0]
-        assert (batch_size is 1), "PreinerGenerator currently does not support batchsizes > 1"
+        assert (batch_size == 1), "PreinerGenerator currently does not support batchsizes > 1"
         point_count = pcbatch.shape[1]
 
         gmm = gms.compute_mixture(pcbatch[0], self._params).view(1, 1, -1, 13).cuda()

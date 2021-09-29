@@ -105,7 +105,7 @@ class EckartGeneratorHP(GMMGenerator):
         assert (self._n_levels > 0), "Levels must be > 0"
 
         batch_size = pcbatch.shape[0]
-        assert (batch_size is 1), "EckartGenerator currently does not support batchsizes > 1"
+        assert (batch_size == 1), "EckartGenerator currently does not support batchsizes > 1"
         point_count = pcbatch.shape[1]
         pcbatch = pcbatch.to(self._dtype).cuda()
 

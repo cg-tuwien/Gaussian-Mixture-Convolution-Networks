@@ -102,7 +102,7 @@ class EckartGeneratorSP(GMMGenerator):
         assert (gmbatch is None), "EckartGenerator cannot improve existing GMMs"
 
         batch_size = pcbatch.shape[0]
-        assert (batch_size is 1), "EckartGenerator currently does not support batchsizes > 1"
+        assert (batch_size == 1), "EckartGenerator currently does not support batchsizes > 1"
         point_count = pcbatch.shape[1]
         pcbatch = pcbatch.to(dtype=self._dtype, device=general_config.device)
 

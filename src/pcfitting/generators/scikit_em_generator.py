@@ -56,7 +56,7 @@ class ScikitEMGenerator(GMMGenerator):
 
 
         batch_size = pcbatch.shape[0]
-        assert (batch_size is 1), "ScikitEMGenerator currently does not support batchsizes > 1"
+        assert (batch_size == 1), "ScikitEMGenerator currently does not support batchsizes > 1"
         point_count = pcbatch.shape[1]
 
         initweights = None
