@@ -63,7 +63,7 @@ class Config:
     def produce_gmc_layers_description(self) -> str:
         name = "L"
         for l in self.layers:
-            name = f"{name}_{l.n_feature_layers}f_{int(l.kernel_radius * 10)}r_{int(l.n_fitting_components)}c"
+            name = f"{name}_{l.n_feature_layers}f_{int(l.kernel_radius * 10)}r_{int(l.n_convolution_fittiong_components)}cf_{int(l.n_fitting_components)}f"
         return name
 
     def produce_description(self):
@@ -191,7 +191,7 @@ class Net(nn.Module):
                 x_const = x_const + self.biases[i]
             else:
                 assert self.config.bias_type == Config.BIAS_TYPE_NONE
-                x_const = torch.zeros(1, 1, device=in_x.device)
+                x_const = torch.zeros(n_batch, gm.n_layers(x), device=in_x.device)
 
             self.reset_timer()
             x, x_const = self.relus[i](x, x_const, tensorboard)

@@ -511,7 +511,7 @@ class CovScaleNorm(torch.nn.modules.Module):
         y_gm = gm.spatial_scale(x_gm, scaling_factor)
 
         if x_constant is None:
-            y_constant = torch.zeros(1, 1, device=x_gm.device)
+            y_constant = torch.zeros(n_batch, gm.n_layers(x_gm), device=x_gm.device)
         else:
             y_constant = x_constant
 
@@ -546,7 +546,7 @@ class BatchNorm(torch.nn.modules.Module):
         x_constant = x[1]
 
         if x_constant is None:
-            x_constant = torch.zeros(1, 1, device=x_gm.device)
+            x_constant = torch.zeros(gm.n_batch(x_gm), gm.n_layers(x_gm), device=x_gm.device)
 
         assert gm.is_valid_mixture_and_constant(x_gm, x_constant)
 
