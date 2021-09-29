@@ -63,7 +63,12 @@ class Config:
     def produce_gmc_layers_description(self) -> str:
         name = "L"
         for l in self.layers:
-            name = f"{name}_{l.n_feature_layers}f_{int(l.kernel_radius * 10)}r_{int(l.n_convolution_fittiong_components)}cf_{int(l.n_fitting_components)}f"
+            cc_fitting_components = ""
+            if type(l.n_fitting_components) == list or type(l.n_fitting_components) == tuple:
+                cc_fitting_components = "-" + '-'.join(str(x) for x in l.n_fitting_components)
+            elif l.n_fitting_components > 0:
+                cc_fitting_components = f"-{l.n_fitting_components}"
+            name = f"{name}_{l.n_feature_layers}f_{int(l.kernel_radius * 10)}r_{int(l.n_convolution_fittiong_components)}{cc_fitting_components}c"
         return name
 
     def produce_description(self):

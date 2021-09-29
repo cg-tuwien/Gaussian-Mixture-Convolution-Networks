@@ -113,7 +113,7 @@ def train(model: gmc.model.Net, device: str, train_loader: torch.utils.data.Data
             # for name, timing in model.timings.items():
             #     tensor_board_writer.add_scalar(f"06. {name} time", timing, step)
 
-            if config.log_tensorboard_renderings:
+            if config.log_tensorboard_renderings and batch_idx == 0:
                 render_debug_images_to_tensorboard(model, step, tensor_board_writer)
 
             print(f'Training kernels: {epoch}/{step} [{batch_idx}/{len(train_loader)} '
