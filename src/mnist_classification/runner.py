@@ -11,29 +11,32 @@ from mnist_classification.config import Config
 device = "cuda"
 
 c: Config = Config()
-c.model.relu_config.fitting_method = gmc.fitting.splitter_and_fixed_point
+c.model.relu_config.fitting_method = gmc.fitting.fixed_point_only
+c.model.convolution_config.learnable_radius = True
 c.input_fitting_iterations = 100
-c.input_fitting_components = 64
+c.input_fitting_components = 128
 c.model.bn_type = ModelConfig.BN_TYPE_COVARIANCE
 c.model.bn_place = ModelConfig.BN_PLACE_AFTER_RELU
 c.model.convolution_config.dropout = 0.0
 c.model.dataDropout = 0.0
 # c.model.relu_config.fitting_method = gmc.fitting.fixed_point_and_tree_hem2
+c.dataset_class = torchvision.datasets.FashionMNIST
+c.dataset_name = "fashion_mnist"
 
 c.log_tensorboard_renderings = False
 c.n_epochs = 30
-c.batch_size = 100
-c.log_interval = 10000
+c.batch_size = 25
+c.log_interval = 1000
 
 # network size
-c.model.layers = [Layer(8, 1.5, 96, 128),
-                  Layer(16, 2.0, 48, 64),
-                  Layer(32, 2.5, 24, 32),
-                  Layer(64, 2.5, 12, 16),
-                  # Layer(128, 2.5, 4),
+c.model.layers = [Layer(8, 1.5, 256, -1),
+                  Layer(16, 1.5, 128, -1),
+                  Layer(32, 1.5, 64, -1),
+                  Layer(64, 1.5, 32, -1),
+                  Layer(128, 1.5, 16, -1),
                   # Layer(256, 2.5, 2),
                   # Layer(512, 2.5, 4),
-                  Layer(10, 2.5, 2, -1)]
+                  Layer(10, 1.5, 16, -1)]
 # c.model.mlp = (-1, 10)
 
 # c.fitting_test_data_store_at_epoch = 0

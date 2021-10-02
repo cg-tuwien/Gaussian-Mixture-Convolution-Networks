@@ -14,6 +14,7 @@ import torch.utils.tensorboard
 import gmc.fitting
 import gmc.inout
 import gmc.model
+import gmc.modules
 from mnist_classification.config import Config
 import mnist_classification.input_fitting as input_fitting
 
@@ -109,6 +110,16 @@ def train(model: gmc.model.Net, device: str, train_loader: torch.utils.data.Data
             for i, relu in enumerate(model.relus):
                 mse = gmc.fitting.mse(*relu.last_in, *relu.last_out)
                 tensor_board_writer.add_scalar(f"05.1 convolution layer {i} relu mse", mse, step)
+
+            for i, conv in enumerate(model.gmcs):
+                pos_range = conv.position_range
+                cov_range = conv.covariance_range
+                if type(pos_range) != float:
+                    pos_range = pos_range.item()
+                if type(cov_range) != float:
+                    cov_range = cov_range.item()
+                tensor_board_writer.add_scalar(f"06.2 convolution layer {i} convolution position range", pos_range, step)
+                tensor_board_writer.add_scalar(f"06.2 convolution layer {i} convolution covariance range", cov_range, step)
 
             # for name, timing in model.timings.items():
             #     tensor_board_writer.add_scalar(f"06. {name} time", timing, step)

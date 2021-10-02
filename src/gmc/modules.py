@@ -16,8 +16,8 @@ import gmc.cpp.extensions.convolution_fitting.binding as cpp_convolution_fitting
 
 
 class ConvolutionConfig:
-    def __init__(self):
-        pass
+    def __init__(self, learnable_radius = False):
+        self.learnable_radius = learnable_radius
 
 
 class Convolution(torch.nn.modules.Module):
@@ -31,8 +31,12 @@ class Convolution(torch.nn.modules.Module):
         self.n_channels_out = n_layers_out
         self.n_kernel_components = n_kernel_components
         self.n_dims = n_dims
-        self.position_range = position_range
-        self.covariance_range = covariance_range
+        if config.learnable_radius:
+            self.position_range = torch.nn.Parameter(torch.tensor([position_range], dtype=torch.float32))
+            self.covariance_range = torch.nn.Parameter(torch.tensor([covariance_range], dtype=torch.float32))
+        else:
+            self.position_range = position_range
+            self.covariance_range = covariance_range
         self.weight_sd = weight_sd
         self.weight_mean = weight_mean
         self.covariance_epsilon = covariance_epsilon
