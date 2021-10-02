@@ -80,7 +80,9 @@ def splitter_and_fixed_point(mixture: Tensor, constant: Tensor, n_components: in
         tensorboard = tensorboard_epoch[0]
         epoch = tensorboard_epoch[1]
 
-    if n_components != -1:
+    if type(n_components) == list or type(n_components) == tuple:
+        split_mixture = splitter(mixture, n_components)
+    elif n_components != -1:
         split_mixture = splitter(mixture, [n_components])
     else:
         split_mixture = mixture
