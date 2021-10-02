@@ -403,7 +403,7 @@ class BatchNorm(torch.nn.modules.Module):
         sample_values = gm.evaluate(x_gm, sampling_positions) + x_constant.unsqueeze(-1)
         # channel_sd, channel_mean = torch.std_mean(sample_values.transpose(0, 1).reshape(n_channels, n_batch * n_sampling_positions), dim=1)
         if self.batch_norm:
-            channel_sd, channel_mean = torch.std_mean(sample_values, dim=(0, 2))
+            channel_sd, channel_mean = torch.std_mean(sample_values.detach(), dim=(0, 2))
             if self.training:
                 alpha = min(n_batch / 1000, 0.1)
                 self.averaged_channel_sd = ((1.0 - alpha) * self.averaged_channel_sd + alpha * channel_sd).detach()
@@ -411,7 +411,7 @@ class BatchNorm(torch.nn.modules.Module):
             channel_sd = self.averaged_channel_sd.detach()
             channel_mean = self.averaged_channel_mean.detach()
         else:
-            channel_sd, channel_mean = torch.std_mean(sample_values, dim=2)
+            channel_sd, channel_mean = torch.std_mean(sample_values.detach(), dim=2)
 
         channel_sd = torch.max(channel_sd, torch.tensor([0.001], dtype=torch.float, device=x_gm.device))
         scaling_factor = 1 / channel_sd
