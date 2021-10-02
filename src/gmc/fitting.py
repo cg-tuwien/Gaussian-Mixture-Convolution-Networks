@@ -206,12 +206,12 @@ def fixed_point_iteration_to_relu(target_mixture: Tensor, target_constant: Tenso
     b = gm.evaluate(target_mixture, positions) + target_constant.unsqueeze(-1)
     b = b.where(b > 0, torch.zeros(1, device=device)) - ret_const.unsqueeze(-1)
 
-    x = weights.abs() + 0.05
+    x = weights.abs() + 0.1
 
     for i in range(n_iter):
         x = x.abs()
         new_mixture = gm.pack_mixture(x, positions, covariances)
-        x = x * b / (gm.evaluate(new_mixture, positions) + 0.05)
+        x = x * (b + 0.05) / (gm.evaluate(new_mixture, positions) + 0.05)
 
     return gm.pack_mixture(x, positions, covariances), ret_const
 
