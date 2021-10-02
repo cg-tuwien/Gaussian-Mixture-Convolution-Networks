@@ -148,14 +148,12 @@ class Convolution(torch.nn.modules.Module):
                                          batches=(0, min(5, gm.n_batch(kernels))), layers=(0, min(5, gm.n_layers(kernels))),
                                          width=image_size, height=image_size, gm_vis_object=vis)
         vis.finish()
-        return renderings[:, :, :3]
+        return renderings.transpose(1, 2).contiguous().view(image_size * renderings.shape[0], image_size * renderings.shape[1], 4)[:, :, :3]
 
     def debug_save3d(self, base_name: str):
-        for i in range(self.n_channels_out):
-            kernel = self.kernel(i)
-            assert kernel.shape[0] == 1
+        kernel = self.kernels()
 
-            gmio.write_gm_to_ply2(kernel, f"{base_name}_k{i}")
+        gmio.write_gm_to_ply2(kernel, f"{base_name}")
 
     def forward(self, x: Tensor, x_constant: Tensor) -> typing.Tuple[Tensor, Tensor]:
         assert gm.is_valid_mixture_and_constant(x, x_constant)
@@ -249,11 +247,11 @@ class ReLUFitting(torch.nn.modules.Module):
         vis.set_density_rendering(True)
         vis.set_density_range_manual(clamp[0], clamp[1])
 
-        last_in = gmc.render.render3d(self.last_in[0], batches=(0, 1), layers=(0, None), gm_vis_object=vis).reshape(-1, image_size)
-        prediction = gmc.render.render3d(self.last_out[0], batches=(0, 1), layers=(0, None), gm_vis_object=vis).reshape(-1, image_size)
+        last_in = gmc.render.render3d(self.last_in[0], batches=(0, 1), layers=(0, 5), gm_vis_object=vis)
+        prediction = gmc.render.render3d(self.last_out[0], batches=(0, 1), layers=(0, 5), gm_vis_object=vis)
         vis.finish()
 
-        images = torch.cat([last_in, prediction], dim=1)
+        images = torch.cat([last_in.view(image_size * last_in.shape[0] * last_in.shape[1], image_size, 4), prediction.view(image_size * last_in.shape[0] * last_in.shape[1], image_size, 4)], dim=1)
         return images[:, :, :3]
 
     def debug_save3d(self, base_name: str, n_batch_samples: int = 1, n_layers: int = None):

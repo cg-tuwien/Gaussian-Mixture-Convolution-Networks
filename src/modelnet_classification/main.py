@@ -80,9 +80,9 @@ def render_debug_images_to_tensorboard(model, epoch, tensor_board_writer, config
         tensor_board_writer.add_image(f"conv {i}", rendering, epoch, dataformats='HWC')
         gmc.debug_save3d(f"{config.data_base_path}/debug_out/kernels/conv{i}")
 
-    clamps = ((-0.005, 0.005), (-0.025, 0.025), (-0.1, 0.1), (-0.2, 0.2), (-0.3, 0.3))
+    # clamps = ((-0.005, 0.005), (-0.025, 0.025), (-0.1, 0.1), (-0.2, 0.2), (-0.3, 0.3))
     for i, relu in enumerate(model.relus):
-        rendering = relu.debug_render3d(clamp=clamps[i], camera={'positions': (22.0372, 30.9668, 23.3432), 'lookat': (0.0, 0.0, 0.0), 'up': (0.0, 1.0, 0.0)})
+        rendering = relu.debug_render3d(clamp=(-0.3, 0.3), camera={'positions': (22.0372, 30.9668, 23.3432), 'lookat': (0.0, 0.0, 0.0), 'up': (0.0, 1.0, 0.0)})
         tensor_board_writer.add_image(f"relu {i+1}", rendering, epoch, dataformats='HWC')
         relu.debug_save3d(f"{config.data_base_path}/debug_out/activations/relu{i+1}")
 
