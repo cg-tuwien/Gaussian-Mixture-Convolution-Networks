@@ -217,14 +217,14 @@ def test(model: gmc.model.Net, device: str, test_loader: torch.utils.data.DataLo
     return correct / len(test_loader.dataset)
 
 
-def experiment(device: str = 'cuda', desc_string: str = "", config: Config = None, ablation_name: str = ""):
+def experiment(device: str = 'cuda', desc_string: str = "", config: Config = None, ablation_name: str = "", random_seed: int = 0):
     print(f"starting {desc_string}")
     global training_ablation_name
     global training_dsicription_string
     training_ablation_name = ablation_name
     training_dsicription_string = desc_string
     # Training settings
-    torch.manual_seed(0)
+    torch.manual_seed(random_seed)
 
     train_loader = torch.utils.data.DataLoader(ModelNetDataSet(config, config.modelnet_data_path, config.modelnet_category_list_file, config.modelnet_training_sample_names_file),
                                                batch_size=config.batch_size, num_workers=config.num_dataloader_workers, shuffle=True, drop_last=True)

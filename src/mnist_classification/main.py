@@ -190,10 +190,10 @@ def test(model: gmc.model.Net, device: str, test_loader: torch.utils.data.DataLo
     return correct / len(test_loader.dataset)
 
 
-def experiment(device: str = 'cuda', desc_string: str = "", config: typing.Optional[Config] = None, ablation_name: str = ""):
+def experiment(device: str = 'cuda', desc_string: str = "", config: typing.Optional[Config] = None, ablation_name: str = "", random_seed: int = 0):
     print(f"starting {desc_string}")
     # Training settings
-    torch.manual_seed(0)
+    torch.manual_seed(random_seed)
     # input_fitting.fit(config)
 
     train_loader = torch.utils.data.DataLoader(GmMnistDataSet(f'{config.produce_input_description()}/train_', begin=config.training_set_start, end=config.training_set_end), batch_size=config.batch_size,
