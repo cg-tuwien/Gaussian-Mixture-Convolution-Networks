@@ -1,5 +1,6 @@
 from __future__ import print_function
 import datetime
+import os
 import time
 import pathlib
 
@@ -20,6 +21,9 @@ import modelnet_classification.config as Config
 # based on https://github.com/pytorch/examples/blob/master/mnist/main.py
 
 # torch.autograd.set_detect_anomaly(True)
+
+training_ablation_name = "training_ablation_name"
+training_dsicription_string = "training_dsicription_string"
 
 
 def sum_losses(losses: typing.List[torch.Tensor]):
@@ -75,16 +79,21 @@ class ModelNetDataSet(torch.utils.data.Dataset):
 
 
 def render_debug_images_to_tensorboard(model, epoch, tensor_board_writer, config: Config):
+    kernel_path = f"{config.data_base_path}/debug_out/{training_ablation_name}/{training_dsicription_string}/kernels"
+    activation_path = f"{config.data_base_path}/debug_out/{training_ablation_name}/{training_dsicription_string}/activations"
+    os.makedirs(kernel_path, exist_ok=True)
+    os.makedirs(activation_path, exist_ok=True)
+
     for i, gmc in enumerate(model.gmcs):
         rendering = gmc.debug_render3d(clamp=(-0.80, 0.80), camera={'positions': (2.91864, 3.45269, 2.76324), 'lookat': (0.0, 0.0, 0.0), 'up': (0.0, 1.0, 0.0)})
         tensor_board_writer.add_image(f"conv {i}", rendering, epoch, dataformats='HWC')
-        gmc.debug_save3d(f"{config.data_base_path}/debug_out/kernels/conv{i}")
+        gmc.debug_save3d(f"{kernel_path}/conv{i}")
 
     # clamps = ((-0.005, 0.005), (-0.025, 0.025), (-0.1, 0.1), (-0.2, 0.2), (-0.3, 0.3))
     for i, relu in enumerate(model.relus):
         rendering = relu.debug_render3d(clamp=(-0.3, 0.3), camera={'positions': (22.0372, 30.9668, 23.3432), 'lookat': (0.0, 0.0, 0.0), 'up': (0.0, 1.0, 0.0)})
         tensor_board_writer.add_image(f"relu {i+1}", rendering, epoch, dataformats='HWC')
-        relu.debug_save3d(f"{config.data_base_path}/debug_out/activations/relu{i+1}")
+        relu.debug_save3d(f"{activation_path}/relu{i+1}")
 
 
 def train(model: gmc.model.Net, device: str, train_loader: torch.utils.data.DataLoader,
@@ -117,6 +126,9 @@ def train(model: gmc.model.Net, device: str, train_loader: torch.utils.data.Data
         weight_decay_optimiser.step()
 
         batch_end_time = time.perf_counter()
+
+        if config.log_tensorboard_renderings and batch_idx == 0:
+            render_debug_images_to_tensorboard(model, step, tensor_board_writer, config)
 
         if step % config.log_interval == 0:
             pred = output.detach().argmax(dim=1, keepdim=True)  # get the index of the max log-probability
@@ -153,9 +165,6 @@ def train(model: gmc.model.Net, device: str, train_loader: torch.utils.data.Data
 
             # for name, timing in model.timings.items():
             #     tensor_board_writer.add_scalar(f"06. {name} time", timing, step)
-
-            if config.log_tensorboard_renderings:
-                render_debug_images_to_tensorboard(model, step, tensor_board_writer, config)
 
             print(f'Training kernels: {epoch}/{step} [{batch_idx}/{len(train_loader)} '
                   f'({100. * batch_idx / len(train_loader):.0f}%)]\tClassification loss: {loss.item():.6f} (accuracy: {100 * correct / len(data)}), '
@@ -210,6 +219,10 @@ def test(model: gmc.model.Net, device: str, test_loader: torch.utils.data.DataLo
 
 def experiment(device: str = 'cuda', desc_string: str = "", config: Config = None, ablation_name: str = ""):
     print(f"starting {desc_string}")
+    global training_ablation_name
+    global training_dsicription_string
+    training_ablation_name = ablation_name
+    training_dsicription_string = desc_string
     # Training settings
     torch.manual_seed(0)
 
