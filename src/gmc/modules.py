@@ -123,6 +123,9 @@ class Convolution(torch.nn.modules.Module):
         if position_range is None:
             position_range = self.position_range * 2
 
+        if type(position_range) is torch.Tensor:
+            position_range = position_range.item()
+
         kernels = self.kernels()
         renderings = gmc.render.render(kernels, torch.zeros(1, 1, device=kernels.device),
                                        batches=(0, min(5, gm.n_batch(kernels))), layers=(0, min(5, gm.n_layers(kernels))),
