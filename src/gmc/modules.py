@@ -162,10 +162,8 @@ class Convolution(torch.nn.modules.Module):
         if self.n_fitting_components < 0:
             out_mixtures = cpp_convolution.apply(x, self.kernels())
         else:
-            kernels = gm.convert_amplitudes_to_priors(self.kernels())
-            x = gm.convert_amplitudes_to_priors(x)
+            kernels = self.kernels()
             out_mixtures = cpp_convolution_fitting.apply(x, kernels, self.n_fitting_components)
-            out_mixtures = gm.convert_priors_to_amplitudes(out_mixtures)
 
         n_batch = x_constant.shape[0]
         n_channels_input = gm.n_layers(x)
