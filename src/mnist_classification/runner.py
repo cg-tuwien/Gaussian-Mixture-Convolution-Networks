@@ -23,20 +23,20 @@ c.model.dataDropout = 0.0
 c.dataset_class = torchvision.datasets.FashionMNIST
 c.dataset_name = "fashion_mnist"
 
-c.log_tensorboard_renderings = False
-c.n_epochs = 30
-c.batch_size = 25
+c.log_tensorboard_renderings = True
+c.n_epochs = 61
+c.batch_size = 50
 c.log_interval = 1000
 
 # network size
-c.model.layers = [Layer(8, 1.5, 256, -1),
-                  Layer(16, 1.5, 128, -1),
-                  Layer(32, 1.5, 64, -1),
-                  Layer(64, 1.5, 32, -1),
-                  Layer(128, 1.5, 16, -1),
+c.model.layers = [Layer(8, 1.20, 256, -1),
+                  Layer(16, 1.20, 128, -1),
+                  Layer(32, 1.8, 64, -1),
+                  Layer(64, 2.2, 32, -1),
+                  Layer(128, 2.5, 16, -1),
                   # Layer(256, 2.5, 2),
                   # Layer(512, 2.5, 4),
-                  Layer(10, 1.5, 16, -1)]
+                  Layer(10, 2.2, 16, -1)]
 # c.model.mlp = (-1, 10)
 
 # c.fitting_test_data_store_at_epoch = 0

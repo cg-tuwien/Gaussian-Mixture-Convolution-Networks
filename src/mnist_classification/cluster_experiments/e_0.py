@@ -31,7 +31,7 @@ c.fitting_test_data_store_at_epoch = 100000
 
 # kernel_radius = 1.5
 c.batch_size = 100
-for kernel_radius in (1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 2.75, 3.0, 3.25, 3.5, 3.75):
+for kernel_radius in (1.5, 1.0, 1.25, 1.75, 2.0, 2.25, 2.5, 2.75, 3.0, 3.25, 3.5, 3.75):
     c.model.layers = [Layer(8, kernel_radius, 32, -1),
                       Layer(16, kernel_radius, 16, -1),
                       Layer(32, kernel_radius, 8, -1),
