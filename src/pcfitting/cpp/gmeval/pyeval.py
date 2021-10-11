@@ -66,5 +66,5 @@ def smoothness(responsibilities: torch.Tensor, nngraph: torch.Tensor) -> float:
 def irregularity(densities: torch.Tensor, nngraph: torch.Tensor) -> float:
     return bindings.irregularity(densities, nngraph)
 
-def irregularity_sub(densities: torch.Tensor, nngraph: torch.Tensor) -> float:
+def irregularity_sub(densities: torch.Tensor, nngraph: torch.Tensor) -> (float, float):
     return bindings.irregularity_sub(densities, nngraph)

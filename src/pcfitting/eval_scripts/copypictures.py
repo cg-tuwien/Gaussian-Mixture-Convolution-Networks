@@ -16,12 +16,12 @@ import matplotlib.image as mimg
 import shutil
 matplotlib.use('TkAgg')
 
-rendering_path = r"K:\DA-Eval\dataset_eval\renderings"
-goal_path = r"K:\DA-Eval\dataset_eval\renderings\orderings"
-db_path = r"K:\DA-Eval\EvalV2.db"
+rendering_path = r"K:\DA-Eval\dataset_eval_big\renderings"
+goal_path = r"K:\DA-Eval\dataset_eval_big\renderings\orderings"
+db_path = r"K:\DA-Eval\EvalV3.db"
 
-table_of_interest = "EvalStats"
-metric_of_interest = "std_sqrt_det"
+table_of_interest = "EvalDistance"
+metric_of_interest = "std_s_projfil"
 model_of_interest = "bed_0001.off"
 
 save_path = os.path.join(goal_path, model_of_interest, metric_of_interest)
@@ -42,9 +42,10 @@ for data in evals:
     eval = data[1]
     print(i, " / ", (100 * i / len(evals)), "%")
     density_from = os.path.join(rendering_path, "density-" + str(runid).zfill(9) + ".png")
-    recpc_from = os.path.join(rendering_path, "recpc-" + str(runid).zfill(9) + ".png")
     density_to = os.path.join(save_path, "density-" + str(i).zfill(5) + "-" + str(runid).zfill(9) + "(" + str(eval) + ")" + ".png")
-    recpc_to = os.path.join(save_path, "recpc-" + str(i).zfill(5) + "-" + str(runid).zfill(9) + "(" + str(eval) + ")" + ".png")
+    recpc_from = os.path.join(rendering_path, "recpc-" + str(runid).zfill(9) + ".png")
     shutil.copyfile(density_from, density_to)
-    shutil.copyfile(recpc_from, recpc_to)
+    if os.path.exists(recpc_from):
+        recpc_to = os.path.join(save_path, "recpc-" + str(i).zfill(5) + "-" + str(runid).zfill(9) + "(" + str(eval) + ")" + ".png")
+        shutil.copyfile(recpc_from, recpc_to)
 

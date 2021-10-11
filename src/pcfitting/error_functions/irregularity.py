@@ -56,18 +56,17 @@ class Irregularity(EvalFunction):
             output[startidx:endidx] = \
                 gm.evaluate_inversed(mixture_with_inversed_cov, points[:, :, startidx:endidx, :]).view(-1)
 
-        if self._subsamples > 0:
-            smooth = pyeval.irregularity_sub(output.cpu(), nngraph.cpu())
-        else:
-            smooth = pyeval.irregularity(output.cpu(), nngraph.cpu())
-
-        res = torch.zeros(1, 1, device=pcbatch.device, dtype=pcbatch.dtype)
+        res = torch.zeros(2, 1, device=pcbatch.device, dtype=pcbatch.dtype)
+        smooth, var = pyeval.irregularity_sub(output.cpu(), nngraph.cpu())
         res[0, 0] = smooth
+        res[1, 0] = var
+
         return res
 
     def get_names(self) -> List[str]:
         nlst = []
-        nlst.append("SoD")
+        nlst.append("Irr: Average Variation")
+        nlst.append("Irr: Variance of Variation")
         return nlst
 
     def calculate_scale_factors_nn(self, pcbatch: torch.Tensor) -> (float, float):

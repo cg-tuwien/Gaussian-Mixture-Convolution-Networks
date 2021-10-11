@@ -12,6 +12,7 @@ import numpy as np
 import gmc.mixture as gm
 import gmc.mat_tools as mat_tools
 from pcfitting.cpp.gmeval import pyeval
+from pysdf import SDF
 
 
 class ReconstructionStats(EvalFunction):
@@ -45,7 +46,8 @@ class ReconstructionStats(EvalFunction):
                  hausdorff_norm_nn: bool = False,
                  cov_measure: bool = False, #
                  cov_measure_scaled_by_area: bool = False,
-                 sample_points: int = 100000):
+                 sample_points: int = 100000,
+                 usepysdf = True):
         self._rmsd_pure = rmsd_pure
         self._rmsd_scaled_bb_diag = rmsd_scaled_bb_diag
         self._rmsd_scaled_by_area = rmsd_scaled_by_area
@@ -75,6 +77,7 @@ class ReconstructionStats(EvalFunction):
         self._samplepoints = sample_points
         self._cov_measure = cov_measure
         self._cov_measure_std_scaled_by_area = cov_measure_scaled_by_area
+        self._use_sdf = usepysdf
         self._nmeth = (self._rmsd_pure + self._rmsd_scaled_bb_diag + self._rmsd_scaled_by_area +
                        self._rmsd_scaled_by_nn + self._md_pure + self._md_scaled_bb_diag + self._md_scaled_by_area +
                        self._md_scaled_by_nn + self._stdev + self._stdev_scaled_bb_diag + self._stdev_scaled_by_area +
@@ -99,21 +102,68 @@ class ReconstructionStats(EvalFunction):
 
         i = 0
         if (self._inverse or self._chamfer or self._chamfer_norm_area or self._chamfer_norm_nn) and not self._inverse_exact:
-            rmsd, md, stdev, maxd, rmsdI, mdI, stdevI, maxdI = pyeval.eval_rmsd_both_sides(pcbatch.view(-1, 3), sampled.view(-1, 3))
+            if self._use_sdf:
+                evn = pcbatch.view(-1, 3).cpu().numpy()
+                rcn = sampled.view(-1, 3).cpu().numpy()
+                sdfE = SDF(evn, np.zeros((0, 3)))
+                d1 = torch.linalg.norm(torch.tensor(rcn - evn[sdfE.nn(rcn)]), dim=1)
+                sdfR = SDF(rcn, np.zeros((0, 3)))
+                d2 = torch.linalg.norm(torch.tensor(evn - rcn[sdfR.nn(evn)]), dim=1)
+                if self._rmsd_pure or self._rmsd_scaled_by_nn or self._rmsd_scaled_by_area or self._rmsd_scaled_bb_diag or self._chamfer or self._chamfer_norm_nn or self._chamfer_norm_area:
+                    rmsdI = (d1 ** 2).mean().sqrt()
+                    rmsd = (d2 ** 2).mean().sqrt()
+                if self._md_pure or self._md_scaled_by_nn or self._md_scaled_by_area or self._md_scaled_bb_diag or self._cv:
+                    mdI = d1.mean()
+                    md = d2.mean()
+                if self._stdev or self._stdev_scaled_bb_diag or self._stdev_scaled_by_nn or self._stdev_scaled_by_area or self._cv:
+                    stdevI = d1.std(unbiased=True)
+                    stdev = d2.std(unbiased=True)
+                if self._maxdist or self._maxdist_norm_nn or self._maxdist_norm_area:
+                    maxdI = d1.max()
+                    maxd = d2.max()
+            else:
+                rmsd, md, stdev, maxd, rmsdI, mdI, stdevI, maxdI = pyeval.eval_rmsd_both_sides(pcbatch.view(-1, 3), sampled.view(-1, 3))
         else:
-            rmsd, md, stdev, maxd = pyeval.eval_rmsd_unscaled(pcbatch.view(-1, 3), sampled.view(-1, 3))
+            if self._use_sdf:
+                evn = pcbatch.view(-1, 3).cpu().numpy()
+                rcn = sampled.view(-1, 3).cpu().numpy()
+                sdfR = SDF(rcn, np.zeros((0, 3)))
+                d2 = torch.linalg.norm(torch.tensor(evn - rcn[sdfR.nn(evn)]), dim=1)
+                if self._rmsd_pure or self._rmsd_scaled_by_nn or self._rmsd_scaled_by_area or self._rmsd_scaled_bb_diag or self._chamfer or self._chamfer_norm_nn or self._chamfer_norm_area:
+                    rmsd = (d2 ** 2).mean().sqrt()
+                if self._md_pure or self._md_scaled_by_nn or self._md_scaled_by_area or self._md_scaled_bb_diag or self._cv:
+                    md = d2.mean()
+                if self._stdev or self._stdev_scaled_bb_diag or self._stdev_scaled_by_nn or self._stdev_scaled_by_area or self._cv:
+                    stdev = d2.std(unbiased=True)
+                if self._maxdist or self._maxdist_norm_nn or self._maxdist_norm_area:
+                    maxd = d2.max()
+            else:
+                rmsd, md, stdev, maxd = pyeval.eval_rmsd_unscaled(pcbatch.view(-1, 3), sampled.view(-1, 3))
             rmsdI, mdI, stdevI, maxdI = (None, None, None, None)
             if self._inverse or self._chamfer or self._chamfer_norm_area or self._chamfer_norm_nn:
                 if self._inverse_exact:
                     rmsdI, mdI, stdevI, maxdI = self.calc_inverse_exact(sampled.view(-1, 3), modelpath)
+                elif self._use_sdf:
+                    evn = pcbatch.view(-1, 3).cpu().numpy()
+                    rcn = sampled.view(-1, 3).cpu().numpy()
+                    sdfE = SDF(evn, np.zeros((0, 3)))
+                    d1 = torch.linalg.norm(torch.tensor(rcn - evn[sdfE.nn(rcn)]), dim=1)
+                    if self._rmsd_pure or self._rmsd_scaled_by_nn or self._rmsd_scaled_by_area or self._rmsd_scaled_bb_diag or self._chamfer or self._chamfer_norm_nn or self._chamfer_norm_area:
+                        rmsdI = (d1 ** 2).mean().sqrt()
+                    if self._md_pure or self._md_scaled_by_nn or self._md_scaled_by_area or self._md_scaled_bb_diag or self._cv:
+                        mdI = d1.mean()
+                    if self._stdev or self._stdev_scaled_bb_diag or self._stdev_scaled_by_nn or self._stdev_scaled_by_area or self._cv:
+                        stdevI = d1.std(unbiased=True)
+                    if self._maxdist or self._maxdist_norm_nn or self._maxdist_norm_area:
+                        maxdI = d1.max()
                 else:
                     rmsdI, mdI, stdevI, maxdI = pyeval.eval_rmsd_unscaled(sampled.view(-1, 3), pcbatch.view(-1, 3))
         scalefactor = 1
-        if self._stdev_scaled_by_area or self._md_scaled_by_area or self._stdev_scaled_by_area or \
+        if self._rmsd_scaled_by_area or self._md_scaled_by_area or self._stdev_scaled_by_area or \
                 self._chamfer_norm_area or self._hausdorff_norm_area or self._cov_measure_std_scaled_by_area:
             scalefactor = self.calculate_scale_factor(modelpath)
         scalefactorNN = 1
-        if self._stdev_scaled_by_nn or self._md_scaled_by_nn or self._stdev_scaled_by_nn or self._chamfer_norm_nn or \
+        if self._rmsd_scaled_by_nn or self._md_scaled_by_nn or self._stdev_scaled_by_nn or self._chamfer_norm_nn or \
                 self._hausdorff_norm_nn:
             scalefactorNN = self.calculate_scale_factor_nn(pcbatch)
         if self._rmsd_pure:
@@ -326,7 +376,7 @@ class ReconstructionStats(EvalFunction):
         if self._rmsd_scaled_by_nn:
             nlst.append ("RMSD normNN")
             if self._inverse:
-                nlst.append("Inverse RMSD normAR")
+                nlst.append("Inverse RMSD normNN")
         if self._md_pure:
             nlst.append("MD")
             if self._inverse:
