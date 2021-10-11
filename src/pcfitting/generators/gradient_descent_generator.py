@@ -11,6 +11,7 @@ import gmc.mixture as gm
 
 class GradientDescentGenerator(GMMGenerator):
     # GMM Generator following a Gradient Descent approach
+    # Minimizes the Likelihood
 
     _device = torch.device('cuda')
 

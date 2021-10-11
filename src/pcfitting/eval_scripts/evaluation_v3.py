@@ -1,10 +1,15 @@
+# ------------------------------------------------
+# Script for executing the experiments for the GMM-evaluation
+# Can be deleted if not needed anymore
+# ------------------------------------------------
+
 import os
 
 from pcfitting.eval_scripts.eval_db_access_v2 import EvalDbAccessV2
 from pcfitting import programs, MaxIterationTerminationCriterion, RelChangeTerminationCriterion, PCDatasetIterator, \
     data_loading, GMSampler
 from pcfitting.generators import GradientDescentGenerator, EMGenerator, EckartGeneratorSP, EckartGeneratorHP, PreinerGenerator
-from pcfitting.error_functions import AvgDensities, ReconstructionStats, GMMStats, Irregularity, ReconstructionStatsFiltered, ReconstructionStatsProjected
+from pcfitting.error_functions import AvgDensities, ReconstructionStats, GMMStats, Smoothness, ReconstructionStatsFiltered, ReconstructionStatsProjected
 import time
 import gmc.mixture
 from gmc.cpp.gm_vis.gm_vis import GMVisualizer
@@ -83,7 +88,7 @@ for n_fit_points in ns_fit_points:
     dataset_eval_dist = PCDatasetIterator(1, n_eval_points_distance, evalpc_path, model_path)
     dbaccess = EvalDbAccessV2(db_path)
     evaldensity = AvgDensities()
-    evalsmooth = Irregularity(subsamples=10000)
+    evalsmooth = Smoothness(subsamples=10000)
     evaldistane = ReconstructionStats()
     evalfilproj = ReconstructionStatsFiltered(ReconstructionStatsProjected(ReconstructionStats(rmsd_scaled_by_nn=False, md_scaled_by_nn=False, cv=True, inverse=False, chamfer_norm_nn=False, sample_points=n_eval_points_distance)))
     evalstats = GMMStats()

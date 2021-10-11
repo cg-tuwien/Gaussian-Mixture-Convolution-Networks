@@ -9,6 +9,8 @@ from pcfitting.cpp.gmeval import pyeval
 
 class PSNR(EvalFunction):
     # Calculates a score by calculating the PSNR of the point cloud given the mixture
+    # The PSNR is calculated as described by Eckart et al.'s paper on their HEM-algorithm
+    # Obsolete, use ReconstructionStats instead
 
     def calculate_score(self, pcbatch: torch.Tensor, gmpositions: torch.Tensor, gmcovariances: torch.Tensor,
                         gminvcovariances: torch.Tensor, gmamplitudes: torch.Tensor,

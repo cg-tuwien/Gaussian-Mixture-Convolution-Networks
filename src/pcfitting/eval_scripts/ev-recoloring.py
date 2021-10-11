@@ -1,3 +1,8 @@
+# ------------------------------------------------
+# Useful script for creating the visualizations for a folder of GMMs
+# Can be deleted if not needed anymore
+# ------------------------------------------------
+
 import os
 from gmc.cpp.gm_vis.gm_vis import GMVisualizer, GmVisColoringRenderMode, GmVisColorRangeMode
 from pcfitting import data_loading, GMSampler

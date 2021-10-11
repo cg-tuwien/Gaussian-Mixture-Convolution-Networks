@@ -1,3 +1,8 @@
+# ------------------------------------------------
+# Class used for evaluation of GMM-experiments. Provides access to our SqLite-Evaluation-Database
+# Can be deleted if not needed anymore
+# ------------------------------------------------
+
 import sqlite3
 from typing import Optional
 

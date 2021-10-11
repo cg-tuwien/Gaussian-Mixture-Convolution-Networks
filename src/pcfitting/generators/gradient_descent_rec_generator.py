@@ -10,7 +10,9 @@ import gmc.mixture as gm
 
 
 class GradientDescentRecGenerator(GMMGenerator):
-    # GMM Generator following a Gradient Descent approach reducing the reconstruction error
+    # GMM Generator following a Gradient Descent approach minimizing the reconstruction error
+    # rather than the Likelihood using the RcdLoss
+    # Results are not much better than of the normal GradientDescentGenerator
 
     _device = torch.device('cuda')
 

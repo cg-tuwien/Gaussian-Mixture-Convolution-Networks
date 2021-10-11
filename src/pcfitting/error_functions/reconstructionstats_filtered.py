@@ -13,8 +13,14 @@ import time
 import open3d as o3d
 
 class ReconstructionStatsFiltered(EvalFunction):
+    # Decorator for ReconstructionStats. Adds a filtering preprocessing stage that removes outliers from the
+    # reconstructed pointcloud.
 
     def __init__(self, recstat: [ReconstructionStats, ReconstructionStatsProjected] = None, thresh = -1.0):
+        # Parameters
+        # recstat: Object to decorate
+        # thresh: If < 0 the thresh is the maximum distance from an evaluation point to its nearest reconstructed point.
+        # Otherwise the given value is used.
         if recstat is None:
             recstat = ReconstructionStats()
         self._recstat = recstat
@@ -54,8 +60,7 @@ class ReconstructionStatsFiltered(EvalFunction):
         scene.add_triangles(meshO)
         distances = torch.from_numpy(scene.compute_distance(query_point).numpy()).cuda()
         closest = sampled[0, distances.lt(thresh), :]
-        print(closest.shape[0])
-        #data_loading.write_pc_to_off(modelpath + str(time.time()) + ".recf.off", closest)
+        #print(closest.shape[0])
 
         return self._recstat.calculate_score_on_reconstructed(pcbatch, closest, modelpath)
 

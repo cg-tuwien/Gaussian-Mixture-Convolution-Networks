@@ -13,6 +13,8 @@ import math
 
 
 class PreinerGenerator(GMMGenerator):
+    # Previous unfinished implementation of geometrically regularized Bottom-Up-HEM
+    # use preiner_generator.py instead
 
     def __init__(self,
                  reduction_factor: float,

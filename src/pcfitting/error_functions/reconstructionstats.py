@@ -16,6 +16,7 @@ from pysdf import SDF
 
 
 class ReconstructionStats(EvalFunction):
+    # This class calculates metrics based on a reconstructed point cloud from the GMM, such as Reconstruction Error
 
     def __init__(self,
                  rmsd_pure: bool = False,
@@ -48,6 +49,48 @@ class ReconstructionStats(EvalFunction):
                  cov_measure_scaled_by_area: bool = False,
                  sample_points: int = 100000,
                  usepysdf = True):
+        # Parameters (if true, then...):
+        # rmsd_[xxx]: bool
+        #   Root Mean Square Distance from eval point cloud to reconstructed point cloud.
+        #   Original, scaled by bb diagonal, scaled by area, or scaled by nearest-neighbor-distance
+        # md_[xxx]: bool
+        #   Average distance from eval point cloud to reconstructed point cloud.
+        #   Original, scaled by bb diagonal, scaled by area, or scaled by nearest-neighbor-distance
+        # stdev[_xxx]: bool
+        #   Standard deviation of distances from eval point cloud to reconstructed point cloud.
+        #   Original, scaled by bb diagonal, scaled by area, or scaled by nearest-neighbor-distance
+        # cv: bool
+        #   Coefficient of variation of distances from eval point cloud to reconstructed point cloud.
+        #   Does not require scaling
+        # kurtosis: bool
+        #   Currently not functioning
+        # psnr: bool
+        #   PSNR value as defined by Eckart et al.
+        # maxdist[_xxx]: bool
+        #   Maximum distance from eval point cloud to reconstructed point cloud
+        #   Original, scaled by area, or scaled by nearest-neighbor-distance
+        # inverse: bool
+        #   If true, all previous measurements are calculated in the other direction as well (from reconstructed
+        #   point cloud to eval point cloud)
+        # inverse_exact: bool
+        #   If inverse values are calculated, then instead of using the evaluation point cloud, the distances to the
+        #   original surface are calculated
+        # chamfer[_xxx]: bool
+        #   Calculates the chamfer distance and it's root
+        #   Original, scaled by area, or scaled by nearest-neighbor-distance
+        # hausdorff[_xxx]: bool
+        #   Calculates the hausdorff distance between the point clouds
+        #   Original, scaled by area, or scaled by nearest-neighbor-distance
+        # cov_measure: bool
+        #   Calculates the cov measure for describing uniformity of the reconstructed point clouds, which is the
+        #   coefficient of variation of the nearest-neighbor-distances. The standard deviation is calculated as well.
+        # cov_measure_scaled_by_area: bool
+        #   Calculates the standard deviation of the nearest-neighbor-distances used in the cov-measure scaled by the
+        #   area.
+        # sample_points: int
+        #   How many points should be sampled from the GMM for the reconstructed point cloud
+        # usepysdf: bool
+        #   Uses the PySDF library, which is faster than our own implementations
         self._rmsd_pure = rmsd_pure
         self._rmsd_scaled_bb_diag = rmsd_scaled_bb_diag
         self._rmsd_scaled_by_area = rmsd_scaled_by_area

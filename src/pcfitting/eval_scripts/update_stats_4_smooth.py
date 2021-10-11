@@ -1,3 +1,7 @@
+# ------------------------------------------------
+# This script has been used to update irregularity values in the database according to the new metric
+# Can be deleted if not needed anymore
+# ------------------------------------------------
 import os
 import sqlite3
 import time
@@ -6,7 +10,7 @@ from pcfitting.eval_scripts.eval_db_access_v2 import EvalDbAccessV2
 from pcfitting import programs, MaxIterationTerminationCriterion, RelChangeTerminationCriterion, PCDatasetIterator, \
     data_loading, GMSampler
 from pcfitting.generators import GradientDescentGenerator, EMGenerator, EckartGeneratorSP, EckartGeneratorHP, PreinerGenerator
-from pcfitting.error_functions import AvgDensities, ReconstructionStats, GMMStats, Irregularity, ReconstructionStatsProjected, ReconstructionStatsFiltered
+from pcfitting.error_functions import AvgDensities, ReconstructionStats, GMMStats, Smoothness, ReconstructionStatsProjected, ReconstructionStatsFiltered
 import time
 import gmc.mixture
 from gmc.cpp.gm_vis.gm_vis import GMVisualizer
@@ -26,7 +30,7 @@ rendering_path = r"K:\DA-Eval\dataset_eval_big\renderings"
 db_path = r"K:\DA-Eval\EvalV3.db"
 
 #evalstats = GMMStats(False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, True, True, True)
-#evalsmooth = Irregularity(subsamples=10000)
+#evalsmooth = Smoothness(subsamples=10000)
 recstats = ReconstructionStatsFiltered(ReconstructionStatsProjected(ReconstructionStats(rmsd_scaled_by_nn=False, md_scaled_by_nn=False, cv=True, inverse=False, chamfer_norm_nn=False, sample_points=100000)))
 dbaccess = EvalDbAccessV2(db_path)
 

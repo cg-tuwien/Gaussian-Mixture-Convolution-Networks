@@ -15,6 +15,7 @@ import pcfitting.cpp.gmslib.src.pytorch_bindings.compute_mixture as gms
 
 
 class PreinerGenerator(GMMGenerator):
+    # Generator for Geometrically regularized bottom-up-HEM by Preiner et al.
 
     def __init__(self,
                  alpha: float = 2.0,

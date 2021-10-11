@@ -17,6 +17,7 @@ from sklearn.mixture import GaussianMixture
 
 
 class ScikitEMGenerator(GMMGenerator):
+    # Uses EM by SciKit-Learn
 
     def __init__(self,
                  n_components: int = 1,

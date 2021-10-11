@@ -7,6 +7,7 @@ import gmc.mat_tools as mat_tools
 import math
 
 class GMMStats(EvalFunction):
+    # This class calculates metrics based on the statistics about the GMM by itself.
 
     def __init__(self,
                  avg_trace: bool = True,
@@ -29,6 +30,43 @@ class GMMStats(EvalFunction):
                  avg_sqrt_det: bool = True,
                  std_sqrt_det: bool = True,
                  cv_ellvol: bool = True):
+        # Parameters (if true, then...):
+        # >> Note: All scaleable metrics are normalized by applying the pcbatch's attribute nnscalefactor.
+        # Should be set before calling! <<
+        # avg_trace: bool
+        #   Calculates the average trace of the covariance matrices
+        # stdev_traces: bool
+        #   Calculates the standard deviation of traces of the covariance matrices
+        # cv_traces: bool
+        #   Calculates the coefficient of variation of traces of the covariance matrices
+        # avg_evs: bool
+        #   Calculates average eigenvalues (largest, medium and smallest respectively)
+        # stdev_evs: bool
+        #   Calculates standard deviations of eigenvalues (largest, medium, and smallest respectively)
+        # avg_det: bool
+        #   Calculates average determinant of the covariance matrices
+        # stdev_det: bool
+        #   Calculates standard deviation of the determinants covariance matrices
+        # cv_det: bool
+        #   Calculates coefficient of variation of the determinants
+        # avg_weight: bool
+        #   Calculates average prior weight
+        # stdev_weights: bool
+        #   Calculates standard deviation of prior weights
+        # sum_of_weights: bool
+        #   Calculates sum of prior weights (should be 1)
+        # zero_gaussians: bool
+        #   Calculates the number of Gaussians with prior weight = 0
+        # invalid_gaussians: bool
+        #   Calculates the number of Gaussians with non positive definite symmetric covariance matrix
+        # em_default_abs_eps: bool
+        #   Calculates absolute regularization value if relative value is 1e-7
+        # avg_sqrt_det: bool
+        #   Calculates average square root of determinant
+        # std_sqrt_det: bool
+        #   Calculates standard deviation of roots of determinants
+        # cv_ellvol: bool
+        #   Calculates coefficient of variation of isoellipsoid volumes by std_sqrt_det / avg_sqrt_det
         self._avg_trace = avg_trace
         self._stdev_traces = stdev_traces
         self._cv_traces = cv_traces

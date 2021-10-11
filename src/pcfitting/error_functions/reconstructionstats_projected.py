@@ -10,6 +10,8 @@ from pysdf import SDF
 import open3d as o3d
 
 class ReconstructionStatsProjected(EvalFunction):
+    # Decorator for ReconstructionStats. Adds a projection preprocessing stage that projects reconstructed points
+    # onto the surface.
 
     def __init__(self, recstat: ReconstructionStats = None):
         if recstat is None:

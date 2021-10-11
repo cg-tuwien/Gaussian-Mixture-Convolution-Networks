@@ -7,6 +7,6 @@ from .reconstructionstats import ReconstructionStats
 from .reconstructionstats_projected import ReconstructionStatsProjected
 from .reconstructionstats_filtered import ReconstructionStatsFiltered
 from .int_uniformity import IntUniformity
+from .lc_smoothness import LcSmoothness
 from .smoothness import Smoothness
-from .irregularity import Irregularity
 from .rcd_loss import RcdLoss

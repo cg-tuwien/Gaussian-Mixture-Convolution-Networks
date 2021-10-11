@@ -13,7 +13,9 @@ from scipy.integrate import dblquad
 from pcfitting.cpp.gmeval import pyeval
 
 class IntUniformity(EvalFunction):
-    # Calculates the integral based density variation on the surface
+    # This class was an experiment to calculate the true standard deviation of density values a long a surface
+    # by applying numerical methods rather than using an evaluation point cloud.
+    # It takes way too long.
 
     def __init__(self, unscaled: bool = True, scaled: bool = True, mean: bool = True):
         self._unscaled = unscaled

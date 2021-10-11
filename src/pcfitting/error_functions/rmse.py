@@ -8,7 +8,8 @@ from pcfitting.cpp.gmeval import pyeval
 
 
 class RMSE(EvalFunction):
-    # Calculates a score by calculating the PSNR of the point cloud given the mixture
+    # Calculates the root mean square error as used by Eckart et al.
+    # Obsolete, use ReconstructionStats instead
 
     def calculate_score(self, pcbatch: torch.Tensor, gmpositions: torch.Tensor, gmcovariances: torch.Tensor,
                         gminvcovariances: torch.Tensor, gmamplitudes: torch.Tensor,

@@ -9,7 +9,10 @@ from pytorch3d import loss as p3dl
 
 
 class RcdLoss(EvalFunction):
-    # Calculates an error by calculating the likelihood of the point cloud given the mixture
+    # Calculates an error by calculating the reconstruction error of a mixture.
+    # This ignores prior weights! The weights are assumed to be equal! To create usable gradients, one Gaussian
+    # is sampled in the beginning and then the point cloud is just scaled and moved to fit the constructed Gaussians.
+    # This is used by GradientDescentRecGenerator
 
     def __init__(self, np, ng):
         # avoidinf to True adds epps to the gaussian values to avoid taking the logarithm of 0 which would

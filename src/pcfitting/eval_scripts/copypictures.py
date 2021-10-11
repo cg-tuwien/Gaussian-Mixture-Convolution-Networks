@@ -1,3 +1,8 @@
+# ------------------------------------------------
+# Useful script for ordering the renderings of GMMs by a score
+# Can be deleted if not needed anymore
+# ------------------------------------------------
+
 import os
 import sqlite3
 from math import sqrt

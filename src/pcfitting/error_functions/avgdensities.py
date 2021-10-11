@@ -12,7 +12,8 @@ import time
 from pcfitting.cpp.gmeval import pyeval
 
 class AvgDensities(EvalFunction):
-    # Calculates the average log likelihood of the point cloud given the mixture
+    # This class calculates metrics based on the density values of a GMM at the points of an evaluation point cloud.
+    # This provides metrics, such as likelihood, mean density, standard deviation / cv of density, etc.
 
     def __init__(self,
                  calculate_logavg: bool = False,
@@ -28,6 +29,32 @@ class AvgDensities(EvalFunction):
                  calculate_cv: bool = True,
                  enlarge_evs: bool = False,
                  smallest_ev: float = 2e-4):
+        # Parameters (if true, then...):
+        # calculate_logavg: bool
+        #   Calculates the mean logarithmic density, which equals the log likelihood divided by the number of points
+        # calculate_logavg_scaled_area: bool
+        #   Calculates the mean logarithmic density, normalized by the area-based scaling method
+        # calculate_logavg_scaled_nn: bool
+        #   Calculates the mean logarithmic density, normalized by the nearest-neighbor-distance-based scaling method
+        # calculate_avg: bool
+        #   Calculates the mean density
+        # calculate_stdev: bool
+        #   Calculates the standard deviation of the density values
+        # calculate_avg_scaled_area: bool
+        #   Calculates the mean density, normalized by the area-based scaling method
+        # calculate_avg_scaled_nn: bool
+        #   Calculates the mean density, normalized by the nearest-neighbor-distance-based scaling method
+        # calculate_stdev_scaled_area: bool
+        #   Calculates the standard deviation of the density values, normalized by the area-based scaling method
+        # calculate_stdev_scaled_nn: bool
+        #   Calculates the standard deviation of the density values, normalized by the nearest-neighbor-distance-based
+        #   scaling method
+        # calculate_cv: bool
+        #   Calculates the coefficient of variation of the density values (no normalization required)
+        # enlarge_evs: bool
+        #   Enlarges the eigenvectors to be at least of size smallest_ev
+        # smallest_ev: float
+        #   See enlarge_evs
         self._logavg = calculate_logavg
         self._logstdv = calculate_logstdv
         self._logavg_scaled_area = calculate_logavg_scaled_area
