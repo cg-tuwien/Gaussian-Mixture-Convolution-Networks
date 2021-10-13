@@ -1,3 +1,8 @@
+# ------------------------------------------------
+# Class used for evaluation of GMM-experiments. Provides access to our SqLite-Evaluation-Database
+# Can be deleted if not needed anymore
+# ------------------------------------------------
+
 import sqlite3
 from typing import Optional
 
@@ -80,10 +85,11 @@ class EvalDbAccessV2:
                             sigma_d: float,
                             v_d: float,
                             smooth: float,
+                            smoothvar: float,
                             run_id: int) -> int:
-        sql = "INSERT INTO EvalDensity(mu_L, sigma_L, mu_D, sigma_D, v_D, smooth, run) VALUES (?,?,?,?,?,?,?) "
+        sql = "INSERT INTO EvalDensity(mu_L, sigma_L, mu_D, sigma_D, v_D, smooth, smooth_var, run) VALUES (?,?,?,?,?,?,?,?) "
         cur = self._con.cursor()
-        cur.execute(sql, (mu_l, sigma_l, mu_d, sigma_d, v_d, smooth, run_id))
+        cur.execute(sql, (mu_l, sigma_l, mu_d, sigma_d, v_d, smooth, smoothvar, run_id))
         self._con.commit()
         return cur.lastrowid
 
@@ -97,10 +103,12 @@ class EvalDbAccessV2:
                              std_g: float,
                              cv_g: float,
                              rcd: float,
+                             std_s_projfil: float,
+                             cv_s_projfil: float,
                              run: int) -> int:
-        sql = "INSERT INTO EvalDistance(rmsd_s, md_s, std_s, cv_s, rmsd_g, md_g, std_g, cv_g, rcd, run) VALUES (?,?,?,?,?,?,?,?,?,?) "
+        sql = "INSERT INTO EvalDistance(rmsd_s, md_s, std_s, cv_s, rmsd_g, md_g, std_g, cv_g, rcd, std_s_projfil, cv_s_projfil, run) VALUES (?,?,?,?,?,?,?,?,?,?,?,?) "
         cur = self._con.cursor()
-        cur.execute(sql, (rmsd_s, md_s, std_s, cv_s, rmsd_g, md_g, std_g, cv_g, rcd, run))
+        cur.execute(sql, (rmsd_s, md_s, std_s, cv_s, rmsd_g, md_g, std_g, cv_g, rcd, std_s_projfil, cv_s_projfil, run))
         self._con.commit()
         return cur.lastrowid
 

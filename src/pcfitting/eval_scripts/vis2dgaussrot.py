@@ -1,3 +1,8 @@
+# ------------------------------------------------
+# Useful script for creating 2D density visualizations of a single Gaussian, given its eigenvectors
+# Can be deleted if not needed anymore
+# ------------------------------------------------
+
 from PIL import Image, ImageDraw
 import numpy as np
 import math

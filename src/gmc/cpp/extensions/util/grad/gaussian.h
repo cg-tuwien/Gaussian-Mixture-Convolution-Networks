@@ -21,7 +21,7 @@ EXECUTION_DEVICES void evaluate_inversed(const Gaussian<DIMS, scalar_t>& gaussia
                                 Gaussian<DIMS, scalar_t>* grad_gaussian, glm::vec<DIMS, scalar_t>* grad_evalpos,
                                 scalar_t incoming_grad) {
     using gradless_scalar_t = gpe::remove_grad_t<scalar_t>;
-    constexpr gradless_scalar_t factor = gcem::pow(2 * glm::pi<gradless_scalar_t>(), -gradless_scalar_t(DIMS) / gradless_scalar_t(2.));
+    gradless_scalar_t factor = gcem::pow(2 * glm::pi<gradless_scalar_t>(), -gradless_scalar_t(DIMS) / gradless_scalar_t(2.));
 
     using Vec = glm::vec<DIMS, scalar_t>;
     const auto t = evalpos - gaussian.position;

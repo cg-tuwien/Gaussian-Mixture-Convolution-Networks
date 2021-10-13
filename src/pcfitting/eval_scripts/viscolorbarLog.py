@@ -1,3 +1,8 @@
+# ------------------------------------------------
+# Useful script for creating a colorbar for our density color map
+# Can be deleted if not needed anymore
+# ------------------------------------------------
+
 from PIL import Image, ImageDraw
 import numpy as np
 import math

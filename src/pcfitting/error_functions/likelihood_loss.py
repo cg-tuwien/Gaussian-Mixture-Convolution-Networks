@@ -9,6 +9,7 @@ import pcfitting.config as general_config
 
 class LikelihoodLoss(EvalFunction):
     # Calculates an error by calculating the likelihood of the point cloud given the mixture
+    # Used for the EM/Eck-termination criterions and the Gradient Descent Generator
 
     def __init__(self, avoidinf: bool, eps: float = 1e-5):
         # avoidinf to True adds epps to the gaussian values to avoid taking the logarithm of 0 which would

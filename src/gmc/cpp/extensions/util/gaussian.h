@@ -82,7 +82,7 @@ EXECUTION_DEVICES bool isnan(const Gaussian<DIMS, scalar_t>& g) {
 template <typename scalar_t, int DIMS>
 EXECUTION_DEVICES scalar_t evaluate_inversed(const Gaussian<DIMS, scalar_t>& gaussian, const glm::vec<DIMS, scalar_t>& evalpos) {
     using gradless_scalar_t = gpe::remove_grad_t<scalar_t>;
-    constexpr gradless_scalar_t factor = gcem::pow(2 * glm::pi<gradless_scalar_t>(), -gradless_scalar_t(DIMS) / gradless_scalar_t(2.));
+    gradless_scalar_t factor = gcem::pow(2 * glm::pi<gradless_scalar_t>(), -gradless_scalar_t(DIMS) / gradless_scalar_t(2.));
 
     const auto t = evalpos - gaussian.position;
     const auto v = scalar_t(-0.5) * glm::dot(t, (gaussian.covariance * t));

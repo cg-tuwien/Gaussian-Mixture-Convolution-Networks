@@ -14,10 +14,16 @@ from pcfitting.cpp.gmeval import pyeval
 from pcfitting.generators.em_tools import EMTools
 
 class Smoothness(EvalFunction):
-    # Calculates the smoothness according to locally consistent gmm paper
+    # Calculates the smoothness according to an own method using nearest-neighbor-graphs:
+    # Result 0 ("Irr: Average Variation") is a good measurement for the smoothness of a GMM.
+    # It represents the average local change of the GMM's density values.
+    # It has not been used in the thesis.
+    # When applying it for the first time on a point cloud, a nearest neighbor file is calculated
+    # which might take some time
 
-    def __init__(self, nn: int = 17):
-        self._nn = 17
+    def __init__(self, nn: int = 17, subsamples: int = -1):
+        self._nn = nn
+        self._subsamples = subsamples
         pass
 
     def calculate_score(self, pcbatch: torch.Tensor, gmpositions: torch.Tensor, gmcovariances: torch.Tensor,
@@ -28,66 +34,44 @@ class Smoothness(EvalFunction):
         mixture_with_inversed_cov = gm.pack_mixture(gmamplitudes, gmpositions, gminvcovariances)
         dt = mixture_with_inversed_cov.dtype
         point_count = pcbatch.shape[1]
+        points = pcbatch.view(1, 1, -1, 3)
 
         # shape: (np, nn)
         nngraph = None
         if modelpath is not None:
-            file = modelpath + ".nngraph-e" + str(point_count) + "-n" + str(self._nn) + ".torch"
+            file = modelpath + ".nngraph-e" + str(point_count) + "-n" + str(self._nn) + (("_s" + str(self._subsamples)) if self._subsamples > 0 else "") + ".torch"
             if os.path.exists(file):
                 nngraph = torch.load(file).cuda()
             else:
                 print("Calculating nngraph")
-                nngraph = pyeval.nn_graph(pcbatch.view(-1, 3), self._nn).cuda()
+                if self._subsamples > 0:
+                    nngraph = pyeval.nn_graph_sub(pcbatch.view(-1, 3), self._subsamples, self._nn).cuda()
+                else:
+                    nngraph = pyeval.nn_graph(pcbatch.view(-1, 3), self._nn).cuda()
                 torch.save(nngraph, file)
                 print("Saved nngraph")
 
-        gcount = gmpositions.shape[2]
-        gm_data = EMTools.TrainingData(1, gcount, gmpositions.dtype, 1)
-        gm_data.set_positions(gmpositions[0:1], torch.tensor([True]))
-        gm_data.set_covariances(gmcovariances[0:1], torch.tensor([True]))
-        gm_data.set_amplitudes(gmamplitudes[0:1], torch.tensor([True]))
-        print("E-Step")
-        # shape: (np, ng)
-        responsibilities = EMTools.expectation(pcbatch.view(1, 1, -1, 1, 3), gm_data, gcount, torch.tensor([True]), -1, 10000)[0].squeeze()
+        output = torch.zeros(point_count, dtype=dt, device=mixture_with_inversed_cov.device)
+        # output[int(point_count/2):] = 1
+        subbatches = math.ceil((point_count) / 65535)
+        subbatch_pointcount = math.ceil(point_count / subbatches)
+        for p in range(subbatches):
+            startidx = p * subbatch_pointcount
+            endidx = min((p + 1) * subbatch_pointcount, point_count)
+            output[startidx:endidx] = \
+                gm.evaluate_inversed_with_amplitude_mixture(mixture_with_inversed_cov, points[:, :, startidx:endidx, :]).view(-1)
 
-        del gm_data
+        res = torch.zeros(2, 1, device=pcbatch.device, dtype=pcbatch.dtype)
+        smooth, var = pyeval.irregularity_sub(output.cpu(), nngraph.cpu())
+        res[0, 0] = smooth
+        res[1, 0] = var
 
-        print("R-calc")
-        R = pyeval.smoothness(responsibilities.to(torch.double).cpu(), nngraph.cpu())
-        # R = 0
-        # for i_start in range(0, point_count, 1000):
-        #     i_end = i_start + 1000
-        #     i_batch_size = min(point_count, i_end) - i_start
-        #     for j_start in range(0, point_count, 500):
-        #         j_end = j_start + 500
-        #         j_batch_size = min(point_count, j_end) - j_start
-        #         skds = torch.zeros(i_batch_size, j_batch_size, dtype=responsibilities.dtype, device='cuda')
-        #         responsibilities_I = responsibilities[i_start:i_end, :].unsqueeze(1).expand(i_batch_size, j_batch_size, gcount)
-        #         responsibilities_J = responsibilities[j_start:j_end, :].unsqueeze(0).expand(i_batch_size, j_batch_size, gcount)
-        #         # shape: (npI, npJ)
-        #         klds_ij = (responsibilities_I * torch.log(responsibilities_I / responsibilities_J)).sum(dim=2)
-        #         klds_ji = (responsibilities_J * torch.log(responsibilities_J / responsibilities_I)).sum(dim=2)
-        #         symkldivs = 0.5*(klds_ij + klds_ji)
-        #         w = torch.zeros(i_batch_size, j_batch_size, dtype=torch.bool, device='cuda')
-        #         # shape: (npI, nn)
-        #         subgraph_i = nngraph[i_start:i_end]
-        #         # list of indizes
-        #         subgraph_i_relevant = ((subgraph_i >= j_start) & (subgraph_i < j_end)).nonzero()
-        #         w[subgraph_i_relevant[:, 0], subgraph_i[subgraph_i_relevant[:,0], subgraph_i_relevant[:,1]] - j_start] = 1
-        #         subgraph_j = nngraph[j_start:j_end]
-        #         subgraph_j_relevant = ((subgraph_j >= i_start) & (subgraph_j < i_end)).nonzero()
-        #         w[subgraph_j_relevant[:, 0], subgraph_j[subgraph_j_relevant[:,0], subgraph_j_relevant[:,1]] - i_start] = 1
-        #         R += 0.5*(symkldivs * w).sum().item()
-
-        res = torch.zeros(1, batch_size, device=pcbatch.device, dtype=pcbatch.dtype)
-        sfnn, sfnnl = self.calculate_scale_factors_nn(pcbatch)
-        i = 0
-        res[i, 0] = R
         return res
 
     def get_names(self) -> List[str]:
         nlst = []
-        nlst.append("Smoothness (Unscaled)")
+        nlst.append("Irr: Average Variation")
+        nlst.append("Irr: Variance of Variation")
         return nlst
 
     def calculate_scale_factors_nn(self, pcbatch: torch.Tensor) -> (float, float):

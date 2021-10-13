@@ -1,5 +1,6 @@
 from .em_generator import EMGenerator
 from .gradient_descent_generator import GradientDescentGenerator
+from .gradient_descent_rec_generator import GradientDescentRecGenerator
 from .eckart_generator_hp import EckartGeneratorHP
 from .eckart_generator_sp import EckartGeneratorSP
 from .preiner_generator import PreinerGenerator

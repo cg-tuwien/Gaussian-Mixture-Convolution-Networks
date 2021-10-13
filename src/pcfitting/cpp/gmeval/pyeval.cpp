@@ -661,7 +661,7 @@ float irregularity(torch::Tensor densities, torch::Tensor nngraph)
     std::vector<float> stdevs;
     stdevs.resize(nP);
 
-    //#pragma omp parallel for
+    #pragma omp parallel for
     for (int i = 0; i < nP; ++i)
     {
         float dI = dsAccess[i];
@@ -727,7 +727,7 @@ float irregularity(torch::Tensor densities, torch::Tensor nngraph)
 
 //densities (N)
 //nngraph (S, k)
-float irregularity_sub(torch::Tensor densities, torch::Tensor nngraph_sub)
+py::tuple irregularity_sub(torch::Tensor densities, torch::Tensor nngraph_sub)
 {
     omp_set_dynamic(0);
     omp_set_num_threads(8);
@@ -778,21 +778,30 @@ float irregularity_sub(torch::Tensor densities, torch::Tensor nngraph_sub)
     /*unsigned int now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
     std::cout << "LogID: " << std::to_string(now) << std::endl;
     std::ofstream out("D:/Simon/Studium/S-11 (WS19-20)/Diplomarbeit/EvalLogs/sm-" + std::to_string(now) + ".txt");*/
-    float sumstdevs = 0;
+    float sumcvs = 0;
     for (int i = 0; i < nS; ++i)
     {
-        sumstdevs += stdevs[i];
+        sumcvs += stdevs[i];
         //out << stdevs[i] << std::endl;
     }
     //out.close();
-    float result = sumstdevs / nS;
+    //float result = sumstdevs / nS;
+    float mean = sumcvs / nS;
+    float sumdevs = 0;
+    for (int i = 0; i < nS; ++i)
+    {
+        sumdevs += std::pow(stdevs[i] - mean, 2);
+    }
+    float cvstd = std::sqrt(sumdevs / (nS - 1));
+    return py::make_tuple(mean, cvstd);
 
     //std::sort(stdevs.begin(), stdevs.end());
     //float result = stdevs[nS / 2];
 
 
-    return result;
+    //return result;
 }
+
 
 #include "sampler.hpp"
 

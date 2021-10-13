@@ -16,7 +16,8 @@ gmm = False
 # training_name = '210312-EMepsvar'
 # training_name = '210312-ng64'
 # training_name = "210413-1-preinercheck"
-training_name = "210421-em579"
+# training_name = "210421-em579"
+training_name = "210923-01-irr/EM510K"
 
 gmm_path += training_name
 out_path += "n" + str(n_points) + "/" + training_name
@@ -28,5 +29,5 @@ for root, dirs, files in os.walk(gmm_path):
             relpath = path[len(gmm_path) + 1:]
             print(relpath)
             gm = data_loading.read_gm_from_ply(path, gmm)
-            pc = GMSampler.sampleGM(gm, n_points)
+            pc = GMSampler.sampleGM_ext(gm, n_points)
             data_loading.write_pc_to_off(os.path.join(out_path, relpath + ".off"), pc)

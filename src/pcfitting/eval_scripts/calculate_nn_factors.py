@@ -1,3 +1,8 @@
+# ------------------------------------------------
+# Useful script for precalculating the nn-scaling-factors for evaluation
+# Can be deleted if not needed anymore
+# ------------------------------------------------
+
 from pcfitting.cpp.gmeval import pyeval
 from pcfitting import PCDatasetIterator
 from pcfitting.eval_scripts.eval_db_access_v2 import EvalDbAccessV2

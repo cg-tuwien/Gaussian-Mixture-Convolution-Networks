@@ -1,6 +1,6 @@
 from pcfitting import GMMGenerator, GMLogger, data_loading
 from pcfitting import TerminationCriterion, MaxIterationTerminationCriterion
-from pcfitting.error_functions import LikelihoodLoss
+from pcfitting.error_functions import LikelihoodLoss, RcdLoss
 from gmc.cpp.extensions.furthest_point_sampling import furthest_point_sampling
 from .em_generator import EMGenerator
 from .gmm_initializer import GMMInitializer
@@ -9,9 +9,10 @@ import torch.optim
 import gmc.mixture as gm
 
 
-class GradientDescentGenerator(GMMGenerator):
-    # GMM Generator following a Gradient Descent approach
-    # Minimizes the Likelihood
+class GradientDescentRecGenerator(GMMGenerator):
+    # GMM Generator following a Gradient Descent approach minimizing the reconstruction error
+    # rather than the Likelihood using the RcdLoss
+    # Results are not much better than of the normal GradientDescentGenerator
 
     _device = torch.device('cuda')
 
@@ -20,8 +21,8 @@ class GradientDescentGenerator(GMMGenerator):
                  n_sample_points: int,
                  termination_criterion: TerminationCriterion = MaxIterationTerminationCriterion(500),
                  initialization_method: str = "randonpoints",
-                 learn_rate_pos: float = 1e-3,
-                 learn_rate_cov: float = 1e-4,
+                 learn_rate_pos: float = 1e-2,
+                 learn_rate_cov: float = 5e-3,
                  learn_rate_weights: float = 5e-4):
         # Constructor. Creates a new GradientDescentGenerator.
         # Parameters:
@@ -53,7 +54,7 @@ class GradientDescentGenerator(GMMGenerator):
         self._learn_rate_pos = learn_rate_pos
         self._learn_rate_cov = learn_rate_cov
         self._learn_rate_weights = learn_rate_weights
-        self._loss = LikelihoodLoss(True)
+        self._loss = RcdLoss(n_sample_points, n_gaussians)
         self._logger = None
 
     def set_logging(self,
@@ -159,7 +160,8 @@ class GradientDescentGenerator(GMMGenerator):
                                                   weight_min=0, weight_max=1, device=self._device)
             indizes = torch.randperm(point_count)[0:self._n_gaussians]
             positions = pcbatch[:, indizes, :].view(batch_size, 1, self._n_gaussians, 3)
-            return gm.pack_mixture(gm.weights(gmbatch), positions, gm.covariances(gmbatch))
+            weights = torch.ones(batch_size, 1, self._n_gaussians, device=GradientDescentRecGenerator._device) / self._n_gaussians
+            return gm.pack_mixture(weights, positions, gm.covariances(gmbatch))
         elif self._initialization_method == 'fpsrand':
             # furthest point sampling from positions, random covs and weights
             gmbatch = gm.generate_random_mixtures(n_batch=batch_size, n_layers=1, n_components=self._n_gaussians,
@@ -169,12 +171,15 @@ class GradientDescentGenerator(GMMGenerator):
             sampled = furthest_point_sampling.apply(pcbatch.float(), self._n_gaussians).to(torch.long).reshape(-1)
             batch_indizes = torch.arange(0, batch_size).repeat(self._n_gaussians, 1).transpose(-1, -2).reshape(-1)
             gmpositions = pcbatch[batch_indizes, sampled, :].view(batch_size, 1, self._n_gaussians, 3)
-            return gm.pack_mixture(gm.weights(gmbatch), gmpositions, gm.covariances(gmbatch))
+            weights = torch.ones(batch_size, 1, self._n_gaussians, device=GradientDescentRecGenerator._device) / self._n_gaussians
+            return gm.pack_mixture(weights, gmpositions, gm.covariances(gmbatch))
         elif self._initialization_method == 'fpsmax':
             # furthest point sampling from positions, covs by artificial EM-step, fixed weights
             initializer = GMMInitializer(-1, 10000)
             gmbatch = initializer.initialize_fpsmax(pcbatch, self._n_gaussians)
-            return gm.convert_priors_to_amplitudes(gmbatch)
+            weights = torch.ones(batch_size, 1, self._n_gaussians, device=GradientDescentRecGenerator._device) / self._n_gaussians
+            # return gm.convert_priors_to_amplitudes(gmbatch)
+            return gm.pack_mixture(weights, gm.positions(gmbatch), gm.covariances(gmbatch))
         else:
             raise Exception("Invalid Initialization method")
 
@@ -214,7 +219,7 @@ class GradientDescentGenerator(GMMGenerator):
             batch_size = covariances.shape[0]
             n_gaussians = covariances.shape[2]
             cov_factor_mat = torch.cholesky(covariances)
-            cov_factor_vec = torch.zeros((batch_size, 1, n_gaussians, 6)).to(GradientDescentGenerator._device)
+            cov_factor_vec = torch.zeros((batch_size, 1, n_gaussians, 6)).to(GradientDescentRecGenerator._device)
             cov_factor_vec[:, :, :, 0] = torch.max(cov_factor_mat[:, :, :, 0, 0] - self._epsilon, 0)[0]
             cov_factor_vec[:, :, :, 1] = torch.max(cov_factor_mat[:, :, :, 1, 1] - self._epsilon, 0)[0]
             cov_factor_vec[:, :, :, 2] = torch.max(cov_factor_mat[:, :, :, 2, 2] - self._epsilon, 0)[0]
@@ -237,7 +242,7 @@ class GradientDescentGenerator(GMMGenerator):
             # and determinants
             cov_shape = self.tr_cov_data.shape
             cov_factor_mat_rec = torch.zeros((cov_shape[0], cov_shape[1], cov_shape[2], 3, 3)).to(
-                GradientDescentGenerator._device)
+                GradientDescentRecGenerator._device)
             cov_factor_mat_rec[:, :, :, 0, 0] = torch.abs(self.tr_cov_data[:, :, :, 0]) + self._epsilon
             cov_factor_mat_rec[:, :, :, 1, 1] = torch.abs(self.tr_cov_data[:, :, :, 1]) + self._epsilon
             cov_factor_mat_rec[:, :, :, 2, 2] = torch.abs(self.tr_cov_data[:, :, :, 2]) + self._epsilon

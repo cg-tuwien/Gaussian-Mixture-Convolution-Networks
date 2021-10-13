@@ -352,6 +352,8 @@ class EckartGeneratorSP(GMMGenerator):
             [0, -1, 0]
         ], dtype=self._dtype, device=general_config.device)
 
+        epsval = eps[0, 0, 0, 0, 0]
+
         pwfp_relevant = point_weighting_factors > 0  # (np, K)
 
         for i in relevant_parents:
@@ -381,12 +383,12 @@ class EckartGeneratorSP(GMMGenerator):
                 eigenvalues_sorted_sqrt[eigenvalues_sorted_sqrt.isnan()] = 1e-10
                 eigenvectors_sorted = eigenvalues_sorted_sqrt.unsqueeze(0).repeat(3, 1) * eigenvectors[:, indices]
                 if self._n_gaussians_per_node <= 8:
-                    if eigenvalues_sorted[2] > 1e-8:
+                    if eigenvalues_sorted[2] > epsval:
                         gmdata.positions[0, 0, gidx_start:gidx_end] = position_templates3d[0:self._n_gaussians_per_node]
                     else:
                         gmdata.positions[0, 0, gidx_start:gidx_end] = position_templates2d[0:self._n_gaussians_per_node]
                 else:
-                    if eigenvalues_sorted[2] > 1e-8:
+                    if eigenvalues_sorted[2] > epsval:
                         gmdata.positions = position_templates3d.repeat(math.ceil(self._n_gaussians_per_node / 8))[
                                            0:self._n_gaussians_per_node]
                     else:
