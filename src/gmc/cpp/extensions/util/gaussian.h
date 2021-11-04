@@ -99,6 +99,35 @@ EXECUTION_DEVICES scalar_t evaluate(const Gaussian<DIMS, scalar_t>& gaussian, co
     return evaluate_inversed(gpe::Gaussian<DIMS, scalar_t>{gaussian.weight, gaussian.position, glm::inverse(gaussian.covariance)}, evalpos);
 }
 
+// todo: numerical problems when N_VIRTUAL_POINTS is large: a*b for instance 0.001, wi_bar becomes 5.6 -> bad things
+// that depends on cov magnitude => better normalise mixture to have covs in the magnitude of the identity
+template <typename scalar_t, int N_DIMS, int N_VIRTUAL_POINTS = 4>
+EXECUTION_DEVICES scalar_t likelihood(const gpe::Gaussian<N_DIMS, scalar_t>& target, const gpe::Gaussian<N_DIMS, scalar_t>& fitting) {
+    // Continuous projection for fast L 1 reconstruction: Equation 9
+    scalar_t a = gpe::evaluate(gpe::Gaussian<N_DIMS, scalar_t>{1, fitting.position, fitting.covariance}, target.position);
+    auto c = glm::inverse(fitting.covariance) * target.covariance;
+    scalar_t b = gpe::exp(scalar_t(-0.5) * gpe::trace(c));
+    scalar_t wi_bar = N_VIRTUAL_POINTS * target.weight;
+    // pow(0, 0) gives nan in cuda with fast math
+    return gpe::pow(gpe::Epsilon<scalar_t>::clip(a * b), wi_bar);
+}
+
+template <typename scalar_t, int N_DIMS>
+EXECUTION_DEVICES scalar_t kl_divergence(const gpe::Gaussian<N_DIMS, scalar_t>& target, const gpe::Gaussian<N_DIMS, scalar_t>& fitting) {
+    auto p_diff = target.position - fitting.position;
+
+    auto target_cov = target.covariance;
+    auto fitting_cov = fitting.covariance;
+//    auto inversed_target_cov = glm::inverse(target.covariance);
+    auto inversed_fitting_cov = glm::inverse(fitting.covariance);
+
+    // mahalanobis_factor = mahalanobis distance squared
+    auto mahalanobis_factor = glm::dot(p_diff, inversed_fitting_cov * p_diff);
+    auto trace = gpe::trace(inversed_fitting_cov * target_cov);
+    auto logarithm = gpe::log(glm::determinant(target_cov) / glm::determinant(fitting_cov));
+    return scalar_t(0.5) * (mahalanobis_factor + trace - N_DIMS - logarithm);
+}
+
 } // namespace gpe
 
 #endif // GPE_UTIL_GAUSSIAN_H

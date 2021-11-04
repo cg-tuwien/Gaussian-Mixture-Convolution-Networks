@@ -22,7 +22,7 @@ ForwardBackWardOutput implementation_autodiff_backward(torch::Tensor mixture, co
     TORCH_CHECK(mixture.dtype() == caffe2::TypeMeta::Make<scalar_t>(), "something wrong with dispatch, or maybe this float type is not supported.")
 
     const auto n_mixtures = n.batch * n.layers;
-    const LBVH bvh = LBVH(gpe::mixture_with_inversed_covariances(mixture).contiguous(), config.bvh_config);
+    const LBVH bvh = LBVH(mixture, config.bvh_config);
 
     const auto n_internal_nodes = bvh.m_n_internal_nodes;
     const auto n_nodes = bvh.m_n_nodes;
@@ -57,11 +57,11 @@ ForwardBackWardOutput implementation_autodiff_backward(torch::Tensor mixture, co
     std::vector<typename AugmentedBvh<AutoDiffScalar, N_DIMS, REDUCTION_N>::NodeAttributes> nodes_autodiff(unsigned(n_mixtures) * n_nodes);
 
 
-    const auto mixture_a = gpe::accessor<AutoDiffGaussian, 2>(mixture_autodiff, {int32_t(n_mixtures), int32_t(n.components)});
-    const auto aabbs_a = gpe::accessor<AutoDiffScalar, 3>(aabbs_autodiff, {int32_t(flat_bvh_aabbs.size(0)), int32_t(flat_bvh_aabbs.size(1)), int32_t(flat_bvh_aabbs.size(2))});
+    const auto mixture_a = gpe::accessor<AutoDiffGaussian, 2>(mixture_autodiff, {uint32_t(n_mixtures), uint32_t(n.components)});
+    const auto aabbs_a = gpe::accessor<AutoDiffScalar, 3>(aabbs_autodiff, {uint32_t(flat_bvh_aabbs.size(0)), uint32_t(flat_bvh_aabbs.size(1)), uint32_t(flat_bvh_aabbs.size(2))});
     const auto nodes_a = gpe::accessor<lbvh::detail::Node::index_type_torch, 3>(flat_bvh_nodes);
     auto flags_a = gpe::accessor<int, 2>(flag_container);
-    auto node_attributes_a = gpe::accessor<typename AugmentedBvh<AutoDiffScalar, N_DIMS, REDUCTION_N>::NodeAttributes, 2>(nodes_autodiff, {int32_t(n_mixtures), int32_t(n_nodes)});
+    auto node_attributes_a = gpe::accessor<typename AugmentedBvh<AutoDiffScalar, N_DIMS, REDUCTION_N>::NodeAttributes, 2>(nodes_autodiff, {uint32_t(n_mixtures), uint32_t(n_nodes)});
     {
         dim3 dimBlock = dim3(32, 1, 1);
         dim3 dimGrid = dim3(uint(1),
@@ -75,13 +75,13 @@ ForwardBackWardOutput implementation_autodiff_backward(torch::Tensor mixture, co
                                                               n, n_mixtures, n_internal_nodes, n_nodes,
                                                               config);
         };
-        gpe::start_serial(gpe::device(mixture), dimGrid, dimBlock, fun);
+        gpe::start_serial<gpe::ComputeDevice::CPU>(gpe::device(mixture), dimGrid, dimBlock, fun);
     }
 
 //    auto out_mixture = torch::zeros({n_mixtures, config.n_components_fitting, mixture.size(-1)}, torch::TensorOptions(mixture.device()).dtype(mixture.dtype()));
     std::vector<AutoDiffGaussian> out_mixture;
     out_mixture.resize(unsigned(n_mixtures) * config.n_components_fitting);
-    auto out_mixture_a = gpe::accessor<AutoDiffGaussian, 2>(out_mixture, {int32_t(n_mixtures), int32_t(config.n_components_fitting)});
+    auto out_mixture_a = gpe::accessor<AutoDiffGaussian, 2>(out_mixture, {uint32_t(n_mixtures), uint32_t(config.n_components_fitting)});
 
     // make it valid, in case something doesn't get filled (due to an inbalance of the tree or just not enough elements)
     {
@@ -95,7 +95,7 @@ ForwardBackWardOutput implementation_autodiff_backward(torch::Tensor mixture, co
                                                           n, n_mixtures, n_internal_nodes, n_nodes,
                                                           config);
         };
-        gpe::start_serial(gpe::device(mixture), dimGrid, dimBlock, fun);
+        gpe::start_serial<gpe::ComputeDevice::CPU>(gpe::device(mixture), dimGrid, dimBlock, fun);
     }
 
     // set gradients to 0

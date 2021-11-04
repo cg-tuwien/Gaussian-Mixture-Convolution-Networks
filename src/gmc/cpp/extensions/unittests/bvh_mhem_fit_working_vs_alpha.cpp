@@ -12,7 +12,6 @@
 #include "bvh_mhem_fit_alpha/implementation.h"
 #include "common.h"
 #include "evaluate_inversed/evaluate_inversed.h"
-#include "integrate/binding.h"
 #include "unittests/support.h"
 #include "util/mixture.h"
 
