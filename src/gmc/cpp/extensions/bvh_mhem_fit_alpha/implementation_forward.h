@@ -44,16 +44,16 @@ EXECUTION_DEVICES scalar_t cluster_centroid_distance(const gpe::Gaussian<N_DIMS,
 
 template <uint32_t N_CLUSTERS, typename scalar_t, uint32_t N_INPUT>
 EXECUTION_DEVICES
-gpe::Array<gpe::Vector<gaussian_index_t, N_INPUT - N_CLUSTERS + 1>, N_CLUSTERS> clusterise_using_heap(const gpe::Array2d<scalar_t, N_INPUT>& disparities,
-                                                                                                      const gpe::Vector<gaussian_index_t, N_INPUT>& valid_gaussians) {
+gpe::Array<gpe::Vector<small_index_t, N_INPUT - N_CLUSTERS + 1>, N_CLUSTERS> clusterise_using_heap(const gpe::Array2d<scalar_t, N_INPUT>& disparities,
+                                                                                                      const gpe::Vector<small_index_t, N_INPUT>& valid_gaussians) {
     // this is a greedy smallest spanning subtrees algorithm
     static_assert (N_CLUSTERS <= N_INPUT, "N output clusters must be larger than n input");
     assert(N_CLUSTERS <= disparities.size());
     assert(!gpe::reduce(disparities, false, [](bool o, scalar_t v) { return o || gpe::isnan(v); }));
     const auto n_gaussians = valid_gaussians.size();
 
-    gpe::Vector2d<gaussian_index_t, N_INPUT> subgraphs;
-    for (gaussian_index_t i = 0; i < valid_gaussians.size(); ++i) {
+    gpe::Vector2d<small_index_t, N_INPUT> subgraphs;
+    for (small_index_t i = 0; i < valid_gaussians.size(); ++i) {
         subgraphs.push_back({valid_gaussians[i]});
     }
     unsigned n_subgraphs = subgraphs.size();
@@ -65,17 +65,17 @@ gpe::Array<gpe::Vector<gaussian_index_t, N_INPUT - N_CLUSTERS + 1>, N_CLUSTERS> 
     // then copy the disparities, filling up with infty (so they won't get selected)
     struct DisparityData {
         scalar_t disparity;
-        gaussian_index_t idx_a;
-        gaussian_index_t idx_b;
+        small_index_t idx_a;
+        small_index_t idx_b;
         EXECUTION_DEVICES
         bool operator <= (const DisparityData& other) const { return disparity <= other.disparity; }
     };
 
     gpe::ArrayHeap<DisparityData, (N_INPUT * N_INPUT - N_INPUT) / 2> disparity_heap;
-    const auto invalid_disparity = DisparityData{std::numeric_limits<scalar_t>::infinity(), gaussian_index_t(-1), gaussian_index_t(-1)};
+    const auto invalid_disparity = DisparityData{std::numeric_limits<scalar_t>::infinity(), small_index_t(-1), small_index_t(-1)};
     unsigned n_disparities = 0;
-    for (gaussian_index_t i = 0; i < n_gaussians; ++i) {
-        for (gaussian_index_t j = i + 1; j < n_gaussians; ++j) {
+    for (small_index_t i = 0; i < n_gaussians; ++i) {
+        for (small_index_t j = i + 1; j < n_gaussians; ++j) {
             disparity_heap.m_data[n_disparities] = DisparityData{disparities[valid_gaussians[i]][valid_gaussians[j]], valid_gaussians[i], valid_gaussians[j]};
             ++n_disparities;
         }
@@ -99,7 +99,7 @@ gpe::Array<gpe::Vector<gaussian_index_t, N_INPUT - N_CLUSTERS + 1>, N_CLUSTERS> 
         --n_subgraphs;
     };
 
-    auto subgraph_of = [&](gaussian_index_t id) {
+    auto subgraph_of = [&](small_index_t id) {
         for (unsigned i = 0; i < subgraphs.size(); ++i) {
             for (unsigned j = 0; j < subgraphs[i].size(); ++j) {
                 if (subgraphs[i][j] == id)
@@ -130,10 +130,10 @@ gpe::Array<gpe::Vector<gaussian_index_t, N_INPUT - N_CLUSTERS + 1>, N_CLUSTERS> 
 
     unsigned subgraph_id = unsigned(-1);
     assert(n_subgraphs == N_CLUSTERS);
-    gpe::Array<gpe::Vector<gaussian_index_t, N_INPUT - N_CLUSTERS + 1>, N_CLUSTERS> retval;
+    gpe::Array<gpe::Vector<small_index_t, N_INPUT - N_CLUSTERS + 1>, N_CLUSTERS> retval;
     for (unsigned i = 0; i < N_CLUSTERS; ++i) {
         subgraph_id = find_next_subgraph(subgraph_id);
-        retval[i].push_back_if(subgraphs[subgraph_id], [=](gaussian_index_t idx) { return idx < n_gaussians; });
+        retval[i].push_back_if(subgraphs[subgraph_id], [=](small_index_t idx) { return idx < n_gaussians; });
     }
 
     return retval;
@@ -142,9 +142,9 @@ gpe::Array<gpe::Vector<gaussian_index_t, N_INPUT - N_CLUSTERS + 1>, N_CLUSTERS> 
 
 template <typename scalar_t, int N_DIMS, uint32_t N_GAUSSIANS, uint32_t N_MAX_CLUSTER_ELEMENTS>
 EXECUTION_DEVICES
-gaussian_index_t cluster_select_maxWeight(const gpe::Array<gpe::Gaussian<N_DIMS, scalar_t>, N_GAUSSIANS>& mixture,
-                                          const gpe::Vector<gaussian_index_t, N_MAX_CLUSTER_ELEMENTS>& cluster_indices) {
-    gaussian_index_t selected_index = gaussian_index_t(-1);
+small_index_t cluster_select_maxWeight(const gpe::Array<gpe::Gaussian<N_DIMS, scalar_t>, N_GAUSSIANS>& mixture,
+                                          const gpe::Vector<small_index_t, N_MAX_CLUSTER_ELEMENTS>& cluster_indices) {
+    small_index_t selected_index = small_index_t(-1);
     scalar_t max_abs = 0;
     assert(cluster_indices.size() > 0);
 
@@ -157,28 +157,28 @@ gaussian_index_t cluster_select_maxWeight(const gpe::Array<gpe::Gaussian<N_DIMS,
             selected_index = gaussian_id;
         }
     }
-    assert(selected_index != gaussian_index_t(-1));
+    assert(selected_index != small_index_t(-1));
     return selected_index;
 };
 
 
 template <unsigned N_FITTING, typename scalar_t, int N_DIMS, unsigned N_TARGET>
 EXECUTION_DEVICES
-gpe::Array<gaussian_index_t, N_FITTING> fit_initial(const gpe::Array<gpe::Gaussian<N_DIMS, scalar_t>, N_TARGET>& target, const Config& config) {
+gpe::Array<small_index_t, N_FITTING> fit_initial(const gpe::Array<gpe::Gaussian<N_DIMS, scalar_t>, N_TARGET>& target, const Config& config) {
     using G = gpe::Gaussian<N_DIMS, scalar_t>;
     using gradless_scalar_t = gpe::remove_grad_t<scalar_t>;
 
     auto disparity_matrix = gpe::outer_product(target, target, cluster_centroid_distance<gradless_scalar_t, N_DIMS>);
 
-    gpe::Vector<gaussian_index_t, N_TARGET> valid_gaussians;
-    for (gaussian_index_t i = 0; i < N_TARGET; ++i) {
+    gpe::Vector<small_index_t, N_TARGET> valid_gaussians;
+    for (small_index_t i = 0; i < N_TARGET; ++i) {
         if (gpe::abs(target[i].weight) >= gpe::Epsilon<scalar_t>::large)
             valid_gaussians.push_back(i);
     }
     const auto clustering = clusterise_using_heap<N_FITTING>(disparity_matrix, valid_gaussians);                             // returns gpe::Array<gpe::Vector>
     assert(clustering.size() == N_FITTING);
 
-    gpe::Array<gaussian_index_t, N_FITTING> result;
+    gpe::Array<small_index_t, N_FITTING> result;
     for (unsigned i = 0; i < N_FITTING; ++i) {
         result[i] = (cluster_select_maxWeight(target, clustering[i]));
     }
@@ -233,8 +233,8 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_em(const gpe::Vector
     const auto target_int1_mixture = gpe::pack_mixture(target_int1_weights, target_positions, target_covariances);
 
     const auto likelihood_matrix = gpe::outer_product(target_int1_mixture, initial_int1_mixture, gpe::likelihood<scalar_t, N_DIMS>);
-    const auto kldiv_sign_matrix = gpe::outer_product(gpe::removeGrad(target_int1_mixture), gpe::removeGrad(initial_int1_mixture), [](auto target, auto fitting) {
-        return (gpe::sign(fitting.weight) == gpe::sign(target.weight)) ? gpe::kl_divergence<gradless_scalar_t, N_DIMS>(target, fitting) : gradless_scalar_t(0);
+    const auto kldiv_sign_matrix = gpe::outer_product(gpe::removeGrad(target_int1_mixture), gpe::removeGrad(initial_int1_mixture), [](auto target, auto initial) {
+        return (gpe::sign(initial.weight) == gpe::sign(target.weight)) ? gpe::kl_divergence<gradless_scalar_t, N_DIMS>(target, initial) : gradless_scalar_t(0);
     });
 
     auto kl_div_threshold = gradless_scalar_t(config.em_kl_div_threshold);
@@ -389,14 +389,14 @@ void iterate_over_nodes(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
                         const Config& config) {
     GPE_UNUSED(gpe_gridDim)
     using G = gpe::Gaussian<N_DIMS, scalar_t>;
-    using Bvh = AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>;
+    using Tree = AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>;
 
     assert(gpe_blockDim.y == 1);
     assert(gpe_blockDim.z == 1);
     const auto mixture_id = int(gpe_blockIdx.y);
     assert(mixture_id < n_mixtures);
 
-    Bvh bvh = Bvh(mixture_id, nodes, aabbs, mixture, node_attributes, n, n_internal_nodes, n_nodes);
+    Tree bvh = Tree(mixture_id, nodes, aabbs, mixture, node_attributes, n, n_internal_nodes, n_nodes);
 
     const unsigned leaves_per_thread = (unsigned(n.components) + gpe_blockDim.x - 1) / gpe_blockDim.x;
     const unsigned begin_leaf = leaves_per_thread * gpe_threadIdx.x;
@@ -454,7 +454,7 @@ EXECUTION_DEVICES void collect_result(const dim3& gpe_gridDim, const dim3& gpe_b
     GPE_UNUSED(gpe_gridDim)
     GPE_UNUSED(flags)
     using G = gpe::Gaussian<N_DIMS, scalar_t>;
-    using Bvh = AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>;
+    using Tree = AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>;
 
     assert(config.n_components_fitting % REDUCTION_N == 0);
     assert(config.n_components_fitting <= N_MAX_TARGET_COMPS);
@@ -464,7 +464,7 @@ EXECUTION_DEVICES void collect_result(const dim3& gpe_gridDim, const dim3& gpe_b
     if (mixture_id >= n_mixtures)
         return;
 
-    Bvh bvh = AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>(mixture_id, nodes, aabbs, mixture, node_attributes, n, n_internal_nodes, n_nodes);
+    auto bvh = Tree(mixture_id, nodes, aabbs, mixture, node_attributes, n, n_internal_nodes, n_nodes);
 
     gpe::Vector<scalar_t, N_MAX_TARGET_COMPS> selectedNodesRating;
     gpe::Vector<node_index_t, N_MAX_TARGET_COMPS> selectedNodes;
@@ -519,7 +519,7 @@ EXECUTION_DEVICES void collect_result(const dim3& gpe_gridDim, const dim3& gpe_b
     unsigned write_position = 0;
     for (unsigned i = 0; i < selectedNodes.size(); ++i) {
         auto node_id = selectedNodes[i];
-        typename Bvh::NodeAttributes& destination_attribute = bvh.per_node_attributes[node_id];
+        typename Tree::NodeAttributes& destination_attribute = bvh.per_node_attributes[node_id];
 
         for (unsigned j = 0; j < destination_attribute.gaussians.size(); ++j) {
             assert(write_position < config.n_components_fitting);
@@ -538,7 +538,7 @@ EXECUTION_DEVICES void collect_result(const dim3& gpe_gridDim, const dim3& gpe_b
 template<int REDUCTION_N = 4, typename scalar_t, unsigned N_DIMS>
 ForwardOutput forward_impl_t(at::Tensor mixture, const Config& config) {
     using namespace torch::indexing;
-    using LBVH = lbvh::Bvh<N_DIMS, scalar_t>;
+    using Tree = lbvh::Bvh<N_DIMS, scalar_t>;
 
     // todo: flatten mixture for kernel, i.g. nbatch/nlayers/ncomponents/7 => nmixture/ncomponents/7
 
@@ -550,8 +550,10 @@ ForwardOutput forward_impl_t(at::Tensor mixture, const Config& config) {
     TORCH_CHECK(mixture.dtype() == caffe2::TypeMeta::Make<scalar_t>(), "something wrong with dispatch, or maybe this float type is not supported.")
 
     const auto n_mixtures = n.batch * n.layers;
+    auto bvh_config = config.bvh_config;
+    bvh_config.make_aabbs = true;
     // warning: aabbs of bvh not usable, because these expect the mxiture to have inverted covs
-    const LBVH bvh = LBVH(mixture, config.bvh_config);
+    const Tree bvh = Tree(mixture, bvh_config);
     const auto n_internal_nodes = bvh.m_n_internal_nodes;
     const auto n_nodes = bvh.m_n_nodes;
     mixture = mixture.view({n_mixtures, n.components, -1}).contiguous();
