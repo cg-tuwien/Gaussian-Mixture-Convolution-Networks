@@ -279,7 +279,6 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_em(const gpe::Vector
     const auto posDiffs = gpe::outer_product(target_positions, fittingPositions, fun::minus<pos_t>);
     const auto posDiffsOuter = gpe::cwise_fun(posDiffs, posDiffs, gpe::outerProduct<scalar_t, N_DIMS>);
     const auto unweightedCovs = gpe::cwise_fun(posDiffsOuter, target_covariances, fun::plus<cov_t, cov_t, cov_t>);
-
     const auto weightedCovs = gpe::cwise_fun(responsibilities_3, unweightedCovs, fun::times<scalar_t, cov_t, cov_t>);
 
     auto fittingCovariances = gpe::reduce_cols(weightedCovs, cov_t(0), fun::plus<cov_t, cov_t, cov_t>);
@@ -409,32 +408,69 @@ void iterate_over_nodes(const dim3& gpe_gridDim, const dim3& gpe_blockDim,
         return bool(old);
     };
 
-    // go bottom up through all nodes
-    while(current_leaf < end_leaf)
+//    // go bottom up through all nodes (the slower, but easier to read code. this version produces a different output to the fast version when in fast-math mode)
+//    while(current_leaf < end_leaf)
+//    {
+//        const auto leaf_node_id = node_index_t(current_leaf + n_internal_nodes);
+//        assert(leaf_node_id < n_nodes);
+//        const Node* node = &bvh.nodes[leaf_node_id];
+
+//        const G& leaf_gaussian = bvh.gaussians[node->object_idx];
+//        bvh.per_node_attributes[leaf_node_id].gaussians.push_back(leaf_gaussian);
+//        bvh.per_node_attributes[leaf_node_id].n_child_leaves = 1;
+//        bvh.per_node_attributes[leaf_node_id].gm_integral = leaf_gaussian.weight;
+//        current_leaf++;
+
+//        while (node->parent_idx != node_index_t(0xFFFFFFFF) && is_second_thread(node->parent_idx)) {
+//            auto node_id = node->parent_idx;
+//            node = &bvh.nodes[node_id];
+//            bvh.per_node_attributes[node_id].n_child_leaves = bvh.per_node_attributes[node->left_idx].n_child_leaves + bvh.per_node_attributes[node->right_idx].n_child_leaves;
+//            bvh.per_node_attributes[node_id].gm_integral = bvh.per_node_attributes[node->left_idx].gm_integral + bvh.per_node_attributes[node->right_idx].gm_integral;
+
+//            auto child_gaussians = bvh.collect_child_gaussians(node, gpe::Epsilon<scalar_t>::large);
+//            if (child_gaussians.size() > REDUCTION_N) {
+//                bvh.per_node_attributes[node_id].gaussians = fit_em<REDUCTION_N>(child_gaussians, &(bvh.per_node_attributes[node_id].gradient_cache_data), config);
+//            }
+//            else {
+//                bvh.per_node_attributes[node_id].gaussians.push_back(child_gaussians);
+//            }
+//        }
+//    }
+
+    // go bottom up through all nodes (the fast code)
+    bool leaf_done = true;
+    const Node* node = nullptr;
+    while(current_leaf < end_leaf || !leaf_done)
     {
-        const auto leaf_node_id = node_index_t(current_leaf + n_internal_nodes);
-        assert(leaf_node_id < n_nodes);
-        const Node* node = &bvh.nodes[leaf_node_id];
+        if (leaf_done) {
+            const auto leaf_node_id = node_index_t(current_leaf + n_internal_nodes);
+            assert(leaf_node_id < n_nodes);
+            node = &bvh.nodes[leaf_node_id];
 
-        const G& leaf_gaussian = bvh.gaussians[node->object_idx];
-        bvh.per_node_attributes[leaf_node_id].gaussians.push_back(leaf_gaussian);
-        bvh.per_node_attributes[leaf_node_id].n_child_leaves = 1;
-        bvh.per_node_attributes[leaf_node_id].gm_integral = leaf_gaussian.weight;
-        current_leaf++;
+            const G& leaf_gaussian = bvh.gaussians[node->object_idx];
+            bvh.per_node_attributes[leaf_node_id].gaussians.push_back(leaf_gaussian);
+            bvh.per_node_attributes[leaf_node_id].n_child_leaves = 1;
+            bvh.per_node_attributes[leaf_node_id].gm_integral = leaf_gaussian.weight;
+            current_leaf++;
+            leaf_done = false;
+        }
+        assert(node != nullptr);
 
-        while (node->parent_idx != node_index_t(0xFFFFFFFF) && is_second_thread(node->parent_idx)) {
-            auto node_id = node->parent_idx;
-            node = &bvh.nodes[node_id];
-            bvh.per_node_attributes[node_id].n_child_leaves = bvh.per_node_attributes[node->left_idx].n_child_leaves + bvh.per_node_attributes[node->right_idx].n_child_leaves;
-            bvh.per_node_attributes[node_id].gm_integral = bvh.per_node_attributes[node->left_idx].gm_integral + bvh.per_node_attributes[node->right_idx].gm_integral;
+        auto node_id = node->parent_idx;
+        leaf_done = node_id == node_index_t(0xFFFFFFFF) || !is_second_thread(node_id);
+        if (leaf_done)
+            continue;
 
-            auto child_gaussians = bvh.collect_child_gaussians(node, gpe::Epsilon<scalar_t>::large);
-            if (child_gaussians.size() > REDUCTION_N) {
-                bvh.per_node_attributes[node_id].gaussians = fit_em<REDUCTION_N>(child_gaussians, &(bvh.per_node_attributes[node_id].gradient_cache_data), config);
-            }
-            else {
-                bvh.per_node_attributes[node_id].gaussians.push_back(child_gaussians);
-            }
+        node = &bvh.nodes[node_id];
+        bvh.per_node_attributes[node_id].n_child_leaves = bvh.per_node_attributes[node->left_idx].n_child_leaves + bvh.per_node_attributes[node->right_idx].n_child_leaves;
+        bvh.per_node_attributes[node_id].gm_integral = bvh.per_node_attributes[node->left_idx].gm_integral + bvh.per_node_attributes[node->right_idx].gm_integral;
+
+        auto child_gaussians = bvh.collect_child_gaussians(node, gpe::Epsilon<scalar_t>::large);
+        if (child_gaussians.size() > REDUCTION_N) {
+            bvh.per_node_attributes[node_id].gaussians = fit_em<REDUCTION_N>(child_gaussians, &(bvh.per_node_attributes[node_id].gradient_cache_data), config);
+        }
+        else {
+            bvh.per_node_attributes[node_id].gaussians.push_back(child_gaussians);
         }
     }
 }
@@ -568,6 +604,7 @@ ForwardOutput forward_impl_t(at::Tensor mixture, const Config& config) {
     auto nodes_a = gpe::accessor<lbvh::detail::Node::index_type_torch, 3>(flat_bvh_nodes);
     auto aabbs_a = gpe::accessor<scalar_t, 3>(flat_bvh_aabbs);
     auto node_attributes_a = gpe::struct_accessor<typename AugmentedBvh<scalar_t, N_DIMS, REDUCTION_N>::NodeAttributes, 2, uint8_t>(node_attributes);
+
 
     {
         dim3 dimBlock = dim3(32, 1, 1);
