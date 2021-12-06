@@ -371,7 +371,7 @@ gpe::Vector<gpe::Gaussian<N_DIMS, scalar_t>, N_FITTING> fit_em(const gpe::Vector
 //#endif
 //        assert(false);
 //    }
-    assert(gpe::abs(target_clipped_integral - gpe::reduce(result, scalar_t(0), [](scalar_t i, const G& g) { return i + gpe::abs(g.weight); })) < gradless_scalar_t(0.0001));
+    assert(gpe::abs(target_clipped_integral - gpe::reduce(result, scalar_t(0), [](scalar_t i, const G& g) { return i + gpe::abs(g.weight); })) < gradless_scalar_t(0.0001) * gpe::removeGrad(target_clipped_integral));
     return result;
 }
 

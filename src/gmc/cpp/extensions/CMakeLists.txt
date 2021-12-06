@@ -357,19 +357,19 @@ set(UNITTESTS_HEADERS
     unittests/support.h
 )
 set(UNITTESTS_SOURCES
-#    unittests/algorithms.cpp
-#    unittests/bvh_mhem_fit_alpha_vs_ad.cpp
+    unittests/algorithms.cpp
+    unittests/bvh_mhem_fit_alpha_vs_ad.cpp
     unittests/bvh_mhem_fit_working_vs_alpha.cpp
-#    unittests/bvh_mhem_fit_working_vs_binding.cpp
-#    unittests/evaluate_inversed.cpp
-#    unittests/grad_algorithms.cpp
-#    unittests/grad_mixture.cpp
-#    unittests/grad_welford.cpp
+    unittests/bvh_mhem_fit_working_vs_binding.cpp
+    unittests/evaluate_inversed.cpp
+    unittests/grad_algorithms.cpp
+    unittests/grad_mixture.cpp
+    unittests/grad_welford.cpp
     unittests/main.cpp
-#    unittests/util_helpers.cpp
-#    unittests/welford.cpp
-#    unittests/convolution_fitting.cpp
-#    unittests/grad_evaluate_inversed.cpp
+    unittests/util_helpers.cpp
+    unittests/welford.cpp
+    unittests/convolution_fitting.cpp
+    unittests/grad_evaluate_inversed.cpp
 )
 add_executable(0_unittests ${UNITTESTS_SOURCES} ${UNITTESTS_HEADERS})
 target_link_libraries(0_unittests PUBLIC Catch2::Catch2 OpenMP::OpenMP_CXX torch Qt5::Widgets bvh_mhem_fit_alpha bvh_mhem_fit convolution_fitting evaluate_inversed math common)

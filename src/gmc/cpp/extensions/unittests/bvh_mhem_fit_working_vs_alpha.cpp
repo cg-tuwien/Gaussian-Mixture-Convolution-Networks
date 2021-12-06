@@ -56,21 +56,19 @@ void runTest(const std::vector<std::pair<torch::Tensor, torch::Tensor>>& test_ca
     for (const auto& test_case : test_cases) {
         torch::Tensor mixture = test_case.first;
         torch::Tensor gradient_fitting = test_case.second.repeat({mixture.size(0), mixture.size(1), 1, 1});
-        auto reference_mixture = mixture.to(torch::ScalarType::Double);
-        auto reference_gradient_fitting = gradient_fitting.to(torch::ScalarType::Double);
         if (sizeof(scalar_t) > 4) {
             mixture = mixture.to(torch::ScalarType::Double);
             gradient_fitting = gradient_fitting.to(torch::ScalarType::Double);
         }
+        auto reference_mixture = mixture;
+        auto reference_gradient_fitting = gradient_fitting;
         if (USE_CUDA) {
             mixture = mixture.cuda();
             gradient_fitting = gradient_fitting.cuda();
         }
 
         auto forward_out = bvh_mhem_fit::forward_impl(mixture, config);
-        auto gradient_target = bvh_mhem_fit::backward_impl(gradient_fitting, forward_out, config);
         auto reference_forward_out = bvh_mhem_fit_alpha::forward_impl(reference_mixture, reference_config);
-        auto reference_gradient_target = bvh_mhem_fit_alpha::backward_impl(reference_gradient_fitting, reference_forward_out, reference_config);
 
         {
             auto fitting = forward_out.fitting.contiguous().cpu();
@@ -78,7 +76,7 @@ void runTest(const std::vector<std::pair<torch::Tensor, torch::Tensor>>& test_ca
             REQUIRE(fitting_reference.size(-2) == config.n_components_fitting);
             double forward_error = 0;
             for (size_t i = 0; i < config.n_components_fitting * 7; ++i) {
-                const auto a = fitting_reference.data_ptr<double>()[i];
+                const auto a = double(fitting_reference.data_ptr<scalar_t>()[i]);
                 const auto b = double(fitting.data_ptr<scalar_t>()[i]);
                 const auto e = (a - b) * (a - b) / std::max(a * a, 1.);
                 forward_error += e;
@@ -108,6 +106,8 @@ void runTest(const std::vector<std::pair<torch::Tensor, torch::Tensor>>& test_ca
             forward_error /= config.n_components_fitting * 7;
             rrmse_forward += forward_error;
 
+            auto gradient_target = bvh_mhem_fit::backward_impl(gradient_fitting, forward_out, config);
+            auto reference_gradient_target = bvh_mhem_fit_alpha::backward_impl(reference_gradient_fitting, reference_forward_out, reference_config);
             auto gradient = gradient_target.contiguous().cpu();
             auto gradient_reference = reference_gradient_target.contiguous();
             auto n_Gs = size_t(gradient_reference.size(-2));
@@ -115,7 +115,7 @@ void runTest(const std::vector<std::pair<torch::Tensor, torch::Tensor>>& test_ca
 //            std::cout << "gradient_fitting: " << gradient_fitting << std::endl;
             double backward_error = 0;
             for (size_t i = 0; i < n_Gs * 7; ++i) {
-                const auto a = gradient_reference.data_ptr<double>()[i];
+                const auto a = double(gradient_reference.data_ptr<scalar_t>()[i]);
                 const auto b = double(gradient.data_ptr<scalar_t>()[i]);
                 const auto e = (a - b) * (a - b) / std::max(a * a, 1.);
                 backward_error += e;
@@ -159,10 +159,10 @@ void runTest(const std::vector<std::pair<torch::Tensor, torch::Tensor>>& test_ca
 constexpr double gpe_float_exploding_precision = 4e-3;
 constexpr double gpe_float_explosion_size = 8e-2;
 constexpr double gpe_float_precision = 4e-5;
-constexpr double gpe_double_precision = 1e-11;
+constexpr double gpe_double_precision = 1e-8;
 
 TEMPLATE_TEST_CASE( "testing working against alpha reference", "[bvh_mhem_fit]", use_cpu_type, use_cuda_type) {
-    std::cout << "01. ";
+//    std::cout << "01. ";
     SECTION("2 component fitting double") {
         runTest<TestType::value, 2, double>(_combineCollectionsOfGradsAndMixtures({_collectionOf2d2GsGrads()},
                                                                  {_collectionOf2dMixtures_with4Gs(),
