@@ -8,7 +8,7 @@ import gmc.inout
 source_dir = os.path.dirname(__file__)
 
 
-source_files = [source_dir + '/bindings.cpp', source_dir + '/implementation_dispatch.cpp', source_dir + '/../lbvh/bvh.cu', source_dir + '/../CpuSynchronisationPoint.cpp', source_dir + '/../pieces/pieces.cpp', source_dir + '/../pieces/integrate.cu', source_dir + '/../pieces/matrix_inverse.cu']
+source_files = [source_dir + '/bindings.cpp', source_dir + '/implementation_dispatch.cpp', source_dir + '/../lbvh/bvh.cu', source_dir + '/../CpuSynchronisationPoint.cpp', source_dir + '/../pieces/pieces.cpp', source_dir + '/../pieces/matrix_inverse.cu', source_dir + '/../pieces/symeig.cu']
 for dtype in ['float', 'double']:
     for reduction_n in [2, 4, 8, 16]:
         for ndims in [2, 3]:

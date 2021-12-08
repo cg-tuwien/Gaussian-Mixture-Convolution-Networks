@@ -7,6 +7,7 @@ from torch.utils.tensorboard import SummaryWriter as TensorboardWriter
 
 import gmc.mixture as gm
 import gmc.mat_tools as mat_tools
+from gmc.cpp.extensions.bvh_mhem_fit import binding as cppBvhMhemFit
 
 
 class Config:
@@ -15,7 +16,7 @@ class Config:
         self.KL_divergence_threshold = 2.0
 
 
-def solver(mixture: Tensor, constant: Tensor, n_components: int, config: Config = Config(), tensorboard_epoch: TensorboardWriter = None, convolution_layer: str = None) -> typing.Tuple[Tensor, Tensor, typing.List[Tensor]]:
+def solver(mixture: Tensor, constant: Tensor, n_components: int, config: Config = Config(), tensorboard_epoch: TensorboardWriter = None, convolution_layer: str = None, solver_n_samples=0) -> typing.Tuple[Tensor, Tensor, typing.List[Tensor]]:
     if tensorboard_epoch is not None:
         # torch.cuda.synchronize()
         # t0 = time.perf_counter()
@@ -26,14 +27,21 @@ def solver(mixture: Tensor, constant: Tensor, n_components: int, config: Config 
     device = mixture.device
     weights = gm.weights(mixture)
     positions = gm.positions(mixture)
-    sample_points = generate_random_sampling(mixture, gm.n_components(mixture)*3)
-    eval_points = torch.cat((positions, sample_points), dim=2)
+    eval_points = positions
+    if solver_n_samples > 0:
+        sample_points = generate_random_sampling(mixture, gm.n_components(mixture)*solver_n_samples)
+        eval_points = torch.cat((positions, sample_points), dim=2)
+    elif solver_n_samples < 0:
+        eval_points = generate_random_sampling(mixture, gm.n_components(mixture) * (-solver_n_samples))
+
     covariances = gm.covariances(mixture)
 
     ret_const = constant.where(constant > 0, torch.zeros(1, device=device))
     target = torch.maximum(gm.evaluate(mixture, eval_points) + constant, torch.zeros(1, 1, 1, device=device)) - ret_const
     A = gm.evaluate_componentwise(gm.pack_mixture(torch.ones_like(weights), positions, covariances), eval_points)
+
     new_weights = (torch.linalg.pinv(A) @ target.unsqueeze(-1)).squeeze()
+    # new_weights = torch.linalg.lstsq(A, target).solution
     fitting = gm.pack_mixture(new_weights, positions, covariances)
 
     if tensorboard_epoch is not None:
@@ -59,7 +67,7 @@ def fixed_point_only(mixture: Tensor, constant: Tensor, n_components: int, confi
     # if tensorboard_epoch is not None:
     #     torch.cuda.synchronize()
     #     t1 = time.perf_counter()
-        # tensorboard.add_scalar(f"50.1 fitting {convolution_layer} initial_approx_to_relu time =", t1 - t0, epoch)
+    #     tensorboard.add_scalar(f"50.1 fitting {convolution_layer} initial_approx_to_relu time =", t1 - t0, epoch)
 
     fp_fitting, ret_const = fixed_point_iteration_to_relu(mixture, constant, initial_fitting)
 
@@ -92,7 +100,7 @@ def splitter_and_fixed_point(mixture: Tensor, constant: Tensor, n_components: in
     # if tensorboard_epoch is not None:
     #     torch.cuda.synchronize()
     #     t1 = time.perf_counter()
-        # tensorboard.add_scalar(f"50.1 fitting {convolution_layer} initial_approx_to_relu time =", t1 - t0, epoch)
+    #     tensorboard.add_scalar(f"50.1 fitting {convolution_layer} initial_approx_to_relu time =", t1 - t0, epoch)
 
     fp_fitting, ret_const = fixed_point_iteration_to_relu(mixture, constant, initial_fitting)
 
@@ -103,6 +111,53 @@ def splitter_and_fixed_point(mixture: Tensor, constant: Tensor, n_components: in
         tensorboard.add_scalar(f"51.1 fitting {convolution_layer} fixed point iteration mse =", mse(mixture, constant, fp_fitting, ret_const, test_points), epoch)
 
     return fp_fitting, ret_const, [split_mixture, initial_fitting]
+
+
+def fixed_point_and_tree_hem2(mixture: Tensor, constant: Tensor, n_components: int, config: Config = Config(), tensorboard_epoch: TensorboardWriter = None, convolution_layer: str = None) -> typing.Tuple[Tensor, Tensor, typing.List[Tensor]]:
+    config.n_reduction = 2
+    return fixed_point_and_tree_hem(mixture, constant, n_components, config, tensorboard_epoch, convolution_layer)
+
+
+def fixed_point_and_tree_hem(mixture: Tensor, constant: Tensor, n_components: int, config: Config = Config(), tensorboard_epoch = None, convolution_layer: str = None) -> typing.Tuple[Tensor, Tensor, typing.List[Tensor]]:
+    if tensorboard_epoch is not None:
+        # torch.cuda.synchronize()
+        # t0 = time.perf_counter()
+        test_points = generate_random_sampling(mixture, 1000)
+        tensorboard = tensorboard_epoch[0]
+        epoch = tensorboard_epoch[1]
+
+    initial_fitting = initial_approx_to_relu(mixture, constant)
+
+    # if tensorboard_epoch is not None:
+    #     torch.cuda.synchronize()
+    #     t1 = time.perf_counter()
+    #     tensorboard.add_scalar(f"50.1 fitting {convolution_layer} initial_approx_to_relu time =", t1 - t0, epoch)
+
+    fp_fitting, ret_const = fixed_point_iteration_to_relu(mixture, constant, initial_fitting)
+
+    if tensorboard_epoch is not None:
+        # torch.cuda.synchronize()
+        # t2 = time.perf_counter()
+        # tensorboard.add_scalar(f"50.2 fitting {convolution_layer} fixed_point_iteration_to_relu time =", t2 - t1, epoch)
+        tensorboard.add_scalar(f"51.1 fitting {convolution_layer} fixed point iteration mse =", mse(mixture, constant, fp_fitting, ret_const, test_points), epoch)
+
+    if n_components < 0:
+        return fp_fitting, ret_const, [initial_fitting]
+
+    fitting = tree_hem(fp_fitting, max(config.n_reduction, n_components), config.n_reduction)
+
+    if tensorboard_epoch is not None:
+        # torch.cuda.synchronize()
+        # t3 = time.perf_counter()
+        # tensorboard.add_scalar(f"50.5 fitting {convolution_layer} -> {n_components} bvh_mhem_fit time=", t3 - t2, epoch)
+        tensorboard.add_scalar(f"51.0 fitting {convolution_layer} all mse =", mse(mixture, constant, fitting, ret_const, test_points), epoch)
+        tensorboard.add_scalar(f"51.2 fitting {convolution_layer} reduction mse =", mse(fp_fitting, ret_const, fitting, ret_const, test_points, with_activation=False), epoch)
+
+    if n_components < config.n_reduction:
+        reduced_fitting = representative_select_for_relu(fitting, n_components, config)
+        fitting = mhem_fit_a_to_b(reduced_fitting, fitting, config)
+
+    return fitting, ret_const, [initial_fitting, fp_fitting]
 
 
 def fixed_point_and_mhem(mixture: Tensor, constant: Tensor, n_components: int, config: Config = Config(), tensorboard_epoch: typing.Optional[typing.Tuple[TensorboardWriter, int]] = None, convolution_layer: str = None) -> typing.Tuple[Tensor, Tensor, typing.List[Tensor]]:
@@ -241,6 +296,25 @@ def mse(target_mixture: Tensor, target_constant: Tensor, fitting_mixture: Tensor
     fitting = gm.evaluate(fitting_mixture, xes) + fitting_constant.unsqueeze(-1)
     fitting = (fitting - gt_mean) / gt_sd
     return ((fitting - ground_truth)**2).mean().item()
+
+
+def tree_hem(m: Tensor, n_components: int, n_reduction: int) -> Tensor:
+    # scale the mixture to some sort of standard in order to improve numerical stability
+
+    cov_scaling_factor = mat_tools.trace(gm.covariances(m)).mean(-1, keepdim=True) / gm.n_dimensions(m)  # mean over components and trace elements
+    assert (cov_scaling_factor > 0).all().item()
+    backward_cov_scaling_factor = torch.sqrt(cov_scaling_factor)
+    cov_scaling_factor = (1 / backward_cov_scaling_factor)
+
+    assert not torch.any(torch.isnan(backward_cov_scaling_factor))
+    assert not torch.any(torch.isinf(backward_cov_scaling_factor))
+    assert not torch.any(torch.isnan(cov_scaling_factor))
+    assert not torch.any(torch.isinf(cov_scaling_factor))
+
+    m = gm.spatial_scale(m, cov_scaling_factor)
+    m = cppBvhMhemFit.apply(m, n_components, n_reduction)
+    m = gm.spatial_scale(m, backward_cov_scaling_factor)
+    return m
 
 
 def mixture_to_double_gmm(mixture: Tensor) -> typing.Tuple[Tensor, Tensor, Tensor]:
