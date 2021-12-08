@@ -46,7 +46,7 @@ def render(mixture: Tensor, constant: Tensor, batches: index_range = (0, None), 
            x_low: float = -22, y_low: float = -22, x_high: float = 22, y_high: float = 22,
            width: int = 100, height: int = 100):
     assert gm.n_dimensions(mixture) == 2
-    assert gm.is_valid_mixture(mixture)
+    assert gm.is_valid_mixture_and_constant(mixture, constant)
     delta_x = (x_high - x_low) / width
     delta_y = (y_high - y_low) / height
     xv, yv = torch.meshgrid([torch.arange(x_low, x_high - delta_x / 2, delta_x, dtype=torch.float, device=mixture.device),
@@ -102,14 +102,13 @@ def render_with_relu(mixture: Tensor, constant: Tensor,
                      batches: index_range = (0, None), layers: index_range = (0, None),
                      x_low: float = -22, y_low: float = -22, x_high: float = 22, y_high: float = 22,
                      width: int = 100, height: int = 100) -> Tensor:
-    assert gm.is_valid_mixture_and_constant(mixture, constant)
     rendering = render(mixture, constant, batches, layers, x_low, y_low, x_high, y_high, width, height)
-    return torch.max(rendering, torch.tensor([0.00001], dtype=torch.float32, device=mixture.device))
+    return torch.max(rendering, torch.tensor([0.0000], dtype=torch.float32, device=mixture.device))
 
 
 def imshow(mixture: Tensor, constant: typing.Optional[Tensor] = None,
            batches: index_range = (0, None), channels: index_range = (0, None),
-           width: int = 100, height: int = 100):
+           width: int = 100, height: int = 100, clamp: typing.Optional[typing.Tuple[float, float]] = None):
     if constant is None:
         constant = torch.zeros(1, 1, device=mixture.device)
     assert gm.is_valid_mixture_and_constant(mixture, constant)
@@ -122,9 +121,38 @@ def imshow(mixture: Tensor, constant: typing.Optional[Tensor] = None,
         rendering = render(mixture, constant, batches, channels,
                            x_low=positions.min(dim=0)[0][0].item(), y_low=positions.min(dim=0)[0][1].item(), x_high=positions.max(dim=0)[0][0].item(), y_high=positions.max(dim=0)[0][1].item(),
                            width=width, height=height)
-        r = max(rendering.min().abs().item(), rendering.max().item())
+        if clamp is None:
+            r = max(rendering.min().abs().item(), rendering.max().item())
+            clamp = (-r, r)
         rendering = rendering.transpose(0, 1).transpose(1, 2).reshape(rendering.shape[1] * width, rendering.shape[0] * height)
-        colour = colour_mapped(rendering.numpy(), -r, r)
+        colour = colour_mapped(rendering.detach().cpu().numpy(), clamp[0], clamp[1])
         plt.figure()
-        plt.imshow(rendering)
+        plt.imshow(colour)
         plt.show(block=False)
+        return colour
+
+
+def imshow_with_ReLU(mixture: Tensor, constant: typing.Optional[Tensor] = None,
+           batches: index_range = (0, None), channels: index_range = (0, None),
+           width: int = 100, height: int = 100, clamp: typing.Optional[typing.Tuple[float, float]] = None):
+    if constant is None:
+        constant = torch.zeros(1, 1, device=mixture.device)
+    assert gm.is_valid_mixture_and_constant(mixture, constant)
+    n_dims = gm.n_dimensions(mixture)
+
+    if n_dims == 2:
+        positions = gm.positions(mixture).view(-1, 2)
+
+        # y_low: float = -22, x_high: float = 22, y_high: float = 22,
+        rendering = render_with_relu(mixture, constant, batches, channels,
+                                     x_low=positions.min(dim=0)[0][0].item(), y_low=positions.min(dim=0)[0][1].item(), x_high=positions.max(dim=0)[0][0].item(), y_high=positions.max(dim=0)[0][1].item(),
+                                     width=width, height=height)
+        if clamp is None:
+            r = max(rendering.min().abs().item(), rendering.max().item())
+            clamp = (-r, r)
+        rendering = rendering.transpose(0, 1).transpose(1, 2).reshape(rendering.shape[1] * width, rendering.shape[0] * height)
+        colour = colour_mapped(rendering.detach().cpu().numpy(), clamp[0], clamp[1])
+        plt.figure()
+        plt.imshow(colour)
+        plt.show(block=False)
+        return colour
