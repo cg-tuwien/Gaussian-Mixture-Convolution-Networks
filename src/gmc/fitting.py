@@ -113,6 +113,47 @@ def splitter_and_fixed_point(mixture: Tensor, constant: Tensor, n_components: in
     return fp_fitting, ret_const, [split_mixture, initial_fitting]
 
 
+
+def fixed_point_and_max(mixture: Tensor, constant: Tensor, n_components: int, config: Config = Config(), tensorboard_epoch = None, convolution_layer: str = None) -> typing.Tuple[Tensor, Tensor, typing.List[Tensor]]:
+    if tensorboard_epoch is not None:
+        # torch.cuda.synchronize()
+        # t0 = time.perf_counter()
+        test_points = generate_random_sampling(mixture, 1000)
+        tensorboard = tensorboard_epoch[0]
+        epoch = tensorboard_epoch[1]
+
+    initial_fitting = initial_approx_to_relu(mixture, constant)
+
+    # if tensorboard_epoch is not None:
+    #     torch.cuda.synchronize()
+    #     t1 = time.perf_counter()
+    #     tensorboard.add_scalar(f"50.1 fitting {convolution_layer} initial_approx_to_relu time =", t1 - t0, epoch)
+
+    fp_fitting, ret_const = fixed_point_iteration_to_relu(mixture, constant, initial_fitting)
+
+    if tensorboard_epoch is not None:
+        # torch.cuda.synchronize()
+        # t2 = time.perf_counter()
+        # tensorboard.add_scalar(f"50.2 fitting {convolution_layer} fixed_point_iteration_to_relu time =", t2 - t1, epoch)
+        tensorboard.add_scalar(f"51.1 fitting {convolution_layer} fixed point iteration mse =", mse(mixture, constant, fp_fitting, ret_const, test_points), epoch)
+
+    if n_components < 0:
+        return fp_fitting, ret_const, [initial_fitting]
+
+    max_int_indices = torch.topk(fp_fitting[..., 0], n_components)[1].unsqueeze(-1).expand(-1, -1, -1, mixture.shape[-1])
+    fitting = torch.gather(fp_fitting, -2, max_int_indices)
+
+    if tensorboard_epoch is not None:
+        # torch.cuda.synchronize()
+        # t3 = time.perf_counter()
+        # tensorboard.add_scalar(f"50.5 fitting {convolution_layer} -> {n_components} bvh_mhem_fit time=", t3 - t2, epoch)
+        tensorboard.add_scalar(f"51.0 fitting {convolution_layer} all mse =", mse(mixture, constant, fitting, ret_const, test_points), epoch)
+        tensorboard.add_scalar(f"51.2 fitting {convolution_layer} reduction mse =", mse(fp_fitting, ret_const, fitting, ret_const, test_points, with_activation=False), epoch)
+
+    return fitting, ret_const, [initial_fitting, fp_fitting]
+
+
+
 def fixed_point_and_tree_hem2(mixture: Tensor, constant: Tensor, n_components: int, config: Config = Config(), tensorboard_epoch: TensorboardWriter = None, convolution_layer: str = None) -> typing.Tuple[Tensor, Tensor, typing.List[Tensor]]:
     config.n_reduction = 2
     return fixed_point_and_tree_hem(mixture, constant, n_components, config, tensorboard_epoch, convolution_layer)

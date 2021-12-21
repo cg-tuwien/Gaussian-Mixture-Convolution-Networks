@@ -14,21 +14,23 @@ from torch.optim.lr_scheduler import StepLR
 class Net(nn.Module):
     def __init__(self):
         super(Net, self).__init__()
-        start_channels = 32
+        start_channels = 16
         self.net = nn.Sequential(
             nn.Conv2d(1, start_channels, kernel_size=3, stride=1, padding=1),    # 28
             nn.ReLU(),
-            nn.MaxPool2d(2),                                        # 14
+            nn.AvgPool2d(2),                                        # 14
             nn.Conv2d(start_channels, start_channels*2, kernel_size=3, stride=1, padding=1),   # 14
             nn.ReLU(),
-            nn.MaxPool2d(2),                                        # 7
+            nn.AvgPool2d(2),                                        # 7
             nn.Conv2d(start_channels*2, start_channels*4, kernel_size=3, stride=1, padding=1),  # 7
             nn.ReLU(),
-            nn.MaxPool2d(2),                                        # 3
-            nn.Conv2d(start_channels*4, start_channels*8, kernel_size=3, stride=1, padding=1),  # 3
+            nn.Conv2d(start_channels*4, start_channels*8, kernel_size=3, stride=1, padding=1),  # 7
             nn.ReLU(),
-            nn.MaxPool2d(2),                                        # 1
-            nn.Conv2d(start_channels*8, 10, kernel_size=1, stride=1, padding=0),
+            nn.AvgPool2d(2),                                        # 3
+            nn.Conv2d(start_channels*8, start_channels*16, kernel_size=3, stride=1, padding=1),  # 3
+            nn.ReLU(),
+            nn.AvgPool2d(2),                                        # 1
+            nn.Conv2d(start_channels*16, 10, kernel_size=1, stride=1, padding=0),
             nn.LogSoftmax(dim=1)
         )
 
